@@ -131,6 +131,8 @@ function Region:GetTexture() return self.texture end
 function Region:SetColorTexture(r, g, b, a) self.color, self.atlas = { r, g, b, a }, nil end
 function Region:SetAtlas(a) self.atlas = a end
 function Region:SetVertexColor(r, g, b, a) self.vertex = { r, g, b, a } end
+function Region:SetBlendMode(m) self.blend = m end
+function Region:GetBlendMode() return self.blend or "BLEND" end
 function Region:SetText(t)
     if isSecret(t) then secretsUsed = secretsUsed + 1 end
     self.text = t
@@ -1261,6 +1263,7 @@ local function over(t)
     return false
 end
 print("tint over the art", over(ns.tint))
+print("tint blend", ns.tint:GetBlendMode())
 local function tintState(tag)
     local t, vc = ns.tint, ns.tint.vertex
     print(string.format("tint %s: shown=%s colour=%s texture=%s", tag, tostring(t.shown),

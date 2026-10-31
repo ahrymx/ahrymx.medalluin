@@ -10,10 +10,13 @@ screen mockups with the frame's windows cut out as transparency. This script:
   * crops both to the frame's bounding box and pads them to power-of-two
     32-bit uncompressed TGA (media/console-solo.tga, media/console-group.tga);
   * writes media/bar.tga, the white status-bar fill the units tint;
+  * writes media/vial.tga, the glassy empty vial backing for the player and
+    target frames;
   * writes media/console-solo-tint.tga and media/console-group-tint.tga:
-    each art's grey surface (its blue-grey stone, never the gold trim) as
-    white, its alpha falling from the ring's centre to the frame's ends, for
-    the combat colour code (console/frame.lua) to tint;
+    a vein texture of glowing lava cracks across each art's grey surface
+    (its blue-grey stone, never the gold trim), radiating outward from the
+    ring's centre and falling off to the frame's ends, for the combat colour
+    code (console/frame.lua) to tint with additive blend;
   * finds every window (an enclosed transparent region), checks that it is
     mirrored about the centre line, and writes console/windows.lua with each
     window as distances from the centre line. Lua never hard-codes a window,
@@ -30,10 +33,12 @@ screen mockups with the frame's windows cut out as transparency. This script:
 """
 import json
 import collections
+import math
 import os
 import subprocess
 import sys
 
+import numpy as np
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -89,16 +94,167 @@ def windows(alpha, box):
 # The combat tint: full strength at the ring's centre, this much at the
 # frame's ends, falling linearly with the distance (console/frame.lua sets
 # the colour and the overall strength).
-TINT_FAINT = 0.15
+TINT_FAINT = 0.35
 # The grey surface is blue-grey (blue at least 18 above red); the gold trim
 # and its bronze shading have red above blue. Nothing in the art sits
 # between 1 and 6, so the threshold falls in the gap.
 SURFACE_BLUE = 5
 
 
-def tint_mask(img, box, centre):
-    """The art's grey surface as white, its alpha the art's own times the
-    fall-off from centre (cx, cy in screen pixels)."""
+def generate_vein_field(width, height, cx, cy, seed=303):
+    """Procedural lava vein fissures across the console frame, symmetric about
+    cx, radiating from the medallion ring and running out along the bars."""
+    np.random.seed(seed)
+    half_w = int(cx)
+
+    # 1. Concentric and radial seeds around the ring (ring gold rim at r ~ 68..70)
+    seeds = []
+    radii = [72, 96, 122, 152, 185]
+    for r in radii:
+        count = max(6, int(2 * math.pi * r / 28))
+        for i in range(count):
+            ang = (i + np.random.uniform(-0.2, 0.2)) * (2 * math.pi / count)
+            rj = r + np.random.uniform(-3, 3)
+            px = cx + rj * math.cos(ang)
+            py = cy + rj * math.sin(ang)
+            if px <= cx:
+                seeds.append((px, py))
+
+    # 2. Grid seeds for the horizontal wings/bars
+    grid_size = 28
+    for y in range(-15, height + 20, grid_size):
+        for x in range(-15, half_w - 40, grid_size):
+            px = x + np.random.uniform(0.12, 0.88) * grid_size
+            py = y + np.random.uniform(0.12, 0.88) * grid_size
+            if math.hypot(px - cx, py - cy) > 120:
+                seeds.append((px, py))
+
+    seeds_left = np.array(seeds, dtype=np.float32)
+    seeds_right = seeds_left.copy()
+    seeds_right[:, 0] = 2 * cx - seeds_right[:, 0]
+    seeds_full = np.vstack([seeds_left, seeds_right])
+
+    # Smooth multi-scale fractal noise for jagged fracture warping
+    def make_noise(h, w, scale):
+        sh, sw = int(math.ceil(h / scale)) + 3, int(math.ceil(w / scale)) + 3
+        small = np.random.randn(sh, sw).astype(np.float32)
+        img = Image.fromarray(small)
+        return np.array(img.resize((w, h), Image.BICUBIC))
+
+    wx_left = (make_noise(height, half_w, 40) * 5.0 +
+               make_noise(height, half_w, 16) * 2.8 +
+               make_noise(height, half_w, 6) * 1.2)
+    wy_left = (make_noise(height, half_w, 40) * 5.0 +
+               make_noise(height, half_w, 16) * 2.8 +
+               make_noise(height, half_w, 6) * 1.2)
+    # Fade horizontal warp near the center line so mirrored veins join smoothly
+    fade_center = np.clip((cx - np.arange(half_w)) / 15.0, 0, 1)
+    wx_left = wx_left * fade_center[None, :]
+
+    y_coords, x_coords = np.mgrid[0:height, 0:half_w].astype(np.float32)
+    qx = (x_coords + wx_left).ravel()
+    qy = (y_coords + wy_left).ravel()
+    query_pts = np.stack([qx, qy], axis=1)
+
+    def calc_border_dist(pts, s_full):
+        diff = pts[:, None, :] - s_full[None, :, :]
+        d2 = np.sum(diff**2, axis=2)
+        part = np.partition(d2, 2, axis=1)[:, :2]
+        d1 = np.sqrt(part[:, 0])
+        d2_val = np.sqrt(part[:, 1])
+        return (d2_val - d1) / 2.0
+
+    border_dist = calc_border_dist(query_pts, seeds_full).reshape((height, half_w))
+    dist_ring = np.sqrt((x_coords - cx)**2 + (y_coords - cy)**2)
+    rel_d = np.clip(dist_ring / 348.0, 0, 1)
+
+    core_w = 1.5 - 0.4 * rel_d
+    halo_w = 2.7 - 0.7 * rel_d
+
+    core = np.clip(1.0 - border_dist / core_w, 0, 1) ** 1.5
+    halo = np.clip(1.0 - border_dist / halo_w, 0, 1) ** 2.2
+
+    mod_noise = make_noise(height, half_w, 35)
+    mod = np.clip((mod_noise + 0.8) / 1.3, 0.3, 1.0)
+    primary = (core * 0.85 + halo * 0.35) * mod
+
+    # Secondary finer crackle
+    seeds2_left = []
+    grid2 = 14
+    for y in range(-10, height + 15, grid2):
+        for x in range(-10, half_w + 5, grid2):
+            px = x + np.random.uniform(0.1, 0.9) * grid2
+            py = y + np.random.uniform(0.1, 0.9) * grid2
+            if px <= cx:
+                seeds2_left.append((px, py))
+    seeds2_left = np.array(seeds2_left, dtype=np.float32)
+    seeds2_right = seeds2_left.copy()
+    seeds2_right[:, 0] = 2 * cx - seeds2_right[:, 0]
+    seeds2_full = np.vstack([seeds2_left, seeds2_right])
+
+    border_dist2 = calc_border_dist(query_pts, seeds2_full).reshape((height, half_w))
+    sub_core = np.clip(1.0 - border_dist2 / 0.85, 0, 1) ** 2.0
+    mod2 = np.clip((make_noise(height, half_w, 20) + 0.3) / 1.3, 0, 1)
+
+    veins = np.maximum(primary, sub_core * mod2 * 0.45)
+    return np.concatenate([veins, np.fliplr(veins)], axis=1)
+
+
+def generate_vial(width=267, height=54):
+    """A glassy empty vial texture for the player and target frames:
+    deep obsidian glass body, subtle cylindrical curvature highlights,
+    crisp upper glass lip reflection, lower caustic glint, and 45-degree
+    diagonal specular glints matching the console frame's cuts."""
+    y_coords, x_coords = np.mgrid[0:height, 0:width].astype(np.float32)
+    arr = np.zeros((height, width, 4), dtype=np.float32)
+
+    # Base obsidian glass body (#12171a to #172025)
+    vert_grad = y_coords / float(height)
+    arr[:, :, 0] = 17.0 + 3.0 * np.sin(vert_grad * math.pi)
+    arr[:, :, 1] = 22.0 + 5.0 * np.sin(vert_grad * math.pi)
+    arr[:, :, 2] = 27.0 + 6.0 * np.sin(vert_grad * math.pi)
+    arr[:, :, 3] = 255.0
+
+    # Cylindrical tube reflections (convex curvature)
+    upper_cyl = np.exp(-((y_coords - 16) / 9.0)**2) * 14.0
+    lower_cyl = np.exp(-((y_coords - 44) / 7.0)**2) * 8.0
+
+    # Sharp glass lip and rim glints
+    top_rim = np.exp(-((y_coords - 2.5) / 1.1)**2) * 26.0
+    bot_rim = np.exp(-((y_coords - 51.5) / 1.3)**2) * 16.0
+
+    # 45-degree diagonal specular reflections
+    d1 = x_coords - y_coords
+    glint1 = np.exp(-((d1 - 100) / 9.0)**2) * 28.0
+    glint2 = np.exp(-((d1 - 130) / 4.5)**2) * 20.0
+    glint3 = np.exp(-((d1 - 35) / 12.0)**2) * 12.0
+
+    # Rounded outer glass end reflection (left edge x ~ 0..8)
+    outer_cap = np.exp(-((x_coords - 2) / 2.0)**2) * np.sin(vert_grad * math.pi) * 20.0
+
+    # Fade reflections near the 45-degree inner cut (right edge x > 250)
+    inner_fade = np.clip((width - 1 - x_coords) / 10.0, 0, 1)
+
+    total_reflection = (upper_cyl + lower_cyl + top_rim + bot_rim + glint1 + glint2 + glint3 + outer_cap) * inner_fade
+
+    arr[:, :, 0] += total_reflection * 0.82
+    arr[:, :, 1] += total_reflection * 0.94
+    arr[:, :, 2] += total_reflection * 1.12
+
+    # Perimeter shadow (ambient occlusion where glass meets frame bezel)
+    dist_edge = np.minimum(
+        np.minimum(x_coords, width - 1 - x_coords),
+        np.minimum(y_coords, height - 1 - y_coords)
+    )
+    ao = np.clip(dist_edge / 3.0, 0, 1)
+    arr[:, :, :3] *= (0.65 + 0.35 * ao[:, :, None])
+
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+
+
+def tint_mask(img, box, centre, veins):
+    """The art's grey surface as glowing lava veins: white, its alpha the vein
+    intensity modulated by radial fall-off from centre (cx, cy in screen pixels)."""
     x0, y0, x1, y1 = box
     cx, cy = centre
     half = (x1 - x0) / 2
@@ -111,23 +267,27 @@ def tint_mask(img, box, centre):
             if a == 0 or b - r < SURFACE_BLUE:
                 continue
             d = min(1.0, ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2) ** 0.5 / half)
-            px[x - x0, y - y0] = (255, 255, 255, round(a * (1 - (1 - TINT_FAINT) * d)))
-    # the threshold sits in the art's gap: all the stone is tinted, none of
-    # the gold (clear of the gap on either side, so a moved threshold shows)
+            falloff = 1.0 - (1.0 - TINT_FAINT) * d
+            v = veins[y - y0, x - x0]
+            px[x - x0, y - y0] = (255, 255, 255, round(min(255.0, 255.0 * v * falloff)))
+    # the threshold sits in the art's gap: all veins stay on stone, none on trim
     for y in range(y0, y1):
         for x in range(x0, x1):
             r, g, b, a = src[x, y]
             t = px[x - x0, y - y0][3]
-            if a == 255 and b - r >= 15 and t == 0:
-                sys.exit(f"the tint misses the stone at {x},{y}")
             if r - b >= 25 and t:
                 sys.exit(f"the tint covers the trim at {x},{y}")
-    # strongest at the ring, faintest at the ends
+            if (a == 0 or b - r < SURFACE_BLUE) and t:
+                sys.exit(f"the tint covers non-stone at {x},{y}")
+    # veins exist across the stone, strongest near the ring and falling off at the ends
     alphas = [(x, px[x, y][3]) for y in range(out.height) for x in range(out.width) if px[x, y][3]]
+    if len(alphas) < 1000:
+        sys.exit(f"too few vein pixels: {len(alphas)}")
     near = max(t for x, t in alphas if abs(x + x0 + 0.5 - cx) < half * 0.2)
     ends = max(t for x, t in alphas if abs(x + x0 + 0.5 - cx) > half * 0.9)
-    if near < 200 or ends > 255 * (1 - (1 - TINT_FAINT) * 0.9) + 2:
-        sys.exit(f"the tint does not fall off from the centre: {near} near it, {ends} at the ends")
+    ends_limit = round(255 * (1 - (1 - TINT_FAINT) * 0.9) * 1.25) + 2
+    if near < 200 or ends > ends_limit:
+        sys.exit(f"the tint does not fall off from the centre: {near} near it, {ends} at the ends (limit {ends_limit})")
     # the suite's first rule: the tint is the same on both sides
     w = out.width
     a = out.getchannel("A")
@@ -411,11 +571,20 @@ def main():
         if named.get(k) != v:
             sys.exit(f"window {k} differs between layers: {v} vs {named.get(k)}")
 
+    # Glassy empty vial backing for player and target unit frames
+    uw = solo_named["unit"][1] - solo_named["unit"][0]
+    uh = solo_named["unit"][3] - solo_named["unit"][2]
+    utw, uth = pow2(uw), pow2(uh)
+    vial_canvas = Image.new("RGBA", (utw, uth), (0, 0, 0, 0))
+    vial_canvas.paste(generate_vial(uw, uh), (0, 0))
+    to_tga(vial_canvas, os.path.join(MEDIA, "vial.tga"))
+
     ring = named["ring"]
     centre = (CENTRE_X, y0 + (ring[2] + ring[3]) / 2)
+    veins = generate_vein_field(w, h, w / 2, centre[1] - y0)
     for img, name in ((solo, "console-solo"), (group, "console-group")):
         canvas = Image.new("RGBA", (tw, th), (255, 255, 255, 0))
-        canvas.paste(tint_mask(img, box, centre), (0, 0))
+        canvas.paste(tint_mask(img, box, centre, veins), (0, 0))
         to_tga(canvas, os.path.join(MEDIA, f"{name}-tint.tga"))
 
     lines = [
@@ -426,6 +595,7 @@ def main():
         "local _, ns = ...",
         "ns.art = {",
         f"    width = {w}, height = {h}, texWidth = {tw}, texHeight = {th},",
+        f"    vialWidth = {uw}, vialHeight = {uh}, vialTexWidth = {utw}, vialTexHeight = {uth},",
         f"    bottomGap = {solo.height - 1 - y1},",
         "}",
         "ns.windows = {",

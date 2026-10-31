@@ -31,13 +31,21 @@ ns.On("DISPLAY_SIZE_CHANGED", Rescale)
 ns.On("PLAYER_ENTERING_WORLD", Rescale)
 
 -- Backing: an ink rectangle under every window except the ring (the
--- minimap fills that). Party backings only show with the group art.
+-- minimap fills that). The player and target frames wear a glassy vial
+-- backing so an empty bar reads as a depleted vial; party backings only
+-- show with the group art.
 local backings = { solo = {}, group = {} }
+local vialU, vialV = art.vialWidth / art.vialTexWidth, art.vialHeight / art.vialTexHeight
 for name in pairs(ns.windows) do
     if name ~= "ring" then
         for _, side in ipairs({ -1, 1 }) do
             local t = console:CreateTexture(nil, "BACKGROUND")
-            t:SetColorTexture(unpack(ns.colors.ink))
+            if name == "unit" then
+                t:SetTexture(ns.media .. "vial")
+                t:SetTexCoord(side == 1 and vialU or 0, side == 1 and 0 or vialU, 0, vialV)
+            else
+                t:SetColorTexture(unpack(ns.colors.ink))
+            end
             ns.PlaceOn(t, console, name, side)
             table.insert(name:match("^party") and backings.group or backings.solo, t)
         end
@@ -51,19 +59,20 @@ local tex = artFrame:CreateTexture(nil, "ARTWORK")
 tex:SetAllPoints()
 tex:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
 
--- The combat colour code: the art's grey surface, never its gold trim, as
--- a white mask strongest at the ring and faintest at the ends (drawn by
--- art/console/export.py), tinted by the player's state. Out of combat it
--- is hidden; in combat it is yellow, and red while the player has threat,
--- which is any threat situation at all: Blizzard's own indicator lights
--- from 1, "higher threat than the tank", up. A threat query on the player
--- alone is not restricted, so it is not secret; should it be, the tint
--- stays yellow rather than guess.
+-- The combat colour code: glowing lava veins through the art's grey stone
+-- surface (never its gold trim), as a white mask drawn by art/console/export.py,
+-- tinted by the player's state. Drawn with additive blending so the magma
+-- veins shine over the dark rock. Out of combat it is hidden; in combat it
+-- is yellow, and red while the player has threat, which is any threat
+-- situation at all: Blizzard's own indicator lights from 1, "higher threat
+-- than the tank", up. A threat query on the player alone is not restricted,
+-- so it is not secret; should it be, the tint stays yellow rather than guess.
 local TINT = { combat = { 1, 0.82, 0 }, threat = { 0.9, 0.12, 0.08 } }
-local TINT_ALPHA = 0.45
+local TINT_ALPHA = 0.85
 local tint = artFrame:CreateTexture(nil, "ARTWORK", nil, 1)
 tint:SetAllPoints()
 tint:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
+tint:SetBlendMode("ADD")
 tint:Hide()
 ns.tint = tint
 

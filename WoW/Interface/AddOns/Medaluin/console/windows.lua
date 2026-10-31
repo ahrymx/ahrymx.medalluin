@@ -5,6 +5,7 @@
 local _, ns = ...
 ns.art = {
     width = 696, height = 147, texWidth = 1024, texHeight = 256,
+    vialWidth = 267, vialHeight = 54, vialTexWidth = 512, vialTexHeight = 64,
     bottomGap = 17,
 }
 ns.windows = {

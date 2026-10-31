@@ -1,5 +1,5 @@
 -- Unit buttons: one secure button per slot, each a single rectangle (power
--- and health share it, split by a seam), placed in its window. The left
+-- and health share it, flush against each other), placed in its window. The left
 -- copy fills from the left edge, the right copy mirrors it.
 local _, ns = ...
 
@@ -127,7 +127,7 @@ local function Spawn(unit)
         b:SetScript("OnLeave", UnitFrame_OnLeave)
     end
 
-    -- Player and target: power, seam, health. Party flips it across the beam.
+    -- Player and target: power and health. Party flips it across the beam.
     local h = b:GetHeight()
     b.power, b.health = Bar(b, side), Bar(b, side)
     b.power:SetHeight(style.power)

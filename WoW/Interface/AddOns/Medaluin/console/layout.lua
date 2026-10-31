@@ -7,14 +7,14 @@ local _, ns = ...
 ns.layout = {
     designHeight = 1080,
 
-    -- Player and target: power on top, a seam, health below (H mockup).
-    unit = { power = 12, seam = 2, nameSize = 16, valueSize = 13,
+    -- Player and target: power on top, health below.
+    unit = { power = 12, seam = 0, nameSize = 16, valueSize = 13,
              -- the window's inner end is cut at 45 degrees; keep text on
              -- the part of the health bar that stays visible
              textInset = 10, valueInset = 50 },
 
     -- Party: mirrored across the beam, so health on top and power below.
-    party = { power = 9, seam = 2, nameSize = 12, textInset = 8 },
+    party = { power = 9, seam = 0, nameSize = 12, textInset = 8 },
 
     -- The minimap is a little larger than the ring's hole so its edge
     -- tucks under the gold.
