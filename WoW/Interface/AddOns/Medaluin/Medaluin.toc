@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: Medaluin
+## Notes: The console: player, target, party, XP and the minimap in one mirrored frame.
+## Author: ahrymx
+## Version: 0.1.0
+
+core.lua
+blizzard.lua
+
+console\windows.lua
+console\layout.lua
+console\frame.lua
+console\units.lua
+console\xp.lua
+console\minimap.lua

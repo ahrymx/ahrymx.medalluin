@@ -23,3 +23,9 @@ WoW/Cache/
 WoW/Logs/
 WoW/Errors/
 WoW/Screenshots/
+
+# AddOns/ holds only the suite's own addons; third-party addons kept here
+# for reference (DynamicCam, FrameAnchorUIBuilder, WeakTextures, ...) stay
+# out of the repo. Add each new suite member to this whitelist.
+WoW/Interface/AddOns/*
+!WoW/Interface/AddOns/Medaluin/
