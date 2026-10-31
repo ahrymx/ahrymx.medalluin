@@ -8,6 +8,7 @@
 core.lua
 settings.lua
 blizzard.lua
+casting.lua
 
 console\windows.lua
 console\layout.lua
@@ -28,3 +29,5 @@ strips\frame.lua
 strips\micro.lua
 strips\bags.lua
 strips\status.lua
+strips\buffs.lua
+strips\chat.lua

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Action bar 1's frame, Medaluin's own art, drawn here from shapes: pure
-geometry, no gryphons (the user's sketch, after plan/2026-10-31_20-17-39.png):
+geometry, no gryphons (after the user's sketch):
 
        /                                \
       /        [Actionbar 1 row]         \
@@ -28,14 +28,14 @@ geometry, no gryphons (the user's sketch, after plan/2026-10-31_20-17-39.png):
     running, the class resource (bars/power.lua);
   * the chevrons themselves (up and down, normal and pushed, and a shared
     highlight), as small textures for Blizzard's own page buttons to wear,
-    and the drawer toggle: the user's toolkit icon (plan/toolkit.png),
+    and the drawer toggle: the user's toolkit icon (art/bars/toolkit.png),
     recoloured from its pink-to-blue gradient to the console's navy and
     gold, in a gold rim.
 
 Rows 2 and 3 (the Rows option) stand above the frame, bare.
 
-    python3 art/bars/gen_bar.py          -> plan/bar.png (1 row), plan/bar-rows.png (1, 2, 3),
-                                            plan/bar-frame.png, plan/bar-drawer.png
+    python3 art/bars/gen_bar.py          -> render/bar.png (1 row), render/bar-rows.png (1, 2, 3),
+                                            render/bar-frame.png, render/bar-drawer.png
     python3 art/bars/gen_bar.py layer2   -> assets/layer2.png, assets/layer2.json, assets/bar/*.png
 
 assets/layer2.png is the plate in the console's asset format (a 1920x1081
@@ -59,9 +59,9 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 OUT = os.path.join(HERE, "render")
-BASE = os.path.join(ROOT, "plan", "H-party-combat-screen.png")
+BASE = os.path.join(ROOT, "art", "console", "base-screen.png")
 PARTS = os.path.join(ROOT, "assets", "bar")
-TOOLKIT = os.path.join(ROOT, "plan", "toolkit.png")
+TOOLKIT = os.path.join(ROOT, "art", "bars", "toolkit.png")
 
 W, H, CX = 1920, 1080, 960
 CONSOLE_TOP = 916                 # the console art's top edge (export.py bbox)
@@ -535,26 +535,26 @@ def screen(rows, lit=3, casting=False, drawer_open=None):
 def main():
     shots = [screen(r) for r in range(1, MAX_ROWS + 1)]
     crop = (560, 740, 1360, 1000)
-    shots[0].crop(crop).resize((1600, 520), Image.LANCZOS).save(os.path.join(ROOT, "plan", "bar.png"))
+    shots[0].crop(crop).resize((1600, 520), Image.LANCZOS).save(os.path.join(OUT, "bar.png"))
     # bar 1 alone at twice the size: the class resource, then a cast
     frame = (620, 844, 1300, 930)
     w, h = frame[2] - frame[0], frame[3] - frame[1]
     pair = Image.new("RGB", (2 * w, 4 * h + 8), (10, 10, 10))
     pair.paste(shots[0].crop(frame).resize((2 * w, 2 * h), Image.LANCZOS), (0, 0))
     pair.paste(screen(1, casting=True).crop(frame).resize((2 * w, 2 * h), Image.LANCZOS), (0, 2 * h + 8))
-    pair.save(os.path.join(ROOT, "plan", "bar-frame.png"))
+    pair.save(os.path.join(OUT, "bar-frame.png"))
     # the drawer open, left and up (with three rows, so it clears them)
     crop = (380, 620, 1360, 1000)
     w, h = crop[2] - crop[0], crop[3] - crop[1]
     sheet = Image.new("RGB", (2 * w + 8, h), (10, 10, 10))
     sheet.paste(screen(1, drawer_open="left").crop(crop), (0, 0))
     sheet.paste(screen(3, drawer_open="up").crop(crop), (w + 8, 0))
-    sheet.save(os.path.join(ROOT, "plan", "bar-drawer.png"))
+    sheet.save(os.path.join(OUT, "bar-drawer.png"))
     w, h = crop[2] - crop[0], crop[3] - crop[1]
     sheet = Image.new("RGB", (w, h * MAX_ROWS))
     for i, s in enumerate(shots):
         sheet.paste(s.crop(crop), (0, i * h))
-    path = os.path.join(ROOT, "plan", "bar-rows.png")
+    path = os.path.join(OUT, "bar-rows.png")
     sheet.save(path)
     print(path)
 

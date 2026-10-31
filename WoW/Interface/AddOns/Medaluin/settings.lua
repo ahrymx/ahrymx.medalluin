@@ -3,9 +3,9 @@
 --
 -- Two kinds of option. The Action bar and Rows options move Blizzard's
 -- secure buttons, which cannot be handed back mid-session, so they are read
--- once at login and a change waits for a reload, as does Bare icons. The rest
--- are drawing only (art colour, visibility, drawer) and apply at once: modules hear
--- about a change through ns.OnSetting.
+-- once at login and a change waits for a reload, as do Bare icons and the
+-- Chat panel. The rest are drawing only (art colour, visibility, drawer,
+-- the beam's cast bars) and apply at once: modules hear about a change through ns.OnSetting.
 local addonName, ns = ...
 
 local DEFAULTS = {
@@ -15,6 +15,9 @@ local DEFAULTS = {
     artColor = "ffffffff",  -- AARRGGBB, as the colour swatch stores it; white leaves the art as drawn
     visibility = 1,         -- see VISIBILITY
     drawer = 1,             -- which way the minimap button drawer opens: see DRAWER
+    chat = true,            -- the chat in a panel on the left strip
+    xpCast = false,         -- the player's casts over the experience bar
+    repCast = false,        -- the target's casts over the reputation bar
 }
 ns.VISIBILITY = { ALWAYS = 1, COMBAT = 2, MOUSEOVER = 3, COMBAT_OR_MOUSEOVER = 4 }
 ns.DRAWER = { LEFT = 1, UP = 2 }
@@ -89,6 +92,17 @@ local function Page()
             .. "This is the way it opens."),
     }
     for _, child in ipairs(children) do child:SetParentInitializer(bar, BarOn) end
+
+    Settings.CreateCheckbox(category, Setting("xpCast", B, "Player casts on the experience bar"),
+        "The experience bar under your portrait becomes your cast bar while you cast, and goes back to "
+        .. "experience when you stop.")
+    Settings.CreateCheckbox(category, Setting("repCast", B, "Target casts on the reputation bar"),
+        "The reputation bar under your target becomes its cast bar while it casts, and goes back to "
+        .. "reputation when it stops or you change target.")
+
+    Settings.CreateCheckbox(category, Setting("chat", B, "Chat panel"),
+        "Blizzard's chat in a panel on top of the micro menu, with the chat buttons in a column at its "
+        .. "left. Untick it to keep the chat where Edit Mode puts it, or to use a chat addon." .. RELOAD)
 
     if CreateSettingsButtonInitializer then
         local layout = SettingsPanel:GetLayout(category)

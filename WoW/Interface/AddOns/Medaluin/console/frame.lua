@@ -4,7 +4,7 @@
 --
 --   base       dark backing for each window (an empty window reads as ink)
 --   base + 2   unit buttons, XP bars, minimap
---   base + 10  the art (solo or group)
+--   base + 10  the art (solo or group), and over it the combat tint
 --   base + 12  text and mouse-over hit areas
 local _, ns = ...
 
@@ -51,11 +51,53 @@ local tex = artFrame:CreateTexture(nil, "ARTWORK")
 tex:SetAllPoints()
 tex:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
 
+-- The combat colour code: the art's grey surface, never its gold trim, as
+-- a white mask strongest at the ring and faintest at the ends (drawn by
+-- art/console/export.py), tinted by the player's state. Out of combat it
+-- is hidden; in combat it is yellow, and red while the player has threat,
+-- which is any threat situation at all: Blizzard's own indicator lights
+-- from 1, "higher threat than the tank", up. A threat query on the player
+-- alone is not restricted, so it is not secret; should it be, the tint
+-- stays yellow rather than guess.
+local TINT = { combat = { 1, 0.82, 0 }, threat = { 0.9, 0.12, 0.08 } }
+local TINT_ALPHA = 0.45
+local tint = artFrame:CreateTexture(nil, "ARTWORK", nil, 1)
+tint:SetAllPoints()
+tint:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
+tint:Hide()
+ns.tint = tint
+
+local fighting = false
+local function Threatened()
+    local s = UnitThreatSituation and UnitThreatSituation("player")
+    if ns.IsSecret(s) or s == nil then return false end
+    return s >= 1
+end
+local function UpdateTint()
+    tint:SetShown(fighting)
+    if fighting then
+        local c = Threatened() and TINT.threat or TINT.combat
+        tint:SetVertexColor(c[1], c[2], c[3], TINT_ALPHA)
+    end
+end
+ns.On("PLAYER_REGEN_DISABLED", function() fighting = true; UpdateTint() end)
+ns.On("PLAYER_REGEN_ENABLED", function() fighting = false; UpdateTint() end)
+-- a reload in combat
+ns.On("PLAYER_ENTERING_WORLD", function()
+    fighting = UnitAffectingCombat("player") and true or false
+    UpdateTint()
+end)
+local threat = CreateFrame("Frame")
+ns.RegisterUnitEvent(threat, "UNIT_THREAT_SITUATION_UPDATE", "player")
+threat:SetScript("OnEvent", UpdateTint)
+
 -- The group art adds the party row. Textures are not protected, so this
 -- can swap in combat too; the party buttons themselves follow their units.
 local function UpdateGroup()
     local grouped = IsInGroup()
-    tex:SetTexture(ns.media .. (grouped and "console-group" or "console-solo"))
+    local file = ns.media .. (grouped and "console-group" or "console-solo")
+    tex:SetTexture(file)
+    tint:SetTexture(file .. "-tint")
     for _, t in ipairs(backings.group) do t:SetShown(grouped) end
 end
 UpdateGroup()

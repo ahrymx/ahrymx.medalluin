@@ -2,7 +2,7 @@
 -- named region's resolved rectangle, in art pixels from the console's
 -- top-left. tools/preview.py draws them over the art.
 --
---   lua5.1 tools/harness.lua [solo|group] [strips | bar [nobar|rows2|rows3|bare]] [modern] [CLASS]
+--   lua5.1 tools/harness.lua [solo|group] [strips [nochat] | bar [nobar|rows2|rows3|bare|beamcast]] [modern] [CLASS]
 --
 -- "bar" prints the action bar instead, as 1080p screen pixels to compare
 -- with assets/layer2.png: the settings page, the bar, its plate and pager,
@@ -11,7 +11,14 @@
 -- played through the page (art colour, each visibility mode) and a page
 -- change. "nobar" plays a saved
 -- Action bar option that is off; "rows2" and "rows3" a saved Rows option;
--- "bare" a saved Bare icons option.
+-- "bare" a saved Bare icons option; "beamcast" saved Experience and
+-- Reputation cast options.
+--
+-- "strips" prints the corner strips, the chat panel with Blizzard's chat in
+-- it (and Blizzard's passes over it: its saved layout, a fade, focus, a tab
+-- change, windows docking and leaving), and, with "modern", the timeless
+-- buffs through a combat. "strips nochat" plays a saved Chat panel option
+-- that is off.
 --
 -- "modern" swaps the Classic-era world for an Edit Mode one shaped like
 -- Forever 1.60 and retail 12.x: secret values (health, power, combo points,
@@ -34,6 +41,8 @@ local barPass = args[2] == "bar"
 local barOff = args[3] == "nobar"
 local savedRows = tonumber((args[3] or ""):match("^rows(%d)$"))
 local savedBare = args[3] == "bare"
+local savedNoChat = args[3] == "nochat"
+local savedBeam = args[3] == "beamcast"
 local actionPage = 1
 local class = argClass or "PALADIN"
 
@@ -87,11 +96,17 @@ function Region:SetPoint(p, rel, rp, x, y)
     if type(rp) ~= "string" then rp, x, y = p, rp, x end
     self.points[p] = { rel or self.parent, rp or p, x or 0, y or 0 }
 end
-function Region:ClearAllPoints() moved(); self.points = {} end
+function Region:ClearAllPoints() moved(); self.points, self.all = {}, nil end
 function Region:SetAllPoints(rel) moved(); self.all = rel or self.parent end
 function Region:SetSize(w, h) moved(); self.w, self.h = w, h end
 function Region:SetScale(s) moved(); self.scale = s end
 function Region:GetScale() return self.scale or 1 end
+-- against the screen: every scale up the parents (UIParent's counts as 1)
+function Region:GetEffectiveScale()
+    local s, f = 1, self
+    while f do s, f = s * (f.scale or 1), f.parent end
+    return s
+end
 function Region:GetRegions()
     local out = {}
     for _, f in ipairs(self.all_ or {}) do
@@ -103,14 +118,16 @@ function Region:SetWidth(w) moved(); self.w = w end
 function Region:SetHeight(h) moved(); self.h = h end
 function Region:GetFrameLevel() return self.level end
 function Region:SetFrameLevel(l) self.level = l end
-function Region:GetFrameStrata() return "LOW" end
+function Region:GetFrameStrata() return self.strata or "LOW" end
+function Region:SetFrameStrata(s) self.strata = s end
 function Region:SetParent(p) self.parent = p end
 function Region:SetShown(s) self.shown = s end
 function Region:Show() self.shown = true end
 function Region:Hide() self.shown = false end
 function Region:SetScript(k, f) self.scripts[k] = f end
 function Region:SetAttribute(k, v) self.attrs[k] = v end
-function Region:SetTexture(t) self.texture = t end
+function Region:SetTexture(t) self.texture, self.atlas = t, nil end
+function Region:GetTexture() return self.texture end
 function Region:SetColorTexture(r, g, b, a) self.color, self.atlas = { r, g, b, a }, nil end
 function Region:SetAtlas(a) self.atlas = a end
 function Region:SetVertexColor(r, g, b, a) self.vertex = { r, g, b, a } end
@@ -165,13 +182,19 @@ function Region:SetValue(v)
 end
 function Region:GetZoom() return 0 end
 function Region:GetZoomLevels() return 5 end
-function Region:CreateTexture() return new("Texture", self) end
+function Region:CreateTexture(_, layer, _, sub)
+    local t = new("Texture", self)
+    t.layer, t.sub = layer, sub
+    return t
+end
 function Region:CreateFontString() return new("FontString", self) end
 local events = {}
-function Region:RegisterUnitEvent(e)
+function Region:RegisterUnitEvent(e, unit)
     if e == "UNIT_HEALTH_FREQUENT" then error("unknown event " .. e) end
     events[e] = events[e] or {}
     table.insert(events[e], self)
+    self.unitOf = self.unitOf or {}
+    self.unitOf[e] = unit
 end
 function Region:GetStatusBarTexture()
     self.fill = self.fill or new("Texture", self)
@@ -305,6 +328,7 @@ for _, n in ipairs({ "MainMenuBarBackpackButton", "CharacterBag0Slot", "Characte
     b.w, b.h = 37, 37
     b.icon = new("Texture", b, n .. "IconTexture")
 end
+MainMenuBarBackpackButton.icon:SetTexture("Interface\\Buttons\\Button-Backpack-Up")
 KeyRingButton = new("CheckButton", MainMenuBar, "KeyRingButton")
 for i = 1, 12 do
     ActionButton("ActionButton" .. i, MainMenuBar, i)
@@ -325,7 +349,13 @@ function CreateFrame(kind, name, parent, template)
     function f:RegisterEvent(e) events[e] = events[e] or {}; table.insert(events[e], self) end
     return f
 end
-function InCombatLockdown() return false end
+local inCombat = false
+function InCombatLockdown() return inCombat end
+-- the player in combat, and their threat situation: nil off every threat
+-- table, 0 to 3 on one (1 is "higher threat than the tank")
+local threatOf = nil
+function UnitAffectingCombat(u) return u == "player" and inCombat end
+function UnitThreatSituation(u) if u == "player" then return threatOf end end
 function RegisterUnitWatch(f) f.watched = true end
 function IsInGroup() return grouped end
 function UnitExists(u) return u == "player" or u == "target" or (grouped and u:match("^party[12]$")) end
@@ -346,17 +376,23 @@ function GetTime() return now end
 function hooksecurefunc(t, k, f)
     if type(t) == "string" then t, k, f = _G, t, k end
     local old = t[k]
-    t[k] = function(...) old(...); f(...) end
+    -- the hook runs after, and the original's results are the call's, as in WoW
+    t[k] = function(...)
+        local results = { old(...) }
+        f(...)
+        return unpack(results)
+    end
 end
 function GetActionCooldown(a) if a == 63 then return 90, 33, 1 end return 0, 0, 1 end
 function HasAction() return true end
 function IsUsableAction() return true end
 function IsActionInRange() return nil end
-local casting = false
+local casting, castUnit = false, "player"
 FAILED, INTERRUPTED = "Failed", "Interrupted"
--- Frostbolt, a second into two (times in ms; GetTime is 100), cast id 7
-function UnitCastingInfo()
-    if casting then return "Frostbolt", nil, nil, 99000, 101000, false, 7 end
+-- Frostbolt, a second into two (times in ms; GetTime is 100), cast id 7, by
+-- castUnit
+function UnitCastingInfo(u)
+    if casting and u == castUnit then return "Frostbolt", nil, nil, 99000, 101000, false, 7 end
 end
 function SetPortraitTexture(t, u) t.portrait = u end
 function GetContainerNumSlots(bag) return bag == 0 and 16 or 14 end
@@ -378,6 +414,85 @@ FACTION_BAR_COLORS = setmetatable({}, { __index = function() return { r = 0.8, g
 PowerBarColor = setmetatable({}, { __index = function() return { r = 0, g = 0, b = 1 } end })
 wipe = function(t) for k in pairs(t) do t[k] = nil end end
 format, unpack = string.format, unpack
+
+-- Blizzard's chat, as FloatingChatFrame.xml builds it: ten windows, the
+-- first two docked (General, the combat log) and the rest floating, each
+-- with the textures FCF fades, a size grip, a scroll bar, an edit box with
+-- its art and its focus art, and a tab with its nine slices.
+CHAT_FRAME_TEXTURES = {}
+for _, part in ipairs({ "Background", "TopLeftTexture", "BottomLeftTexture", "TopRightTexture",
+    "BottomRightTexture", "LeftTexture", "RightTexture", "BottomTexture", "TopTexture" }) do
+    table.insert(CHAT_FRAME_TEXTURES, part)
+    table.insert(CHAT_FRAME_TEXTURES, "ButtonFrame" .. part)
+end
+NUM_CHAT_WINDOWS, CHAT_FRAMES = 10, {}
+local TAB_ART = { "Left", "Middle", "Right", "ActiveLeft", "ActiveMiddle", "ActiveRight",
+    "HighlightLeft", "HighlightMiddle", "HighlightRight" }
+local function ChatWindow(i)
+    local name = "ChatFrame" .. i
+    local f = new("ScrollingMessageFrame", UIParent, name)
+    f.w, f.h = 430, 120
+    f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 32 + 40 * i, 95)
+    for _, part in ipairs(CHAT_FRAME_TEXTURES) do new("Texture", f, name .. part) end
+    f.Background = _G[name .. "Background"]
+    f.ResizeButton = new("Button", f, name .. "ResizeButton")
+    f.ScrollBar = new("Frame", f)
+    f.ScrollBar.w = 8
+    f.ScrollBar:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, 0)
+    f.ScrollBar:SetPoint("BOTTOMLEFT", f, "BOTTOMRIGHT", 0, 0)
+    local box = new("EditBox", f, name .. "EditBox")
+    box.w, box.h = 5, 32
+    box:SetPoint("TOPLEFT", f, "BOTTOMLEFT", -5, -2)
+    box:SetPoint("RIGHT", f.ScrollBar, "RIGHT", 8, 0)
+    for _, k in ipairs({ "Left", "Mid", "Right" }) do new("Texture", box, name .. "EditBox" .. k) end
+    for _, k in ipairs({ "focusLeft", "focusMid", "focusRight" }) do
+        box[k] = new("Texture", box)
+        box[k].shown = false
+    end
+    f.editBox = box
+    local tab = new("Button", UIParent, name .. "Tab")
+    for _, k in ipairs(TAB_ART) do tab[k] = new("Texture", tab) end
+    table.insert(CHAT_FRAMES, name)
+    return f
+end
+for i = 1, NUM_CHAT_WINDOWS do ChatWindow(i) end
+GENERAL_CHAT_DOCK = new("Frame", UIParent, "GeneralDockManager")
+local selectedChat = ChatFrame1
+function FCFDock_GetSelectedWindow() return selectedChat end
+function FCFTab_UpdateColors(tab, selected)
+    for _, k in ipairs({ "ActiveLeft", "ActiveMiddle", "ActiveRight" }) do tab[k]:SetShown(selected) end
+end
+function FCF_DockFrame(f)
+    f.isDocked = true
+    f:ClearAllPoints()
+    f:SetAllPoints(ChatFrame1)
+end
+function FCF_UnDockFrame(f)
+    f.isDocked = nil
+    f:ClearAllPoints()
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+end
+function FCF_OpenTemporaryWindow()
+    local f = ChatWindow(#CHAT_FRAMES + 1)
+    FCF_DockFrame(f)
+    return f
+end
+ChatFrame1.isDocked = true
+FCF_DockFrame(ChatFrame2)
+-- ChatFrame1's button column, where FCF_SetButtonSide puts it on the left
+-- (its background's corners, less 3, are the frame's less 5), and the alert
+-- frame the friends toast stacks on, 27 above it
+ChatFrame1.buttonFrame = new("Frame", ChatFrame1, "ChatFrame1ButtonFrame")
+ChatFrame1.buttonFrame.w = 29
+ChatFrame1.buttonFrame:SetPoint("TOPRIGHT", ChatFrame1, "TOPLEFT", -5, 0)
+ChatFrame1.buttonFrame:SetPoint("BOTTOMRIGHT", ChatFrame1, "BOTTOMLEFT", -5, 0)
+local function alertAnchor() ChatAlertFrame:SetPoint("BOTTOMLEFT", ChatFrame1.buttonFrame, "TOPLEFT", -1, 27) end
+ChatAlertFrame = new("Frame", UIParent, "ChatAlertFrame")
+ChatAlertFrame.w, ChatAlertFrame.h = 10, 10
+alertAnchor()
+QuickJoinToastButton = new("Button", UIParent, "QuickJoinToastButton")
+QuickJoinToastButton.w, QuickJoinToastButton.h = 32, 32
+QuickJoinToastButton:SetPoint("BOTTOMLEFT", ChatAlertFrame, "BOTTOMLEFT")
 
 -- ------------------------------------------------------------ modern
 CastingBarFrame = new("Frame", UIParent, "CastingBarFrame")
@@ -437,14 +552,21 @@ if modern then
     CharacterReagentBag0Slot.icon = new("Texture", CharacterReagentBag0Slot)
     local bagButtons = { MainMenuBarBackpackButton, CharacterReagentBag0Slot, KeyRingButton }
     for i = 0, 3 do table.insert(bagButtons, _G["CharacterBag" .. i .. "Slot"]) end
+    -- ItemButtons, which are plain buttons: no checked state, the open mark
+    -- hidden until a bag opens; the backpack has no icon, its picture is the
+    -- normal texture's atlas
+    MainMenuBarBackpackButton.icon:SetTexture(nil)
     for _, b in ipairs(bagButtons) do
         b.parent = BagsBar
+        b.SetCheckedTexture = false
         b.normalTex, b.pushedTex, b.highlightTex = new("Texture", b), new("Texture", b), new("Texture", b)
         b.SquareMask, b.SlotHighlightTexture = new("MaskTexture", b), new("Texture", b)
+        b.SlotHighlightTexture.shown = false
         function b:UpdateTextures()
             self:GetNormalTexture():SetAtlas("ui-hud-actionbar-iconframe-bags")
             self:GetPushedTexture():SetAtlas("ui-hud-actionbar-iconframe-bags")
             self:GetHighlightTexture():SetAtlas("ui-hud-actionbar-iconframe-bags")
+            self.SlotHighlightTexture:SetAtlas("bag-border-highlight")
         end
         function b:SetBarExpanded(expanded) self:SetShown(expanded) end
     end
@@ -455,6 +577,9 @@ if modern then
             b:SetPoint("RIGHT", BagsBar, "LEFT", -1000, 0)
         end
     end
+    -- what Blizzard calls: the function as it was at load (GenerateClosure,
+    -- EventRegistry), so a hook on the field never hears it
+    BagsBar.layoutAtLoad = BagsBar.Layout
 
     -- the API: no action globals, secrets where Forever has them
     GetActionCooldown, HasAction, IsUsableAction, IsActionInRange = nil, nil, nil, nil
@@ -477,11 +602,43 @@ if modern then
     GetComboPoints = secret
     C_CurveUtil = { CreateCurve = function() return { SetType = function() end, AddPoint = function() end } end }
     Enum = { LuaCurveType = { Linear = 0 }, StatusBarTimerDirection = { ElapsedTime = 0, RemainingTime = 1 } }
-    function UnitCastingInfo()
-        if casting then return "Sinister Strike", nil, nil, secret(), secret(), false, secret() end
+    function UnitCastingInfo(u)
+        if casting and u == castUnit then return "Sinister Strike", nil, nil, secret(), secret(), false, secret() end
     end
-    function UnitCastingDuration() return { GetRemainingDuration = secret } end
+    function UnitCastingDuration(u)
+        if u == castUnit then return { GetRemainingDuration = secret } end
+    end
     function UnitChannelDuration() end
+end
+
+-- The player's buffs on the modern clients: a mount and a form (timeless,
+-- the form with three stacks), Arcane Intellect (timed). In combat whether
+-- a buff runs out is secret, as DoesAuraHaveExpirationTime is restricted.
+local buffs = {
+    { id = 31, icon = "mount", timed = false },
+    { id = 12, icon = "intellect", timed = true },
+    { id = 17, icon = "form", timed = false, count = 3 },
+}
+local cancelled = {}
+local function Buff(id)
+    for _, b in ipairs(buffs) do
+        if b.id == id then return b end
+    end
+end
+local function AuraData(b)
+    return b and { auraInstanceID = b.id, icon = b.icon, applications = b.count or 0,
+        expirationTime = b.timed and 160 or 0 }
+end
+if modern then
+    C_UnitAuras = {
+        GetAuraDataByIndex = function(_, i) return AuraData(buffs[i]) end,
+        GetAuraDataByAuraInstanceID = function(_, id) return AuraData(Buff(id)) end,
+        DoesAuraHaveExpirationTime = function(_, id)
+            if inCombat then return secret() end
+            return Buff(id).timed
+        end,
+        CancelAuraByInstanceID = function(_, id) table.insert(cancelled, id) end,
+    }
 end
 
 -- the settings page, recorded; atlas sizes as Forever's end caps
@@ -527,7 +684,8 @@ function CreateSettingsButtonInitializer(_, text) return text end
 SlashCmdList = {}
 function ReloadUI() end
 MedaluinDB = barOff and { actionBar = false } or savedRows and { rows = savedRows }
-    or savedBare and { bareIcons = true } or nil
+    or savedBare and { bareIcons = true } or savedNoChat and { chat = false }
+    or savedBeam and { xpCast = true, repCast = true } or nil
 if modern then
     C_Texture = { GetAtlasInfo = function() return { width = 154, height = 95 } end }
 end
@@ -628,8 +786,12 @@ if barPass then
         end
         screen("cast", cb, "level=" .. cb.level .. " over power=" .. tostring(cb.level > strip.level))
         castState("cast idle")
-        local function cast(e, id)
-            for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, "player", id) end
+        -- a unit event reaches the frames registered for that unit only
+        local function cast(e, id, unit)
+            unit = unit or "player"
+            for _, f in ipairs(events[e] or {}) do
+                if not f.unitOf or f.unitOf[e] == unit then f.scripts.OnEvent(f, e, unit, id) end
+            end
             cb.scripts.OnUpdate(cb, 0.1)
         end
         casting = true
@@ -652,6 +814,74 @@ if barPass then
         cb.scripts.OnUpdate(cb, 1)
         castState("cast done, faded")
         now = now - 1
+        -- the beam as cast bars: off by default; on, the player's casts over
+        -- experience and the target's over reputation, each clear while its
+        -- unit is idle
+        local beam = ns.beamCast
+        local function tick()
+            for _, b in pairs(beam) do b.scripts.OnUpdate(b, 0.1) end
+        end
+        local function beamState(tag)
+            local function one(b)
+                return string.format("shown=%s alpha=%s value=%s timer=%s", tostring(b.shown), tostring(b.alpha),
+                    tostring(b.value), b.timer and "yes" or "-")
+            end
+            print(tag, "player " .. one(beam.player), "target " .. one(beam.target))
+        end
+        for _, k in ipairs({ "player", "target" }) do
+            local b = beam[k]
+            local spark, ink
+            for _, t in ipairs(b.all_) do
+                if t.points.CENTER then spark = t end
+                if t.color and t.color[1] == ns.colors.ink[1] then ink = t.layer end
+            end
+            screen("beam " .. k, b, string.format("reverse=%s level=%d spark=%s ink=%s", tostring(b.reverse),
+                b.level, spark.points.CENTER[2], tostring(ink)))
+        end
+        beamState("beam as saved")
+        casting = true
+        cast("UNIT_SPELLCAST_START", 7)
+        beamState("beam off, casting")
+        casting = false
+        cast("UNIT_SPELLCAST_STOP", 7)
+        page.settings.xpCast:Set(true)
+        page.settings.repCast:Set(true)
+        beamState("beam on")
+        casting = true
+        cast("UNIT_SPELLCAST_START", 7)
+        tick()
+        beamState("beam player casting")
+        casting = false
+        cast("UNIT_SPELLCAST_STOP", 7)
+        now = now + 1
+        tick()
+        now = now - 1
+        beamState("beam player done")
+        castUnit, casting = "target", true
+        cast("UNIT_SPELLCAST_START", 7, "target")
+        tick()
+        beamState("beam target casting")
+        -- a new target that is not casting
+        casting = false
+        for _, f in ipairs(events.PLAYER_TARGET_CHANGED or {}) do
+            if f.scripts.OnEvent then f.scripts.OnEvent(f, "PLAYER_TARGET_CHANGED") end
+        end
+        beamState("beam target changed")
+        -- the option switched off mid-cast
+        castUnit, casting = "player", true
+        cast("UNIT_SPELLCAST_START", 7)
+        page.settings.xpCast:Set(false)
+        beamState("beam option off")
+        -- and on again, the cast still under way
+        page.settings.xpCast:Set(true)
+        beamState("beam option on mid-cast")
+        page.settings.xpCast:Set(false)
+        casting = false
+        cast("UNIT_SPELLCAST_STOP", 7)
+        now = now + 1
+        cb.scripts.OnUpdate(cb, 1)
+        now = now - 1
+        page.settings.repCast:Set(false)
         -- the minimap button drawer: closed, then open each way
         local toggle, drawer = ns.drawerToggle, ns.drawer
         local function glyph()
@@ -807,14 +1037,59 @@ if stripsPass then
     screen("stripRight", ns.strips[1])
     if modern then
         -- Blizzard's own passes, after login: they must not undo the strips
-        BagsBar:Layout()
+        BagsBar.layoutAtLoad(BagsBar)
         for _, b in ipairs({ MainMenuBarBackpackButton, CharacterReagentBag0Slot, CharacterBag0Slot }) do
             b:UpdateTextures()
             b:SetBarExpanded(false)
         end
+        CharacterBag0Slot.SlotHighlightTexture:SetShown(true)     -- its bag is open
         for _, f in ipairs(all) do
             if f.layoutIndex then f:SetHighlightAtlas("UI-HUD-MicroMenu-Down"); f:SetPushedAtlas("x") end
         end
+        -- and straight on the textures: LoadMicroButtonTextures' colour (no
+        -- alpha), then SetPushed's highlight at .5 and the normal back to 1
+        -- as the mouse leaves
+        for _, f in ipairs(all) do
+            if f.layoutIndex then
+                for _, t in ipairs({ f:GetNormalTexture(), f:GetPushedTexture(), f:GetDisabledTexture(),
+                    f:GetHighlightTexture() }) do t:SetVertexColor(1, 0.82, 0) end
+                f:GetHighlightTexture():SetAlpha(0.5)
+                f:GetNormalTexture():SetAlpha(1)
+            end
+        end
+    end
+    -- how much of a button's Blizzard state art shows, the most of any
+    -- state: its alpha and its colour's alpha apart, since either one
+    -- given back by Blizzard would be a bug
+    local function lit(f)
+        local alpha, vertex = 0, 0
+        for _, t in ipairs({ f:GetNormalTexture() or false, f:GetPushedTexture() or false,
+            f:GetDisabledTexture() or false, f:GetHighlightTexture() or false }) do
+            if t then
+                alpha = math.max(alpha, t.alpha or 1)
+                vertex = math.max(vertex, t.vertex and t.vertex[4] or 1)
+            end
+        end
+        return string.format("a%gv%g", alpha, vertex)
+    end
+    -- the textures a button draws whatever its state: shown, seen, and not
+    -- one of its state slots (those draw only in their state)
+    local function drawn(f)
+        local states = {}
+        for _, t in ipairs({ f:GetNormalTexture() or false, f:GetPushedTexture() or false,
+            f:GetDisabledTexture() or false, f:GetHighlightTexture() or false,
+            f.GetCheckedTexture and f:GetCheckedTexture() or false }) do
+            if t then states[t] = true end
+        end
+        local n = 0
+        for _, t in ipairs(f.all_ or {}) do
+            if t.kind == "Texture" and t.shown and not states[t] and t.layer ~= "HIGHLIGHT"
+                and (t.alpha or 1) > 0 and not (t.vertex and t.vertex[4] == 0)
+                and (t.texture or t.atlas or t.color and t.color[4] ~= 0) then
+                n = n + 1
+            end
+        end
+        return n
     end
     local micro = {}
     for _, f in ipairs(all) do
@@ -824,21 +1099,24 @@ if stripsPass then
     for _, f in ipairs(micro) do
         if f.shown and resolve(f)[1] then
             local m, hl = f.medaluin, f:GetHighlightTexture()
-            screen(f.name, f, string.format("parent=%s glyph=%s hl.alpha=%s", tostring(f.parent.name),
+            screen(f.name, f, string.format("parent=%s glyph=%s hl.alpha=%s lit=%s", tostring(f.parent.name),
                 m and m.tex.texture and m.tex.texture:match("[^\\]+$") or "-",
-                hl and hl.vertex and tostring(hl.vertex[4]) or "-"))
+                hl and hl.vertex and tostring(hl.vertex[4]) or "-", tostring(lit(f))))
         else
             print(f.name, "hidden")
         end
     end
     local blizzPortrait = MicroButtonPortrait or CharacterMicroButton.Portrait
     screen("portrait", CharacterMicroButton, "blizzard=" .. tostring(blizzPortrait.alpha))
-    screen("backpack", MainMenuBarBackpackButton)
+    local pack = MainMenuBarBackpackButton
+    local mark = pack.SlotHighlightTexture
+    screen("backpack", pack, string.format("picture=%s drawn=%d open=%s", tostring(pack.icon.texture):match("[^\\]+$"),
+        drawn(pack), mark and (mark.atlas or tostring(mark.texture):match("[^\\]+$") .. "@" .. tostring(mark.vertex and mark.vertex[1])) or "-"))
     for i = 3, 0, -1 do
         local b = _G["CharacterBag" .. i .. "Slot"]
         local pushed = b:GetPushedTexture()
-        screen("bag" .. i, b, string.format("shown=%s pushed=%s", tostring(b.shown),
-            pushed and (pushed.atlas or (pushed.color and "ours")) or "-"))
+        screen("bag" .. i, b, string.format("shown=%s pushed=%s drawn=%d", tostring(b.shown),
+            pushed and (pushed.atlas or (pushed.color and "ours")) or "-", drawn(b)))
     end
     if CharacterReagentBag0Slot then screen("reagent", CharacterReagentBag0Slot) end
     screen("drawer", ns.bagDrawer, "shown=" .. tostring(ns.bagDrawer.shown))
@@ -846,6 +1124,113 @@ if stripsPass then
         if f.kind == "FontString" and f.parent and f.parent.parent == ns.strips[1] and f.text then
             screen("stat", f.parent, string.format("%q", f.text))
         end
+    end
+
+    -- the chat panel: the art, where the messages and the edit box go, and
+    -- Blizzard's art hidden on a docked window and kept hidden
+    local chat = ns.chat
+    local function art(f)
+        local shown = 0
+        for _, part in ipairs(CHAT_FRAME_TEXTURES) do
+            if _G[f.name .. part].shown then shown = shown + 1 end
+        end
+        local box = f.editBox
+        for _, t in ipairs({ _G[box.name .. "Left"], _G[box.name .. "Mid"], box.focusLeft }) do
+            if t.shown then shown = shown + 1 end
+        end
+        return shown .. "/" .. (#CHAT_FRAME_TEXTURES + 3) .. " shown, grip=" .. tostring(f.ResizeButton.shown)
+    end
+    local function tab(f)
+        local t, lit = _G[f.name .. "Tab"], {}
+        for _, k in ipairs(TAB_ART) do
+            if t[k].shown then table.insert(lit, k) end
+        end
+        local m = t.medaluin
+        return "blizzard=" .. (#lit > 0 and table.concat(lit, ",") or "none") .. " selected="
+            .. tostring(m and m.selected[1].shown)
+    end
+    local function chatState(tag)
+        local r = ChatFrame1:GetEffectiveScale() / chat.panel:GetEffectiveScale()
+        print(tag, string.format("scale %.3f", r))
+        screen("chatArea", chat.area)
+        screen("ChatFrame1", ChatFrame1, art(ChatFrame1) .. " " .. tab(ChatFrame1))
+        screen("ChatFrame2", ChatFrame2, art(ChatFrame2) .. " " .. tab(ChatFrame2))
+        screen("ChatFrame3", ChatFrame3, art(ChatFrame3) .. " " .. tab(ChatFrame3))
+        screen("editBox", ChatFrame1.editBox)
+        -- the toast in the column's corner of the tab row: inside the
+        -- panel, clear of the column's first button and the messages
+        local t, c, a, p = resolve(QuickJoinToastButton), resolve(ChatFrame1.buttonFrame), resolve(chat.area),
+            resolve(chat.panel)
+        screen("friends", QuickJoinToastButton, string.format("inPanel=%s aboveColumn=%s leftOfArea=%s centred=%.1f",
+            tostring(t[1] >= p[1] and t[2] >= p[2]), tostring(t[4] <= c[2]), tostring(t[3] <= a[1] + 0.01),
+            (t[1] + t[3]) / 2 - (c[1] + c[3]) / 2))
+    end
+    if not chat then
+        print("chat none")
+        screen("ChatFrame1", ChatFrame1, art(ChatFrame1) .. " " .. tab(ChatFrame1))
+    else
+        local p, t = chat.panel, chat.panel:GetRegions()
+        screen("chatPanel", p, string.format("strata=%s texture=%s coords=%.3f,%.3f", tostring(p.strata),
+            tostring(t.texture):match("[^\\]+$"), t.coords[2], t.coords[4]))
+        chatState("chat")
+        -- Blizzard's passes: its saved layout puts the frame back, a fade
+        -- shows the background, the edit box takes focus, the tab changes
+        ChatFrame1:ClearAllPoints()
+        ChatFrame1:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 32, 95)
+        ChatFrame1Background:Show()
+        ChatFrame1.ResizeButton:Show()
+        ChatFrame1.editBox.focusLeft:SetShown(true)
+        ChatAlertFrame:ClearAllPoints()
+        alertAnchor()
+        selectedChat = ChatFrame2
+        FCFTab_UpdateColors(ChatFrame1Tab, false)
+        FCFTab_UpdateColors(ChatFrame2Tab, true)
+        chatState("chat after blizzard")
+        -- the combat log torn off, the third window docked
+        FCF_UnDockFrame(ChatFrame2)
+        FCF_DockFrame(ChatFrame3)
+        chatState("chat redocked")
+        screen("ChatFrame2EditBox", ChatFrame2.editBox)
+        local temp = FCF_OpenTemporaryWindow()
+        print("whisper", art(temp), tab(temp))
+        -- the console at a 1080-high UI: Blizzard's pieces need less room
+        ns.console:SetScale(1)
+        chatState("chat rescaled")
+    end
+
+    -- the timeless buffs above the medallion; a right click cancels one
+    if not ns.buffs then
+        print("buffs none")
+    else
+        local function buffState(tag)
+            local list = {}
+            for _, b in ipairs(ns.buffs) do
+                if b.shown then
+                    local r = resolve(b)
+                    table.insert(list, string.format("%s(%s)@%.0f,%.0f", tostring(b.icon.texture),
+                        tostring(b.count.text), (r[1] + r[3]) / 2 + 612, (r[2] + r[4]) / 2 + 916))
+                end
+            end
+            print(tag, #list > 0 and table.concat(list, " ") or "none")
+        end
+        buffState("buffs")
+        local unit = events.UNIT_AURA[1]
+        local function aura(info) unit.scripts.OnEvent(unit, "UNIT_AURA", "player", info) end
+        -- in combat: a new buff cannot be sorted, one runs out, a stack drops
+        inCombat = true
+        table.insert(buffs, { id = 40, icon = "aura", timed = false })
+        buffs[3].count = 2
+        aura({ addedAuras = { AuraData(buffs[4]) }, removedAuraInstanceIDs = { 31 },
+            updatedAuraInstanceIDs = { 17 } })
+        table.remove(buffs, 1)
+        buffState("buffs in combat")
+        ns.buffs[1].scripts.OnClick(ns.buffs[1], "RightButton")
+        print("cancel in combat", #cancelled)
+        inCombat = false
+        for _, f in ipairs(events.PLAYER_REGEN_ENABLED or {}) do f.scripts.OnEvent(f, "PLAYER_REGEN_ENABLED") end
+        buffState("buffs after combat")
+        ns.buffs[1].scripts.OnClick(ns.buffs[1], "RightButton")
+        print("cancel", table.concat(cancelled, ","))
     end
     do return end
 end
@@ -861,3 +1246,52 @@ for unit, b in pairs(ns.units) do
 end
 out("minimap", Minimap)
 print("secrets handed to widgets", secretsUsed)
+
+-- the combat tint over the art's grey surface: hidden out of combat,
+-- yellow in it, red with any threat, and on the art the group swaps in
+local function fire(e, ...)
+    for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+end
+-- drawn over the art: the same frame and layer, a higher sublevel
+local function over(t)
+    for _, o in ipairs(t.parent.all_) do
+        if o ~= t and o.kind == "Texture" and o.texture and o.texture:match("console%-%a+$")
+            and o.layer == t.layer and (o.sub or 0) < (t.sub or 0) then return true end
+    end
+    return false
+end
+print("tint over the art", over(ns.tint))
+local function tintState(tag)
+    local t, vc = ns.tint, ns.tint.vertex
+    print(string.format("tint %s: shown=%s colour=%s texture=%s", tag, tostring(t.shown),
+        vc and string.format("%g,%g,%g@%g", vc[1], vc[2], vc[3], vc[4]) or "-",
+        tostring(t.texture):match("[^\\]+$")))
+end
+local function threat(s)
+    threatOf = s
+    fire("UNIT_THREAT_SITUATION_UPDATE", "player")
+end
+tintState("out of combat")
+inCombat = true
+fire("PLAYER_REGEN_DISABLED")
+tintState("in combat")
+threat(1)
+tintState("above the tank")
+threat(0)
+tintState("below the tank")
+threat(3)
+tintState("tanking")
+if modern then
+    threat(secret())
+    tintState("secret threat")
+end
+inCombat = false
+fire("PLAYER_REGEN_ENABLED")
+tintState("combat over")
+threat(2)
+tintState("threat out of combat")
+-- a reload in combat, with threat
+inCombat = true
+fire("PLAYER_ENTERING_WORLD")
+tintState("reload in combat")
+inCombat, threatOf = false, nil

@@ -2,7 +2,7 @@
 """Draw what tools/harness.lua resolved, under the real console art, so a
 placement change can be checked without the game client.
 
-    python3 tools/preview.py            -> plan/console-preview.png
+    python3 tools/preview.py            -> art/console/render/console-preview.png
 """
 import os
 import subprocess
@@ -26,7 +26,7 @@ def run(state):
         parts = line.split("\t")
         if parts[0].endswith(".name"):
             names[parts[0][:-5]] = parts[1]
-        else:
+        elif len(parts) >= 5:                   # a rectangle; the rest are tallies
             rects[parts[0]] = ([float(v) for v in parts[1:5]], parts[5] if len(parts) > 5 else "")
     return rects, names
 
@@ -71,7 +71,9 @@ def main():
     sheet = Image.new("RGBA", (a.width, a.height * 2 + 12), (10, 10, 10, 255))
     sheet.paste(a, (0, 0))
     sheet.paste(b, (0, a.height + 12))
-    path = os.path.join(ROOT, "plan", "console-preview.png")
+    out = os.path.join(ROOT, "art", "console", "render")
+    os.makedirs(out, exist_ok=True)
+    path = os.path.join(out, "console-preview.png")
     sheet.convert("RGB").save(path)
     print(path)
 

@@ -6,8 +6,9 @@
 -- Blizzard's art is not replaced but muted: the Edit Mode clients (Forever,
 -- retail) re-set a micro button's atlases and alphas whenever a panel opens
 -- or the mouse passes, and a texture of ours in a state slot would be
--- overwritten. So the state textures are silenced, again after every set,
--- and the glyph is drawn over them, following the button's state.
+-- overwritten. So the state textures are silenced, again after every set
+-- and against every alpha or colour Blizzard gives them, and the glyph is
+-- drawn over them, following the button's state.
 local _, ns = ...
 
 local L = ns.stripLayout
@@ -47,10 +48,24 @@ local CLASSIC = {
 local ART = { "Background", "PushedBackground", "Shadow", "PushedShadow", "Portrait",
     "FlashBorder", "FlashContent", "Emblem", "HighlightEmblem", "MainMenuBarPerformanceBar" }
 
+-- Silenced, and kept so: Blizzard sets alphas and colours straight on these
+-- textures (the normal one's alpha back to 1 as the mouse leaves, the
+-- highlight's to .5 while a panel is open, a colour with no alpha, which is
+-- alpha 1), so each texture puts its own zero back after every such call.
+local pinned = {}
 local function Silence(region)
-    if region then
-        region:SetAlpha(0)
-        ns.Mute(region)
+    if not region then return end
+    region:SetAlpha(0)
+    ns.Mute(region)
+    if pinned[region] then return end
+    pinned[region] = true
+    hooksecurefunc(region, "SetAlpha", function(self, a)
+        if a ~= 0 then self:SetAlpha(0) end
+    end)
+    if region.SetVertexColor then
+        hooksecurefunc(region, "SetVertexColor", function(self, _, _, _, a)
+            if a ~= 0 then ns.Mute(self) end
+        end)
     end
 end
 

@@ -2,6 +2,13 @@
 -- experience (with rested shown as a darker run ahead of it), the right half
 -- is the watched reputation, mirrored. Both fill from the outer end inward.
 -- Hover either half for the numbers.
+--
+-- With the Experience and Reputation cast options (settings.lua), a half is
+-- also a cast bar: the player's casts over experience, under the player's
+-- frame, and the target's over reputation, under the target's. A cast bar
+-- lies over its half with its own ink, mirrored like it, and is clear while
+-- its unit is not casting, so the half shows. The window is 8px high: no
+-- room for a spell name or a time, so a cast is the fill and its spark.
 local _, ns = ...
 
 local console, C = ns.console, ns.colors
@@ -101,6 +108,28 @@ rep.hit:SetScript("OnEnter", function(self)
     end
     GameTooltip:Show()
 end)
+
+-- the cast bars, above the halves and below the art
+local function CastOver(side, unit, key)
+    local bar = CreateFrame("StatusBar", nil, console)
+    bar:SetFrameLevel(ns.levels.bars + 2)
+    bar:SetStatusBarTexture(ns.bar)
+    bar:SetReverseFill(side == 1)
+    ns.PlaceOn(bar, console, "xp", side)
+    local ink = bar:CreateTexture(nil, "BACKGROUND")
+    ink:SetAllPoints()
+    ink:SetColorTexture(unpack(C.ink))
+    local spark = bar:CreateTexture(nil, "OVERLAY")
+    spark:SetColorTexture(1, 1, 1, 0.8)
+    spark:SetSize(2, select(4, ns.Rect("xp", side)))
+    spark:SetPoint("CENTER", bar:GetStatusBarTexture(), side == 1 and "LEFT" or "RIGHT")
+    local driver = ns.CastBar(bar, unit, { spark = spark })
+    -- the saved option is only known once the addon has loaded
+    ns.On("PLAYER_LOGIN", function() driver:SetEnabled(ns.db[key]) end)
+    ns.OnSetting(key, function(on) driver:SetEnabled(on) end)
+    return bar
+end
+ns.beamCast = { player = CastOver(-1, "player", "xpCast"), target = CastOver(1, "target", "repCast") }
 
 for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_XP_UPDATE", "UPDATE_EXHAUSTION", "PLAYER_LEVEL_UP" }) do
     ns.On(e, UpdateXP)

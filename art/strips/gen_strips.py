@@ -7,15 +7,14 @@ console left without a home when it retired Blizzard's main bar.
   right  the status strip: a backpack medallion with a drawer arrow for the
          bag slots, then Bags, Durability and the clock
 
-After the user's references (plan/2026-10-31_06-22-33.png, left;
-plan/2026-10-31_06-22-20.png, right), drawn in the console's own styling
-and mirrored about the centre line, as the suite requires. The references
-are not mirrored (portrait outer, backpack inner), so two mirrored readings:
+After the user's references (one for each strip), drawn in the console's
+own styling and mirrored about the centre line, as the suite requires. The
+references are not mirrored (portrait outer, backpack inner), so two mirrored readings:
 
   A  both medallions at the INNER ends, flanking the console
   B  both medallions at the OUTER corners
 
-    python3 art/strips/gen_strips.py          -> plan/strips.png
+    python3 art/strips/gen_strips.py          -> render/strips.png
     python3 art/strips/gen_strips.py layer3   -> assets/layer3.png, assets/strips/*.png
 
 The user chose B. assets/layer3.png is B's two strips in the console's
@@ -35,7 +34,7 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 OUT = os.path.join(HERE, "render")
-BASE = os.path.join(ROOT, "plan", "H-party-combat-screen.png")
+BASE = os.path.join(ROOT, "art", "console", "base-screen.png")
 
 W, H, CX = 1920, 1080, 960
 GOLD, GOLD_D, INK, TEXT = "#c4a557", "#8a7034", "#121110", "#f2ead2"
@@ -297,16 +296,129 @@ def layer3():
     # the numbers code needs that the art cannot show (screen px, 1080p)
     import json
     with open(os.path.join(parts, "layout.json"), "w") as f:
-        json.dump({"stripHeight": STRIP_H, "length": LENGTH, "pitch": PITCH, "glyphTex": 32,
+        json.dump({**chat(), "stripHeight": STRIP_H, "length": LENGTH, "pitch": PITCH, "glyphTex": 32,
                    # first glyph's centre, from the screen edge
                    "firstGlyph": lx + MED_R + 26,
                    # the glyph's centre sits this far below the strip's middle
                    "glyphDrop": GLYPH_DROP,
+                   # the medallion ring's radius: the well is inside it
+                   "ringRadius": MED_R,
                    # the drawer arrow's centre: from the screen edge, from the bottom
                    "arrowX": MED_R + 10 + MED_R + 8, "arrowY": MED_R + 3 - 6,
                    # the stats run between these, from the screen edge
                    "statsFrom": MED_R + 10 + MED_R + 18, "statsTo": LENGTH - 4}, f, indent=1)
     print(parts, len(os.listdir(parts)), "parts")
+
+
+# ------------------------------------------------------------------- chat
+# The chat panel: Blizzard's own chat frames, standing on the left strip from
+# the portrait's medallion to the strip's top inner corner, so the chat sits
+# on the micro menu. Its own texture, not part of layer3, which must mirror:
+# the right strip has nothing above it. Fixed in size (the user's call; a
+# height setting may come later). Panel pixels from its top-left:
+CHAT_LEFT = MED_R * 2 + 16        # clear of the medallion and its shadow
+CHAT_W, CHAT_H = LENGTH - CHAT_LEFT, 180
+CHAT_PAD = 4
+CHAT_COLUMN = 29                  # Blizzard's button frame, in the left column
+CHAT_TOP = 36                     # the tab row above the messages
+CHAT_RIGHT = 14                   # the scroll bar (8) and a margin
+CHAT_EDIT = 32                    # the edit box, over the messages' foot
+CHAT_R = 6                        # the top corners
+TAB_W, TAB_H, TAB_CAP, TAB_TOP = 64, 32, 16, 8    # the tab's art: three slices, shape below TAB_TOP
+
+
+def chat_panel():
+    """The panel: translucent navy, a dark-gold rim on three sides, open at the
+    foot, where the strip's own gold edge is its border."""
+    w, h, r = CHAT_W, CHAT_H, CHAT_R        # the foot meets the strip's gold edge, which overdraws it
+    d = (f"M0.5,{h} L0.5,{r + 0.5} Q0.5,0.5 {r + 0.5},0.5 L{w - r - 0.5},0.5 "
+         f"Q{w - 0.5},0.5 {w - 0.5},{r + 0.5} L{w - 0.5},{h}")
+    return (f'<linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">'
+            f'<stop offset="0" stop-color="#2c3242" stop-opacity="0.62"/>'
+            f'<stop offset="1" stop-color="#1c202b" stop-opacity="0.80"/></linearGradient>'
+            f'<path d="{d} Z" fill="url(#panel)"/>'
+            f'<path d="{d}" fill="none" stroke="{GOLD_D}" stroke-width="1" opacity="0.7"/>')
+
+
+def chat_tab(selected):
+    """A tab, 64x32 in three slices (caps TAB_CAP wide): rounded top corners,
+    open at the foot onto the panel."""
+    top, r = TAB_TOP + 0.5, 5
+    d = (f"M1.5,{TAB_H} L1.5,{top + r} Q1.5,{top} {1.5 + r},{top} L{TAB_W - 1.5 - r},{top} "
+         f"Q{TAB_W - 1.5},{top} {TAB_W - 1.5},{top + r} L{TAB_W - 1.5},{TAB_H}")
+    if selected:
+        fill = ('<linearGradient id="tab" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a5368"/>'
+                '<stop offset="1" stop-color="#2c3242"/></linearGradient>')
+        rim, glow = 'url(#gold)', f'<line x1="{2 + r}" y1="{top + 1.5}" x2="{TAB_W - 2 - r}" y2="{top + 1.5}" ' \
+            f'stroke="#f0d488" stroke-width="1" opacity="0.6"/>'
+    else:
+        fill = ('<linearGradient id="tab" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2c3242"/>'
+                '<stop offset="1" stop-color="#1c202b"/></linearGradient>')
+        rim, glow = GOLD_D, ""
+    return (f'{fill}<path d="{d} Z" fill="url(#tab)" fill-opacity="0.9"/>'
+            f'<path d="{d}" fill="none" stroke="{rim}" stroke-width="1.4"/>{glow}')
+
+
+def chat():
+    """assets/chat.png and the tab parts; their numbers go in layout.json."""
+    doc = svg(chat_panel()).replace(f'width="{W}" height="{H}"', f'width="{CHAT_W}" height="{CHAT_H}"')
+    path = os.path.join(ROOT, "assets", "chat.png")
+    subprocess.run(["rsvg-convert", "-o", path], input=doc.encode(), check=True)
+    parts = os.path.join(ROOT, "assets", "strips")
+    for name, sel in (("tab", False), ("tab-selected", True)):
+        doc = svg(chat_tab(sel)).replace(f'width="{W}" height="{H}"', f'width="{TAB_W}" height="{TAB_H}"')
+        subprocess.run(["rsvg-convert", "-o", os.path.join(parts, name + ".png")], input=doc.encode(), check=True)
+    print(path, Image.open(path).size)
+    return {"chatLeft": CHAT_LEFT, "chatWidth": CHAT_W, "chatHeight": CHAT_H, "chatPad": CHAT_PAD,
+            "chatColumn": CHAT_COLUMN, "chatTop": CHAT_TOP, "chatRight": CHAT_RIGHT, "chatEdit": CHAT_EDIT,
+            "tabCap": TAB_CAP, "tabTex": TAB_W}
+
+
+def chat_preview():
+    """The left corner with the panel, tabs and some lines, at 2x."""
+    from PIL import ImageDraw, ImageFont
+    base = Image.open(os.path.join(OUT, "strips-B-screen.png")).convert("RGBA")
+    panel = Image.open(os.path.join(ROOT, "assets", "chat.png")).convert("RGBA")
+    top = H - STRIP_H - CHAT_H
+    layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    layer.paste(panel, (CHAT_LEFT, top))
+    parts = os.path.join(ROOT, "assets", "strips")
+    font = ImageFont.truetype(os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medaluin", "media", "fonts",
+                                           "MarcellusSC-Regular.ttf"), 11)
+    x = CHAT_LEFT + CHAT_PAD + CHAT_COLUMN + 5 - 2 + 2      # Background's left, plus the tab's own 2
+    for i, label in enumerate(("General", "Log", "Trade")):
+        tw = max(TAB_W, int(font.getlength(label)) + 28)
+        tab = Image.open(os.path.join(parts, "tab-selected.png" if i == 0 else "tab.png")).convert("RGBA")
+        # three slices, the middle stretched
+        cap = TAB_CAP
+        img = Image.new("RGBA", (tw, TAB_H))
+        img.paste(tab.crop((0, 0, cap, TAB_H)), (0, 0))
+        img.paste(tab.crop((cap, 0, TAB_W - cap, TAB_H)).resize((tw - 2 * cap, TAB_H)), (cap, 0))
+        img.paste(tab.crop((TAB_W - cap, 0, TAB_W, TAB_H)), (tw - cap, 0))
+        ty = top + CHAT_TOP - 3 - TAB_H
+        layer.alpha_composite(img, (x, ty))
+        ImageDraw.Draw(layer).text((x + tw / 2, ty + 21), label, font=font, anchor="mm",
+                                   fill=(255, 210, 0) if i == 0 else (200, 170, 80))
+        x += tw + 1
+    d = ImageDraw.Draw(layer)
+    mx = CHAT_LEFT + CHAT_PAD + CHAT_COLUMN + 5
+    lines = ["[Guild] Aldren: anyone for the raid tonight?", "You are no longer Away.",
+             "[Trade] Selling Flask of the Currents", "[Party] Mira: pull in 3"]
+    for i, s in enumerate(lines):
+        d.text((mx, H - STRIP_H - 6 - 14 * (len(lines) - i)), s, font=font, fill=(242, 234, 210))
+    # the button column's three Blizzard buttons, as boxes
+    cx = CHAT_LEFT + CHAT_PAD + CHAT_COLUMN / 2
+    for y in (top + CHAT_TOP - 30, top + CHAT_TOP + 2, H - STRIP_H - 4 - 26):
+        d.rounded_rectangle((cx - 12, y, cx + 12, y + 24), 4, outline=(196, 165, 87), width=1)
+    screen = Image.alpha_composite(base, layer)
+    # the left strip over it, as in game
+    strip = Image.open(os.path.join(ROOT, "assets", "layer3.png")).convert("RGBA")
+    screen = Image.alpha_composite(screen, strip)
+    crop = screen.crop((0, top - 30, LENGTH + 60, H)).convert("RGB")
+    crop = crop.resize((crop.width * 2, crop.height * 2), Image.LANCZOS)
+    path = os.path.join(OUT, "chat.png")
+    crop.save(path)
+    print(path)
 
 
 def main():
@@ -326,9 +438,10 @@ def main():
     for r in rows:
         sheet.paste(r, (0, y))
         y += r.height + 8
-    path = os.path.join(ROOT, "plan", "strips.png")
+    path = os.path.join(OUT, "strips.png")
     sheet.save(path)
     print(path)
+    chat_preview()
 
 
 if __name__ == "__main__":

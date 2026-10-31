@@ -20,10 +20,10 @@ read_globals = {
     "MainMenuBarDownload", "MainMenuBarBackpackButton", "KeyRingButton",
     -- frames of the Edit Mode clients (Forever, retail)
     "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "StanceBar", "PetActionBar",
-    "MicroMenu", "MicroMenuContainer", "BagsBar", "CharacterReagentBag0Slot", "StatusTrackingBarManager",
+    "MicroMenu", "MicroMenuContainer", "BagsBar", "CharacterReagentBag0Slot", "ChatAlertFrame", "StatusTrackingBarManager",
     "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer",
     -- API
-    "CreateFrame", "InCombatLockdown", "RegisterUnitWatch", "IsInGroup",
+    "CreateFrame", "InCombatLockdown", "RegisterUnitWatch", "IsInGroup", "UnitAffectingCombat", "UnitThreatSituation",
     "UnitExists", "UnitName", "UnitClass", "UnitIsPlayer", "UnitIsConnected", "UnitIsDeadOrGhost",
     "UnitIsTapDenied", "UnitReaction", "UnitHealth", "UnitHealthMax", "UnitPower", "UnitPowerMax",
     "UnitPowerType", "UnitLevel", "UnitXP", "UnitXPMax", "GetXPExhaustion", "GetMaxPlayerLevel",
@@ -38,6 +38,10 @@ read_globals = {
     -- the Edit Mode clients' API: secret values, curves, duration objects
     "issecretvalue", "C_ActionBar", "C_CurveUtil", "CurveConstants", "Enum", "UnitHealthPercent",
     "UnitCastingDuration", "UnitChannelDuration", "ActionButton_UpdateCooldownNumberHidden",
+    -- the chat (strips/chat.lua) and the player's buffs (strips/buffs.lua)
+    "ChatFrame1", "CHAT_FRAMES", "CHAT_FRAME_TEXTURES", "NUM_CHAT_WINDOWS", "GENERAL_CHAT_DOCK",
+    "FCFDock_GetSelectedWindow", "FCFTab_UpdateColors", "FCF_DockFrame", "FCF_UnDockFrame",
+    "C_UnitAuras",
     -- the settings page and the atlas sizes
     "Settings", "SettingsPanel", "CreateSettingsButtonInitializer", "ReloadUI", "C_Texture", "GetCursorInfo", "GetActionBarPage", "GetSpecialization",
     -- tables and strings

@@ -6,12 +6,21 @@
 --
 -- On Forever and retail they belong to BagsBar, which places them again (when
 -- an item is picked up, for one) and re-sets its atlases on whatever their
--- state textures are; both are answered after the fact, below.
+-- state textures are; both are answered after the fact, below. BagsBar's
+-- layout runs from references it took at load, so a hook on it misses
+-- most of its calls: what is watched is each button's own SetPoint.
+--
+-- There the buttons are plain buttons (ItemButton), with no checked state:
+-- a bag's open mark is its SlotHighlightTexture, which Blizzard shows and
+-- hides, so that is what wears ours. And the backpack has no icon there,
+-- its whole picture being its normal texture's atlas: it is given the
+-- backpack's item icon, by name.
 local _, ns = ...
 
 local L = ns.stripLayout
 local SLOT, GAP, PAD = 30, 2, 4
 local GOLD_D = { 0.541, 0.439, 0.204 }
+local BACKPACK = "Interface\\Icons\\INV_Misc_Bag_08"
 
 local function Hide(region)
     if region then region:SetAlpha(0) end
@@ -30,7 +39,7 @@ local function Restyle(btn)
     ns.Mute(normal)
     btn:SetPushedTexture(m.pushed)
     btn:SetHighlightTexture(m.highlight)
-    if btn.SetCheckedTexture then btn:SetCheckedTexture(m.checked) end
+    if m.checked then btn:SetCheckedTexture(m.checked) end
     m.restore(m)
 end
 
@@ -44,10 +53,20 @@ local function Watch(btn)
     ns.Mute(btn.IconBorder)
 end
 
+-- Placed by us, and put back after anyone else.
+local placing = false
+local function Hold(btn, Place)
+    hooksecurefunc(btn, "SetPoint", function()
+        if not placing then Place() end
+    end)
+end
+
 -- The backpack: round, its icon masked to the well.
 local function PlaceBackpack()
     local w = ns.stripWell
+    placing = true
     ns.OnStrip(MainMenuBarBackpackButton, 1, w.x, w.y, w.size, w.size)
+    placing = false
 end
 
 local function Backpack()
@@ -58,6 +77,10 @@ local function Backpack()
     local icon = Icon(btn)
     icon:ClearAllPoints()
     icon:SetAllPoints()
+    if not icon:GetTexture() then
+        icon:SetTexture(BACKPACK)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
     if btn.CircleMask then icon:RemoveMaskTexture(btn.CircleMask) end
     if btn.CreateMaskTexture then
         local mask = btn:CreateMaskTexture()
@@ -65,14 +88,24 @@ local function Backpack()
         mask:SetAllPoints(icon)
         icon:AddMaskTexture(mask)
     end
-    Hide(btn.SlotHighlightTexture)           -- the round glow says the bag is open
+    -- a round gold glow says the bag is open: the checked state, or
+    -- Blizzard's open mark where there is none
+    local open = btn.SetCheckedTexture and ns.RoundGlow(btn, 0.77, 0.65, 0.34, 0.3)
     btn.medaluin = {
         pushed = ns.Blank(btn),
         highlight = ns.RoundGlow(btn, 1, 0.9, 0.6, 0.18),
-        checked = ns.RoundGlow(btn, 0.77, 0.65, 0.34, 0.3),
+        checked = open or nil,
         restore = function(m)
             m.pushed:SetColorTexture(0, 0, 0, 0)
-            for t, a in pairs({ [m.highlight] = 0.18, [m.checked] = 0.3 }) do
+            local glows = { [m.highlight] = 0.18 }
+            if m.checked then
+                glows[m.checked] = 0.3
+                Hide(btn.SlotHighlightTexture)
+            elseif btn.SlotHighlightTexture then
+                glows[btn.SlotHighlightTexture] = 0.3
+                btn.SlotHighlightTexture:SetVertexColor(0.77, 0.65, 0.34)
+            end
+            for t, a in pairs(glows) do
                 t:ClearAllPoints()
                 t:SetAllPoints()
                 t:SetTexture(ns.media .. "strips\\round")
@@ -82,6 +115,7 @@ local function Backpack()
         end,
     }
     Watch(btn)
+    Hold(btn, PlaceBackpack)
 end
 
 -- A bag slot, styled like the action buttons: square, 1px black edge.
@@ -100,15 +134,18 @@ local function Slot(btn, parent)
     edge:SetColorTexture(0, 0, 0)
     edge:SetAllPoints()
     btn.medaluin = {
-        pushed = btn:CreateTexture(), highlight = btn:CreateTexture(), checked = btn:CreateTexture(),
+        pushed = btn:CreateTexture(), highlight = btn:CreateTexture(),
+        checked = btn.SetCheckedTexture and btn:CreateTexture() or nil,
         restore = function(m)
             for key, c in pairs(OVER) do
                 local t = m[key]
-                t:ClearAllPoints()
-                t:SetAllPoints(icon)
-                t:SetColorTexture(unpack(c))
-                t:SetBlendMode("BLEND")
-                t:SetAlpha(1)
+                if t then
+                    t:ClearAllPoints()
+                    t:SetAllPoints(icon)
+                    t:SetColorTexture(unpack(c))
+                    t:SetBlendMode("BLEND")
+                    t:SetAlpha(1)
+                end
             end
             -- marks the bag whose window is open
             local open = btn.SlotHighlightTexture
@@ -131,6 +168,7 @@ local slots = {}
 
 local function PlaceSlots()
     local d, x = ns.bagDrawer, PAD
+    placing = true
     for _, b in ipairs(slots) do
         local w = b == KeyRingButton and SLOT / 2 or SLOT
         b:ClearAllPoints()
@@ -138,6 +176,7 @@ local function PlaceSlots()
         b:SetSize(w, SLOT)
         x = x + w + GAP
     end
+    placing = false
     d:SetSize(x - GAP + PAD, SLOT + 2 * PAD)
 end
 
@@ -174,6 +213,7 @@ local function Drawer()
         end
     end
     PlaceSlots()
+    for _, b in ipairs(slots) do Hold(b, PlaceSlots) end
     -- its right edge stops just short of the medallion, its foot rests on the strip
     d:SetPoint("BOTTOMRIGHT", strip, "BOTTOMRIGHT", -(L.arrowX - 4), L.stripHeight - 1)
 
@@ -225,14 +265,4 @@ end
 ns.On("PLAYER_LOGIN", function()
     Backpack()
     Drawer()
-    -- Blizzard's bag bar places its buttons again (an item picked up, an
-    -- Edit Mode change); put them back where the strip has them.
-    for _, bar in ipairs({ BagsBar, MicroButtonAndBagsBar }) do
-        if bar and bar.Layout then
-            hooksecurefunc(bar, "Layout", function()
-                PlaceBackpack()
-                PlaceSlots()
-            end)
-        end
-    end
 end)
