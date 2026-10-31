@@ -121,9 +121,17 @@ function Region:SetFrameLevel(l) self.level = l end
 function Region:GetFrameStrata() return self.strata or "LOW" end
 function Region:SetFrameStrata(s) self.strata = s end
 function Region:SetParent(p) self.parent = p end
-function Region:SetShown(s) self.shown = s end
-function Region:Show() self.shown = true end
-function Region:Hide() self.shown = false end
+function Region:Show()
+    self.shown = true
+    if self.scripts.OnShow then self.scripts.OnShow(self) end
+end
+function Region:Hide()
+    self.shown = false
+    if self.scripts.OnHide then self.scripts.OnHide(self) end
+end
+function Region:SetShown(s)
+    if s then self:Show() else self:Hide() end
+end
 function Region:SetScript(k, f) self.scripts[k] = f end
 function Region:SetAttribute(k, v) self.attrs[k] = v end
 function Region:SetTexture(t) self.texture, self.atlas = t, nil end
@@ -324,6 +332,10 @@ for _, n in ipairs({ "CharacterMicroButton", "SpellbookMicroButton", "TalentMicr
     b.w, b.h = 28, 58
 end
 MicroButtonPortrait = new("Texture", CharacterMicroButton, "MicroButtonPortrait")
+QueueStatusButton = new("Button", UIParent, "QueueStatusButton")
+QueueStatusButton.w, QueueStatusButton.h = 32, 32
+QueueStatusButton.shown = false
+QueueStatusButton.Eye = new("Frame", QueueStatusButton, "QueueStatusButtonEye")
 for _, n in ipairs({ "MainMenuBarBackpackButton", "CharacterBag0Slot", "CharacterBag1Slot", "CharacterBag2Slot",
     "CharacterBag3Slot" }) do
     local b = new("CheckButton", MainMenuBar, n)
@@ -1164,6 +1176,16 @@ if stripsPass then
     end
     local blizzPortrait = MicroButtonPortrait or CharacterMicroButton.Portrait
     screen("portrait", CharacterMicroButton, "blizzard=" .. tostring(blizzPortrait.alpha))
+    -- queue eye: in group finder, the eye appears over the character medallion, hiding the portrait
+    QueueStatusButton:Show()
+    print("queue eye queued", "shown=" .. tostring(QueueStatusButton.shown),
+        "portrait=" .. tostring(CharacterMicroButton.medaluin.tex.shown),
+        "level=" .. tostring(QueueStatusButton.level),
+        "over=" .. tostring(QueueStatusButton.level > CharacterMicroButton.level))
+    screen("queueEye", QueueStatusButton)
+    QueueStatusButton:Hide()
+    print("queue eye unqueued", "shown=" .. tostring(QueueStatusButton.shown),
+        "portrait=" .. tostring(CharacterMicroButton.medaluin.tex.shown))
     local pack = MainMenuBarBackpackButton
     local mark = pack.SlotHighlightTexture
     screen("backpack", pack, string.format("picture=%s drawn=%d open=%s", tostring(pack.icon.texture):match("[^\\]+$"),

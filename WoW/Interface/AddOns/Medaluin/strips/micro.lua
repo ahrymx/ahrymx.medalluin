@@ -131,7 +131,65 @@ local function Glyph(btn, kind)
     Skin(btn, tex, glow, L.glyphTex, true)
 end
 
-local portrait
+local portrait, queueEye
+
+local function UpdateVisibility()
+    if not portrait then return end
+    if queueEye and queueEye:IsShown() then
+        portrait:Hide()
+    else
+        portrait:Show()
+    end
+end
+
+-- The Group Finder / LFG queue eye in the character medallion: while in queue,
+-- it sits over the medallion and replaces the player portrait; when leaving
+-- queue, the portrait returns.
+local function SetupQueueEye()
+    if queueEye then return end
+    local eye = QueueStatusButton or QueueStatusMinimapButton or MiniMapLFGFrame
+    if not eye then return end
+    queueEye = eye
+
+    local w = ns.stripWell
+    eye:SetParent(ns.strips[-1])
+    eye:SetFrameLevel(ns.levels.stripWell + 1)
+    eye:ClearAllPoints()
+    eye:SetPoint("CENTER", CharacterMicroButton, "CENTER", 0, 0)
+    eye:SetSize(w.size, w.size)
+    eye:SetScale(1)
+
+    -- Mute outer border if Classic's minimap border is attached
+    Silence(eye.Border)
+    Silence(eye.HighlightBorder)
+    Silence(eye.Background)
+    local name = eye.GetName and eye:GetName()
+    if name then
+        Silence(_G[name .. "Border"])
+        Silence(_G[name .. "Highlight"])
+    end
+
+    local placing = false
+    local function HoldEye()
+        if placing then return end
+        placing = true
+        eye:SetParent(ns.strips[-1])
+        eye:SetFrameLevel(ns.levels.stripWell + 1)
+        eye:ClearAllPoints()
+        eye:SetPoint("CENTER", CharacterMicroButton, "CENTER", 0, 0)
+        eye:SetSize(w.size, w.size)
+        eye:SetScale(1)
+        placing = false
+    end
+    hooksecurefunc(eye, "SetPoint", HoldEye)
+    hooksecurefunc(eye, "SetParent", function(_, parent)
+        if parent ~= ns.strips[-1] then HoldEye() end
+    end)
+
+    eye:HookScript("OnShow", UpdateVisibility)
+    eye:HookScript("OnHide", UpdateVisibility)
+    UpdateVisibility()
+end
 
 local function Character()
     local btn = CharacterMicroButton
@@ -179,6 +237,7 @@ end
 
 ns.On("PLAYER_LOGIN", function()
     Character()
+    SetupQueueEye()
     buttons = Buttons()
     for _, btn in ipairs(buttons) do
         Glyph(btn, KIND[btn:GetName() or ""] or "misc")
@@ -191,10 +250,21 @@ ns.On("PLAYER_LOGIN", function()
 end)
 
 local function UpdatePortrait()
-    if portrait then SetPortraitTexture(portrait, "player") end
+    if not portrait then return end
+    SetPortraitTexture(portrait, "player")
+    if queueEye and queueEye:IsShown() then
+        portrait:Hide()
+    end
 end
-ns.On("PLAYER_ENTERING_WORLD", UpdatePortrait)
+ns.On("PLAYER_ENTERING_WORLD", function()
+    SetupQueueEye()
+    UpdatePortrait()
+end)
 ns.On("PORTRAITS_UPDATED", UpdatePortrait)
+ns.On("QUEUE_STATUS_UPDATE", function()
+    SetupQueueEye()
+    UpdateVisibility()
+end)
 local events = CreateFrame("Frame")
 ns.RegisterUnitEvent(events, "UNIT_PORTRAIT_UPDATE", "player")
 events:SetScript("OnEvent", UpdatePortrait)
