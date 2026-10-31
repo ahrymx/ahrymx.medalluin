@@ -11,16 +11,16 @@ ns.barFrame = { -324, 324, 65, -2 }
 ns.barLow = { -289, 289, 19, 5 }   -- the lower row: the cast bar, the class resource
 -- the right end's boxes: the page chevrons and the page number
 ns.barPager = {
-    up = { 254, 272, 59, 42 },
-    down = { 254, 272, 40, 23 },
-    number = { 275, 286, 49, 32 },
+    up = { 255, 271, 57, 42 },
+    down = { 255, 271, 40, 25 },
+    number = { 273, 283, 48, 33 },
 }
 -- the left end's box, the minimap button drawer's toggle, and the drawer's
 -- line: a cell per button, the button fitted inside it, the line's padding,
 -- and where it stands: its right edge's x when it opens left, its bottom
 -- edge's height when it opens up; the toggle is a round button this wide,
 -- centred in the box
-ns.barDrawer = { -286, -254, 59, 23 }
+ns.barDrawer = { -283, -255, 57, 25 }
 ns.barDrawerToggle = 32
 ns.barDrawerCell = { cell = 34, button = 30, pad = 2, left = -293, up = 69 }
 -- The slots, per row count (the Rows option): rows from the bottom up (row 1

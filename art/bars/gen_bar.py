@@ -83,8 +83,9 @@ CONSOLE_HALF = 322
 # The right end panel, from the last slot's edge: the chevron boxes' inset
 # and size (two boxes, one over the other, PAGER_GAP apart), and the page
 # number's box beside them.
-CHEVRON_IN, CHEVRON_W, CHEVRON_H, PAGER_GAP = 5, 18, 17, 2
-NUMBER_IN, NUMBER_W, NUMBER_H = 3, 11, 17
+# They stand 6px clear of the plate's edge, as far as the slots stand apart.
+CHEVRON_IN, CHEVRON_W, CHEVRON_H, PAGER_GAP = 6, 16, 15, 2
+NUMBER_IN, NUMBER_W, NUMBER_H = 2, 10, 15
 # The chevron textures' canvas; the drawer toggle's texture, its button's
 # diameter, and the diameter of the plate's window over it (the icon's gold
 # rim starts at 0.86 of its radius, so a smaller window hides it).
@@ -262,15 +263,10 @@ def plate(defs):
                     f'stroke="{STONE_LO}" stroke-width="1"/>')
     for x, y in slots(1)[0]:
         body.append(well(x, y, x + ICON, y + ICON))
-    # the pill and the round window: a black edge, lit along the bottom
+    # the pill and the round window: a black edge only
     body.append(f'<rect x="{l - 1}" y="{t - 1}" width="{r - l + 2}" height="{b - t + 2}" rx="{rr + 1}" '
                 f'fill="{STONE_EDGE}"/>'
-                f'<line x1="{l + rr}" y1="{b + 1.5}" x2="{r - rr}" y2="{b + 1.5}" stroke="{STONE_HI}" '
-                f'stroke-width="1"/>')
-    h = HOLE_D / 2
-    body.append(f'<circle cx="{cx}" cy="{cy}" r="{h + 1.2}" fill="{STONE_EDGE}"/>'
-                f'<path d="M {cx - h - 1.5} {cy + 1} A {h + 1.5} {h + 1.5} 0 0 0 {cx + h + 1.5} {cy + 1}" '
-                f'fill="none" stroke="{STONE_HI}" stroke-width="1"/>')
+                f'<circle cx="{cx}" cy="{cy}" r="{HOLE_D / 2 + 1.2}" fill="{STONE_EDGE}"/>')
     b = pager_boxes()
     for k in ("up", "down", "number"):
         body.append(well(*b[k]))
