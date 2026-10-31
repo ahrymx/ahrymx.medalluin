@@ -16,7 +16,7 @@ screen mockups with the frame's windows cut out as transparency. This script:
     so redrawing the art and re-running this keeps code and art in step;
   * checks assets/layer2.png, the action bar's plate, against
     assets/layer2.json, its windows (both drawn by art/bars/gen_bar.py), and
-    writes media/actionbar.tga, media/bar/*.tga (the page chevrons) and
+    writes media/actionbar.tga, media/bar/*.tga (the page chevrons, the drawer's toolkit) and
     bars/windows.lua;
   * and for assets/layer3.png, the corner strips (art/strips/gen_strips.py):
     the LEFT strip becomes media/strip.tga (the right one is the same art
@@ -127,13 +127,24 @@ def export_bar(console_top):
         sys.exit(f"layer2.json stands on y={layout['console_top']}, the console's top is {console_top}")
     alpha = img.getchannel("A").load()
 
-    def hole(w, name):
+    def hole(w, name, round_=False):
+        """A window is a hole with a solid rim above and below it. A round
+        one (the lower row's pill) is a hole inside its rounded ends, a
+        pixel in from their soft edge, and its rim is checked along the
+        straight part."""
         l, t, r, b = w
-        if any(alpha[x, y] for y in range(t, b) for x in range(l, r)):
+        rr = (b - t) / 2 if round_ else 0
+
+        def inside(x, y):
+            cx = min(max(x + 0.5, l + rr), r - rr)
+            return (x + 0.5 - cx) ** 2 + (y + 0.5 - (t + b) / 2) ** 2 <= (rr - 1) ** 2 if round_ else True
+        if any(alpha[x, y] for y in range(t, b) for x in range(l, r) if inside(x, y)):
             sys.exit(f"layer2.png: {name} {w} is not a hole")
-        # a solid rim round it, so a window is exactly its hole
-        if not all(alpha[x, t - 1] and alpha[x, b] for x in range(l, r)):
+        if not all(alpha[x, t - 1] and alpha[x, b] for x in range(int(l + rr), int(r - rr))):
             sys.exit(f"layer2.png: {name} {w} is not framed")
+        # and a pill's corners are stone, so what shows through is cropped
+        if round_ and not (alpha[l, t] and alpha[r - 1, b - 1]):
+            sys.exit(f"layer2.png: {name} {w} is not rounded")
 
     def up(w):
         l, t, r, b = w
@@ -142,7 +153,7 @@ def export_bar(console_top):
     rows1 = layout["rows"]["1"][0]
     for i, (l, r, t, b) in enumerate(rows1):
         hole((l, t, r, b), f"slot {i + 1}")
-    hole(layout["low"], "lower row")
+    hole(layout["low"], "lower row", round_=True)
     # the pager's boxes are drawn wells, not holes: inside the upper row's
     # right end
     fl, ft, fr, fb = layout["frame"]
@@ -152,6 +163,25 @@ def export_bar(console_top):
         if not (last < l and r < ur and ut < t and b < ub) or not all(alpha[x, y] for y in range(t, b)
                                                                      for x in range(l, r)):
             sys.exit(f"layer2.json: the pager's {k} box {(l, t, r, b)} is not on the upper row's right end")
+    # the drawer's toggle: its box on the left end mirrors the pager's, and
+    # its round window is cut there
+    l, t, r, b = layout["drawer"]
+    pl = min(v[0] for v in layout["pager"].values())
+    pr = max(v[2] for v in layout["pager"].values())
+    pt = min(v[1] for v in layout["pager"].values())
+    pb = max(v[3] for v in layout["pager"].values())
+    if (l + pr, r + pl, t, b) != (2 * CENTRE_X, 2 * CENTRE_X, pt, pb):
+        sys.exit(f"layer2.json: the drawer's box {(l, t, r, b)} does not mirror the pager's")
+    # its round window: open within the hole's radius, stone past the
+    # button's, so the plate covers the button's rim
+    cx, cy, d = (l + r) / 2, (t + b) / 2, layout["toggle"]
+    for x in range(l, r):
+        for y in range(t, b):
+            dist = ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2) ** 0.5
+            if (dist < d["hole"] / 2 - 1 and alpha[x, y]) or (dist > d["diameter"] / 2 and not alpha[x, y]):
+                sys.exit(f"layer2.png: the drawer's window at {(cx, cy)} is not {d['hole']} across")
+    if not d["hole"] < d["diameter"]:
+        sys.exit(f"layer2.json: the drawer's window {d['hole']} does not cover the button's rim")
     ll, lt, lr, lb = layout["low"]
     if ll + lr != 2 * CENTRE_X or lt < rows1[0][3]:
         sys.exit(f"layer2.json: the lower row {layout['low']} is not centred under the slots")
@@ -165,10 +195,11 @@ def export_bar(console_top):
     canvas.paste(img.crop(box), (0, 0))
     to_tga(canvas, os.path.join(MEDIA, "actionbar.tga"))
     os.makedirs(os.path.join(MEDIA, "bar"), exist_ok=True)
-    for name in layout["chevrons"]:
+    for name in layout["parts"]:
         part = Image.open(os.path.join(ROOT, "assets", "bar", f"{name}.png")).convert("RGBA")
-        if part.size != (32, 32):
-            sys.exit(f"assets/bar/{name}.png is {part.size}, not 32x32")
+        w_, h_ = part.size
+        if w_ != h_ or w_ not in (32, 64):
+            sys.exit(f"assets/bar/{name}.png is {part.size}, not 32x32 or 64x64")
         to_tga(part, os.path.join(MEDIA, "bar", f"{name}.tga"))
 
     lines = [
@@ -187,6 +218,16 @@ def export_bar(console_top):
         "ns.barPager = {",
         *[f"    {k} = {up(layout['pager'][k])}," for k in ("up", "down", "number")],
         "}",
+        "-- the left end's box, the minimap button drawer's toggle, and the drawer's",
+        "-- line: a cell per button, the button fitted inside it, the line's padding,",
+        "-- and where it stands: its right edge's x when it opens left, its bottom",
+        "-- edge's height when it opens up; the toggle is a round button this wide,",
+        "-- centred in the box",
+        f"ns.barDrawer = {up(layout['drawer'])}",
+        f"ns.barDrawerToggle = {layout['toggle']['diameter']}",
+        "ns.barDrawerCell = {{ cell = {cell}, button = {button}, pad = {pad}, left = {left}, up = {up} }}".format(
+            **dict(layout["drawer_cell"], left=layout["drawer_cell"]["left"] - CENTRE_X,
+                   up=console_top - layout["drawer_cell"]["up"])),
         "-- The slots, per row count (the Rows option): rows from the bottom up (row 1",
         "-- is action bar 1, in the frame; the rows above it stand bare).",
         "ns.barWindows = {",

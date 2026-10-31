@@ -1,4 +1,5 @@
--- The player's cast bar, in the action bar's lower row, over the class
+-- The player's cast bar, in the action bar's lower row (a pill: the plate
+-- above crops its square ends), over the class
 -- resource (bars/power.lua): gold fill from the left (draining for a
 -- channel), spell name left, time left right. A failed or interrupted cast
 -- turns red and fades. Idle, it is fully transparent, so the class resource
@@ -50,8 +51,9 @@ function ns.BuildCast(tray)
     spark:SetPoint("CENTER", bar:GetStatusBarTexture(), "RIGHT")
 
     local name, clock = ns.Text(bar, 10), ns.Text(bar, 10)
-    name:SetPoint("LEFT", 4, 0)
-    clock:SetPoint("RIGHT", -4, 0)
+    -- clear of the pill's rounded ends
+    name:SetPoint("LEFT", 8, 0)
+    clock:SetPoint("RIGHT", -8, 0)
     clock:SetJustifyH("RIGHT")
     bar.name, bar.clock = name, clock
 

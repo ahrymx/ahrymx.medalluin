@@ -38,12 +38,31 @@
    884
   ]
  },
- "chevrons": [
+ "drawer": [
+  674,
+  857,
+  706,
+  893
+ ],
+ "toggle": {
+  "diameter": 32,
+  "hole": 27
+ },
+ "drawer_cell": {
+  "cell": 34,
+  "button": 30,
+  "pad": 2,
+  "left": 667,
+  "up": 847
+ },
+ "parts": [
   "chevron-down",
   "chevron-down-pushed",
   "chevron-highlight",
   "chevron-up",
-  "chevron-up-pushed"
+  "chevron-up-pushed",
+  "toolkit",
+  "toolkit-pushed"
  ],
  "rows": {
   "1": [

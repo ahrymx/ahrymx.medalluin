@@ -21,6 +21,7 @@ bars\bar.lua
 bars\buttons.lua
 bars\power.lua
 bars\cast.lua
+bars\drawer.lua
 
 strips\windows.lua
 strips\frame.lua

@@ -76,15 +76,21 @@ local function new(kind, parent, name)
     if name then _G[name] = r end
     return r
 end
+-- resolved rectangles are cached; any move or resize after one has been
+-- read drops them all, so a region placed again is measured again
+local function moved()
+    for _, f in ipairs(all) do f.rect = nil end
+end
 function Region:SetPoint(p, rel, rp, x, y)
+    moved()
     if type(rel) ~= "table" then rel, rp, x, y = self.parent, p, rel, rp end
     if type(rp) ~= "string" then rp, x, y = p, rp, x end
     self.points[p] = { rel or self.parent, rp or p, x or 0, y or 0 }
 end
-function Region:ClearAllPoints() self.points = {} end
-function Region:SetAllPoints(rel) self.all = rel or self.parent end
-function Region:SetSize(w, h) self.w, self.h = w, h end
-function Region:SetScale(s) self.scale = s end
+function Region:ClearAllPoints() moved(); self.points = {} end
+function Region:SetAllPoints(rel) moved(); self.all = rel or self.parent end
+function Region:SetSize(w, h) moved(); self.w, self.h = w, h end
+function Region:SetScale(s) moved(); self.scale = s end
 function Region:GetScale() return self.scale or 1 end
 function Region:GetRegions()
     local out = {}
@@ -93,8 +99,8 @@ function Region:GetRegions()
     end
     return unpack(out)
 end
-function Region:SetWidth(w) self.w = w end
-function Region:SetHeight(h) self.h = h end
+function Region:SetWidth(w) moved(); self.w = w end
+function Region:SetHeight(h) moved(); self.h = h end
 function Region:GetFrameLevel() return self.level end
 function Region:SetFrameLevel(l) self.level = l end
 function Region:GetFrameStrata() return "LOW" end
@@ -200,6 +206,7 @@ local function scaleOf(f)
 end
 local resolve
 resolve = function(f)
+    if f.fixed then return f.fixed end     -- the console, and the screen, as the passes pin them
     if f.rect then return f.rect end
     if f.isScreen then return { 0, 0, 1e6, 1e6 } end
     if f.all then f.rect = resolve(f.all); return f.rect end
@@ -232,7 +239,19 @@ function Region:SetTexCoord(...) self.coords = { ... } end
 function Region:SetDesaturated(d) self.desaturated = d end
 function Region:CreateMaskTexture() return new("MaskTexture", self) end
 local mouseOver = false
-function Region:IsMouseOver() return mouseOver end
+-- true: the pointer is over everything; a region: over that one only
+function Region:IsMouseOver() return mouseOver == true or mouseOver == self end
+function Region:IsObjectType(t) return self.kind == t or t == "Button" and self.kind == "CheckButton" end
+function Region:IsProtected() return false end
+function Region:LockHighlight() self.highlightLocked = true end
+function Region:UnlockHighlight() self.highlightLocked = false end
+function Region:HookScript(k, f)
+    local old = self.scripts[k]
+    self.scripts[k] = function(...)
+        if old then old(...) end
+        f(...)
+    end
+end
 function Region:GetAlpha() return self.alpha or 1 end
 
 -- ------------------------------------------------------------ the API
@@ -240,6 +259,23 @@ UIParent = new("Frame", nil, "UIParent")
 UIParent.isScreen = true
 function UIParent:GetHeight() return 768 end
 Minimap = new("Frame", UIParent, "Minimap")
+-- what addons and Blizzard hang on the minimap: three LibDBIcon buttons (one
+-- hidden by its addon), a button of an addon's own, Blizzard's tracking,
+-- and two map pins (one unnamed)
+local function MinimapButton(name, size, shown)
+    local b = new("Button", Minimap, name)
+    b:SetSize(size, size)
+    b:SetPoint("CENTER", Minimap, "CENTER", 80, 0)
+    b.shown = shown ~= false
+    return b
+end
+MinimapButton("LibDBIcon10_Zeta", 31)
+MinimapButton("LibDBIcon10_Alpha", 31, false)
+MinimapButton("LibDBIcon10_MapPins", 31)              -- an addon whose name looks like a pin's
+MinimapButton("BagnonMinimapButton", 33)
+MinimapButton("MiniMapTracking", 32)
+MinimapButton("HandyNotesPin3", 12)
+MinimapButton(nil, 12)
 MinimapCluster = new("Frame", UIParent, "MinimapCluster")
 GameTooltip = new("Frame", UIParent, "GameTooltip")
 PlayerFrame, TargetFrame = new("Frame", UIParent), new("Frame", UIParent)
@@ -518,7 +554,7 @@ end
 -- The console's own rectangle defines the origin: its top-left is (0, 0).
 local c = ns.console
 scaleRoot = c
-c.rect = { 0, 0, ns.art.width, ns.art.height }
+c.fixed = { 0, 0, ns.art.width, ns.art.height }
 local function out(tag, f, extra)
     local r = resolve(f)
     print(string.format("%s\t%.1f\t%.1f\t%.1f\t%.1f\t%s", tag, r[1], r[2], r[3], r[4], extra or ""))
@@ -526,7 +562,7 @@ end
 
 if barPass then
     -- the screen in console units: the console's top-left is (612, 916)
-    UIParent.rect = { -612, -916, 1308, 164 }
+    UIParent.fixed = { -612, -916, 1308, 164 }
     local function screen(tag, f, extra)
         local r = resolve(f)
         print(string.format("%s\t%.1f\t%.1f\t%.1f\t%.1f\t%s", tag, r[1] + 612, r[2] + 916, r[3] + 612,
@@ -551,6 +587,18 @@ if barPass then
         screen("bar", ns.actionBar)
         screen("plate", ns.barPlate, "texture=" .. tostring(ns.barPlate.texture):match("[^\\]+$")
             .. " level=" .. ns.barPlate.parent.level)
+        -- behind the slots, a dark band; the plate stands over the bars and
+        -- the toggle, so its pill and round window crop them
+        local bk = ns.barBacking
+        screen("backing", bk, "colour=" .. (bk.color and string.format("%.2f,%.2f,%.2f,%s", bk.color[1],
+            bk.color[2], bk.color[3], tostring(bk.color[4] or 1)) or "-") .. " level=" .. bk.parent.level)
+        local stoneLevel = ns.barPlate.parent.level
+        print("under the plate", "power=" .. tostring(ns.barPower.level < stoneLevel),
+            "cast=" .. tostring(ns.barCast.level < stoneLevel), "toggle=" .. tostring(ns.drawerToggle.level < stoneLevel),
+            "backing=" .. tostring(bk.parent.level < stoneLevel))
+        print("over the plate", "buttons=" .. tostring(ActionButton1.level > stoneLevel),
+            "pager=" .. tostring(not ns.pager or ns.pager.level > stoneLevel),
+            "cast text inset=" .. ns.barCast.name.points.LEFT[3] .. "," .. ns.barCast.clock.points.RIGHT[3])
         local strip, shown = ns.barPower, {}
         screen("lowRow", strip, "level=" .. strip.level)
         for i, b in ipairs(strip.segments) do
@@ -604,6 +652,57 @@ if barPass then
         cb.scripts.OnUpdate(cb, 1)
         castState("cast done, faded")
         now = now - 1
+        -- the minimap button drawer: closed, then open each way
+        local toggle, drawer = ns.drawerToggle, ns.drawer
+        local function glyph()
+            local function name(t) return tostring(t and t.texture):match("[^\\]+$") end
+            return name(toggle:GetNormalTexture()) .. "/" .. name(toggle:GetPushedTexture())
+                .. " lit=" .. tostring(toggle.highlightLocked)
+        end
+        local function drawerState(tag)
+            local names = {}
+            for _, f in ipairs({ Minimap:GetChildren() }) do
+                if f.parent == drawer then table.insert(names, f.name) end
+            end
+            print(tag, "glyph=" .. glyph(), "open=" .. tostring(drawer.shown), "taken=" .. table.concat(names, ","))
+            if drawer.shown then
+                screen("drawer", drawer, "level=" .. drawer.level)
+                for _, name in ipairs({ "BagnonMinimapButton", "LibDBIcon10_Zeta", "LibDBIcon10_Late" }) do
+                    local b = _G[name]
+                    if b and b.parent == drawer and b.shown then
+                        screen(name, b, string.format("scale=%.3f level=%d", b:GetScale(), b.level))
+                    end
+                end
+            end
+        end
+        screen("drawerToggle", toggle, "level=" .. toggle.level)
+        drawerState("drawer closed")
+        toggle.scripts.OnClick(toggle)
+        drawerState("drawer open")
+        -- LibDBIcon re-places a button round the minimap: it goes back
+        LibDBIcon10_Zeta:ClearAllPoints()
+        LibDBIcon10_Zeta:SetPoint("CENTER", Minimap, "CENTER", 80, 0)
+        screen("Zeta re-placed", LibDBIcon10_Zeta)
+        page.settings.drawer:Set(2)
+        drawerState("drawer up")
+        -- an addon hides its button, and one loads late
+        BagnonMinimapButton:Hide()
+        BagnonMinimapButton.scripts.OnHide(BagnonMinimapButton)
+        MinimapButton("LibDBIcon10_Late", 31)
+        toggle.scripts.OnClick(toggle)
+        toggle.scripts.OnClick(toggle)
+        drawerState("drawer rescanned")
+        -- the pointer on the open drawer, outside the tray, keeps a faded bar up
+        page.settings.visibility:Set(3)
+        mouseOver = drawer
+        for _ = 1, 20 do ns.barFade.scripts.OnUpdate(ns.barFade, 0.05) end
+        print("drawer hover", string.format("%.2f", ns.actionBar.alpha or 1))
+        mouseOver = false
+        page.settings.visibility:Set(1)
+        for _ = 1, 20 do ns.barFade.scripts.OnUpdate(ns.barFade, 0.05) end
+        BagnonMinimapButton:Show()
+        page.settings.drawer:Set(1)
+        toggle.scripts.OnClick(toggle)
         for _, k in ipairs({ "CastingBarFrame", "PlayerCastingBarFrame" }) do
             if _G[k] then print(k .. ".parent", _G[k].parent == ns.hidden and "hidden" or "kept") end
         end
@@ -698,7 +797,7 @@ end
 
 if stripsPass then
     -- the screen in console units: the console's top-left is (612, 916)
-    UIParent.rect = { -612, -916, 1308, 164 }
+    UIParent.fixed = { -612, -916, 1308, 164 }
     local function screen(tag, f, extra)
         local r = resolve(f)
         print(string.format("%s\t%.1f\t%.1f\t%.1f\t%.1f\t%s", tag, r[1] + 612, r[2] + 916, r[3] + 612,

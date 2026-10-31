@@ -4,7 +4,7 @@
 -- Two kinds of option. The Action bar and Rows options move Blizzard's
 -- secure buttons, which cannot be handed back mid-session, so they are read
 -- once at login and a change waits for a reload, as does Bare icons. The rest
--- are drawing only (art colour, visibility) and apply at once: modules hear
+-- are drawing only (art colour, visibility, drawer) and apply at once: modules hear
 -- about a change through ns.OnSetting.
 local addonName, ns = ...
 
@@ -14,8 +14,10 @@ local DEFAULTS = {
     bareIcons = false,      -- WeakAuras-style icons instead of Blizzard's button art
     artColor = "ffffffff",  -- AARRGGBB, as the colour swatch stores it; white leaves the art as drawn
     visibility = 1,         -- see VISIBILITY
+    drawer = 1,             -- which way the minimap button drawer opens: see DRAWER
 }
 ns.VISIBILITY = { ALWAYS = 1, COMBAT = 2, MOUSEOVER = 3, COMBAT_OR_MOUSEOVER = 4 }
+ns.DRAWER = { LEFT = 1, UP = 2 }
 
 -- Filled in from the saved table at ADDON_LOADED; defaults until then.
 ns.db = {}
@@ -80,6 +82,11 @@ local function Page()
             { V.MOUSEOVER, "On mouseover", "Faded until the pointer is over it, or a spell is being dragged." },
             { V.COMBAT_OR_MOUSEOVER, "In combat or on mouseover" },
         }), "A faded bar still works: its buttons and key bindings stay live."),
+        Settings.CreateDropdown(category, Setting("drawer", N, "Minimap buttons"), Choices({
+            { ns.DRAWER.LEFT, "Open left", "One row, out to the left of the bar." },
+            { ns.DRAWER.UP, "Open up", "One column, up from the bar's left end." },
+        }), "The addons' minimap buttons gather in a drawer behind the box on the bar's left end. "
+            .. "This is the way it opens."),
     }
     for _, child in ipairs(children) do child:SetParentInitializer(bar, BarOn) end
 

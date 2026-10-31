@@ -2,7 +2,8 @@
 -- top edge, pure geometry after the user's sketch: two rows, its sides
 -- upright beside the upper row and then a 45-degree skirt on the console's
 -- own shoulder line. The upper row holds the 12 slots, a pillar in every
--- gap, and the page chevrons and number in its right end; the lower row
+-- gap, the page chevrons and number in its right end and the minimap
+-- button drawer's toggle in its left (bars/drawer.lua); the lower row
 -- holds the player's cast bar (bars/cast.lua) over the class resource
 -- (bars/power.lua). With the Rows option, action bars 2 and 3 stack above
 -- the plate, bare.
@@ -16,11 +17,15 @@
 -- The plate's foot tucks under the console's top border, so the plate
 -- draws below the console's art.
 --
---   console base + 1   the plate
---   console base + 2   the class resource, in the lower row
---   console base + 3   the cast bar, over it
---   console base + 4   the action buttons
---   console base + 7   the page chevrons and number
+--   console base + 1   the slots' backing, so an empty slot is a dark well
+--   console base + 2   the class resource, in the lower row, and the drawer's
+--                      toggle, in the left end
+--   console base + 3   the cast bar, over the class resource
+--   console base + 4   the plate, over all three: its pill and its round
+--                      window crop what shows through them
+--   console base + 5   the action buttons
+--   console base + 7   the page chevrons and number, the minimap button
+--                      drawer's toggle and its open line (bars/drawer.lua)
 --   (console base + 10 is the console's art, over the plate's foot)
 --
 -- Built at login by bars/buttons.lua, and only when the Action bar option is
@@ -31,9 +36,12 @@ local console = ns.console
 local base = console:GetFrameLevel()
 ns.levels.actionBar = base + 1
 ns.levels.barPower = base + 2
+ns.levels.barToggle = base + 2
 ns.levels.barCast = base + 3
-ns.levels.actionButtons = base + 4
+ns.levels.barPlate = base + 4
+ns.levels.actionButtons = base + 5
 local PAGER = base + 7
+ns.levels.barPager = PAGER
 
 -- Blizzard's buttons are laid out at this size.
 local BUTTON = 45
@@ -71,7 +79,8 @@ local function Fade(tray)
     local function Wanted()
         local mode = ns.db.visibility
         if mode == V.ALWAYS or (GetCursorInfo and GetCursorInfo()) then return true end
-        local over = tray:IsMouseOver()
+        -- an open drawer stands outside the tray, and counts as the bar
+        local over = tray:IsMouseOver() or (ns.drawer and ns.drawer:IsShown() and ns.drawer:IsMouseOver())
         if mode == V.COMBAT then return inCombat end
         if mode == V.MOUSEOVER then return over end
         return inCombat or over
@@ -165,7 +174,19 @@ function ns.BuildBar(rows)
     tray:SetFrameLevel(ns.levels.actionBar)
     ns.actionBar = tray
 
-    plate = tray:CreateTexture(nil, "BACKGROUND")
+    -- behind the slots, one dark band; the plate's pillars stand over it
+    local row = windows[1]
+    local backing = tray:CreateTexture(nil, "BACKGROUND")
+    backing:SetPoint("TOPLEFT", console, "TOP", row[1][1], row[1][3])
+    backing:SetPoint("BOTTOMRIGHT", console, "TOP", row[#row][2], row[#row][4])
+    backing:SetColorTexture(unpack(ns.colors.ink))
+    ns.barBacking = backing
+
+    -- the plate stands over the bars and the toggle, so its own frame
+    local stone = CreateFrame("Frame", nil, tray)
+    stone:SetAllPoints()
+    stone:SetFrameLevel(ns.levels.barPlate)
+    plate = stone:CreateTexture(nil, "ARTWORK")
     plate:SetSize(art.width, art.height)
     plate:SetPoint("BOTTOM", console, "TOP", 0, art.bottom)
     plate:SetTexture(ns.media .. "actionbar")
@@ -175,6 +196,7 @@ function ns.BuildBar(rows)
     ns.pager = Pager(tray)
     if ns.BuildPower then ns.BuildPower(tray) end
     if ns.BuildCast then ns.BuildCast(tray) end
+    if ns.BuildDrawer then ns.BuildDrawer(tray) end
     Tint(ns.db.artColor)
     ns.OnSetting("artColor", Tint)
     Fade(tray)

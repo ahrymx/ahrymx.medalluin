@@ -15,6 +15,14 @@ ns.barPager = {
     down = { 254, 272, 40, 23 },
     number = { 275, 286, 49, 32 },
 }
+-- the left end's box, the minimap button drawer's toggle, and the drawer's
+-- line: a cell per button, the button fitted inside it, the line's padding,
+-- and where it stands: its right edge's x when it opens left, its bottom
+-- edge's height when it opens up; the toggle is a round button this wide,
+-- centred in the box
+ns.barDrawer = { -286, -254, 59, 23 }
+ns.barDrawerToggle = 32
+ns.barDrawerCell = { cell = 34, button = 30, pad = 2, left = -293, up = 69 }
 -- The slots, per row count (the Rows option): rows from the bottom up (row 1
 -- is action bar 1, in the frame; the rows above it stand bare).
 ns.barWindows = {

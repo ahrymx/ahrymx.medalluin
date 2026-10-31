@@ -16,18 +16,26 @@ geometry, no gryphons (the user's sketch, after plan/2026-10-31_20-17-39.png):
     console art;
   * the upper row: the 12 slots with a stone pillar in every gap, and an end
     panel at each side. The right end holds the page chevrons (two boxes,
-    up over down) and the page number's box; the left end is the same panel
-    with a plain boss, so the outline stays symmetric and bar 1 stays
-    centred on the console;
-  * the lower row: one dark well as wide as the upper row, end panels
-    included, for the player's cast bar (bars/cast.lua) and, when no cast is
+    up over down) and the page number's box; the left end holds the minimap
+    button drawer's toggle, a round button showing through a round window
+    centred where the right end's boxes are, the window smaller than the
+    button so the stone covers its gold rim; the outline stays symmetric
+    and bar 1 stays centred on the console;
+  * behind the slots, a dark backing drawn by code (bars/bar.lua), so an
+    empty slot shows a well and not the world behind it;
+  * the lower row: one pill-shaped window as wide as the upper row, end
+    panels included, for the player's cast bar (bars/cast.lua) and, when no cast is
     running, the class resource (bars/power.lua);
   * the chevrons themselves (up and down, normal and pushed, and a shared
-    highlight), as small textures for Blizzard's own page buttons to wear.
+    highlight), as small textures for Blizzard's own page buttons to wear,
+    and the drawer toggle: the user's toolkit icon (plan/toolkit.png),
+    recoloured from its pink-to-blue gradient to the console's navy and
+    gold, in a gold rim.
 
 Rows 2 and 3 (the Rows option) stand above the frame, bare.
 
-    python3 art/bars/gen_bar.py          -> plan/bar.png (1 row), plan/bar-rows.png (1, 2, 3)
+    python3 art/bars/gen_bar.py          -> plan/bar.png (1 row), plan/bar-rows.png (1, 2, 3),
+                                            plan/bar-frame.png, plan/bar-drawer.png
     python3 art/bars/gen_bar.py layer2   -> assets/layer2.png, assets/layer2.json, assets/bar/*.png
 
 assets/layer2.png is the plate in the console's asset format (a 1920x1081
@@ -38,11 +46,14 @@ media/actionbar.tga, media/bar/*.tga and bars/windows.lua.
 
 Distances are 1080p screen pixels, from the centre line.
 """
+import base64
+import io
 import json
 import os
 import subprocess
 import sys
 
+import numpy as np
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -50,6 +61,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 OUT = os.path.join(HERE, "render")
 BASE = os.path.join(ROOT, "plan", "H-party-combat-screen.png")
 PARTS = os.path.join(ROOT, "assets", "bar")
+TOOLKIT = os.path.join(ROOT, "plan", "toolkit.png")
 
 W, H, CX = 1920, 1080, 960
 CONSOLE_TOP = 916                 # the console art's top edge (export.py bbox)
@@ -73,8 +85,11 @@ CONSOLE_HALF = 322
 # number's box beside them.
 CHEVRON_IN, CHEVRON_W, CHEVRON_H, PAGER_GAP = 5, 18, 17, 2
 NUMBER_IN, NUMBER_W, NUMBER_H = 3, 11, 17
-# The chevron textures: canvas size, and the button they are drawn for.
+# The chevron textures' canvas; the drawer toggle's texture, its button's
+# diameter, and the diameter of the plate's window over it (the icon's gold
+# rim starts at 0.86 of its radius, so a smaller window hides it).
 TEX = 32
+TOOL_TEX, TOOL_D, HOLE_D = 64, 32, 27
 
 HUES = [("#e0b25a", "#5a3a10"), ("#d0603a", "#3a0e06"), ("#7f9ce0", "#16224a"),
         ("#9ccc6a", "#1e3a10"), ("#b384de", "#2a1046"), ("#ead08a", "#5a4416"),
@@ -137,12 +152,38 @@ def pager_boxes():
     return {"up": up, "down": down, "number": number}
 
 
-def boss():
-    """The left end's ornament: a round stud, centred where the right end's
-    boxes are, mirrored."""
+def drawer_box():
+    """The left end's box, the drawer's toggle: the mirror of the right
+    end's boxes taken together."""
     b = pager_boxes()
-    l, r = b["up"][0], b["number"][2]
-    return 2 * CX - (l + r) / 2, (SLOT_TOP + SLOT_BOTTOM) / 2
+    return (2 * CX - b["number"][2], b["up"][1], 2 * CX - b["up"][0], b["down"][3])
+
+
+def toggle_centre():
+    l, t, r, b = drawer_box()
+    return (l + r) / 2, (t + b) / 2
+
+
+# The drawer, outside the plate: a cell per minimap button, the button
+# fitted inside it, the panel's padding, and its gap from the plate (when
+# it opens left) or from the frame's top (when it opens up).
+CELL, CELL_BUTTON, DRAWER_PAD, DRAWER_GAP = 34, 30, 2, 4
+
+
+def drawer_panel(direction, n):
+    """The open drawer's panel as (left, top, right, bottom): one line of n
+    cells, left beside the plate at the upper row's height, or up from the
+    frame's top over the toggle's centre (clear of rows 2 and 3, which only
+    span the slots)."""
+    long, short = n * CELL + 2 * DRAWER_PAD, CELL + 2 * DRAWER_PAD
+    if direction == "left":
+        r = CX - FRAME_HALF - DRAWER_GAP
+        mid = (SLOT_TOP + SLOT_BOTTOM) / 2
+        return (r - long, mid - short / 2, r, mid + short / 2)
+    l, _, r, _ = drawer_box()
+    mid = (l + r) / 2
+    b = FRAME_TOP - DRAWER_GAP
+    return (mid - short / 2, b - long, mid + short / 2, b)
 
 
 def frame_outline():
@@ -182,11 +223,23 @@ def well(l, t, r, b):
 
 
 def plate(defs):
-    """The plate's art, the windows included as wells (the layer2 pass
-    punches the slots and the lower row out)."""
+    """The plate's art, its windows cut by a mask: the slots and the lower
+    row's pill, and the toggle's round window. The plate draws OVER what
+    shows through them (the slot backing, the cast bar and class resource,
+    the toggle), so its edges crop them."""
     stone_defs(defs)
+    cx, cy = toggle_centre()
+    l, t, r, b = LOW
+    rr = (b - t) / 2
+    defs.append(f'<mask id="holes" maskUnits="userSpaceOnUse" x="0" y="0" width="{W}" height="{H + 1}">'
+                f'<rect width="{W}" height="{H + 1}" fill="#fff"/>'
+                + "".join(f'<rect x="{x}" y="{y}" width="{ICON}" height="{ICON}" fill="#000"/>'
+                          for x, y in slots(1)[0])
+                + f'<rect x="{l}" y="{t}" width="{r - l}" height="{b - t}" rx="{rr}" fill="#000"/>'
+                f'<circle cx="{cx}" cy="{cy}" r="{HOLE_D / 2}" fill="#000"/></mask>')
     f = frame_outline()
-    body = [f'<polygon points="{pts(f)}" fill="url(#stone)" stroke="{STONE_EDGE}" stroke-width="1.6"/>',
+    body = ['<g mask="url(#holes)">',
+            f'<polygon points="{pts(f)}" fill="url(#stone)" stroke="{STONE_EDGE}" stroke-width="1.6"/>',
             f'<polygon points="{pts(f)}" fill="#fff" filter="url(#grain)"/>']
     # the bevel: a lit line just inside the top edge and down both sides
     i = 1.5
@@ -207,21 +260,35 @@ def plate(defs):
         x = CX + side * (HALF + 1.5)
         body.append(f'<line x1="{x}" y1="{FRAME_TOP + 3}" x2="{x}" y2="{SLOT_BOTTOM + 1}" '
                     f'stroke="{STONE_LO}" stroke-width="1"/>')
-    for l, t, r, b in holes():
-        body.append(well(l, t, r, b))
+    for x, y in slots(1)[0]:
+        body.append(well(x, y, x + ICON, y + ICON))
+    # the pill and the round window: a black edge, lit along the bottom
+    body.append(f'<rect x="{l - 1}" y="{t - 1}" width="{r - l + 2}" height="{b - t + 2}" rx="{rr + 1}" '
+                f'fill="{STONE_EDGE}"/>'
+                f'<line x1="{l + rr}" y1="{b + 1.5}" x2="{r - rr}" y2="{b + 1.5}" stroke="{STONE_HI}" '
+                f'stroke-width="1"/>')
+    h = HOLE_D / 2
+    body.append(f'<circle cx="{cx}" cy="{cy}" r="{h + 1.2}" fill="{STONE_EDGE}"/>'
+                f'<path d="M {cx - h - 1.5} {cy + 1} A {h + 1.5} {h + 1.5} 0 0 0 {cx + h + 1.5} {cy + 1}" '
+                f'fill="none" stroke="{STONE_HI}" stroke-width="1"/>')
     b = pager_boxes()
     for k in ("up", "down", "number"):
         body.append(well(*b[k]))
-    # the pager's boxes get a gold rim, as the reference's do
+    # the boxes get a gold rim, as the reference's do
     for k in ("up", "down", "number"):
         l, t, r, bt = b[k]
         body.append(f'<rect x="{l - 0.5}" y="{t - 0.5}" width="{r - l + 1}" height="{bt - t + 1}" '
                     f'fill="none" stroke="{GOLD_D}" stroke-width="1"/>')
-    bx, by = boss()
-    body.append(f'<circle cx="{bx}" cy="{by}" r="7" fill="{STONE_EDGE}"/>'
-                f'<circle cx="{bx}" cy="{by}" r="6" fill="url(#stone)"/>'
-                f'<circle cx="{bx - 1.5}" cy="{by - 1.5}" r="2" fill="{STONE_HI}" opacity="0.8"/>')
+    body.append('</g>')
     return "".join(body)
+
+
+def backing():
+    """The slots' backing, as bars/bar.lua draws it: one dark band behind
+    every slot, under the plate."""
+    row = slots(1)[0]
+    return (f'<rect x="{row[0][0]}" y="{SLOT_TOP}" width="{row[-1][0] + ICON - row[0][0]}" height="{ICON}" '
+            f'fill="{INK}"/>')
 
 
 # ------------------------------------------------------------ chevrons
@@ -253,10 +320,64 @@ CHEVRONS = {"chevron-up": ("up", "normal"), "chevron-up-pushed": ("up", "pushed"
             "chevron-highlight": ("up", "highlight")}
 
 
-def chevrons():
+def toolkit(state):
+    """The drawer toggle's texture, TOOL_TEX square: the toolkit icon with
+    its gradient taken out and the console's colours put in. The icon is a
+    disc in a horizontal pink-to-blue gradient with the case drawn in white
+    over it (the hammer is the gradient again, through the case), so every
+    pixel is white mixed with the gradient colour at its column, and the mix
+    is solved for: 0 is the disc, 1 the case. The disc becomes navy, the
+    case gold, both lit from above, and a gold rim goes round. Pushed is
+    darker and a pixel lower."""
+    src = np.asarray(Image.open(TOOLKIT).convert("RGBA")).astype(float)
+    n = src.shape[0]
+    rgb, alpha = src[..., :3], src[..., 3] / 255
+    # the gradient, read off the disc's middle row either side of the case
+    left, right = src[n // 2, n // 64, :3], src[n // 2, n - 1 - n // 64, :3]
+    x = (np.arange(n) - n // 64) / (n - 1 - 2 * (n // 64))
+    grad = left + np.clip(x, 0, 1)[None, :, None] * (right - left)
+    mix = np.clip(((rgb - grad) / np.maximum(255 - grad, 1)).mean(axis=2), 0, 1)
+
+    y = (np.arange(n) / (n - 1))[:, None, None]
+    def lit(top, bottom):
+        return np.array(top, float) + y * (np.array(bottom, float) - np.array(top, float))
+    navy, gold = lit((0x3e, 0x47, 0x60), (0x1a, 0x1e, 0x2b)), lit((0xf6, 0xdc, 0x8a), (0xa8, 0x82, 0x30))
+    out = navy * (1 - mix[..., None]) + gold * mix[..., None]
+
+    # the rim: gold, dark on its outer edge, over the disc's own edge
+    yy, xx = np.mgrid[0:n, 0:n]
+    d = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) / (n / 2)
+    rim = np.clip((d - 0.86) * 40, 0, 1)[..., None]
+    edge = np.clip((d - 0.96) * 40, 0, 1)[..., None]
+    out = out * (1 - rim) + lit((0xe0, 0xb8, 0x4a), (0x8a, 0x6a, 0x24)) * rim
+    out = out * (1 - edge) + np.array((0x1a, 0x12, 0x06), float) * edge
+    if state == "pushed":
+        out = out * 0.72
+    img = Image.fromarray(np.dstack([out, alpha * 255]).clip(0, 255).astype(np.uint8), "RGBA")
+    return img.resize((TOOL_TEX, TOOL_TEX), Image.LANCZOS)
+
+
+def toolkit_pushed():
+    """Pushed: darker, and lower by a screen pixel."""
+    img = toolkit("pushed")
+    moved = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    moved.paste(img, (0, TOOL_TEX // TOOL_D))
+    return moved
+
+
+TOOLKIT_PARTS = {"toolkit": lambda: toolkit("normal"), "toolkit-pushed": toolkit_pushed}
+
+
+def parts():
     os.makedirs(PARTS, exist_ok=True)
     for name, (d, state) in CHEVRONS.items():
         rsvg(chevron_svg(d, state), os.path.join(PARTS, f"{name}.png"))
+    for name in ("drawer-left", "drawer-left-pushed", "drawer-right", "drawer-right-pushed",
+                 "drawer-up", "drawer-up-pushed", "drawer-down", "drawer-down-pushed"):
+        if os.path.exists(os.path.join(PARTS, f"{name}.png")):
+            os.remove(os.path.join(PARTS, f"{name}.png"))       # the arrow glyphs the toolkit replaced
+    for name, make in TOOLKIT_PARTS.items():
+        make().save(os.path.join(PARTS, f"{name}.png"))
 
 
 def chevrons_drawn():
@@ -270,6 +391,17 @@ def chevrons_drawn():
     nl, nt, nr, nb = b["number"]
     out.append(f'<text x="{(nl + nr) / 2}" y="{nb - 4}" font-family="Friz Quadrata TT, serif" font-size="12" '
                f'fill="{GOLD}" text-anchor="middle">1</text>')
+    return "".join(out)
+
+
+def toggle_drawn():
+    """The drawer toggle, under the plate, as code places it."""
+    cx, cy = toggle_centre()
+    out = []
+    buf = io.BytesIO()
+    toolkit("normal").save(buf, "PNG")
+    out.append(f'<image x="{cx - TOOL_D / 2}" y="{cy - TOOL_D / 2}" width="{TOOL_D}" height="{TOOL_D}" '
+               f'href="data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"/>')
     return "".join(out)
 
 
@@ -321,20 +453,28 @@ def layer2():
     defs = []
     img = rsvg(wrap(defs, [plate(defs)], height=1081), os.path.join(OUT, "layer2.png"))
     px = img.load()
-    for l, t, r, b in holes():
+    # the slots again by pixel, so a slot is exactly its hole (the pill and
+    # the round window keep the mask's soft edge)
+    for l, t, r, b in holes()[:-1]:
         for y in range(t, b):
             for x in range(l, r):
                 px[x, y] = (0, 0, 0, 0)
     path = os.path.join(ROOT, "assets", "layer2.png")
     img.save(path)
-    chevrons()
+    parts()
     layout = {
         "console_top": CONSOLE_TOP,
         "frame": [CX - FOOT_HALF, FRAME_TOP, CX + FOOT_HALF, FOOT_Y],
         "upper": [CX - FRAME_HALF, FRAME_TOP, CX + FRAME_HALF, SLOT_BOTTOM + MID_BAND],
         "low": list(LOW),
         "pager": {k: list(v) for k, v in pager_boxes().items()},
-        "chevrons": sorted(CHEVRONS),
+        "drawer": list(drawer_box()),
+        "toggle": {"diameter": TOOL_D, "hole": HOLE_D},
+        "drawer_cell": {"cell": CELL, "button": CELL_BUTTON, "pad": DRAWER_PAD,
+                        # where the open line stands: its right edge (open
+                        # left) and its bottom edge (open up)
+                        "left": CX - FRAME_HALF - DRAWER_GAP, "up": FRAME_TOP - DRAWER_GAP},
+        "parts": sorted(CHEVRONS) + sorted(TOOLKIT_PARTS),
         "rows": {str(n): [[[x, x + ICON, y, y + ICON] for x, y in row] for row in slots(n)]
                  for n in range(1, MAX_ROWS + 1)},
     }
@@ -353,16 +493,41 @@ def cast(fraction, label):
     return (f'<rect x="{l}" y="{t}" width="{r - l}" height="{b - t}" fill="{INK}"/>'
             f'<rect x="{l}" y="{t}" width="{w:.1f}" height="{b - t}" fill="#d9b35c"/>'
             f'<rect x="{l + w - 1:.1f}" y="{t}" width="2" height="{b - t}" fill="#fff" opacity="0.8"/>'
-            f'<text x="{l + 4}" y="{b - 3}" {text}>{label}</text>'
-            f'<text x="{r - 4}" y="{b - 3}" {text} text-anchor="end">0.9</text>')
+            f'<text x="{l + 8}" y="{b - 3}" {text}>{label}</text>'
+            f'<text x="{r - 8}" y="{b - 3}" {text} text-anchor="end">0.9</text>')
 
 
-def screen(rows, lit=3, casting=False):
+# minimap buttons, as the mockup's stand-ins: a round icon in a dark ring
+MINIMAP_HUES = ["#c9a14a", "#6a9ad0", "#a0c060", "#c06a8a", "#8a7ad0"]
+
+
+def drawer(direction, n=5):
+    """The open drawer: its panel, a well like the boxes', and n round
+    buttons in a line, as bars/drawer.lua lays them out."""
+    l, t, r, b = drawer_panel(direction, n)
+    out = [well(l, t, r, b),
+           f'<rect x="{l - 0.5}" y="{t - 0.5}" width="{r - l + 1}" height="{b - t + 1}" fill="none" '
+           f'stroke="{GOLD_D}" stroke-width="1"/>']
+    for i in range(n):
+        # the first cell sits next to the toggle
+        if direction == "left":
+            cx, cy = r - DRAWER_PAD - (i + 0.5) * CELL, (t + b) / 2
+        else:
+            cx, cy = (l + r) / 2, b - DRAWER_PAD - (i + 0.5) * CELL
+        rr = CELL_BUTTON / 2
+        out.append(f'<circle cx="{cx}" cy="{cy}" r="{rr}" fill="#1a1a1a" stroke="#b8a070" stroke-width="2"/>'
+                   f'<circle cx="{cx}" cy="{cy}" r="{rr - 5}" fill="{MINIMAP_HUES[i % len(MINIMAP_HUES)]}"/>')
+    return "".join(out)
+
+
+def screen(rows, lit=3, casting=False, drawer_open=None):
     """The bar over the console's combat render; the plate's foot goes UNDER
     the console art, so the console is pasted back over it."""
     defs = []
     row = cast(0.62, "Frostbolt") if casting else power(5, lit)
-    body = [plate(defs), row, icons(rows, defs), chevrons_drawn()]
+    body = [backing(), row, toggle_drawn(), plate(defs), icons(rows, defs), chevrons_drawn()]
+    if drawer_open:
+        body.append(drawer(drawer_open))
     over = rsvg(wrap(defs, body), os.path.join(OUT, f"bar-{rows}.png"))
     base = Image.open(BASE).convert("RGBA").crop((0, 0, W, H))
     shot = Image.alpha_composite(base, over)
@@ -382,6 +547,13 @@ def main():
     pair.paste(shots[0].crop(frame).resize((2 * w, 2 * h), Image.LANCZOS), (0, 0))
     pair.paste(screen(1, casting=True).crop(frame).resize((2 * w, 2 * h), Image.LANCZOS), (0, 2 * h + 8))
     pair.save(os.path.join(ROOT, "plan", "bar-frame.png"))
+    # the drawer open, left and up (with three rows, so it clears them)
+    crop = (380, 620, 1360, 1000)
+    w, h = crop[2] - crop[0], crop[3] - crop[1]
+    sheet = Image.new("RGB", (2 * w + 8, h), (10, 10, 10))
+    sheet.paste(screen(1, drawer_open="left").crop(crop), (0, 0))
+    sheet.paste(screen(3, drawer_open="up").crop(crop), (w + 8, 0))
+    sheet.save(os.path.join(ROOT, "plan", "bar-drawer.png"))
     w, h = crop[2] - crop[0], crop[3] - crop[1]
     sheet = Image.new("RGB", (w, h * MAX_ROWS))
     for i, s in enumerate(shots):
