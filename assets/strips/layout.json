@@ -1,0 +1,12 @@
+{
+ "stripHeight": 30,
+ "length": 460,
+ "pitch": 30,
+ "glyphTex": 32,
+ "firstGlyph": 86,
+ "glyphDrop": 2,
+ "arrowX": 68,
+ "arrowY": 22,
+ "statsFrom": 78,
+ "statsTo": 456
+}

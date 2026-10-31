@@ -15,7 +15,8 @@ local function HealthColor(unit)
     end
     if UnitIsPlayer(unit) then
         local _, class = UnitClass(unit)
-        local c = class and RAID_CLASS_COLORS[class]
+        -- a restricted unit's class is secret, and a secret cannot be a key
+        local c = not ns.IsSecret(class) and class and RAID_CLASS_COLORS[class]
         if c then return Muted(c.r, c.g, c.b) end
     end
     if UnitIsTapDenied and UnitIsTapDenied(unit) then
@@ -25,11 +26,32 @@ local function HealthColor(unit)
     return Muted(c.r, c.g, c.b)
 end
 
+-- Health may be secret in combat (Forever, retail): the bar takes the
+-- numbers as they come, and the percentage comes from UnitHealthPercent
+-- through a 0-100 curve, so no Lua arithmetic ever touches a secret.
+-- (Blizzard's own ScaleTo100 curve, where it is loaded.)
+local percentCurve
+if UnitHealthPercent and C_CurveUtil and C_CurveUtil.CreateCurve then
+    percentCurve = CurveConstants and CurveConstants.ScaleTo100
+    if not percentCurve then
+        percentCurve = C_CurveUtil.CreateCurve()
+        percentCurve:SetType(Enum.LuaCurveType.Linear)
+        percentCurve:AddPoint(0, 0)
+        percentCurve:AddPoint(1, 100)
+    end
+end
+
+local function HealthPercent(unit, cur, max)
+    if percentCurve then return UnitHealthPercent(unit, false, percentCurve) end
+    return max > 0 and math.floor(cur / max * 100 + 0.5) or 0
+end
+
 local function UpdateHealth(self)
     local unit = self.unit
     local max = UnitHealthMax(unit)
     local cur = UnitHealth(unit)
-    self.health:SetMinMaxValues(0, max > 0 and max or 1)
+    if not ns.IsSecret(max) and max <= 0 then max = 1 end
+    self.health:SetMinMaxValues(0, max)
     self.health:SetValue(cur)
     self.health:SetStatusBarColor(HealthColor(unit))
     if not self.value then return end
@@ -38,22 +60,25 @@ local function UpdateHealth(self)
     elseif UnitIsDeadOrGhost(unit) then
         self.value:SetText(DEAD)
     else
-        self.value:SetFormattedText("%d%%", max > 0 and math.floor(cur / max * 100 + 0.5) or 0)
+        self.value:SetFormattedText("%.0f%%", HealthPercent(unit, cur, max))
     end
 end
 
 local function UpdatePower(self)
     local unit = self.unit
     local max = UnitPowerMax(unit)
-    self.power:SetShown(max > 0)
-    self.power:SetMinMaxValues(0, max > 0 and max or 1)
+    -- a unit with no power of this type shows no bar; a secret max is shown
+    self.power:SetShown(ns.IsSecret(max) or max > 0)
+    if not ns.IsSecret(max) and max <= 0 then max = 1 end
+    self.power:SetMinMaxValues(0, max)
     self.power:SetValue(UnitPower(unit))
     local c = PowerBarColor[UnitPowerType(unit)] or PowerBarColor.MANA
     self.power:SetStatusBarColor(Muted(c.r, c.g, c.b))
 end
 
 local function UpdateName(self)
-    self.name:SetText(UnitName(self.unit) or "")
+    -- a secret name still displays
+    self.name:SetText(ns.Or(UnitName(self.unit), ""))
 end
 
 local function UpdateAll(self)

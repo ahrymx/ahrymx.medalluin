@@ -29,9 +29,13 @@ ns.On("PLAYER_LOGIN", function()
     -- minimap itself and come along until they get their corner pips.
     for _, name in ipairs({ "MinimapBorder", "MinimapBorderTop", "MinimapZoomIn", "MinimapZoomOut",
         "MinimapZoneTextButton", "MiniMapWorldMapButton", "MinimapToggleButton",
-        "MinimapNorthTag", "MinimapCompassTexture", "GameTimeFrame", "TimeManagerClockButton" }) do
+        "MinimapNorthTag", "MinimapCompassTexture", "GameTimeFrame", "TimeManagerClockButton",
+        -- Forever and retail hang their ring art (and the landing-page
+        -- button) on the minimap itself, and the zoom buttons by key
+        "MinimapBackdrop", "ZoomIn", "ZoomOut", "ZoomHitArea" }) do
         local f = _G[name]
-        if f then
+        if type(f) ~= "table" then f = rawget(Minimap, name) end
+        if type(f) == "table" then
             if f.UnregisterAllEvents then f:UnregisterAllEvents() end
             f:SetParent(ns.hidden)
         end

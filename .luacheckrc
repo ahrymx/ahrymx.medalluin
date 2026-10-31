@@ -15,18 +15,38 @@ unused_args = false
 read_globals = {
     -- frames
     "UIParent", "Minimap", "MinimapCluster", "GameTooltip", "PlayerFrame", "TargetFrame",
-    "PartyFrame", "CompactPartyFrame",
+    "PartyFrame", "CompactPartyFrame", "MainMenuBar", "CastingBarFrame", "PlayerCastingBarFrame",
+    "MicroButtonAndBagsBar", "CharacterMicroButton", "MicroButtonPortrait", "MainMenuBarPerformanceBar",
+    "MainMenuBarDownload", "MainMenuBarBackpackButton", "KeyRingButton",
+    -- frames of the Edit Mode clients (Forever, retail)
+    "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "StanceBar", "PetActionBar",
+    "MicroMenu", "MicroMenuContainer", "BagsBar", "CharacterReagentBag0Slot", "StatusTrackingBarManager",
+    "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer",
     -- API
     "CreateFrame", "InCombatLockdown", "RegisterUnitWatch", "IsInGroup",
     "UnitExists", "UnitName", "UnitClass", "UnitIsPlayer", "UnitIsConnected", "UnitIsDeadOrGhost",
     "UnitIsTapDenied", "UnitReaction", "UnitHealth", "UnitHealthMax", "UnitPower", "UnitPowerMax",
     "UnitPowerType", "UnitLevel", "UnitXP", "UnitXPMax", "GetXPExhaustion", "GetMaxPlayerLevel",
     "GetWatchedFactionInfo", "C_Reputation", "BreakUpLargeNumbers", "GameTooltip_Hide",
-    "UnitFrame_OnEnter", "UnitFrame_OnLeave",
+    "UnitFrame_OnEnter", "UnitFrame_OnLeave", "hooksecurefunc", "GetTime",
+    "GetActionCooldown", "HasAction", "IsUsableAction", "IsActionInRange",
+    "UnitCastingInfo", "CastingInfo", "UnitChannelInfo", "ChannelInfo", "GetComboPoints",
+    "SetPortraitTexture", "C_Container", "GetContainerNumSlots", "GetContainerNumFreeSlots",
+    "ToggleAllBags", "OpenAllBags", "GetInventoryItemDurability", "GetInventoryItemLink", "ToggleCharacter",
+    "GameTime_GetTime", "GameTime_GetLocalTime", "GameTime_GetGameTime", "LoadAddOn", "TimeManager_Toggle",
+    "date",
+    -- the Edit Mode clients' API: secret values, curves, duration objects
+    "issecretvalue", "C_ActionBar", "C_CurveUtil", "CurveConstants", "Enum", "UnitHealthPercent",
+    "UnitCastingDuration", "UnitChannelDuration", "ActionButton_UpdateCooldownNumberHidden",
+    -- the settings page and the atlas sizes
+    "Settings", "SettingsPanel", "CreateSettingsButtonInitializer", "ReloadUI", "C_Texture", "GetCursorInfo", "GetActionBarPage", "GetSpecialization",
     -- tables and strings
     "RAID_CLASS_COLORS", "FACTION_BAR_COLORS", "PowerBarColor", "MAX_PLAYER_LEVEL",
-    "PLAYER_OFFLINE", "DEAD", "LEVEL", "XP", "REPUTATION",
+    "PLAYER_OFFLINE", "DEAD", "LEVEL", "XP", "REPUTATION", "FAILED", "INTERRUPTED",
+    "BAGSLOTTEXT", "NUM_BAG_SLOTS", "DURABILITY", "TIMEMANAGER_TITLE", "TIMEMANAGER_TOOLTIP_LOCALTIME",
+    "TIMEMANAGER_TOOLTIP_REALMTIME",
     -- Lua extras WoW provides
-    "wipe", "format", "unpack",
+    "wipe", "format", "unpack", "CopyTable",
 }
-globals = { "_G" }
+-- the saved variables and the slash command
+globals = { "_G", "MedaluinDB", "SLASH_MEDALUIN1", "SlashCmdList" }
