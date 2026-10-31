@@ -1,0 +1,25 @@
+# OS and editor clutter
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+*.swp
+.vscode/
+.idea/
+
+# Python (art generator scripts)
+__pycache__/
+*.py[cod]
+.venv/
+
+# Generated from the SVG sources; rebuild with the art scripts
+art/**/render/
+art/**/states/
+
+# WoW client folders, should the client's tree ever be mirrored here
+# (only WoW/Interface/AddOns/ is project code)
+WoW/WTF/
+WoW/Cache/
+WoW/Logs/
+WoW/Errors/
+WoW/Screenshots/
