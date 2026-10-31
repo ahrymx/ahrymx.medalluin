@@ -404,6 +404,37 @@ function GameTime_GetTime() return "11:39" end
 function UnitChannelInfo() end
 local catForm = false
 function UnitPowerType() return catForm and 3 or 0 end
+local isDragonriding = false
+local vigorCharges = 6
+local vigorStart = 0
+local vigorDur = 5
+local vigorModRate = 1
+function IsMounted() return isDragonriding end
+function GetSpellCharges(id)
+    if not isDragonriding then return nil end
+    if id == 372610 or id == 372608 then
+        return vigorCharges, 6, vigorStart, vigorDur, vigorModRate
+    end
+end
+C_PlayerInfo = {
+    GetGlidingInfo = function()
+        return isDragonriding, isDragonriding, isDragonriding and 65 or 0
+    end,
+}
+C_Spell = {
+    GetSpellCharges = function(id)
+        if not isDragonriding then return nil end
+        if id == 372610 or id == 372608 then
+            return {
+                currentCharges = vigorCharges,
+                maxCharges = 6,
+                cooldownStartTime = vigorStart,
+                cooldownDuration = vigorDur,
+                chargeModRate = vigorModRate,
+            }
+        end
+    end,
+}
 function UnitLevel() return 30 end
 function UnitXP() return 650 end
 function UnitXPMax() return 1000 end
@@ -779,6 +810,29 @@ if barPass then
             local b = strip.segments[i]
             screen("segment" .. i, b, string.format("min=%s max=%s value=%s", b.min, b.max, tostring(b.value)))
         end
+        -- dragonriding: mounting a skyriding mount shows 6 vigor charges in cyan
+        isDragonriding = true
+        vigorCharges = 4
+        vigorStart = now - 2.5
+        vigorDur = 5
+        for _, f in ipairs(events.PLAYER_CAN_GLIDE_CHANGED or {}) do f.scripts.OnEvent(f, "PLAYER_CAN_GLIDE_CHANGED", true) end
+        local vigorShown = {}
+        for i, b in ipairs(strip.segments) do
+            if b.shown then table.insert(vigorShown, i) end
+        end
+        local col = strip.segments[1].barColor
+        print("dragonriding", "segments=" .. #vigorShown,
+            string.format("colour=%.2f,%.2f,%.2f", col[1], col[2], col[3]),
+            "val=" .. tostring(strip.segments[5].value))
+        isDragonriding = false
+        for _, f in ipairs(events.PLAYER_CAN_GLIDE_CHANGED or {}) do f.scripts.OnEvent(f, "PLAYER_CAN_GLIDE_CHANGED", false) end
+        local backShown = {}
+        for i, b in ipairs(strip.segments) do
+            if b.shown then table.insert(backShown, i) end
+        end
+        col = strip.segments[1].barColor
+        print("dismounted", "segments=" .. #backShown,
+            string.format("colour=%.2f,%.2f,%.2f", col[1], col[2], col[3]))
         -- the cast bar over the class resource: idle, a cast, its interruption
         local cb = ns.barCast
         local function castState(tag)

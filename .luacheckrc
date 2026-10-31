@@ -34,7 +34,7 @@ read_globals = {
     "SetPortraitTexture", "C_Container", "GetContainerNumSlots", "GetContainerNumFreeSlots",
     "ToggleAllBags", "OpenAllBags", "GetInventoryItemDurability", "GetInventoryItemLink", "ToggleCharacter",
     "GameTime_GetTime", "GameTime_GetLocalTime", "GameTime_GetGameTime", "LoadAddOn", "TimeManager_Toggle",
-    "date", "LibStub", "C_Timer",
+    "date", "LibStub", "C_Timer", "C_Spell", "GetSpellCharges", "C_PlayerInfo", "IsMounted",
     -- the Edit Mode clients' API: secret values, curves, duration objects
     "issecretvalue", "C_ActionBar", "C_CurveUtil", "CurveConstants", "Enum", "UnitHealthPercent",
     "UnitCastingDuration", "UnitChannelDuration", "ActionButton_UpdateCooldownNumberHidden",
