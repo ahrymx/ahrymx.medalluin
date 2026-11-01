@@ -1371,6 +1371,46 @@ if savedSimParty then
     local p4 = ns.units.party4
     print("party4.boss", tostring(p4.bossDebuff and p4.bossDebuff.shown),
         tostring(p4.bossDebuff and p4.bossDebuff.timer and p4.bossDebuff.timer.text))
+
+    -- 1. Role icons at bottom outer edges
+    print("party1.role", tostring(p1.roleFrame and p1.roleFrame.shown),
+        "overArt=" .. tostring(p1.roleFrame.level > ns.levels.art),
+        "point=" .. tostring(p1.roleFrame.points.CENTER and p1.roleFrame.points.CENTER[2]))
+    print("party3.role", tostring(p3.roleFrame and p3.roleFrame.shown), "TANK")
+
+    -- 2. Dead unit resurrect icon
+    print("party1.rez alive", tostring(p1.rezIcon and p1.rezIcon.shown))
+    p1.stub.dead = true
+    p1.scripts.OnEvent(p1, "UNIT_HEALTH")
+    print("party1.rez dead", tostring(p1.rezIcon and p1.rezIcon.shown),
+        "aboveName=" .. tostring(p1.rezIcon.points.BOTTOM and p1.rezIcon.points.BOTTOM[1] == p1.name))
+    p1.stub.dead = false
+    p1.scripts.OnEvent(p1, "UNIT_HEALTH")
+
+    -- 3. Range fade
+    print("party3.range in", tostring(p3.alpha or 1))
+    p3.stub.inRange = false
+    ns.UpdatePartyRange()
+    print("party3.range out", string.format("%.2f", p3.alpha))
+    p3.stub.inRange = true
+    ns.UpdatePartyRange()
+    print("party3.range restored", tostring(p3.alpha or 1))
+
+    -- 4. Ready check: hides buffs/debuffs, shows middle status
+    for _, f in ipairs(events.READY_CHECK or {}) do f.scripts.OnEvent(f, "READY_CHECK") end
+    local p3BuffsInCheck = 0
+    for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then p3BuffsInCheck = p3BuffsInCheck + 1 end end
+    print("readyCheck.active", "party1.status=" .. tostring(p1.statusWidget and p1.statusWidget.shown),
+        "p3Buffs=" .. p3BuffsInCheck, "p2CC=" .. tostring(p2.ccWidget.shown))
+    for _, f in ipairs(events.READY_CHECK_CONFIRM or {}) do f.scripts.OnEvent(f, "READY_CHECK_CONFIRM", "party1", true) end
+    for _, f in ipairs(events.READY_CHECK_CONFIRM or {}) do f.scripts.OnEvent(f, "READY_CHECK_CONFIRM", "party2", false) end
+    for _, f in ipairs(events.READY_CHECK_FINISHED or {}) do f.scripts.OnEvent(f, "READY_CHECK_FINISHED") end
+    for _, f in ipairs(events.PLAYER_REGEN_DISABLED or {}) do f.scripts.OnEvent(f, "PLAYER_REGEN_DISABLED") end
+    for _, f in ipairs(events.PLAYER_REGEN_ENABLED or {}) do f.scripts.OnEvent(f, "PLAYER_REGEN_ENABLED") end
+    local p3BuffsRestored = 0
+    for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then p3BuffsRestored = p3BuffsRestored + 1 end end
+    print("readyCheck.cleared", "party1.status=" .. tostring(p1.statusWidget.shown),
+        "p3Buffs=" .. p3BuffsRestored, "p2CC=" .. tostring(p2.ccWidget.shown))
 end
 
 -- the combat tint over the art's grey surface: hidden out of combat,

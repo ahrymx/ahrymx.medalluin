@@ -20,6 +20,7 @@ local DEFAULTS = {
     repCast = false,        -- the target's casts over the reputation bar
     simParty = false,       -- simulate party frames and show the group art layer
     partyPets = true,       -- show pet frames directly below party members with pets
+    partyRange = 40,        -- distance in yards to fade out-of-range party frames (0 = off)
     auraGlow = true,        -- border glow for dispellable debuffs
     auraCC = true,          -- large center icon for crowd control
     auraBuffs = true,       -- row of player-cast buffs on outer health corner
@@ -121,6 +122,13 @@ local function Page()
         "Show the console's party frame layer and simulated party members to preview party frames while solo.")
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "partyPets", B, "Show party pets"),
         "Show pet unit frames directly below party members who have active pets.")
+    Settings.CreateDropdown(subUnit, Setting(subUnit, "partyRange", N, "Fade out of range"), Choices({
+        { 40, "40 yards", "Standard spell and healing range." },
+        { 30, "30 yards", "Mid-range distance." },
+        { 20, "20 yards", "Short distance." },
+        { 10, "10 yards", "Melee and interaction distance." },
+        { 0, "Disabled", "Never fade party frames based on distance." },
+    }), "Fade party unit frames when members move beyond the chosen distance.")
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraGlow", B, "Dispel glow on frame borders"),
         "Glow the frame's stone border in the debuff's color (purple for Curse, green for Poison, etc.) "
         .. "when an ally has a debuff you can dispel.")

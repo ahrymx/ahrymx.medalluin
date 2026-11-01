@@ -73,19 +73,48 @@ local function FormatPower(cur)
     end
 end
 
+local ROLE_COORDS = {
+    TANK = { 0, 32 / 128, 0, 1 },
+    HEALER = { 32 / 128, 64 / 128, 0, 1 },
+    DAMAGER = { 64 / 128, 96 / 128, 0, 1 },
+}
+
+local CHECK_COORDS = {
+    ready = { 0, 32 / 128, 0, 1 },
+    notready = { 32 / 128, 64 / 128, 0, 1 },
+    waiting = { 64 / 128, 96 / 128, 0, 1 },
+}
+
 local function UpdateHealth(self)
     local stub = self.stub
     if stub then
-        self.health:SetMinMaxValues(0, stub.maxHealth)
-        self.health:SetValue(stub.health)
-        local c = RAID_CLASS_COLORS[stub.class]
-        if c then self.health:SetStatusBarColor(Muted(c.r, c.g, c.b)) end
+        local isDead = stub.dead or (stub.health == 0)
+        if isDead then
+            self.health:SetMinMaxValues(0, 1)
+            self.health:SetValue(0)
+            self.health:SetStatusBarColor(unpack(C.dead))
+        else
+            self.health:SetMinMaxValues(0, stub.maxHealth)
+            self.health:SetValue(stub.health)
+            local c = RAID_CLASS_COLORS[stub.class]
+            if c then self.health:SetStatusBarColor(Muted(c.r, c.g, c.b)) end
+        end
+        if self.rezIcon then self.rezIcon:SetShown(isDead) end
         if self.value then
-            self.value:SetFormattedText("%.0f%%", math.floor(stub.health / stub.maxHealth * 100 + 0.5))
+            if isDead then
+                self.value:SetText(DEAD)
+            else
+                self.value:SetFormattedText("%.0f%%", math.floor(stub.health / stub.maxHealth * 100 + 0.5))
+            end
         end
         return
     end
     local unit = self.unit
+    local isDead = UnitIsDeadOrGhost(unit)
+    local isIncomingRez = UnitHasIncomingResurrection and UnitHasIncomingResurrection(unit)
+    if self.rezIcon then
+        self.rezIcon:SetShown(isDead or isIncomingRez)
+    end
     local max = UnitHealthMax(unit)
     local cur = UnitHealth(unit)
     if not ns.IsSecret(max) and max <= 0 then max = 1 end
@@ -95,7 +124,7 @@ local function UpdateHealth(self)
     if not self.value then return end
     if not UnitIsConnected(unit) then
         self.value:SetText(PLAYER_OFFLINE)
-    elseif UnitIsDeadOrGhost(unit) then
+    elseif isDead then
         self.value:SetText(DEAD)
     else
         self.value:SetFormattedText("%.0f%%", HealthPercent(unit, cur, max))
@@ -152,21 +181,38 @@ local function UpdateName(self)
     self.name:SetText(ns.Or(UnitName(self.unit), ""))
 end
 
+local function UpdateRole(self)
+    if not self or not self.roleFrame then return end
+    local role
+    if self.stub and self.stub.role then
+        role = self.stub.role
+    elseif UnitGroupRolesAssigned then
+        role = UnitGroupRolesAssigned(self.unit)
+    end
+    if role and ROLE_COORDS[role] then
+        self.roleIcon:SetTexCoord(unpack(ROLE_COORDS[role]))
+        self.roleFrame:Show()
+    else
+        self.roleFrame:Hide()
+    end
+end
+
 local function UpdateAll(self)
     if not UnitExists(self.unit) and not self.stub then return end
     UpdateName(self)
     UpdateHealth(self)
     UpdatePower(self)
+    UpdateRole(self)
 end
 
 local STUBS = {
-    party1 = { name = "Party 1", class = "PRIEST", powerType = 0, health = 85, maxHealth = 100,
+    party1 = { name = "Party 1", class = "PRIEST", role = "HEALER", powerType = 0, health = 85, maxHealth = 100,
         power = 80, maxPower = 100 },
-    party2 = { name = "Party 2", class = "MAGE", powerType = 0, health = 92, maxHealth = 100,
+    party2 = { name = "Party 2", class = "MAGE", role = "DAMAGER", powerType = 0, health = 92, maxHealth = 100,
         power = 100, maxPower = 100 },
-    party3 = { name = "Party 3", class = "WARRIOR", powerType = 1, health = 78, maxHealth = 100,
+    party3 = { name = "Party 3", class = "WARRIOR", role = "TANK", powerType = 1, health = 78, maxHealth = 100,
         power = 45, maxPower = 100 },
-    party4 = { name = "Party 4", class = "ROGUE", powerType = 3, health = 88, maxHealth = 100,
+    party4 = { name = "Party 4", class = "ROGUE", role = "DAMAGER", powerType = 3, health = 88, maxHealth = 100,
         power = 70, maxPower = 100 },
 }
 
@@ -301,6 +347,9 @@ local unitEvents = {
     UNIT_MAXPOWER = UpdatePower,
     UNIT_DISPLAYPOWER = UpdatePower,
     UNIT_NAME_UPDATE = UpdateName,
+    INCOMING_RESURRECT_CHANGED = UpdateHealth,
+    PLAYER_ROLES_ASSIGNED = UpdateRole,
+    ROLE_CHANGED_INFORM = UpdateRole,
 }
 
 local function Bar(parent, side)
@@ -382,6 +431,42 @@ local function Spawn(unit)
     else
         b.name:SetPoint(inner, text, inner, side * style.textInset, 0)
         b.name:SetJustifyH(outer)
+
+        -- Resurrect icon above the name
+        local rez = text:CreateTexture(nil, "OVERLAY")
+        rez:SetSize(20, 20)
+        rez:SetPoint("BOTTOM", b.name, "TOP", 0, 2)
+        rez:SetTexture(ns.media .. "rez-icon")
+        rez:Hide()
+        b.rezIcon = rez
+
+        -- Role icon at bottom outer edge (overlapping power and console surface)
+        local rf = CreateFrame("Frame", nil, b)
+        rf:SetSize(16, 16)
+        rf:SetFrameLevel(ns.levels.art + 2)
+        if side == -1 then
+            rf:SetPoint("CENTER", b, "BOTTOMLEFT", 8, 0)
+        else
+            rf:SetPoint("CENTER", b, "BOTTOMRIGHT", -8, 0)
+        end
+        local ri = rf:CreateTexture(nil, "ARTWORK")
+        ri:SetAllPoints()
+        ri:SetTexture(ns.media .. "role-icons")
+        b.roleFrame = rf
+        b.roleIcon = ri
+        rf:Hide()
+
+        -- Ready check & role check status widget in the middle of the frame
+        local sw = CreateFrame("Frame", nil, b)
+        sw:SetSize(22, 22)
+        sw:SetPoint("CENTER", b.health, "CENTER", 0, 0)
+        sw:SetFrameLevel(ns.levels.text + 3)
+        local si = sw:CreateTexture(nil, "ARTWORK")
+        si:SetAllPoints()
+        si:SetTexture(ns.media .. "ready-status")
+        sw.icon = si
+        sw:Hide()
+        b.statusWidget = sw
     end
     b.name:SetWordWrap(false)
 
@@ -528,6 +613,64 @@ for i = 1, 4 do
     ns.partyPets[petUnit] = pet
 end
 
+-- Range check logic: party frames fade when members are out of distance
+local function IsUnitInRange(unit, dist)
+    if not dist or dist == 0 then return true end
+    if unit == "player" then return true end
+    local b = ns.units and ns.units[unit]
+    if b and b.stub then return b.stub.inRange ~= false end
+    if not UnitExists(unit) or not UnitIsConnected(unit) then return false end
+
+    if dist == 10 then
+        if CheckInteractDistance then
+            return CheckInteractDistance(unit, 3) or CheckInteractDistance(unit, 2)
+        end
+    elseif dist == 20 or dist == 30 then
+        if CheckInteractDistance then
+            return CheckInteractDistance(unit, 1) or CheckInteractDistance(unit, 4)
+        end
+    end
+
+    if UnitInRange then
+        local inRange, checkedRange = UnitInRange(unit)
+        if checkedRange then return inRange end
+    end
+
+    if UnitIsVisible then
+        return UnitIsVisible(unit)
+    end
+    return true
+end
+
+local function UpdatePartyRange()
+    local dist = ns.db and ns.db.partyRange
+    for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
+        local pb = ns.units[u]
+        if pb and pb:IsShown() then
+            local inRange = (dist == 0) or IsUnitInRange(u, dist)
+            local targetAlpha = inRange and 1.0 or 0.45
+            if pb:GetAlpha() ~= targetAlpha then
+                pb:SetAlpha(targetAlpha)
+            end
+            if pb.pet and pb.pet:IsShown() then
+                if pb.pet:GetAlpha() ~= targetAlpha then
+                    pb.pet:SetAlpha(targetAlpha)
+                end
+            end
+        end
+    end
+end
+ns.UpdatePartyRange = UpdatePartyRange
+
+local rangeChecker = CreateFrame("Frame")
+local rangeElapsed = 0
+rangeChecker:SetScript("OnUpdate", function(_, elapsed)
+    rangeElapsed = rangeElapsed + elapsed
+    if rangeElapsed < 0.2 then return end
+    rangeElapsed = 0
+    UpdatePartyRange()
+end)
+
 local function UpdatePartyFrames()
     for _, unit in ipairs({ "party1", "party2", "party3", "party4" }) do
         local b = ns.units[unit]
@@ -536,11 +679,14 @@ local function UpdatePartyFrames()
             if b.pet then UpdatePartyPet(b.pet) end
         end
     end
+    UpdatePartyRange()
 end
 UpdatePartyFrames()
 ns.On("GROUP_ROSTER_UPDATE", UpdatePartyFrames)
 ns.On("PLAYER_ENTERING_WORLD", UpdatePartyFrames)
 ns.On("ADDON_LOADED", UpdatePartyFrames)
+ns.On("PLAYER_ROLES_ASSIGNED", UpdatePartyFrames)
+ns.On("ROLE_CHANGED_INFORM", UpdatePartyFrames)
 ns.On("UNIT_PET", function(unit)
     if unit and unit:match("^party%d$") then
         local b = ns.units[unit]
@@ -549,3 +695,104 @@ ns.On("UNIT_PET", function(unit)
 end)
 ns.OnSetting("simParty", UpdatePartyFrames)
 ns.OnSetting("partyPets", UpdatePartyFrames)
+ns.OnSetting("partyRange", UpdatePartyRange)
+
+-- Ready check & role check: hides buffs/debuffs and shows status in the middle
+local function SetCheckStatus(b, status)
+    if not b or not b.statusWidget then return end
+    if not status then
+        b.isChecking = false
+        b.statusWidget:Hide()
+        if ns.UpdateUnitAuras then ns.UpdateUnitAuras(b) end
+        return
+    end
+    b.isChecking = true
+    local coords = CHECK_COORDS[status] or CHECK_COORDS.waiting
+    b.statusWidget.icon:SetTexCoord(unpack(coords))
+    b.statusWidget:Show()
+    if ns.UpdateUnitAuras then ns.UpdateUnitAuras(b) end
+end
+ns.SetCheckStatus = SetCheckStatus
+
+local checkHideTime = nil
+local checkTimerFrame = CreateFrame("Frame")
+checkTimerFrame:SetScript("OnUpdate", function(_, elapsed)
+    if checkHideTime then
+        checkHideTime = checkHideTime - elapsed
+        if checkHideTime <= 0 then
+            checkHideTime = nil
+            for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
+                local pb = ns.units[u]
+                if pb then SetCheckStatus(pb, nil) end
+            end
+        end
+    end
+end)
+
+local function OnReadyCheck()
+    checkHideTime = nil
+    for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
+        local pb = ns.units[u]
+        if pb and (UnitExists(u) or pb.stub) then
+            local status = GetReadyCheckStatus and GetReadyCheckStatus(u) or "waiting"
+            SetCheckStatus(pb, status)
+        end
+    end
+end
+
+local function OnReadyCheckConfirm(unit, isReady)
+    local pb = ns.units[unit]
+    if pb then
+        SetCheckStatus(pb, isReady and "ready" or "notready")
+    end
+end
+
+local function OnReadyCheckFinished()
+    for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
+        local pb = ns.units[u]
+        if pb and pb.isChecking then
+            local status = GetReadyCheckStatus and GetReadyCheckStatus(u)
+            if status then SetCheckStatus(pb, status) end
+        end
+    end
+    checkHideTime = 3.0
+end
+
+local function OnRolePollBegin()
+    checkHideTime = nil
+    for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
+        local pb = ns.units[u]
+        if pb and (UnitExists(u) or pb.stub) then
+            SetCheckStatus(pb, "waiting")
+        end
+    end
+end
+
+local function OnRolePollUpdate()
+    for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
+        local pb = ns.units[u]
+        if pb and pb.isChecking then
+            local role = UnitGroupRolesAssigned and UnitGroupRolesAssigned(u)
+            if role and role ~= "NONE" then
+                SetCheckStatus(pb, "ready")
+            end
+        end
+    end
+end
+
+local function ClearCheckStatus()
+    checkHideTime = nil
+    for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
+        local pb = ns.units[u]
+        if pb and pb.isChecking then
+            SetCheckStatus(pb, nil)
+        end
+    end
+end
+
+ns.On("READY_CHECK", OnReadyCheck)
+ns.On("READY_CHECK_CONFIRM", OnReadyCheckConfirm)
+ns.On("READY_CHECK_FINISHED", OnReadyCheckFinished)
+ns.On("ROLE_POLL_BEGIN", OnRolePollBegin)
+ns.On("ROLE_POLL_UPDATE", OnRolePollUpdate)
+ns.On("PLAYER_REGEN_DISABLED", ClearCheckStatus)

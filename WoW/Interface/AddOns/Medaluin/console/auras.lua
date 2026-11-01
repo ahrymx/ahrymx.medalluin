@@ -582,12 +582,24 @@ local function UpdateUnitAuras(b)
         return
     end
 
+    -- Ready checks and role checks hide buffs and debuffs while active
+    if b.isChecking or (b.statusWidget and b.statusWidget:IsShown()) then
+        if b.dispelGlow then b.dispelGlow:Hide() end
+        if b.ccWidget then b.ccWidget:Hide() end
+        if b.bossDebuff then b.bossDebuff:Hide() end
+        if b.buffWidgets then
+            for _, btn in ipairs(b.buffWidgets) do btn:Hide() end
+        end
+        return
+    end
+
     if b.stub and not UnitExists(unit) then
         ApplyStubAuras(b)
     else
         ScanUnitAuras(b)
     end
 end
+ns.UpdateUnitAuras = UpdateUnitAuras
 
 local function UpdateAllAuras()
     UpdatePlayerDispels()

@@ -29,6 +29,7 @@ read_globals = {
     "UnitPowerType", "UnitLevel", "UnitXP", "UnitXPMax", "GetXPExhaustion", "GetMaxPlayerLevel",
     "GetWatchedFactionInfo", "C_Reputation", "BreakUpLargeNumbers", "GameTooltip_Hide",
     "UnitFrame_OnEnter", "UnitFrame_OnLeave", "hooksecurefunc", "GetTime",
+    "UnitHasIncomingResurrection", "UnitGroupRolesAssigned", "CheckInteractDistance", "UnitInRange", "UnitIsVisible", "GetReadyCheckStatus",
     "GetActionCooldown", "HasAction", "IsUsableAction", "IsActionInRange",
     "UnitCastingInfo", "CastingInfo", "UnitChannelInfo", "ChannelInfo", "GetComboPoints",
     "SetPortraitTexture", "C_Container", "GetContainerNumSlots", "GetContainerNumFreeSlots",
