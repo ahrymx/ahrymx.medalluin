@@ -687,11 +687,17 @@ if modern then
 end
 
 -- the settings page, recorded; atlas sizes as Forever's end caps
-local page = { controls = {}, buttons = {}, settings = {} }
+local page = { controls = {}, buttons = {}, settings = {}, subcategories = {} }
 Settings = {
     RegisterVerticalLayoutCategory = function(name)
         page.name = name
         return { GetID = function() return 7 end }
+    end,
+    RegisterVerticalLayoutSubcategory = function(parent, name)
+        local id = #page.subcategories + 8
+        local sub = { name = name, parent = parent, GetID = function() return id end }
+        table.insert(page.subcategories, sub)
+        return sub
     end,
     VarType = { Boolean = "boolean", Number = "number", String = "string" },
     RegisterAddOnSetting = function(_, variable, key, tbl, kind, name, default)
@@ -780,6 +786,8 @@ if barPass then
     end
     SlashCmdList.MEDALUIN()
     print("/medaluin opens", tostring(page.opened))
+    SlashCmdList.MDLUI()
+    print("/mdlui opens", tostring(page.opened))
     if not ns.actionBar then
         print("tray none")
         -- no bar, no cast bar of Medaluin's: Blizzard's stays

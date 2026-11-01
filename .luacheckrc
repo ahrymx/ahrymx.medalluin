@@ -54,4 +54,4 @@ read_globals = {
     "wipe", "format", "unpack", "CopyTable",
 }
 -- the saved variables and the slash command
-globals = { "_G", "MedaluinDB", "SLASH_MEDALUIN1", "SlashCmdList" }
+globals = { "_G", "MedaluinDB", "SLASH_MEDALUIN1", "SLASH_MEDALUIN2", "SLASH_MDLUI1", "SlashCmdList" }

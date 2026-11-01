@@ -48,8 +48,22 @@ local RELOAD = " Takes effect after a reload."
 local function Page()
     if not (Settings and Settings.RegisterVerticalLayoutCategory) then return end
     local category = Settings.RegisterVerticalLayoutCategory("Medaluin")
-    local function Setting(key, kind, name)
-        local s = Settings.RegisterAddOnSetting(category, "Medaluin_" .. key, key, MedaluinDB, kind, name,
+
+    local function Subcategory(parent, name)
+        if Settings.RegisterVerticalLayoutSubcategory then
+            local sub = Settings.RegisterVerticalLayoutSubcategory(parent, name)
+            Settings.RegisterAddOnCategory(sub)
+            return sub
+        end
+        return parent
+    end
+
+    local subBar = Subcategory(category, "Action Bar")
+    local subCast = Subcategory(category, "Cast Bars")
+    local subChat = Subcategory(category, "Chat")
+
+    local function Setting(cat, key, kind, name)
+        local s = Settings.RegisterAddOnSetting(cat, "Medaluin_" .. key, key, MedaluinDB, kind, name,
             DEFAULTS[key])
         s:SetValueChangedCallback(function(_, value) Changed(key, value) end)
         return s
@@ -63,29 +77,30 @@ local function Page()
     end
     local V, B, N, S = ns.VISIBILITY, Settings.VarType.Boolean, Settings.VarType.Number, Settings.VarType.String
 
-    local bar = Settings.CreateCheckbox(category, Setting("actionBar", B, "Action bar"),
+    -- Action Bar subcategory
+    local bar = Settings.CreateCheckbox(subBar, Setting(subBar, "actionBar", B, "Action bar"),
         "Medaluin's bar on top of the console, holding action bar 1. Untick it to keep Blizzard's bars or "
         .. "use another action-bar addon." .. RELOAD)
     local function BarOn() return MedaluinDB.actionBar end
     local children = {
-        Settings.CreateDropdown(category, Setting("rows", N, "Rows"), Choices({
+        Settings.CreateDropdown(subBar, Setting(subBar, "rows", N, "Rows"), Choices({
             { 1, "1 row", "Action bar 1." },
             { 2, "2 rows", "Action bar 2 stacked above action bar 1." },
             { 3, "3 rows", "Action bars 2 and 3 stacked above action bar 1." },
         }), "Stack Blizzard's bottom bars (action bars 2 and 3) above Medaluin's bar frame instead of "
             .. "leaving them where Edit Mode puts them." .. RELOAD),
-        Settings.CreateCheckbox(category, Setting("bareIcons", B, "Bare icons"),
+        Settings.CreateCheckbox(subBar, Setting(subBar, "bareIcons", B, "Bare icons"),
             "Square icons with a thin black edge, the cooldown time on the icon and range as a red tint, "
             .. "instead of Blizzard's button art." .. RELOAD),
-        Settings.CreateColorSwatch(category, Setting("artColor", S, "Art colour"),
+        Settings.CreateColorSwatch(subBar, Setting(subBar, "artColor", S, "Art colour"),
             "Tints the bar's stone frame. White leaves it as drawn."),
-        Settings.CreateDropdown(category, Setting("visibility", N, "Show the bar"), Choices({
+        Settings.CreateDropdown(subBar, Setting(subBar, "visibility", N, "Show the bar"), Choices({
             { V.ALWAYS, "Always" },
             { V.COMBAT, "In combat", "Faded out of combat; it comes back while you drag a spell onto it." },
             { V.MOUSEOVER, "On mouseover", "Faded until the pointer is over it, or a spell is being dragged." },
             { V.COMBAT_OR_MOUSEOVER, "In combat or on mouseover" },
         }), "A faded bar still works: its buttons and key bindings stay live."),
-        Settings.CreateDropdown(category, Setting("drawer", N, "Minimap buttons"), Choices({
+        Settings.CreateDropdown(subBar, Setting(subBar, "drawer", N, "Minimap buttons"), Choices({
             { ns.DRAWER.LEFT, "Open left", "One row, out to the left of the bar." },
             { ns.DRAWER.UP, "Open up", "One column, up from the bar's left end." },
         }), "The addons' minimap buttons gather in a drawer behind the box on the bar's left end. "
@@ -93,24 +108,52 @@ local function Page()
     }
     for _, child in ipairs(children) do child:SetParentInitializer(bar, BarOn) end
 
-    Settings.CreateCheckbox(category, Setting("xpCast", B, "Player casts on the experience bar"),
+    -- Cast Bars subcategory
+    Settings.CreateCheckbox(subCast, Setting(subCast, "xpCast", B, "Player casts on the experience bar"),
         "The experience bar under your portrait becomes your cast bar while you cast, and goes back to "
         .. "experience when you stop.")
-    Settings.CreateCheckbox(category, Setting("repCast", B, "Target casts on the reputation bar"),
+    Settings.CreateCheckbox(subCast, Setting(subCast, "repCast", B, "Target casts on the reputation bar"),
         "The reputation bar under your target becomes its cast bar while it casts, and goes back to "
         .. "reputation when it stops or you change target.")
 
-    Settings.CreateCheckbox(category, Setting("chat", B, "Chat panel"),
+    -- Chat subcategory
+    Settings.CreateCheckbox(subChat, Setting(subChat, "chat", B, "Chat panel"),
         "Blizzard's chat in a panel on top of the micro menu, with the chat buttons in a column at its "
         .. "left. Untick it to keep the chat where Edit Mode puts it, or to use a chat addon." .. RELOAD)
 
-    if CreateSettingsButtonInitializer then
-        local layout = SettingsPanel:GetLayout(category)
-        layout:AddInitializer(CreateSettingsButtonInitializer("", "Reload UI", ReloadUI,
-            "Reload the interface so a changed option takes effect.", true))
+    local function AddReload(cat)
+        if CreateSettingsButtonInitializer and SettingsPanel and SettingsPanel.GetLayout then
+            local layout = SettingsPanel:GetLayout(cat)
+            if layout and layout.AddInitializer then
+                layout:AddInitializer(CreateSettingsButtonInitializer("", "Reload UI", ReloadUI,
+                    "Reload the interface so a changed option takes effect.", true))
+            end
+        end
     end
+
+    AddReload(category)
+    if subBar ~= category then
+        if CreateSettingsButtonInitializer and SettingsPanel and SettingsPanel.GetLayout then
+            local layout = SettingsPanel:GetLayout(category)
+            if layout and layout.AddInitializer then
+                layout:AddInitializer(CreateSettingsButtonInitializer("", "Action Bar", function()
+                    Settings.OpenToCategory(subBar:GetID())
+                end, "Open Action Bar settings.", true))
+                layout:AddInitializer(CreateSettingsButtonInitializer("", "Cast Bars", function()
+                    Settings.OpenToCategory(subCast:GetID())
+                end, "Open Cast Bars settings.", true))
+                layout:AddInitializer(CreateSettingsButtonInitializer("", "Chat", function()
+                    Settings.OpenToCategory(subChat:GetID())
+                end, "Open Chat settings.", true))
+            end
+        end
+        AddReload(subBar)
+        AddReload(subChat)
+    end
+
     Settings.RegisterAddOnCategory(category)
     ns.settingsCategory = category
+    ns.settingsSubcategories = { bar = subBar, cast = subCast, chat = subChat }
 end
 
 ns.On("ADDON_LOADED", function(_, name)
@@ -124,6 +167,22 @@ ns.On("ADDON_LOADED", function(_, name)
 end)
 
 SLASH_MEDALUIN1 = "/medaluin"
-SlashCmdList.MEDALUIN = function()
-    if ns.settingsCategory then Settings.OpenToCategory(ns.settingsCategory:GetID()) end
+SLASH_MEDALUIN2 = "/mdlui"
+SLASH_MDLUI1 = "/mdlui"
+
+local function OpenSettings(arg)
+    if not ns.settingsCategory then return end
+    arg = tostring(arg or ""):lower():match("^%s*(%S+)")
+    local target = ns.settingsCategory
+    if arg == "bar" or arg == "actionbar" or arg == "bars" then
+        target = ns.settingsSubcategories and ns.settingsSubcategories.bar or target
+    elseif arg == "cast" or arg == "castbars" or arg == "casting" then
+        target = ns.settingsSubcategories and ns.settingsSubcategories.cast or target
+    elseif arg == "chat" then
+        target = ns.settingsSubcategories and ns.settingsSubcategories.chat or target
+    end
+    Settings.OpenToCategory(target:GetID())
 end
+
+SlashCmdList.MEDALUIN = OpenSettings
+SlashCmdList.MDLUI = OpenSettings
