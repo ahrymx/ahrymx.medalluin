@@ -1,10 +1,19 @@
--- Overhead Console: Top-of-screen Cascading Inverted Ziggurat housing:
---   Tier 1 (Boss Deck): Encounter Boss frames (boss1..boss5)
---   Tier 2 (Companion Deck): Player Pet (pet), Focus (focus), Target of Target (targettarget)
---   Tier 3 (Command Deck): Pet Action Bar and Stance / Shapeshift Bar
+-- The overhead console: decks hanging from the screen's top edge, in the
+-- console's navy and gold (art/console/gen_overhead.py, variant C).
+--   the boss deck:      boss1..boss5
+--   the companion deck: pet, focus, target of target
+--   the tray:           the stance bar and the pet bar, one centred row of bare icons
+-- Each deck is an inverted trapezoid; a lower one is narrower than the floor
+-- above it, so the stack reads as an upside-down ziggurat. When a lower deck
+-- is too wide for that, the decks above grow, and their cells stretch to fill. Every unit is one
+-- cell: a gold edge, an icon column on its left that says who it is, then
+-- health over a thin power strip. The geometry and the art come from the
+-- generated console/overhead_art.lua; the sums below are the generator's.
 local _, ns = ...
 
 local C = ns.colors
+local A, PIECES, CHIPS = ns.overheadArt, ns.overheadPieces, ns.overheadChips
+local MEDIA = ns.media .. "overhead\\"
 
 local function Muted(r, g, b)
     return r * ns.mute, g * ns.mute, b * ns.mute
@@ -29,14 +38,17 @@ end
 local overhead = CreateFrame("Frame", "MedaluinOverhead", UIParent)
 overhead:SetFrameStrata("LOW")
 overhead:SetPoint("TOP", UIParent, "TOP", 0, 0)
+-- A frame with one anchor and no size has no rectangle, and nothing anchored
+-- to it can be placed; Layout sizes it to what it holds.
+overhead:SetSize(1, 1)
 ns.overhead = overhead
 
 local base = overhead:GetFrameLevel()
+-- The plate is the backing, under the cells and the tray's icons; the cells'
+-- text over everything.
 local LEVELS = {
-    backing = base + 1,
-    bars = base + 2,
-    cast = base + 3,
-    stone = base + 5,
+    plate = base + 1,
+    cells = base + 2,
     buttons = base + 6,
     text = base + 8,
 }
@@ -52,143 +64,149 @@ ns.On("UI_SCALE_CHANGED", Rescale)
 ns.On("DISPLAY_SIZE_CHANGED", Rescale)
 ns.On("PLAYER_ENTERING_WORLD", Rescale)
 
--- ------------------------------------------------------------ Deck builder
-local function CreateTierDeck(name, height)
-    local deck = CreateFrame("Frame", "MedaluinOverhead_" .. name, overhead)
-    deck:SetHeight(height)
-    deck.deckHeight = height
+-- ------------------------------------------------------------ the plate
+local plate = CreateFrame("Frame", nil, overhead)
+plate:SetAllPoints()
+plate:SetFrameLevel(LEVELS.plate)
 
-    local stone = CreateFrame("Frame", nil, deck)
-    stone:SetAllPoints()
-    stone:SetFrameLevel(LEVELS.stone)
-    deck.stone = stone
-
-    local leftCap = stone:CreateTexture(nil, "ARTWORK")
-    leftCap:SetSize(32, height)
-    leftCap:SetPoint("TOPLEFT", stone, "TOPLEFT", 0, 0)
-    leftCap:SetTexture(ns.media .. "overhead-left")
-    leftCap:SetTexCoord(0, 32 / 64, 0, height / 32)
-    deck.leftCap = leftCap
-
-    local rightCap = stone:CreateTexture(nil, "ARTWORK")
-    rightCap:SetSize(32, height)
-    rightCap:SetPoint("TOPRIGHT", stone, "TOPRIGHT", 0, 0)
-    rightCap:SetTexture(ns.media .. "overhead-right")
-    rightCap:SetTexCoord(32 / 64, 1, 0, height / 32)
-    deck.rightCap = rightCap
-
-    local mid = stone:CreateTexture(nil, "ARTWORK")
-    mid:SetHeight(height)
-    mid:SetPoint("TOPLEFT", leftCap, "TOPRIGHT", 0, 0)
-    mid:SetPoint("BOTTOMRIGHT", rightCap, "BOTTOMLEFT", 0, 0)
-    mid:SetTexture(ns.media .. "overhead-mid")
-    mid:SetTexCoord(0, 1, 0, height / 32)
-    deck.mid = mid
-
-    local bg = deck:CreateTexture(nil, "BACKGROUND")
-    bg:SetPoint("TOPLEFT", 14, 0)
-    bg:SetPoint("BOTTOMRIGHT", -14, 0)
-    bg:SetColorTexture(unpack(ns.colors.ink))
-    deck.bg = bg
-
-    deck.dividers = {}
-
-    function deck:SetDeckWidth(w)
-        deck.width = w
-        deck.w = w
-        deck:SetWidth(w)
-        deck.stone:SetWidth(w)
-    end
-
-    function deck:ClearDividers()
-        for _, d in ipairs(deck.dividers) do d:Hide() end
-    end
-
-    function deck:AddDivider(x)
-        local d
-        for _, existing in ipairs(deck.dividers) do
-            if not existing:IsShown() then d = existing; break end
-        end
-        if not d then
-            d = stone:CreateTexture(nil, "OVERLAY")
-            d:SetSize(12, height)
-            d:SetTexture(ns.media .. "overhead-seam")
-            d:SetTexCoord(2 / 16, 14 / 16, 0, height / 32)
-            table.insert(deck.dividers, d)
-        end
-        d:ClearAllPoints()
-        d:SetPoint("CENTER", stone, "LEFT", x, 0)
-        d:Show()
-    end
-
-    return deck
+-- One art piece: the art sits at the top-left of its power-of-two texture.
+local function Piece(tex, name, mirrored)
+    local p = PIECES[name]
+    tex:SetTexture(MEDIA .. name)
+    local u, v = p.w / p.tw, p.h / p.th
+    if mirrored then tex:SetTexCoord(u, 0, 0, v) else tex:SetTexCoord(0, u, 0, v) end
+    tex:SetSize(p.w, p.h)
 end
 
-local tier1 = CreateTierDeck("Tier1", 28)
-local tier2 = CreateTierDeck("Tier2", 26)
-local tier3 = CreateTierDeck("Tier3", 30)
+-- A deck slot, top down. A lower slot draws on a higher sublevel, because its
+-- pieces repaint where it meets the deck above. The plate's gradient is fixed
+-- to the screen, so a piece is chosen by the deck's kind AND the y it hangs at.
+local function DeckSlot(slot)
+    local d = { slot = slot }
+    d.left = plate:CreateTexture(nil, "ARTWORK", nil, slot)
+    d.right = plate:CreateTexture(nil, "ARTWORK", nil, slot)
+    d.mid = plate:CreateTexture(nil, "ARTWORK", nil, slot)
+    function d:Place(kind, y, half)
+        local name = kind .. "-" .. y
+        local wing = PIECES[name .. "-wing"]
+        Piece(self.left, name .. "-wing", false)
+        Piece(self.right, name .. "-wing", true)
+        Piece(self.mid, name .. "-mid", false)
+        self.left:ClearAllPoints()
+        self.left:SetPoint("TOPLEFT", overhead, "TOP", -half + wing.dx, -(y + wing.dy))
+        self.right:ClearAllPoints()
+        self.right:SetPoint("TOPRIGHT", overhead, "TOP", half - wing.dx, -(y + wing.dy))
+        self.mid:ClearAllPoints()
+        self.mid:SetPoint("TOPLEFT", self.left, "TOPRIGHT")
+        self.mid:SetPoint("BOTTOMRIGHT", self.right, "BOTTOMLEFT")
+        self.kind, self.y, self.half, self.shown = kind, y, half, true
+        self.left:Show(); self.right:Show(); self.mid:Show()
+    end
+    function d:Clear()
+        self.shown = false
+        self.left:Hide(); self.right:Hide(); self.mid:Hide()
+    end
+    d:Clear()
+    return d
+end
+local decks = { DeckSlot(1), DeckSlot(2), DeckSlot(3) }
+ns.overheadDecks = decks
 
-ns.overheadTier1 = tier1
-ns.overheadTier2 = tier2
-ns.overheadTier3 = tier3
+-- A deck's top width for n cells: the cells fit its floor, which is two
+-- heights narrower than its top, plus a margin each side.
+local function DeckWidth(kind, n)
+    return n * A.cell[kind] + (n - 1) * A.gap + 2 * A.deck[kind] + 2 * A.margin
+end
 
--- ------------------------------------------------------------ Unit Frame creation
-local function CreateOverheadUnit(parent, unit, isBoss)
-    local b = CreateFrame("Button", "MedaluinUnit_" .. unit, parent, "SecureUnitButtonTemplate")
-    b.unit = unit
-    b:SetFrameLevel(LEVELS.bars)
+-- The cells share a deck's floor less its margins; the total is kept even so
+-- the row is centred on whole pixels. Never under A.cell: a deck is at least
+-- DeckWidth wide.
+local function CellWidth(kind, n, w)
+    local floor = w - 2 * A.deck[kind] - 2 * A.margin
+    local cw = math.floor((floor - (n - 1) * A.gap) / n)
+    if (n * cw + (n - 1) * A.gap) % 2 == 1 then cw = cw - 1 end
+    return cw
+end
+ns.OverheadCellWidth = CellWidth
+
+-- The command row's width: stances, the separator, the pet bar.
+local function RowWidth(n, stances)
+    if n == 0 then return 0 end
+    local sep = (stances > 0 and stances < n) and A.iconSep or 0
+    return n * (A.icon + A.iconGap) - A.iconGap + sep, sep
+end
+
+-- ------------------------------------------------------------ the cells
+local UpdateUnitStatus
+
+local function CreateCell(unit, kind, chip)
+    local b = CreateFrame("Button", "MedaluinUnit_" .. unit, overhead, "SecureUnitButtonTemplate")
+    b.unit, b.kind = unit, kind
+    b:SetFrameLevel(LEVELS.cells)
     b:SetAttribute("unit", unit)
     b:SetAttribute("*type1", "target")
     b:SetAttribute("*type2", "togglemenu")
     b:RegisterForClicks("AnyUp")
+    b:SetSize(A.cell[kind], A.deck[kind] - A.cellTop - A.cellBottom)
 
-    local powerH = 4
+    -- the gold edge, and the ink well one pixel inside it
+    local edge = b:CreateTexture(nil, "BACKGROUND", nil, 0)
+    edge:SetAllPoints()
+    edge:SetColorTexture(unpack(A.edge))
+    local ink = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+    ink:SetPoint("TOPLEFT", 1, -1)
+    ink:SetPoint("BOTTOMRIGHT", -1, 1)
+    ink:SetColorTexture(unpack(C.ink))
 
-    local bar = CreateFrame("StatusBar", nil, b)
-    bar:SetPoint("TOPLEFT", 2, -2)
-    bar:SetPoint("BOTTOMRIGHT", -2, 2 + powerH)
-    bar:SetStatusBarTexture(ns.bar)
-    b.health = bar
+    -- the icon column on the left: chip and glyph, then the gold divider
+    local c = CHIPS[chip]
+    local icon = b:CreateTexture(nil, "ARTWORK")
+    icon:SetTexture(MEDIA .. c.file)
+    icon:SetTexCoord(0, c.w / c.tw, 0, c.h / c.th)
+    icon:SetSize(c.w, c.h)
+    icon:SetPoint("TOPLEFT", 1, -1)
+    b.chip = icon
+    local divider = b:CreateTexture(nil, "ARTWORK")
+    divider:SetColorTexture(unpack(A.edge))
+    divider:SetWidth(1)
+    divider:SetPoint("TOPLEFT", icon, "TOPRIGHT")
+    divider:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT")
 
-    local power = CreateFrame("StatusBar", nil, b)
-    power:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -1)
-    power:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -2, 2)
+    -- the window: health, one ink row, power
+    local window = CreateFrame("Frame", nil, b)
+    window:SetPoint("TOPLEFT", 1 + c.w + 1, -1)
+    window:SetPoint("BOTTOMRIGHT", -1, 1)
+    local health = CreateFrame("StatusBar", nil, window)
+    health:SetPoint("TOPLEFT")
+    health:SetPoint("BOTTOMRIGHT", 0, A.power + 1)
+    health:SetStatusBarTexture(ns.bar)
+    b.health = health
+    local power = CreateFrame("StatusBar", nil, window)
+    power:SetPoint("BOTTOMLEFT")
+    power:SetPoint("BOTTOMRIGHT")
+    power:SetHeight(A.power)
     power:SetStatusBarTexture(ns.bar)
     b.power = power
 
-    local bg = b:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints(b)
-    bg:SetColorTexture(unpack(ns.colors.ink))
-    b.bg = bg
-
     local text = CreateFrame("Frame", nil, b)
-    text:SetAllPoints(b)
+    text:SetAllPoints(health)
     text:SetFrameLevel(LEVELS.text)
-
+    b.value = ns.Text(text, 10)
+    b.value:SetPoint("RIGHT", text, "RIGHT", -4, 0)
+    b.value:SetJustifyH("RIGHT")
+    b.value:SetTextColor(unpack(C.dim))
     b.name = ns.Text(text, 10)
-    b.name:SetPoint("LEFT", text, "LEFT", 6, isBoss and 2 or 1)
+    b.name:SetPoint("LEFT", text, "LEFT", 4, 0)
+    b.name:SetPoint("RIGHT", b.value, "LEFT", -4, 0)   -- a long name stops short of the value
     b.name:SetJustifyH("LEFT")
     b.name:SetWordWrap(false)
 
-    b.value = ns.Text(text, 10)
-    b.value:SetPoint("RIGHT", text, "RIGHT", -6, isBoss and 2 or 1)
-    b.value:SetJustifyH("RIGHT")
-    b.value:SetTextColor(unpack(C.dim))
-
-    -- Integrated cast bar
-    local cast = CreateFrame("StatusBar", nil, b)
-    cast:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
-    cast:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
-    cast:SetStatusBarTexture(ns.bar)
-    cast:SetStatusBarColor(0.85, 0.65, 0.15, 0.85)
-    cast:SetFrameLevel(LEVELS.cast)
-    cast:Hide()
-    b.cast = cast
-
-    local castText = ns.Text(text, 9)
-    castText:SetPoint("CENTER", b, "CENTER", 0, 0)
-    castText:SetTextColor(1, 0.9, 0.4)
-    b.castText = castText
+    -- Each button hears its own unit: RegisterUnitEvent keeps one unit per
+    -- event per frame, so a shared watcher only ever heard the last one.
+    for _, event in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_POWER_UPDATE", "UNIT_NAME_UPDATE" }) do
+        ns.RegisterUnitEvent(b, event, unit)
+    end
+    b:SetScript("OnEvent", function(self) UpdateUnitStatus(self) end)
 
     RegisterUnitWatch(b)
     b:Hide()
@@ -197,12 +215,11 @@ end
 
 local bossUnits = {}
 for i = 1, 5 do
-    bossUnits[i] = CreateOverheadUnit(tier1, "boss" .. i, true)
+    bossUnits[i] = CreateCell("boss" .. i, "boss", "boss")
 end
-
-local petUnit = CreateOverheadUnit(tier2, "pet", false)
-local focusUnit = CreateOverheadUnit(tier2, "focus", false)
-local totUnit = CreateOverheadUnit(tier2, "targettarget", false)
+local petUnit = CreateCell("pet", "unit", "pet")
+local focusUnit = CreateCell("focus", "unit", "focus")
+local totUnit = CreateCell("targettarget", "unit", "targettarget")
 
 ns.overheadUnits = {
     pet = petUnit,
@@ -215,8 +232,25 @@ ns.overheadUnits = {
     boss5 = bossUnits[5],
 }
 
--- ------------------------------------------------------------ Unit Update Logic
-local function UpdateUnitStatus(b)
+-- A watched button is shown and hidden by its unit's existence, every frame:
+-- a simulated (stubbed) unit does not exist, so the watch must let go of it,
+-- and a switched-off frame must not come back with its unit.
+local function Watch(b, stub)
+    b.stub = stub
+    if stub then
+        UnregisterUnitWatch(b)
+    else
+        RegisterUnitWatch(b)
+    end
+end
+
+local function Retire(b)
+    b.stub = nil
+    UnregisterUnitWatch(b)
+    b:Hide()
+end
+
+function UpdateUnitStatus(b)
     if not b then return end
     local stub = b.stub
     if stub then
@@ -262,45 +296,72 @@ local function UpdateUnitStatus(b)
     b.power:SetStatusBarColor(Muted(c.r, c.g, c.b))
 end
 
--- ------------------------------------------------------------ Stances & Pet Action Bar
-local stanceButtons = {}
-local petActionButtons = {}
+-- ------------------------------------------------------------ the command row
+-- Blizzard's stance and pet buttons, adopted as bare icons. Their bars are
+-- parked, not killed (blizzard.lua): the bars' own events still give the
+-- buttons their icons and show the ones that are in use.
+local stanceButtons, petButtons = {}, {}
+local laying = false
+local UpdateOverhead
+
+local function Bare(btn)
+    btn:SetSize(A.icon, A.icon)
+    if ns.StyleButton then ns.StyleButton(btn) end
+    -- StyleButton's text is sized for the 36px action bar
+    if btn.medaluinTimer then btn.medaluinTimer:SetFont(ns.font, 10, "OUTLINE") end
+    if btn.medaluinHotkey then btn.medaluinHotkey:SetFont(ns.font, 8, "OUTLINE") end
+    local count = btn.Count or _G[btn:GetName() .. "Count"]
+    if count then count:SetFont(ns.font, 9, "OUTLINE") end
+end
+
+-- A pet ability that can autocast wears Blizzard's yellow corner brackets
+-- (AutoCastOverlay.Corners, shown by PetActionBar for autoCastAllowed). They
+-- are faded out; the rest of the overlay, the moving shine that says autocast
+-- is ON, is left alone. Alpha, not Hide: Blizzard shows and hides the overlay
+-- but never sets the corners' alpha, and a texture's alpha is free in combat.
+-- Found by key, else by atlas; if neither is there, nothing is touched.
+local function FadeAutoCastCorners(btn)
+    local overlay = btn.AutoCastOverlay
+    if not overlay then return end
+    local corners = overlay.Corners
+    if not corners and overlay.GetRegions then
+        for _, r in ipairs({ overlay:GetRegions() }) do
+            local atlas = r.GetAtlas and r:GetAtlas()
+            if type(atlas) == "string" and atlas:find("Corners") then corners = r; break end
+        end
+    end
+    if corners then corners:SetAlpha(0) end
+end
+
+local function Adopt(btn, list)
+    btn:SetParent(overhead)
+    btn:SetFrameStrata(overhead:GetFrameStrata())
+    btn:SetFrameLevel(LEVELS.buttons)
+    Bare(btn)
+    FadeAutoCastCorners(btn)
+    -- a button Blizzard shows or hides changes the row: lay it out again
+    btn:HookScript("OnShow", function() if not laying then UpdateOverhead() end end)
+    btn:HookScript("OnHide", function() if not laying then UpdateOverhead() end end)
+    table.insert(list, btn)
+end
 
 local function AdoptCommandButtons()
     if ns.db and ns.db.overhead == false then return end
-
-    -- Stances
     if ns.db and ns.db.topStances ~= false then
         for i = 1, 10 do
             local btn = _G["StanceButton" .. i]
-            if btn then
-                btn:SetParent(tier3)
-                btn:SetFrameStrata(tier3:GetFrameStrata())
-                btn:SetFrameLevel(LEVELS.buttons)
-                btn:SetSize(22, 22)
-                if ns.StyleButton and ns.db.bareIcons then ns.StyleButton(btn) end
-                table.insert(stanceButtons, btn)
-            end
+            if btn then Adopt(btn, stanceButtons) end
         end
     end
-
-    -- Pet Action Bar
     if ns.db and ns.db.topPetBar ~= false then
         for i = 1, 10 do
             local btn = _G["PetActionButton" .. i]
-            if btn then
-                btn:SetParent(tier3)
-                btn:SetFrameStrata(tier3:GetFrameStrata())
-                btn:SetFrameLevel(LEVELS.buttons)
-                btn:SetSize(22, 22)
-                if ns.StyleButton and ns.db.bareIcons then ns.StyleButton(btn) end
-                table.insert(petActionButtons, btn)
-            end
+            if btn then Adopt(btn, petButtons) end
         end
     end
 end
 
--- ------------------------------------------------------------ Dynamic Layout Reflow
+-- ------------------------------------------------------------ layout
 local OVERHEAD_STUBS = {
     boss1 = { name = "High Warlord Naj'entus", health = 85, maxHealth = 100, power = 100, class = "WARRIOR" },
     boss2 = { name = "Supremus", health = 92, maxHealth = 100, power = 50, class = "WARRIOR" },
@@ -309,226 +370,148 @@ local OVERHEAD_STUBS = {
     targettarget = { name = "Main Tank", health = 88, maxHealth = 100, power = 40, class = "WARRIOR" },
 }
 
-local function UpdateOverhead()
+-- Which cells show: a real unit, or a stub while simulating.
+local function Present(b, key)
+    if ns.db and ns.db[key] == false then
+        Retire(b)
+        return false
+    end
+    local sim = ns.db and ns.db.simParty
+    if not UnitExists(b.unit) and sim and OVERHEAD_STUBS[b.unit] then
+        Watch(b, OVERHEAD_STUBS[b.unit])
+    else
+        Watch(b, nil)
+        if not UnitExists(b.unit) then
+            b:Hide()
+            return false
+        end
+    end
+    UpdateUnitStatus(b)
+    return true
+end
+
+-- Which command icons show, in order: stances in use, then the pet bar's.
+local function CommandRow()
+    -- real buttons only, simulating or not: an invented stance or pet slot is
+    -- an empty, invisible button that still takes its place in the row
+    local row, stances = {}, 0
+    local forms = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
+    for i, btn in ipairs(stanceButtons) do
+        if i <= forms then table.insert(row, btn); stances = stances + 1 else btn:Hide() end
+    end
+    local pets = PetHasActionBar and PetHasActionBar()
+    for _, btn in ipairs(petButtons) do
+        if pets and btn:IsShown() then table.insert(row, btn) else btn:Hide() end
+    end
+    return row, stances
+end
+
+local function Layout()
     if ns.db and ns.db.overhead == false then
         overhead:Hide()
         return
     end
+    laying = true
 
-    local sim = ns.db and ns.db.simParty
-    local slope = 14
+    local bosses = {}
+    for i = 1, 5 do
+        if Present(bossUnits[i], "topBoss") then
+            table.insert(bosses, bossUnits[i])
+        end
+    end
+    local units = {}
+    if Present(petUnit, "topPet") then table.insert(units, petUnit) end
+    if Present(focusUnit, "topFocus") then table.insert(units, focusUnit) end
+    if Present(totUnit, "topToT") then table.insert(units, totUnit) end
 
-    -- 1. Evaluate Tier 1 (Boss Deck)
-    local activeBosses = {}
-    if ns.db and ns.db.topBoss ~= false then
-        for i = 1, 5 do
-            local b = bossUnits[i]
-            local exists = UnitExists("boss" .. i)
-            if not exists and sim and OVERHEAD_STUBS["boss" .. i] then
-                b.stub = OVERHEAD_STUBS["boss" .. i]
-                exists = true
+    -- the command row first: it is the bottom deck, and decks grow from it
+    local row, stances = CommandRow()
+    local rowW, sep = RowWidth(#row, stances)
+
+    -- the decks, top down; bottom up, a deck grows when the one under it
+    -- would not be a ledge narrower than its floor
+    local stack = {}
+    if #bosses > 0 then table.insert(stack, { kind = "boss", cells = bosses, w = DeckWidth("boss", #bosses) }) end
+    if #units > 0 then table.insert(stack, { kind = "unit", cells = units, w = DeckWidth("unit", #units) }) end
+    if #row > 0 then table.insert(stack, { kind = "tray", w = rowW + 2 * A.deck.tray + 2 * A.margin }) end
+    for i = #stack - 1, 1, -1 do
+        stack[i].w = math.max(stack[i].w, stack[i + 1].w + 2 * A.deck[stack[i].kind] + 2 * A.ledge)
+    end
+
+    local y, widest = 0, 0
+    for slot = 1, #decks do
+        local d = stack[slot]
+        if d then
+            decks[slot]:Place(d.kind, y, d.w / 2)
+            if d.kind == "tray" then
+                -- the icons inside the tray, centred
+                local x, step = -rowW / 2, A.icon + A.iconGap
+                for i, btn in ipairs(row) do
+                    if i == stances + 1 then x = x + sep end
+                    btn:ClearAllPoints()
+                    btn:SetPoint("TOPLEFT", overhead, "TOP", x, -(y + A.trayTop))
+                    btn:Show()
+                    x = x + step
+                end
             else
-                b.stub = nil
+                local n = #d.cells
+                local cw = CellWidth(d.kind, n, d.w)
+                local left = -(n * cw + (n - 1) * A.gap) / 2
+                for i, b in ipairs(d.cells) do
+                    b:SetWidth(cw)
+                    b:ClearAllPoints()
+                    b:SetPoint("TOPLEFT", overhead, "TOP", left + (i - 1) * (cw + A.gap), -(y + A.cellTop))
+                    b:Show()
+                end
             end
-            if exists then
-                table.insert(activeBosses, b)
-                UpdateUnitStatus(b)
-            end
-        end
-    end
-
-    local t1Shown = #activeBosses > 0
-    local w1 = 0
-    if t1Shown then
-        local count = #activeBosses
-        if count == 1 then w1 = 380
-        elseif count == 2 then w1 = 520
-        elseif count == 3 then w1 = 620
-        else w1 = 700 end
-
-        tier1:SetDeckWidth(w1)
-        tier1:ClearDividers()
-
-        local usableW = w1 - slope * 2
-        local colW = usableW / count
-        for idx, b in ipairs(activeBosses) do
-            b:ClearAllPoints()
-            local startX = slope + (idx - 1) * colW
-            b:SetPoint("TOPLEFT", tier1, "TOPLEFT", startX, 0)
-            b:SetSize(colW, tier1.deckHeight)
-            b:Show()
-            if idx > 1 then
-                tier1:AddDivider(startX)
-            end
-        end
-        for i = count + 1, 5 do bossUnits[i]:Hide() end
-
-        tier1:ClearAllPoints()
-        tier1:SetPoint("TOP", overhead, "TOP", 0, 0)
-        tier1:Show()
-    else
-        tier1:Hide()
-        for i = 1, 5 do bossUnits[i]:Hide() end
-    end
-
-    -- 2. Evaluate Tier 2 (Companion Deck: pet, focus, tot)
-    local activeUnits = {}
-    local function CheckUnit(b, key)
-        if ns.db and ns.db[key] == false then
-            b.stub = nil
-            b:Hide()
-            return
-        end
-        local exists = UnitExists(b.unit)
-        if not exists and sim and OVERHEAD_STUBS[b.unit] then
-            b.stub = OVERHEAD_STUBS[b.unit]
-            exists = true
+            y = y + A.deck[d.kind]
+            widest = math.max(widest, d.w)
         else
-            b.stub = nil
-        end
-        if exists then
-            table.insert(activeUnits, b)
-            UpdateUnitStatus(b)
-        else
-            b:Hide()
+            decks[slot]:Clear()
         end
     end
+    -- bosses past the count, hidden but still watched
+    for i = #bosses + 1, 5 do bossUnits[i]:Hide() end
+    ns.overheadRow, ns.overheadRowStances = row, stances
 
-    CheckUnit(petUnit, "topPet")
-    CheckUnit(focusUnit, "topFocus")
-    CheckUnit(totUnit, "topToT")
+    overhead:SetSize(math.max(widest, 1), math.max(y, 1))
+    overhead:SetShown(#stack > 0 or #row > 0)
+    laying = false
+end
 
-    local t2Shown = #activeUnits > 0
-    local w2 = 0
-    if t2Shown then
-        local count = #activeUnits
-        if count == 1 then w2 = 220
-        elseif count == 2 then w2 = 360
-        else w2 = 480 end
-
-        -- Inset narrower than Tier 1 if Tier 1 is shown
-        if t1Shown and w2 >= (w1 - slope * 2) then
-            w2 = math.max(180, w1 - slope * 2 - 20)
-        end
-
-        tier2:SetDeckWidth(w2)
-        tier2:ClearDividers()
-
-        local usableW = w2 - slope * 2
-        local colW = usableW / count
-        for idx, b in ipairs(activeUnits) do
-            b:ClearAllPoints()
-            local startX = slope + (idx - 1) * colW
-            b:SetPoint("TOPLEFT", tier2, "TOPLEFT", startX, 0)
-            b:SetSize(colW, tier2.deckHeight)
-            b:Show()
-            if idx > 1 then
-                tier2:AddDivider(startX)
-            end
-        end
-
-        tier2:ClearAllPoints()
-        if t1Shown then
-            tier2:SetPoint("TOP", tier1, "BOTTOM", 0, 0)
-        else
-            tier2:SetPoint("TOP", overhead, "TOP", 0, 0)
-        end
-        tier2:Show()
-    else
-        tier2:Hide()
+-- The cells and icons are secure buttons, so they are laid out out of combat
+-- only; in combat a unit watch still shows and hides each cell where it stands.
+local pending = false
+function UpdateOverhead()
+    if pending then return end
+    if InCombatLockdown() then
+        pending = true
+        ns.OutOfCombat(function()
+            pending = false
+            Layout()
+        end)
+        return
     end
-
-    -- 3. Evaluate Tier 3 (Command Deck: stances & pet action buttons)
-    local activeButtons = {}
-    if ns.db and ns.db.topStances ~= false then
-        for _, btn in ipairs(stanceButtons) do
-            if btn:IsShown() or sim then
-                table.insert(activeButtons, btn)
-            end
-        end
-    end
-    if ns.db and ns.db.topPetBar ~= false then
-        for _, btn in ipairs(petActionButtons) do
-            if btn:IsShown() or (sim and #activeButtons < 8) then
-                table.insert(activeButtons, btn)
-            end
-        end
-    end
-
-    local t3Shown = #activeButtons > 0
-    if t3Shown then
-        local btnSize = 22
-        local gap = 3
-        local btnTotal = #activeButtons * btnSize + (#activeButtons - 1) * gap
-        local w3 = btnTotal + slope * 2 + 16
-
-        -- Inset narrower than upper tier
-        local parentW = t2Shown and w2 or (t1Shown and w1 or 0)
-        if parentW > 0 and w3 >= (parentW - slope * 2) then
-            w3 = math.max(140, parentW - slope * 2 - 10)
-        end
-
-        tier3:SetDeckWidth(w3)
-        tier3:ClearDividers()
-
-        local startX = (w3 - btnTotal) / 2
-        for idx, btn in ipairs(activeButtons) do
-            btn:ClearAllPoints()
-            btn:SetPoint("LEFT", tier3, "LEFT", startX + (idx - 1) * (btnSize + gap), 0)
-            btn:Show()
-        end
-
-        tier3:ClearAllPoints()
-        if t2Shown then
-            tier3:SetPoint("TOP", tier2, "BOTTOM", 0, 0)
-        elseif t1Shown then
-            tier3:SetPoint("TOP", tier1, "BOTTOM", 0, 0)
-        else
-            tier3:SetPoint("TOP", overhead, "TOP", 0, 0)
-        end
-        tier3:Show()
-    else
-        tier3:Hide()
-    end
-
-    -- Container visibility
-    if t1Shown or t2Shown or t3Shown then
-        overhead:Show()
-    else
-        overhead:Hide()
-    end
+    Layout()
 end
 ns.UpdateOverhead = UpdateOverhead
 
--- ------------------------------------------------------------ Events & Watchers
+-- ------------------------------------------------------------ events
 ns.On("PLAYER_LOGIN", AdoptCommandButtons)
 ns.On("PLAYER_LOGIN", UpdateOverhead)
 ns.On("PLAYER_ENTERING_WORLD", UpdateOverhead)
 ns.On("GROUP_ROSTER_UPDATE", UpdateOverhead)
 ns.On("INSTANCE_ENCOUNTER_ENGAGE_UNIT", UpdateOverhead)
-ns.On("UNIT_TARGET", function(u)
+ns.On("UNIT_TARGET", function(_, u)
     if u == "target" or u == "player" then UpdateOverhead() end
 end)
 ns.On("PLAYER_TARGET_CHANGED", UpdateOverhead)
 ns.On("PLAYER_FOCUS_CHANGED", UpdateOverhead)
-ns.On("UNIT_PET", function(u)
+ns.On("UNIT_PET", function(_, u)
     if u == "player" then UpdateOverhead() end
 end)
 ns.On("UPDATE_SHAPESHIFT_FORMS", UpdateOverhead)
-ns.On("UPDATE_SHAPESHIFT_FORM", UpdateOverhead)
 ns.On("PET_BAR_UPDATE", UpdateOverhead)
-
-local unitWatcher = CreateFrame("Frame")
-for _, u in ipairs({ "pet", "focus", "targettarget", "boss1", "boss2", "boss3", "boss4", "boss5" }) do
-    ns.RegisterUnitEvent(unitWatcher, "UNIT_HEALTH", u)
-    ns.RegisterUnitEvent(unitWatcher, "UNIT_MAXHEALTH", u)
-    ns.RegisterUnitEvent(unitWatcher, "UNIT_POWER_UPDATE", u)
-    ns.RegisterUnitEvent(unitWatcher, "UNIT_NAME_UPDATE", u)
-end
-unitWatcher:SetScript("OnEvent", function(_, _, u)
-    local b = ns.overheadUnits[u]
-    if b then UpdateUnitStatus(b) end
-end)
 
 ns.OnSetting("overhead", UpdateOverhead)
 ns.OnSetting("topBoss", UpdateOverhead)

@@ -25,7 +25,7 @@ read_globals = {
     "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer",
     -- API
     "CreateFrame", "InCombatLockdown", "RegisterUnitWatch", "UnregisterUnitWatch", "IsInGroup", "UnitAffectingCombat", "UnitThreatSituation",
-    "UnitExists", "UnitName", "UnitClass", "UnitIsPlayer", "UnitIsConnected", "UnitIsDeadOrGhost", "UnitIsFriend", "UnitIsUnit",
+    "UnitExists", "GetNumShapeshiftForms", "PetHasActionBar", "UnitName", "UnitClass", "UnitIsPlayer", "UnitIsConnected", "UnitIsDeadOrGhost", "UnitIsFriend", "UnitIsUnit",
     "UnitIsTapDenied", "UnitReaction", "UnitHealth", "UnitHealthMax", "UnitPower", "UnitPowerMax",
     "UnitPowerType", "UnitLevel", "UnitXP", "UnitXPMax", "GetXPExhaustion", "GetMaxPlayerLevel",
     "GetWatchedFactionInfo", "C_Reputation", "BreakUpLargeNumbers", "GameTooltip_Hide",

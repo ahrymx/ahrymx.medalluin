@@ -133,7 +133,10 @@ local function UpdateHotkey(btn)
         hotkey:SetAlpha(1)
         hotkey:Show()
     else
+        -- guarded like the set above: the SetText hook would call us again, forever
+        hotkey.medaluinSetting = true
         hotkey:SetText("")
+        hotkey.medaluinSetting = false
         hotkey:Hide()
     end
 end

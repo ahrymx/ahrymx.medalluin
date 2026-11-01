@@ -19,13 +19,14 @@ ns.On("PLAYER_LOGIN", function()
                 ns.Kill(_G["Boss" .. i .. "TargetFrame"])
             end
         end
+        -- parked, not killed: their events give the adopted buttons their icons
         if ns.db.topStances ~= false then
-            ns.Kill(StanceBar)
-            ns.Kill(ShapeshiftBarFrame)
+            ns.Park(StanceBar)
+            ns.Park(ShapeshiftBarFrame)
         end
         if ns.db.topPetBar ~= false then
-            ns.Kill(PetActionBar)
-            ns.Kill(PetActionBarFrame)
+            ns.Park(PetActionBar)
+            ns.Park(PetActionBarFrame)
         end
     end
     -- The stance and pet bars and the other action bars stay Blizzard's,

@@ -53,9 +53,11 @@ ns.hidden:Hide()
 -- when a vehicle or pet battle lets go of it. Such a frame goes back to the
 -- hidden parent as soon as combat allows.
 local killed = {}
-function ns.Kill(frame)
+-- Park is Kill without the unregistering: the frame is out of sight, but its
+-- own events still run. The stance and pet bars are parked, because their
+-- events are what give the buttons the overhead adopts their icons.
+function ns.Park(frame)
     if not frame then return end
-    frame:UnregisterAllEvents()
     frame:SetParent(ns.hidden)
     if killed[frame] then return end
     killed[frame] = true
@@ -64,6 +66,11 @@ function ns.Kill(frame)
             ns.OutOfCombat(function() self:SetParent(ns.hidden) end)
         end
     end)
+end
+function ns.Kill(frame)
+    if not frame then return end
+    frame:UnregisterAllEvents()
+    ns.Park(frame)
 end
 
 -- Register a unit event if this client knows it; Classic-era clients have

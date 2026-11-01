@@ -139,6 +139,7 @@ function Region:SetTexture(t) self.texture, self.atlas = t, nil end
 function Region:GetTexture() return self.texture end
 function Region:SetColorTexture(r, g, b, a) self.color, self.atlas = { r, g, b, a }, nil end
 function Region:SetAtlas(a) self.atlas = a end
+function Region:GetAtlas() return self.atlas end
 function Region:SetVertexColor(r, g, b, a) self.vertex = { r, g, b, a } end
 function Region:SetBlendMode(m) self.blend = m end
 function Region:GetBlendMode() return self.blend or "BLEND" end
@@ -268,6 +269,7 @@ function Region:GetName() return self.name end
 function Region:GetText() return self.text end
 function Region:IsVisible() return self.shown end
 function Region:IsShown() return self.shown end
+function Region:UnregisterAllEvents() self.unregistered = true end
 function Region:GetStringWidth() return #(self.text or "") * 7 end   -- ~Marcellus SC 15px
 function Region:SetTexCoord(...) self.coords = { ... } end
 function Region:SetDesaturated(d) self.desaturated = d end
@@ -356,7 +358,19 @@ for i = 1, 6 do
     ActionButton("StanceButton" .. i, StanceBar, 100 + i)
 end
 for i = 1, 10 do
-    ActionButton("PetActionButton" .. i, PetActionBar, 200 + i)
+    local b = ActionButton("PetActionButton" .. i, PetActionBar, 200 + i)
+    -- Blizzard's AutoCastOverlay: the corner brackets and the autocast shine.
+    -- The last button's corners have no key, only their atlas, as a template
+    -- that names them differently would.
+    b = b or _G["PetActionButton" .. i]
+    local o = new("Frame", b, nil)
+    o.Shine = o:CreateTexture(nil, "OVERLAY")
+    o.Shine:SetAtlas("UI-HUD-ActionBar-PetAutoCast-Ants")
+    local corners = o:CreateTexture(nil, "OVERLAY")
+    corners:SetAtlas("UI-HUD-ActionBar-PetAutoCast-Corners")
+    if i < 10 then o.Corners = corners end
+    o.cornersTex = corners
+    b.AutoCastOverlay = o
 end
 
 -- Forever's bar divider (a three-slice of textures) exists only on an Edit
@@ -379,11 +393,25 @@ function InCombatLockdown() return inCombat end
 local threatOf = nil
 function UnitAffectingCombat(u) return u == "player" and inCombat end
 function UnitThreatSituation(u) if u == "player" then return threatOf end end
+-- The game's unit watch runs every frame, not once: a watched button whose
+-- unit does not exist is hidden again however it was shown. watchTick() is
+-- that frame; a stub does not make a unit exist.
+local watchedFrames = {}
 function RegisterUnitWatch(f)
     f.watched = true
+    watchedFrames[f] = true
     if f.unit and not UnitExists(f.unit) and not f.stub then f:Hide() end
 end
 function UnregisterUnitWatch(f) f.watched = false end
+-- the player's stances and pet bar: none unless a pass says so
+local shapeshiftForms, petBar = 0, false
+function GetNumShapeshiftForms() return shapeshiftForms end
+function PetHasActionBar() return petBar end
+local function watchTick()
+    for f in pairs(watchedFrames) do
+        if f.watched and f.unit then f:SetShown(UnitExists(f.unit) and true or false) end
+    end
+end
 function IsInGroup() return grouped end
 function UnitExists(u) return u == "player" or u == "target" or (grouped and u:match("^party[12]$")) end
 function UnitName(u) return ({ player = "Ahrymx", target = "Defias Pillager", party1 = "Thalric",
@@ -1420,29 +1448,209 @@ if savedSimParty then
     print("readyCheck.cleared", "party1.status=" .. tostring(p1.statusWidget.shown),
         "p3Buffs=" .. p3BuffsRestored, "p2CC=" .. tostring(p2.ccWidget.shown))
 
-    -- 5. Overhead cascading ziggurat console
+    -- 5. The overhead: decks hung from the screen's top, cells, the command row
+    -- (a druid-like player with three forms and a pet: the row is real buttons)
+    shapeshiftForms, petBar = 3, true
+    for i = 1, 10 do _G["PetActionButton" .. i].shown = true end
+    ns.UpdateOverhead()
     local ovh = ns.overhead
-    local t1 = ns.overheadTier1
-    local t2 = ns.overheadTier2
-    local t3 = ns.overheadTier3
-    print("overhead.ziggurat", "shown=" .. tostring(ovh.shown),
-        "t1=" .. tostring(t1.shown) .. "@w" .. tostring(t1.width),
-        "t2=" .. tostring(t2.shown) .. "@w" .. tostring(t2.width),
-        "t3=" .. tostring(t3.shown) .. "@w" .. tostring(t3.width))
-    print("overhead.bosses", "b1=" .. tostring(ns.overheadUnits.boss1.shown) .. " " .. tostring(ns.overheadUnits.boss1.name.text),
-        "b2=" .. tostring(ns.overheadUnits.boss2.shown) .. " " .. tostring(ns.overheadUnits.boss2.name.text))
-    print("overhead.companion", "pet=" .. tostring(ns.overheadUnits.pet.shown) .. " " .. tostring(ns.overheadUnits.pet.name.text),
-        "focus=" .. tostring(ns.overheadUnits.focus.shown) .. " " .. tostring(ns.overheadUnits.focus.name.text),
-        "tot=" .. tostring(ns.overheadUnits.targettarget.shown) .. " " .. tostring(ns.overheadUnits.targettarget.name.text))
-    print("overhead.cascading", "t2_under_t1=" .. tostring(t2.points.TOP and t2.points.TOP[1] == t1),
-        "t3_under_t2=" .. tostring(t3.points.TOP and t3.points.TOP[1] == t2),
-        "t2_narrower=" .. tostring(t2.width < t1.width),
-        "t3_narrower=" .. tostring(t3.width < t2.width))
+    local A = ns.overheadArt
+    local decks = ns.overheadDecks
+    watchTick()
+    -- in design pixels, from the overhead's top centre
+    local function rel(f)
+        local r, o = resolve(f), resolve(ovh)
+        local k = scaleOf(ovh)
+        local cx = (o[1] + o[3]) / 2
+        return (r[1] - cx) / k, (r[2] - o[2]) / k, (r[3] - cx) / k, (r[4] - o[2]) / k
+    end
+    local function round(v) return math.floor(v + 0.5) end
+    -- one anchor and no size is no rectangle in the game: nothing hung off it shows
+    print("overhead.box", "w=" .. tostring(ovh.w), "h=" .. tostring(ovh.h), "shown=" .. tostring(ovh.shown))
+    local heard = {}
+    for _, u in ipairs({ "pet", "focus", "targettarget", "boss1", "boss5" }) do
+        local b = ns.overheadUnits[u]
+        table.insert(heard, u .. "=" .. tostring(b.unitOf and b.unitOf.UNIT_HEALTH))
+    end
+    print("overhead.hears", table.concat(heard, " "))
+    local function deckState(tag)
+        local out = {}
+        for slot, d in ipairs(decks) do
+            if d.shown then
+                local l, t = rel(d.left)
+                local r = select(3, rel(d.right))
+                table.insert(out, string.format("%d:%s half=%s y=%s wings=%d..%d top=%d piece=%s", slot, d.kind,
+                    tostring(d.half), tostring(d.y), round(l), round(r), round(t),
+                    tostring(d.left.texture):match("[^\\]+$")))
+            else
+                table.insert(out, slot .. ":none")
+            end
+        end
+        print(tag, table.concat(out, "  "))
+    end
+    deckState("overhead.decks")
+    -- a lower deck repaints where it meets the one above, so it draws over it
+    print("overhead.pieces", "lowerOver=" .. tostring(decks[3].left.sub > decks[2].left.sub
+            and decks[2].left.sub > decks[1].left.sub),
+        "rightMirrored=" .. tostring(decks[1].right.coords[1] > decks[1].right.coords[2]),
+        "plateUnderCells=" .. tostring(decks[1].left.parent.level < ns.overheadUnits.boss1.level))
+    -- every shown cell inside its deck's floor; the row centred on the line,
+    -- and stretched to the floor less its margins (within the even-total pixel)
+    local function cellState(tag)
+        for slot, d in ipairs(decks) do
+            if d.shown and d.kind ~= "tray" then
+                local h = A.deck[d.kind]
+                local inside, lo, hi, n = true, 1e9, -1e9, 0
+                for _, b in pairs(ns.overheadUnits) do
+                    if b.shown and b.kind == d.kind then
+                        local l, t, r, bt = rel(b)
+                        n = n + 1
+                        lo, hi = math.min(lo, l), math.max(hi, r)
+                        if l < -d.half + h or r > d.half - h or t < d.y or bt > d.y + h - 3 then inside = false end
+                    end
+                end
+                local reach = d.half - h - A.margin
+                local w
+                for _, b in pairs(ns.overheadUnits) do if b.shown and b.kind == d.kind then w = b.w end end
+                print(tag, slot .. ":" .. d.kind, "cells=" .. n, "insideFloor=" .. tostring(inside),
+                    "centred=" .. tostring(round(lo + hi) == 0), string.format("span=%d..%d", round(lo), round(hi)),
+                    "fills=" .. tostring(round(hi) <= reach and reach - round(hi) <= n), "w=" .. tostring(w))
+            end
+        end
+    end
+    cellState("overhead.cells")
+    local chips = {}
+    for _, u in ipairs({ "boss1", "pet", "focus", "targettarget" }) do
+        local b = ns.overheadUnits[u]
+        local cl = rel(b.chip)
+        local bl = rel(b)
+        table.insert(chips, u .. "=" .. tostring(b.chip.texture):match("[^\\]+$") .. "@" .. round(cl - bl))
+    end
+    print("overhead.chips", table.concat(chips, " "))
+    print("overhead.names", tostring(ns.overheadUnits.boss1.name.text), tostring(ns.overheadUnits.pet.name.text))
+    -- the command row: stances, a gap, the pet bar; centred inside the tray,
+    -- the bottom deck, with every icon inside the tray's floor
+    local function rowState(tag)
+        local row = ns.overheadRow or {}
+        if #row == 0 then print(tag, "none"); return end
+        local first, last = rel(row[1]), select(3, rel(row[#row]))
+        local _, top = rel(row[1])
+        local gaps = {}
+        for i = 2, #row do
+            local g = rel(row[i]) - select(3, rel(row[i - 1]))
+            gaps[round(g)] = (gaps[round(g)] or 0) + 1
+        end
+        local g = {}
+        for k2, v in pairs(gaps) do table.insert(g, k2 .. "x" .. v) end
+        table.sort(g)
+        local tray, bottom
+        for slot, d in ipairs(decks) do
+            if d.shown then bottom = slot end
+            if d.shown and d.kind == "tray" then tray = d end
+        end
+        local inTray = tray ~= nil and decks[bottom] == tray
+        if tray then
+            local h = A.deck.tray
+            for _, btn in ipairs(row) do
+                local l, t, r, bt = rel(btn)
+                if l < -tray.half + h or r > tray.half - h or t < tray.y or bt > tray.y + h then inTray = false end
+            end
+        end
+        print(tag, "n=" .. #row, "stances=" .. tostring(ns.overheadRowStances),
+            "centred=" .. tostring(round(first + last) == 0), "top=" .. round(top),
+            "tray=" .. (tray and (tray.y .. "+" .. A.deck.tray) or "none"), "inTray=" .. tostring(inTray),
+            "gaps=" .. table.concat(g, ","),
+            "size=" .. tostring(row[1].w), "bare=" .. tostring(row[1].icon.coords and row[1].icon.coords[1]))
+    end
+    rowState("overhead.row")
+    -- Blizzard's yellow autocast corners are faded, by key or by atlas; the shine stays
+    local faded, shine = 0, 0
+    for i = 1, 10 do
+        local o = _G["PetActionButton" .. i].AutoCastOverlay
+        if o.cornersTex:GetAlpha() == 0 then faded = faded + 1 end
+        if o.Shine:GetAlpha() == 1 and o:GetAlpha() == 1 and o.shown ~= false then shine = shine + 1 end
+    end
+    print("overhead.autocast", "cornersFaded=" .. faded .. "/10", "shineKept=" .. shine .. "/10")
+    print("overhead.parked", "stance=" .. tostring(StanceBar.parent == ns.hidden),
+        "stanceEvents=" .. tostring(not StanceBar.unregistered),
+        "pet=" .. tostring(PetActionBar.parent == ns.hidden),
+        "petEvents=" .. tostring(not PetActionBar.unregistered))
 
-    -- Reflow test: disable bosses, t2 shifts to top
+    -- no bosses: the companion deck moves to the top, on its own pieces
     page.settings.topBoss:Set(false)
-    print("overhead.noBoss", "t1=" .. tostring(t1.shown), "t2_at_top=" .. tostring(t2.points.TOP and t2.points.TOP[1] == ovh))
+    deckState("overhead.noBoss")
+    cellState("overhead.noBoss.cells")
+    rowState("overhead.noBoss.row")
+    -- the pet alone over the full row (the 2026-11-01 screenshot): the row's
+    -- tray is wider than one cell's deck, so the deck grows and the cell stretches
+    page.settings.topFocus:Set(false)
+    page.settings.topToT:Set(false)
+    deckState("overhead.petOnly")
+    cellState("overhead.petOnly.cells")
+    -- and with bosses over it: the grown pet deck must grow the boss deck in
+    -- turn, so the growth runs bottom up
     page.settings.topBoss:Set(true)
+    deckState("overhead.bossPet")
+    cellState("overhead.bossPet.cells")
+    page.settings.topFocus:Set(true)
+    page.settings.topToT:Set(true)
+    -- every stretched width keeps the row's total even (centred on whole pixels)
+    -- and the cells inside the floor, for any deck width a stack can reach
+    local odd, over = 0, 0
+    for _, kind in ipairs({ "boss", "unit" }) do
+        for n = 1, 5 do
+            local least = n * A.cell[kind] + (n - 1) * A.gap + 2 * A.deck[kind] + 2 * A.margin
+            for w = least, least + 400, 2 do
+                local cw = ns.OverheadCellWidth(kind, n, w)
+                local total = n * cw + (n - 1) * A.gap
+                if total % 2 == 1 then odd = odd + 1 end
+                if total > w - 2 * A.deck[kind] - 2 * A.margin or cw < A.cell[kind] then over = over + 1 end
+            end
+        end
+    end
+    print("overhead.cellWidth", "oddTotals=" .. odd, "outOfFloor=" .. over)
+    -- a switched-off frame stays off when its unit is there (target exists here)
+    local tot = ns.overheadUnits.targettarget
+    tot.unit = "target"
+    ns.UpdateOverhead()     -- a real unit now: the watch has it
+    page.settings.topToT:Set(false)
+    watchTick()
+    print("overhead.totOff", "shown=" .. tostring(tot.shown))
+    tot.unit = "targettarget"
+    page.settings.topToT:Set(true)
+    -- in combat the cells' secure buttons are not moved; the layout waits
+    local b1 = ns.overheadUnits.boss1
+    local before = b1.points
+    inCombat = true
+    ns.UpdateOverhead()
+    ns.UpdateOverhead()
+    local held = b1.points == before
+    inCombat = false
+    for _, f in ipairs(events.PLAYER_REGEN_ENABLED or {}) do f.scripts.OnEvent(f, "PLAYER_REGEN_ENABLED") end
+    print("overhead.combat", "held=" .. tostring(held), "after=" .. tostring(b1.points ~= before and b1.shown))
+
+    -- simulating a class with no stances (the 2026-11-01 hunter): no invented
+    -- stance slots, so the pet bar alone is centred in the tray
+    shapeshiftForms = 0
+    ns.UpdateOverhead()
+    rowState("overhead.simHunter.row")
+    petBar = false
+    ns.UpdateOverhead()
+    rowState("overhead.simNoPet.row")
+    -- not simulating: nothing to show; then a pet arrives (UNIT_PET for the
+    -- player) with its bar, and the row stands alone at the top
+    page.settings.simParty:Set(false)
+    print("overhead.solo", "shown=" .. tostring(ovh.shown))
+    rowState("overhead.solo.row")
+    petBar = true
+    -- shown without firing OnShow: the adopted-button hook would relayout on
+    -- its own and hide whether UNIT_PET reaches the layout at all
+    for i = 1, 10 do _G["PetActionButton" .. i].shown = true end
+    for _, f in ipairs(events.UNIT_PET or {}) do f.scripts.OnEvent(f, "UNIT_PET", "player") end
+    print("overhead.petArrives", "shown=" .. tostring(ovh.shown))
+    rowState("overhead.petArrives.row")
+    petBar = false
+    page.settings.simParty:Set(true)
 end
 
 -- the combat tint over the art's grey surface: hidden out of combat,
