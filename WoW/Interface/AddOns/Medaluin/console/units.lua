@@ -42,14 +42,22 @@ if UnitHealthPercent and C_CurveUtil and C_CurveUtil.CreateCurve then
 end
 
 local function HealthPercent(unit, cur, max)
+    if not ns.IsSecret(cur) and not ns.IsSecret(max) then
+        return (max and max > 0) and math.floor(cur / max * 100 + 0.5) or 0
+    end
     if percentCurve then return UnitHealthPercent(unit, false, percentCurve) end
-    return max > 0 and math.floor(cur / max * 100 + 0.5) or 0
+    return (max and max > 0) and math.floor(cur / max * 100 + 0.5) or 0
 end
 
 local function PowerPercent(unit, cur, max)
-    if UnitPowerPercent and percentCurve then return UnitPowerPercent(unit, false, percentCurve) end
-    if ns.IsSecret(cur) or ns.IsSecret(max) then return nil end
-    return max > 0 and math.floor(cur / max * 100 + 0.5) or 0
+    if not ns.IsSecret(cur) and not ns.IsSecret(max) then
+        return (max and max > 0) and math.floor(cur / max * 100 + 0.5) or 0
+    end
+    if UnitPowerPercent and percentCurve then
+        local pType = UnitPowerType(unit)
+        return UnitPowerPercent(unit, pType, false, percentCurve)
+    end
+    return nil
 end
 
 local function FormatPower(cur)

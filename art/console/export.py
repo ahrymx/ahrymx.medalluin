@@ -411,6 +411,13 @@ def export_bar(console_top):
     canvas = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
     canvas.paste(img.crop(box), (0, 0))
     to_tga(canvas, os.path.join(MEDIA, "actionbar.tga"))
+
+    bg_path = os.path.join(ROOT, "assets", "layer2bg.png")
+    if os.path.exists(bg_path):
+        bg_img = Image.open(bg_path).convert("RGBA")
+        bg_canvas = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+        bg_canvas.paste(bg_img.crop(box), (0, 0))
+        to_tga(bg_canvas, os.path.join(MEDIA, "actionbar-bg.tga"))
     os.makedirs(os.path.join(MEDIA, "bar"), exist_ok=True)
     for name in layout["parts"]:
         part = Image.open(os.path.join(ROOT, "assets", "bar", f"{name}.png")).convert("RGBA")

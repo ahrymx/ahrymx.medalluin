@@ -174,13 +174,24 @@ function ns.BuildBar(rows)
     tray:SetFrameLevel(ns.levels.actionBar)
     ns.actionBar = tray
 
-    -- behind the slots, one dark band; the plate's pillars stand over it
-    local row = windows[1]
+    -- behind the plate: the background layer ("layer2bg") covers the entire plate footprint
     local backing = tray:CreateTexture(nil, "BACKGROUND")
-    backing:SetPoint("TOPLEFT", console, "TOP", row[1][1], row[1][3])
-    backing:SetPoint("BOTTOMRIGHT", console, "TOP", row[#row][2], row[#row][4])
-    backing:SetColorTexture(unpack(ns.colors.ink))
+    backing:SetSize(art.width, art.height)
+    backing:SetPoint("BOTTOM", console, "TOP", 0, art.bottom)
+    backing:SetTexture(ns.media .. "actionbar-bg")
+    backing:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
     ns.barBacking = backing
+
+    -- if multiple rows are active, upper rows stand above the plate and get their own backing bands
+    if rows > 1 then
+        for r = 2, rows do
+            local rSlots = windows[r]
+            local rBacking = tray:CreateTexture(nil, "BACKGROUND")
+            rBacking:SetPoint("TOPLEFT", console, "TOP", rSlots[1][1], rSlots[1][3])
+            rBacking:SetPoint("BOTTOMRIGHT", console, "TOP", rSlots[#rSlots][2], rSlots[#rSlots][4])
+            rBacking:SetColorTexture(unpack(ns.colors.ink))
+        end
+    end
 
     -- the plate stands over the bars and the toggle, so its own frame
     local stone = CreateFrame("Frame", nil, tray)

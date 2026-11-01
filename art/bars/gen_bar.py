@@ -457,6 +457,14 @@ def layer2():
                 px[x, y] = (0, 0, 0, 0)
     path = os.path.join(ROOT, "assets", "layer2.png")
     img.save(path)
+
+    # Separate background layer behind layer2 ("layer2bg") to fill all transparent gaps
+    f = frame_outline()
+    bg_svg = wrap([], [f'<polygon points="{pts(f)}" fill="{INK}" stroke="{STONE_EDGE}" stroke-width="1.6"/>'], height=1081)
+    bg_img = rsvg(bg_svg, os.path.join(OUT, "layer2bg.png"))
+    bg_path = os.path.join(ROOT, "assets", "layer2bg.png")
+    bg_img.save(bg_path)
+
     parts()
     layout = {
         "console_top": CONSOLE_TOP,
