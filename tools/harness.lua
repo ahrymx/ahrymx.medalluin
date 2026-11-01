@@ -2884,32 +2884,6 @@ local function PagingPass()
         inCombat = false
     end
     taint("after every change")
-    -- /mdlui taint: WoW's own answer for every field and global the click
-    -- reads; here a stub that knows two tainted values and one of ours
-    do
-        local tainted = { [ActionButton1] = { isExtra = "Medaluin", medaluinIcon = "Medaluin" } }
-        ActionButton1.isExtra, ActionButton1.medaluinIcon = false, true
-        function issecurevariable(t, k)
-            if k == nil then
-                if t == "NUM_ACTIONBAR_BUTTONS" then return false, "SomeAddon" end
-                return true
-            end
-            local by = tainted[t] and tainted[t][k]
-            return not by, by
-        end
-        SlashCmdList.MDLUI("taint")
-        -- a blocked click prints it by itself, with the button under the mouse
-        function GetMouseFoci() return { MultiBarBottomLeftButton1 } end
-        for _, f in ipairs(events.ADDON_ACTION_FORBIDDEN or {}) do
-            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "OtherAddon", "UseAction()")
-            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "Medaluin", "UseAction()")
-            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "Medaluin", "UseAction()")
-        end
-        GetMouseFoci = nil
-        issecurevariable = nil
-        ActionButton1.isExtra, ActionButton1.medaluinIcon = nil, nil
-        SlashCmdList.MDLUI("taint")
-    end
     -- per profile: the other profile has its own, and coming back brings these
     -- back; row 2 is Custom on both, so only its conditional moves
     ns.SetOption("row2PagingCustom", "[mod:alt] 3; 6")

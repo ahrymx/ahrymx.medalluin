@@ -39,7 +39,7 @@ ns.On("PLAYER_LOGIN", function()
         -- in the addon's code, and what that writes on it (feedback_action,
         -- bindingAction, buttonType) is tainted for good: every click on it, or
         -- press of its key, was blocked ("Medaluin has been blocked", UseAction;
-        -- /mdlui taint, 2026-11-01). Blizzard made these itself, and their keys
+        -- issecurevariable in game, 2026-11-01). Blizzard made these itself, and their keys
         -- are its own (MULTIACTIONBAR6BUTTON1-10, keybind.lua). A client without
         -- them (Classic Era) gets buttons of Medaluin's own, as before.
         local spare = _G.MultiBar6 and _G.MultiBar6Button1 and _G.MultiBar6
