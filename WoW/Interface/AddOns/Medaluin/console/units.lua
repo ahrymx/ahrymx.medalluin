@@ -162,6 +162,85 @@ local STUBS = {
         power = 70, maxPower = 100 },
 }
 
+local PET_STUBS = {
+    partypet2 = { name = "Water Elemental", class = "MAGE", health = 90, maxHealth = 100 },
+}
+
+local function PetHealthColor(pet)
+    local unit = pet.unit
+    if not UnitIsConnected(unit) or UnitIsDeadOrGhost(unit) then
+        return unpack(C.dead)
+    end
+    local owner = pet.owner
+    if owner then
+        local _, class = UnitClass(owner)
+        local c = not ns.IsSecret(class) and class and RAID_CLASS_COLORS[class]
+        if c then
+            return Muted(c.r * 0.85, c.g * 0.85, c.b * 0.85)
+        end
+    end
+    local c = FACTION_BAR_COLORS[UnitReaction(unit, "player") or 5] or FACTION_BAR_COLORS[5]
+    return Muted(c.r, c.g, c.b)
+end
+
+local function UpdatePartyPet(pet)
+    if not pet then return end
+    if ns.db and ns.db.partyPets == false then
+        pet.stub = nil
+        ns.OutOfCombat(function()
+            if UnregisterUnitWatch then UnregisterUnitWatch(pet) end
+            if pet:IsShown() then pet:Hide() end
+        end)
+        return
+    end
+
+    local unit = pet.unit
+    local sim = ns.db and ns.db.simParty
+    if UnitExists(unit) then
+        pet.stub = nil
+        ns.OutOfCombat(function()
+            RegisterUnitWatch(pet)
+        end)
+        local max = UnitHealthMax(unit)
+        local cur = UnitHealth(unit)
+        if not ns.IsSecret(max) and max <= 0 then max = 1 end
+        pet.health:SetMinMaxValues(0, max)
+        pet.health:SetValue(cur)
+        pet.health:SetStatusBarColor(PetHealthColor(pet))
+        pet.name:SetText(ns.Or(UnitName(unit), "Pet"))
+        if pet.value then
+            if not UnitIsConnected(unit) then
+                pet.value:SetText(PLAYER_OFFLINE)
+            elseif UnitIsDeadOrGhost(unit) then
+                pet.value:SetText(DEAD)
+            else
+                pet.value:SetFormattedText("%.0f%%", HealthPercent(unit, cur, max))
+            end
+        end
+    elseif sim and PET_STUBS[unit] then
+        local stub = PET_STUBS[unit]
+        pet.stub = stub
+        ns.OutOfCombat(function()
+            if UnregisterUnitWatch then UnregisterUnitWatch(pet) end
+            if not pet:IsShown() then pet:Show() end
+        end)
+        pet.health:SetMinMaxValues(0, stub.maxHealth)
+        pet.health:SetValue(stub.health)
+        local c = RAID_CLASS_COLORS[stub.class]
+        if c then pet.health:SetStatusBarColor(Muted(c.r * 0.85, c.g * 0.85, c.b * 0.85)) end
+        pet.name:SetText(stub.name)
+        if pet.value then
+            pet.value:SetFormattedText("%.0f%%", math.floor(stub.health / stub.maxHealth * 100 + 0.5))
+        end
+    else
+        pet.stub = nil
+        ns.OutOfCombat(function()
+            RegisterUnitWatch(pet)
+            if pet:IsShown() then pet:Hide() end
+        end)
+    end
+end
+
 local function UpdatePartyUnit(b)
     local unit = b.unit
     local sim = ns.db and ns.db.simParty
@@ -313,19 +392,129 @@ local function Spawn(unit)
     return b
 end
 
+local petEvents = {
+    UNIT_HEALTH = true,
+    UNIT_HEALTH_FREQUENT = true,
+    UNIT_MAXHEALTH = true,
+    UNIT_NAME_UPDATE = true,
+    UNIT_CONNECTION = true,
+    UNIT_FLAGS = true,
+    UNIT_FACTION = true,
+}
+
+local function SpawnPet(parentBtn, unit, side)
+    local pet = CreateFrame("Button", "MedaluinUnit_" .. unit, console, "SecureUnitButtonTemplate")
+    pet.unit = unit
+    pet.owner = parentBtn.unit
+    pet:SetFrameLevel(ns.levels.text + 2)
+    pet:SetHeight(12)
+    pet:SetPoint("TOPLEFT", parentBtn, "BOTTOMLEFT", 2, -10)
+    pet:SetPoint("TOPRIGHT", parentBtn, "BOTTOMRIGHT", -2, -10)
+
+    pet:SetAttribute("unit", unit)
+    pet:SetAttribute("*type1", "target")
+    pet:SetAttribute("*type2", "togglemenu")
+    pet:RegisterForClicks("AnyUp")
+
+    local rim = pet:CreateTexture(nil, "BACKGROUND")
+    rim:SetPoint("TOPLEFT", -1, 1)
+    rim:SetPoint("BOTTOMRIGHT", 1, -1)
+    rim:SetColorTexture(0.25, 0.23, 0.20, 0.85)
+
+    local bg = pet:CreateTexture(nil, "BACKGROUND", nil, 1)
+    bg:SetAllPoints()
+    bg:SetColorTexture(unpack(ns.colors.ink))
+
+    local bar = CreateFrame("StatusBar", nil, pet)
+    bar:SetAllPoints()
+    bar:SetStatusBarTexture(ns.bar)
+    bar:SetReverseFill(side == 1)
+    pet.health = bar
+
+    local text = CreateFrame("Frame", nil, pet)
+    text:SetAllPoints(pet)
+    text:SetFrameLevel(pet:GetFrameLevel() + 2)
+
+    local outer = side == 1 and "RIGHT" or "LEFT"
+    local inner = side == 1 and "LEFT" or "RIGHT"
+
+    pet.name = ns.Text(text, 9)
+    pet.name:SetPoint(outer, text, outer, -side * 3, 0)
+    pet.name:SetWordWrap(false)
+    pet.name:SetTextColor(unpack(C.text))
+
+    pet.value = ns.Text(text, 9)
+    pet.value:SetPoint(inner, text, inner, side * 3, 0)
+    pet.value:SetWordWrap(false)
+    pet.value:SetTextColor(unpack(C.dim))
+
+    pet:SetScript("OnEnter", function(self)
+        if self.stub and not UnitExists(self.unit) then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(self.stub.name, 1, 1, 1)
+            GameTooltip:AddLine("Simulated party pet", 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+        elseif UnitFrame_OnEnter then
+            UnitFrame_OnEnter(self)
+        end
+    end)
+    pet:SetScript("OnLeave", function(self)
+        if self.stub and not UnitExists(self.unit) then
+            GameTooltip_Hide()
+        elseif UnitFrame_OnLeave then
+            UnitFrame_OnLeave(self)
+        end
+    end)
+
+    for event in pairs(petEvents) do
+        ns.RegisterUnitEvent(pet, event, unit)
+    end
+    pet:SetScript("OnEvent", function(self)
+        UpdatePartyPet(self)
+    end)
+    pet:SetScript("OnShow", function(self)
+        UpdatePartyPet(self)
+    end)
+
+    RegisterUnitWatch(pet)
+    pet:Hide()
+    return pet
+end
+
 ns.units = {}
+ns.partyPets = {}
 for _, unit in ipairs({ "player", "target", "party1", "party2", "party3", "party4" }) do
     ns.units[unit] = Spawn(unit)
+end
+
+for i = 1, 4 do
+    local partyUnit = "party" .. i
+    local petUnit = "partypet" .. i
+    local parentBtn = ns.units[partyUnit]
+    local _, side = unpack(ns.slots[partyUnit])
+    local pet = SpawnPet(parentBtn, petUnit, side)
+    parentBtn.pet = pet
+    ns.partyPets[petUnit] = pet
 end
 
 local function UpdatePartyFrames()
     for _, unit in ipairs({ "party1", "party2", "party3", "party4" }) do
         local b = ns.units[unit]
-        if b then UpdatePartyUnit(b) end
+        if b then
+            UpdatePartyUnit(b)
+            if b.pet then UpdatePartyPet(b.pet) end
+        end
     end
 end
 UpdatePartyFrames()
 ns.On("GROUP_ROSTER_UPDATE", UpdatePartyFrames)
 ns.On("PLAYER_ENTERING_WORLD", UpdatePartyFrames)
 ns.On("ADDON_LOADED", UpdatePartyFrames)
+ns.On("UNIT_PET", function(unit)
+    if unit and unit:match("^party%d$") then
+        local b = ns.units[unit]
+        if b and b.pet then UpdatePartyPet(b.pet) end
+    end
+end)
 ns.OnSetting("simParty", UpdatePartyFrames)
+ns.OnSetting("partyPets", UpdatePartyFrames)

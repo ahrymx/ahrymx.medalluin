@@ -1353,6 +1353,10 @@ if savedSimParty then
     local p2 = ns.units.party2
     print("party2.cc", tostring(p2.ccWidget and p2.ccWidget.shown),
         tostring(p2.ccWidget and p2.ccWidget.timer and p2.ccWidget.timer.text))
+    if p2.pet then
+        print("party2.pet", tostring(p2.pet.shown), tostring(p2.pet.name and p2.pet.name.text),
+            tostring(p2.pet.value and p2.pet.value.text))
+    end
     local p3 = ns.units.party3
     local bCount = 0
     for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then bCount = bCount + 1 end end

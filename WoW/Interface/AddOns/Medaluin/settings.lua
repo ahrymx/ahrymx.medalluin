@@ -19,6 +19,7 @@ local DEFAULTS = {
     xpCast = false,         -- the player's casts over the experience bar
     repCast = false,        -- the target's casts over the reputation bar
     simParty = false,       -- simulate party frames and show the group art layer
+    partyPets = true,       -- show pet frames directly below party members with pets
     auraGlow = true,        -- border glow for dispellable debuffs
     auraCC = true,          -- large center icon for crowd control
     auraBuffs = true,       -- row of player-cast buffs on outer health corner
@@ -118,6 +119,8 @@ local function Page()
     -- Unit Frames subcategory
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "simParty", B, "Simulate party frames"),
         "Show the console's party frame layer and simulated party members to preview party frames while solo.")
+    Settings.CreateCheckbox(subUnit, Setting(subUnit, "partyPets", B, "Show party pets"),
+        "Show pet unit frames directly below party members who have active pets.")
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraGlow", B, "Dispel glow on frame borders"),
         "Glow the frame's stone border in the debuff's color (purple for Curse, green for Poison, etc.) "
         .. "when an ally has a debuff you can dispel.")
