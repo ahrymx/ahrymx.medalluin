@@ -17,6 +17,7 @@ console\units.lua
 console\auras.lua
 console\xp.lua
 console\minimap.lua
+console\overhead.lua
 
 bars\windows.lua
 bars\bar.lua

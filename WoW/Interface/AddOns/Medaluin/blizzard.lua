@@ -9,6 +9,25 @@ ns.On("PLAYER_LOGIN", function()
         ns.Kill(_G["PartyMemberFrame" .. i])
     end
     ns.Kill(CompactPartyFrame)
+
+    if ns.db and ns.db.overhead ~= false then
+        if ns.db.topPet ~= false then ns.Kill(PetFrame) end
+        if ns.db.topFocus ~= false then ns.Kill(FocusFrame) end
+        if ns.db.topToT ~= false then ns.Kill(TargetFrameToT) end
+        if ns.db.topBoss ~= false then
+            for i = 1, 5 do
+                ns.Kill(_G["Boss" .. i .. "TargetFrame"])
+            end
+        end
+        if ns.db.topStances ~= false then
+            ns.Kill(StanceBar)
+            ns.Kill(ShapeshiftBarFrame)
+        end
+        if ns.db.topPetBar ~= false then
+            ns.Kill(PetActionBar)
+            ns.Kill(PetActionBarFrame)
+        end
+    end
     -- The stance and pet bars and the other action bars stay Blizzard's,
     -- placed by Edit Mode; bars/buttons.lua takes action bar 1 when its
     -- option is on, and retires the main bar with it, and bars/cast.lua

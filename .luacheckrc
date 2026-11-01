@@ -16,6 +16,7 @@ read_globals = {
     -- frames
     "UIParent", "Minimap", "MinimapCluster", "GameTooltip", "PlayerFrame", "TargetFrame",
     "PartyFrame", "CompactPartyFrame", "MainMenuBar", "CastingBarFrame", "PlayerCastingBarFrame",
+    "PetFrame", "FocusFrame", "TargetFrameToT", "ShapeshiftBarFrame", "PetActionBarFrame",
     "MicroButtonAndBagsBar", "CharacterMicroButton", "MicroButtonPortrait", "MainMenuBarPerformanceBar",
     "MainMenuBarDownload", "MainMenuBarBackpackButton", "KeyRingButton",
     -- frames of the Edit Mode clients (Forever, retail)

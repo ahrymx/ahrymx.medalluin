@@ -350,6 +350,14 @@ for i = 1, 12 do
     ActionButton("MultiBarBottomLeftButton" .. i, MainMenuBar, 60 + i)
     ActionButton("MultiBarBottomRightButton" .. i, MainMenuBar, 48 + i)
 end
+StanceBar = new("Frame", UIParent, "StanceBar")
+PetActionBar = new("Frame", UIParent, "PetActionBar")
+for i = 1, 6 do
+    ActionButton("StanceButton" .. i, StanceBar, 100 + i)
+end
+for i = 1, 10 do
+    ActionButton("PetActionButton" .. i, PetActionBar, 200 + i)
+end
 
 -- Forever's bar divider (a three-slice of textures) exists only on an Edit
 -- Mode client; elsewhere it raises, as an unknown template does in WoW.
@@ -1411,6 +1419,30 @@ if savedSimParty then
     for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then p3BuffsRestored = p3BuffsRestored + 1 end end
     print("readyCheck.cleared", "party1.status=" .. tostring(p1.statusWidget.shown),
         "p3Buffs=" .. p3BuffsRestored, "p2CC=" .. tostring(p2.ccWidget.shown))
+
+    -- 5. Overhead cascading ziggurat console
+    local ovh = ns.overhead
+    local t1 = ns.overheadTier1
+    local t2 = ns.overheadTier2
+    local t3 = ns.overheadTier3
+    print("overhead.ziggurat", "shown=" .. tostring(ovh.shown),
+        "t1=" .. tostring(t1.shown) .. "@w" .. tostring(t1.width),
+        "t2=" .. tostring(t2.shown) .. "@w" .. tostring(t2.width),
+        "t3=" .. tostring(t3.shown) .. "@w" .. tostring(t3.width))
+    print("overhead.bosses", "b1=" .. tostring(ns.overheadUnits.boss1.shown) .. " " .. tostring(ns.overheadUnits.boss1.name.text),
+        "b2=" .. tostring(ns.overheadUnits.boss2.shown) .. " " .. tostring(ns.overheadUnits.boss2.name.text))
+    print("overhead.companion", "pet=" .. tostring(ns.overheadUnits.pet.shown) .. " " .. tostring(ns.overheadUnits.pet.name.text),
+        "focus=" .. tostring(ns.overheadUnits.focus.shown) .. " " .. tostring(ns.overheadUnits.focus.name.text),
+        "tot=" .. tostring(ns.overheadUnits.targettarget.shown) .. " " .. tostring(ns.overheadUnits.targettarget.name.text))
+    print("overhead.cascading", "t2_under_t1=" .. tostring(t2.points.TOP and t2.points.TOP[1] == t1),
+        "t3_under_t2=" .. tostring(t3.points.TOP and t3.points.TOP[1] == t2),
+        "t2_narrower=" .. tostring(t2.width < t1.width),
+        "t3_narrower=" .. tostring(t3.width < t2.width))
+
+    -- Reflow test: disable bosses, t2 shifts to top
+    page.settings.topBoss:Set(false)
+    print("overhead.noBoss", "t1=" .. tostring(t1.shown), "t2_at_top=" .. tostring(t2.points.TOP and t2.points.TOP[1] == ovh))
+    page.settings.topBoss:Set(true)
 end
 
 -- the combat tint over the art's grey surface: hidden out of combat,

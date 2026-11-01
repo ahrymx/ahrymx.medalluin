@@ -21,6 +21,13 @@ local DEFAULTS = {
     simParty = false,       -- simulate party frames and show the group art layer
     partyPets = true,       -- show pet frames directly below party members with pets
     partyRange = 40,        -- distance in yards to fade out-of-range party frames (0 = off)
+    overhead = true,        -- top-of-screen cascading trapezoid structure
+    topBoss = true,         -- boss frames on the top tier
+    topPet = true,          -- player pet unit frame on the middle tier
+    topFocus = true,        -- focus unit frame on the middle tier
+    topToT = true,          -- target of target frame on the middle tier
+    topPetBar = true,       -- pet action bar on the bottom tier
+    topStances = true,      -- stance bar on the bottom tier
     auraGlow = true,        -- border glow for dispellable debuffs
     auraCC = true,          -- large center icon for crowd control
     auraBuffs = true,       -- row of player-cast buffs on outer health corner
@@ -68,6 +75,7 @@ local function Page()
 
     local subBar = Subcategory(category, "Action Bar")
     local subUnit = Subcategory(category, "Unit Frames")
+    local subOverhead = Subcategory(category, "Overhead")
     local subCast = Subcategory(category, "Cast Bars")
     local subChat = Subcategory(category, "Chat")
 
@@ -139,6 +147,27 @@ local function Page()
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraBoss", B, "Boss debuffs"),
         "Show critical boss debuffs on the inner corner of the health bar, away from the power bar.")
 
+    -- Overhead subcategory
+    local ovh = Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "overhead", B, "Overhead console"),
+        "Top-of-screen cascading trapezoid structure for boss frames, pet, focus, target of target, and action bars."
+        .. RELOAD)
+    local function OverheadOn() return MedaluinDB.overhead end
+    local overheadChildren = {
+        Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topBoss", B, "Boss frames"),
+            "Encounter boss frames on the top tier, dynamically dividing into 1, 2, or 3 columns."),
+        Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topPet", B, "Player pet frame"),
+            "Player pet unit frame on the middle tier."),
+        Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topFocus", B, "Focus frame"),
+            "Focus target unit frame on the middle tier."),
+        Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topToT", B, "Target of target frame"),
+            "Target's target unit frame on the middle tier."),
+        Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topPetBar", B, "Pet action bar"),
+            "Pet command and ability buttons on the bottom tier." .. RELOAD),
+        Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topStances", B, "Stance bar"),
+            "Shapeshift forms, stealth, stances, and auras on the bottom tier." .. RELOAD),
+    }
+    for _, child in ipairs(overheadChildren) do child:SetParentInitializer(ovh, OverheadOn) end
+
     -- Cast Bars subcategory
     Settings.CreateCheckbox(subCast, Setting(subCast, "xpCast", B, "Player casts on the experience bar"),
         "The experience bar under your portrait becomes your cast bar while you cast, and goes back to "
@@ -173,6 +202,9 @@ local function Page()
                 layout:AddInitializer(CreateSettingsButtonInitializer("", "Unit Frames", function()
                     Settings.OpenToCategory(subUnit:GetID())
                 end, "Open Unit Frames settings.", true))
+                layout:AddInitializer(CreateSettingsButtonInitializer("", "Overhead", function()
+                    Settings.OpenToCategory(subOverhead:GetID())
+                end, "Open Overhead console settings.", true))
                 layout:AddInitializer(CreateSettingsButtonInitializer("", "Cast Bars", function()
                     Settings.OpenToCategory(subCast:GetID())
                 end, "Open Cast Bars settings.", true))
@@ -182,12 +214,13 @@ local function Page()
             end
         end
         AddReload(subBar)
+        AddReload(subOverhead)
         AddReload(subChat)
     end
 
     Settings.RegisterAddOnCategory(category)
     ns.settingsCategory = category
-    ns.settingsSubcategories = { bar = subBar, unit = subUnit, cast = subCast, chat = subChat }
+    ns.settingsSubcategories = { bar = subBar, unit = subUnit, overhead = subOverhead, cast = subCast, chat = subChat }
 end
 
 ns.On("ADDON_LOADED", function(_, name)
@@ -213,6 +246,8 @@ local function OpenSettings(arg)
     elseif arg == "unit" or arg == "units" or arg == "unitframe" or arg == "unitframes"
         or arg == "uf" or arg == "party" then
         target = ns.settingsSubcategories and ns.settingsSubcategories.unit or target
+    elseif arg == "overhead" or arg == "top" or arg == "boss" then
+        target = ns.settingsSubcategories and ns.settingsSubcategories.overhead or target
     elseif arg == "cast" or arg == "castbars" or arg == "casting" then
         target = ns.settingsSubcategories and ns.settingsSubcategories.cast or target
     elseif arg == "chat" then

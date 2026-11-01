@@ -212,6 +212,7 @@ local function Style(btn)
         UpdateHotkey(btn)
     end
 end
+ns.StyleButton = Style
 
 local function Adopt(btn, slot)
     btn:SetParent(ns.actionBar)
