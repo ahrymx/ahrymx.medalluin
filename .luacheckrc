@@ -37,7 +37,7 @@ read_globals = {
     "ToggleAllBags", "OpenAllBags", "GetInventoryItemDurability", "GetInventoryItemLink", "ToggleCharacter",
     "GameTime_GetTime", "GameTime_GetLocalTime", "GameTime_GetGameTime", "LoadAddOn", "TimeManager_Toggle",
     "date", "LibStub", "C_Timer", "C_Spell", "GetSpellCharges", "C_PlayerInfo", "IsMounted",
-    "QueueStatusButton", "QueueStatusMinimapButton", "MiniMapLFGFrame",
+    "QueueStatusButton", "QueueStatusMinimapButton", "MiniMapLFGFrame", "MainMenuBarVehicleLeaveButton",
     -- the Edit Mode clients' API: secret values, curves, duration objects
     "issecretvalue", "C_ActionBar", "C_CurveUtil", "CurveConstants", "Enum", "UnitHealthPercent", "UnitPowerPercent",
     "UnitCastingDuration", "UnitChannelDuration", "ActionButton_UpdateCooldownNumberHidden",

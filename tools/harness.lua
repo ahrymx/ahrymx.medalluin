@@ -704,6 +704,21 @@ if modern then
     pager.Text, pager.UpButton, pager.DownButton = new("FontString", pager), new("Button", pager), new("Button", pager)
     pager.Text:SetText("1")
     MainActionBar.ActionBarPageNumber = pager
+    -- the leave-vehicle button, on the bar and hidden until a vehicle can be
+    -- left: Blizzard's XML crops its normal and pushed art and gives it a
+    -- square highlight
+    MainMenuBarVehicleLeaveButton = new("Button", MainActionBar, "MainMenuBarVehicleLeaveButton")
+    MainMenuBarVehicleLeaveButton.w, MainMenuBarVehicleLeaveButton.h = 32, 32
+    MainMenuBarVehicleLeaveButton.shown = false
+    MainMenuBarVehicleLeaveButton.level = 70
+    MainMenuBarVehicleLeaveButton:SetPoint("BOTTOMLEFT", MainActionBar, "BOTTOMLEFT", 0, 0)
+    for state, file in pairs({ Normal = "UI-Vehicles-Button-Exit-Up", Pushed = "UI-Vehicles-Button-Exit-Down" }) do
+        MainMenuBarVehicleLeaveButton["Set" .. state .. "Texture"](MainMenuBarVehicleLeaveButton,
+            "Interface\\Vehicles\\" .. file)
+        MainMenuBarVehicleLeaveButton["Get" .. state .. "Texture"](MainMenuBarVehicleLeaveButton)
+            :SetTexCoord(0.140625, 0.859375, 0.140625, 0.859375)
+    end
+    MainMenuBarVehicleLeaveButton:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
     MultiBarBottomLeft = new("Frame", UIParent, "MultiBarBottomLeft")
     MultiBarBottomRight = new("Frame", UIParent, "MultiBarBottomRight")
     for _, bar in ipairs({ { MainActionBar, "ActionButton" }, { MultiBarBottomLeft, "MultiBarBottomLeftButton" },
@@ -2230,6 +2245,50 @@ if stripsPass then
     QueueStatusButton:Hide()
     print("queue eye unqueued", "shown=" .. tostring(QueueStatusButton.shown),
         "portrait=" .. tostring(CharacterMicroButton.medaluin.tex.shown))
+    -- the leave-vehicle seat: Blizzard's button over the backpack's well
+    -- while a vehicle can be left, wearing our round art through Blizzard's
+    -- own passes (Edit Mode placing it, Update's square highlight)
+    local seat = MainMenuBarVehicleLeaveButton
+    if seat then
+        local function art(t)
+            if not t then return "-" end
+            return string.format("%s@%s%s%s", tostring(t.texture):match("[^\\]+$"),
+                t.coords and table.concat(t.coords, ",") or "full",
+                t.vertex and ("/" .. tostring(t.vertex[1])) or "", t.desaturated and "/grey" or "")
+                .. (t.alpha and t.alpha < 1 and ("/a" .. t.alpha) or "")
+        end
+        local function seatState(tag)
+            print("vehicle " .. tag, "shown=" .. tostring(seat.shown), "parent=" .. tostring(seat.parent.name),
+                "packAlpha=" .. tostring(MainMenuBarBackpackButton.alpha),
+                "over=" .. tostring(seat.level > MainMenuBarBackpackButton.level),
+                "under art=" .. tostring(seat.level < ns.levels.stripArt))
+        end
+        seatState("parked")
+        seat:Show()
+        seatState("can leave")
+        screen("vehicleSeat", seat, string.format("normal=%s pushed=%s disabled=%s highlight=%s",
+            art(seat:GetNormalTexture()), art(seat:GetPushedTexture()), art(seat:GetDisabledTexture()),
+            art(seat:GetHighlightTexture())))
+        -- Edit Mode puts it back where its layout says; Update and the
+        -- taxi click set Blizzard's square highlight
+        seat:SetScale(1.4)
+        print("vehicle rescaled", "scale=" .. tostring(seat.scale))
+        seat:SetParent(MainActionBar)
+        print("vehicle reparented", "parent=" .. tostring(seat.parent.name))
+        seat:ClearAllPoints()
+        seat:SetPoint("BOTTOMLEFT", MainActionBar, "BOTTOMLEFT", 0, 0)
+        -- in WoW a path lands on the texture already there (our glow), so
+        -- the square is put on it first
+        seat:GetHighlightTexture():SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+        seat:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+        seat:SetNormalTexture("Interface\\Vehicles\\UI-Vehicles-Button-Exit-Up")
+        screen("vehicleSeat placed again", seat, string.format("scale=%s normal=%s highlight=%s",
+            tostring(seat.scale), art(seat:GetNormalTexture()), art(seat:GetHighlightTexture())))
+        seat:Hide()
+        seatState("left")
+    else
+        print("vehicle", "no leave button")
+    end
     local pack = MainMenuBarBackpackButton
     local mark = pack.SlotHighlightTexture
     screen("backpack", pack, string.format("picture=%s drawn=%d open=%s", tostring(pack.icon.texture):match("[^\\]+$"),

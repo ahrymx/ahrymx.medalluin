@@ -222,6 +222,28 @@ def variant(kind):
     return svg("".join(body))
 
 
+def leave(size=64):
+    """The leave-vehicle seat, for the right well while a vehicle can be left
+    (Blizzard's own art is a square button with a frame; the well is round):
+    a crimson disc filling the 64x64 part edge to edge, as the backpack's icon
+    does (the part is drawn at the well's size, under the ring), and a gold
+    door with an arrow stepping out of it, drawn on a 64 box then grown a fifth
+    about the disc's centre so it reads at 42 px."""
+    c = size / 2
+    f = 'fill="url(#gold)" stroke="#2a0806" stroke-width="1.1" stroke-linejoin="round"'
+    return (f'<radialGradient id="seat" cx="45%" cy="38%" r="65%">'
+            f'<stop offset="0" stop-color="#b8322a"/><stop offset="0.7" stop-color="#6e1410"/>'
+            f'<stop offset="1" stop-color="#3a0806"/></radialGradient>'
+            f'<circle cx="{c}" cy="{c}" r="{c}" fill="url(#seat)"/>'
+            # the glyph's box is 19-48 by 15-47: centred, then grown
+            f'<g transform="translate({c},{c}) scale(1.2) translate(-33.5,-31)">'
+            # the door: an arched frame, open on its right
+            f'<path d="M37,47 L19,47 L19,26 C19,15 37,15 37,26 L37,29 L33,29 L33,26 C33,20.5 23,20.5 23,26 '
+            f'L23,43 L33,43 L33,40 L37,40 Z" {f}/>'
+            # the arrow, stepping out through the opening
+            f'<path d="M27,32.5 L39,32.5 L39,27 L48,34.5 L39,42 L39,36.5 L27,36.5 Z" {f}/></g>')
+
+
 def svg(body):
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}"><defs>'
             f'<linearGradient id="navy" x1="0" y1="0" x2="0" y2="1">'
@@ -286,6 +308,8 @@ def layer3():
         part(g, glyph(g, 6, 6))
     # white disc: the backpack icon's mask and the medallions' hover glow
     part("round", '<circle cx="32" cy="32" r="31.5" fill="#fff"/>', size=64)
+    # the leave-vehicle seat, in the right well while a vehicle can be left
+    part("leave", leave(), size=64)
     # the numbers code needs that the art cannot show (screen px, 1080p)
     import json
     with open(os.path.join(parts, "layout.json"), "w") as f:
