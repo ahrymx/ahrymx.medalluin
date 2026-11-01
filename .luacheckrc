@@ -24,7 +24,7 @@ read_globals = {
     "MicroMenu", "MicroMenuContainer", "BagsBar", "CharacterReagentBag0Slot", "ChatAlertFrame", "StatusTrackingBarManager",
     "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer",
     -- API
-    "CreateFrame", "InCombatLockdown", "RegisterUnitWatch", "UnregisterUnitWatch", "IsInGroup", "UnitAffectingCombat", "UnitThreatSituation",
+    "CreateFrame", "InCombatLockdown", "RegisterUnitWatch", "UnregisterUnitWatch", "RegisterStateDriver", "UnregisterStateDriver", "IsInGroup", "UnitAffectingCombat", "UnitThreatSituation",
     "UnitExists", "GetNumShapeshiftForms", "PetHasActionBar", "UnitName", "UnitClass", "UnitIsPlayer", "UnitIsConnected", "UnitIsDeadOrGhost", "UnitIsFriend", "UnitIsUnit",
     "UnitIsTapDenied", "UnitReaction", "UnitHealth", "UnitHealthMax", "UnitPower", "UnitPowerMax",
     "UnitPowerType", "UnitLevel", "UnitXP", "UnitXPMax", "GetXPExhaustion", "GetMaxPlayerLevel",

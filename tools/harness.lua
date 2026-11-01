@@ -70,6 +70,7 @@ local savedBare = args[3] == "bare"
 local savedNoChat = args[3] == "nochat"
 local savedBeam = args[3] == "beamcast"
 local savedSimParty = args[2] == "simparty" or args[3] == "simparty" or args[4] == "simparty"
+local lightPass = args[2] == "light"
 local actionPage = 1
 local class = argClass or "PALADIN"
 
@@ -412,9 +413,23 @@ function CreateFrame(kind, name, parent, template)
     if template == DIVIDER then
         f.template, f.w = template, 12
         for _ = 1, 3 do new("Texture", f) end
+    elseif template == "ActionBarButtonTemplate" then
+        f.template, f.w, f.h = template, 36, 36
+        f.icon = new("Texture", f, (name or "") .. "Icon")
+        for _, part in ipairs({ "Count", "HotKey", "Name", "Border", "Flash" }) do
+            f[part] = new("FontString", f, (name or "") .. part)
+        end
+        f.cooldown = new("Cooldown", f, (name or "") .. "Cooldown")
     end
     function f:RegisterEvent(e) events[e] = events[e] or {}; table.insert(events[e], self) end
     return f
+end
+function RegisterStateDriver(f, state, values)
+    f.stateDrivers = f.stateDrivers or {}
+    f.stateDrivers[state] = values
+end
+function UnregisterStateDriver(f, state)
+    if f.stateDrivers then f.stateDrivers[state] = nil end
 end
 local inCombat = false
 function InCombatLockdown() return inCombat end
@@ -443,7 +458,8 @@ local function watchTick()
     end
 end
 function IsInGroup() return grouped end
-function UnitExists(u) return u == "player" or u == "target" or (grouped and u:match("^party[12]$")) end
+local hasTarget = true
+function UnitExists(u) return u == "player" or (u == "target" and hasTarget) or (grouped and u:match("^party[12]$")) end
 function UnitName(u) return ({ player = "Ahrymx", target = "Defias Pillager", party1 = "Thalric",
     party2 = "Okun" })[u] end
 -- a group's classes, by name: the loot log asks UnitClass for a name
@@ -914,7 +930,8 @@ end }
 function CreateSettingsButtonInitializer(_, text) return text end
 SlashCmdList = {}
 function ReloadUI() end
-MedaluinDB = barOff and { actionBar = false } or savedRows and { rows = savedRows }
+MedaluinDB = lightPass and { consoleProfile = "light", bareIcons = true, simParty = grouped }
+    or barOff and { actionBar = false } or savedRows and { rows = savedRows }
     or savedBare and { bareIcons = true } or savedNoChat and { chat = false }
     or savedBeam and { xpCast = true, repCast = true }
     or savedSimParty and { simParty = true } or savedNoSide and { side = false }
@@ -1374,7 +1391,7 @@ if barPass then
         local n = 0
         for i = 1, 12 do
             local b = _G[prefix .. i]
-            if ns.actionBar and b.parent == ns.actionBar then
+            if (ns.actionBar and b.parent == ns.actionBar) or (ns.extraBars and b.parent == ns.extraBars) then
                 n = n + 1
                 if i == 1 or i == 12 then
                     screen(b.name, b, "level=" .. b.level .. " scale=" .. b:GetScale()
@@ -1392,7 +1409,7 @@ if barPass then
     -- ticker that should be hidden would run over Blizzard's own buttons
     local ticking = 0
     for _, f in ipairs(all) do
-        if f.shown and f.scripts.OnUpdate and f ~= ns.barFade then
+        if f.shown and f.scripts.OnUpdate and f ~= ns.barFade and f ~= ns.extraBarFade then
             f.scripts.OnUpdate(f, 0.2)
             ticking = ticking + 1
         end
@@ -1422,6 +1439,10 @@ if barPass then
         for _ = 1, 20 do ns.barFade.scripts.OnUpdate(ns.barFade, 0.05) end
         return string.format("%.2f", ns.actionBar.alpha or 1)
     end
+    local function settleExtra()
+        for _ = 1, 20 do ns.extraBarFade.scripts.OnUpdate(ns.extraBarFade, 0.05) end
+        return string.format("%.2f", ns.extraBars.alpha or 1)
+    end
     for mode = 1, 4 do
         S.visibility:Set(mode)
         local line = {}
@@ -1437,6 +1458,24 @@ if barPass then
         table.insert(line, "dragging=" .. settle())
         cursor = nil
         print("visibility " .. mode, table.concat(line, " "))
+    end
+    S.visibility:Set(1)
+    settle()
+    for mode = 1, 4 do
+        S.extraVisibility:Set(mode)
+        local line = {}
+        mouseOver, cursor = false, nil
+        table.insert(line, "idle=" .. settleExtra() .. "(bar1=" .. settle() .. ")")
+        mouseOver = true
+        table.insert(line, "hover=" .. settleExtra())
+        mouseOver = false
+        fire("PLAYER_REGEN_DISABLED")
+        table.insert(line, "combat=" .. settleExtra())
+        fire("PLAYER_REGEN_ENABLED")
+        cursor = "spell"
+        table.insert(line, "dragging=" .. settleExtra())
+        cursor = nil
+        print("extraVisibility " .. mode, table.concat(line, " "))
     end
     return
 end
@@ -2219,6 +2258,68 @@ if stripsPass then
         buffState("buffs after combat")
         ns.buffs[1].scripts.OnClick(ns.buffs[1], "RightButton")
         print("cancel", table.concat(cancelled, ","))
+    end
+    do return end
+end
+
+if lightPass then
+    UIParent.fixed = { -648, -904, 1272, 176 }
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    print("profile", ns.db.consoleProfile, string.format("console=%dx%d", ns.art.width, ns.art.height),
+        "bar=" .. tostring(ns.barArt.file), "rows=" .. ns.db.rows)
+    -- Initially hasTarget is true, so combat/target mode is active
+    print("initial(targeted)", "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"),
+        "minimapRelocated=" .. tostring(Minimap.points.CENTER[1] == _G.MedaluinMinimapBezel),
+        "bezelShown=" .. tostring(_G.MedaluinMinimapBezel.shown),
+        "bar7Alpha=" .. tostring(ns.bar7Frame.alpha),
+        "bar7Buttons=" .. #ns.bar7Buttons,
+        "bar7Slot1=" .. tostring(ns.bar7Buttons[1].action),
+        "bar7Slot10=" .. tostring(ns.bar7Buttons[10].action),
+        "stateDriver=" .. tostring(ns.bar7Frame.stateDrivers and ns.bar7Frame.stateDrivers.page))
+    out("player.health", ns.units.player.health)
+    out("player.power", ns.units.player.power)
+    out("target.health", ns.units.target.health)
+    out("target.power", ns.units.target.power)
+    out("xp", ns.xpBar)
+    out("rep", ns.repBar)
+    out("ActionButton1", _G.ActionButton1, "level=" .. _G.ActionButton1.level)
+    out("ActionButton12", _G.ActionButton12, "level=" .. _G.ActionButton12.level)
+    out("MultiBarBottomLeftButton1", _G.MultiBarBottomLeftButton1, "level=" .. _G.MultiBarBottomLeftButton1.level)
+    out("MultiBarBottomLeftButton6", _G.MultiBarBottomLeftButton6, "level=" .. _G.MultiBarBottomLeftButton6.level)
+    out("MultiBarBottomRightButton1", _G.MultiBarBottomRightButton1, "level=" .. _G.MultiBarBottomRightButton1.level)
+    out("MultiBarBottomRightButton6", _G.MultiBarBottomRightButton6, "level=" .. _G.MultiBarBottomRightButton6.level)
+    out("MedaluinBar7Button1", _G.MedaluinBar7Button1, "level=" .. _G.MedaluinBar7Button1.level)
+    out("MedaluinBar7Button10", _G.MedaluinBar7Button10, "level=" .. _G.MedaluinBar7Button10.level)
+    out("barLow", ns.barPower)
+    out("drawerToggle", ns.drawerToggle)
+    -- Clear target out of combat -> exploration mode: square minimap in center bay
+    hasTarget = false
+    fire("PLAYER_TARGET_CHANGED")
+    print("explore(no target, no combat)", "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"),
+        "minimapInConsole=" .. tostring(Minimap.points.CENTER[1] == ns.console),
+        "bezelShown=" .. tostring(_G.MedaluinMinimapBezel.shown),
+        "bar7Alpha=" .. tostring(ns.bar7Frame.alpha))
+    out("minimap(explore)", Minimap)
+    -- Enter combat without target -> combat mode: minimap moves to TOPRIGHT bezel, bar7 revealed
+    inCombat = true
+    fire("PLAYER_REGEN_DISABLED")
+    print("combat(no target)", "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"),
+        "minimapRelocated=" .. tostring(Minimap.points.CENTER[1] == _G.MedaluinMinimapBezel),
+        "bezelShown=" .. tostring(_G.MedaluinMinimapBezel.shown),
+        "bar7Alpha=" .. tostring(ns.bar7Frame.alpha))
+    out("minimap(combat)", Minimap)
+    -- Page Bar 7 to Bar 8 (slots 85..94)
+    inCombat = false
+    ns.SetBar7Page(8)
+    print("bar7(page 8)", "slot1=" .. tostring(ns.bar7Buttons[1].action),
+        "slot10=" .. tostring(ns.bar7Buttons[10].action))
+    fire("PLAYER_REGEN_ENABLED")
+    -- Detached vertical party frames
+    for i = 1, 4 do
+        local p = ns.units["party" .. i]
+        out("party" .. i, p, "bezel=" .. tostring(p.detachedBezel and p.detachedBezel.shown))
     end
     do return end
 end

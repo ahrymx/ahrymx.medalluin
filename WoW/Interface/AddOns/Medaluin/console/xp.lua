@@ -31,6 +31,16 @@ end
 local xp, rep = Half(-1), Half(1)
 xp:SetStatusBarColor(unpack(C.xp))
 rep:SetStatusBarColor(unpack(C.rep))
+ns.xpBar, ns.repBar = xp, rep
+
+function ns.RelayoutXP()
+    ns.PlaceOn(xp, console, "xp", -1)
+    ns.PlaceOn(rep, console, "xp", 1)
+    if ns.beamCast then
+        ns.PlaceOn(ns.beamCast.player, console, "xp", -1)
+        ns.PlaceOn(ns.beamCast.target, console, "xp", 1)
+    end
+end
 
 local rested = CreateFrame("StatusBar", nil, console)
 rested:SetFrameLevel(ns.levels.bars)

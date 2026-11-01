@@ -62,42 +62,46 @@ function ns.PlaceOnBar(btn, w)
     btn:SetSize(BUTTON, BUTTON)
 end
 
-local plate
-local function Tint(hex) plate:SetVertexColor(ns.HexColor(hex)) end
+local plate, hybridPlate
+local wingPlates = {}
+local function Tint(hex)
+    local r, g, b = ns.HexColor(hex)
+    plate:SetVertexColor(r, g, b)
+    if hybridPlate then hybridPlate:SetVertexColor(r, g, b) end
+    for _, w in ipairs(wingPlates) do w:SetVertexColor(r, g, b) end
+end
 
 -- ------------------------------------------------------------- visibility
--- The Show the bar option fades the whole bar (buttons, plate, chevrons,
--- cast bar and class resource are all its children). Only the alpha changes, which is allowed
--- in combat, so a faded bar keeps working: clicks and key bindings stay
--- live. It also comes back while a spell or item is on the cursor, so one
--- can be dropped on it.
+-- The Bar 1 visibility and Extra bar(s) visibility options fade Bar 1 and
+-- Bars 2/3 independently. Only the alpha changes, which is allowed in combat,
+-- so a faded bar keeps working: clicks and key bindings stay live. It also
+-- comes back while a spell or item is on the cursor, so one can be dropped on it.
 local FADE_TIME, FADED = 0.2, 0
 
-local function Fade(tray)
+local function MakeFade(frame, settingKey, isOver)
     local V = ns.VISIBILITY
     local inCombat = InCombatLockdown()
     local function Wanted()
-        local mode = ns.db.visibility
+        local mode = ns.db[settingKey] or V.ALWAYS
         if mode == V.ALWAYS or (GetCursorInfo and GetCursorInfo()) then return true end
-        -- an open drawer stands outside the tray, and counts as the bar
-        local over = tray:IsMouseOver() or (ns.drawer and ns.drawer:IsShown() and ns.drawer:IsMouseOver())
+        local over = isOver()
         if mode == V.COMBAT then return inCombat end
         if mode == V.MOUSEOVER then return over end
         return inCombat or over
     end
     local alpha = Wanted() and 1 or FADED
-    tray:SetAlpha(alpha)
-    local watcher = CreateFrame("Frame", nil, tray)
+    frame:SetAlpha(alpha)
+    local watcher = CreateFrame("Frame", nil, frame)
     watcher:SetScript("OnUpdate", function(_, dt)
         local goal = Wanted() and 1 or FADED
         if alpha == goal then return end
         local step = dt / FADE_TIME
         alpha = goal > alpha and math.min(goal, alpha + step) or math.max(goal, alpha - step)
-        tray:SetAlpha(alpha)
+        frame:SetAlpha(alpha)
     end)
     ns.On("PLAYER_REGEN_DISABLED", function() inCombat = true end)
     ns.On("PLAYER_REGEN_ENABLED", function() inCombat = false end)
-    ns.barFade = watcher
+    return watcher
 end
 
 -- ------------------------------------------------------------ paging
@@ -161,16 +165,17 @@ local function Pager(tray)
     return pager
 end
 
--- Returns the bar, and its slots as rows of 12 from the bottom up.
+-- Returns the bar, its slots as rows of 12 from the bottom up, and the extra bars frame.
 function ns.BuildBar(rows)
     local art, frame, windows = ns.barArt, ns.barFrame, ns.barWindows[rows]
-    local top = math.max(frame[3], windows[#windows][1][3])
+    hybridPlate = nil
+    wingPlates = {}
 
-    -- A child of the console, so it takes the console's scale with it. It
-    -- spans the plate and the stacked rows, which is what a mouseover reads.
+    -- A child of the console, so it takes the console's scale with it.
+    -- Action Bar 1's tray spans its own plate (and open drawer for mouseover).
     local tray = CreateFrame("Frame", "MedaluinActionBar", console)
     tray:SetPoint("BOTTOMLEFT", console, "TOP", frame[1], art.bottom)
-    tray:SetPoint("TOPRIGHT", console, "TOP", frame[2], top)
+    tray:SetPoint("TOPRIGHT", console, "TOP", frame[2], frame[3])
     tray:SetFrameLevel(ns.levels.actionBar)
     ns.actionBar = tray
 
@@ -178,7 +183,7 @@ function ns.BuildBar(rows)
     local backing = tray:CreateTexture(nil, "BACKGROUND")
     backing:SetSize(art.width, art.height)
     backing:SetPoint("BOTTOM", console, "TOP", 0, art.bottom)
-    backing:SetTexture(ns.media .. "actionbar-bg")
+    backing:SetTexture(ns.media .. (art.bgFile or "actionbar-bg"))
     backing:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
     ns.barBacking = backing
 
@@ -186,19 +191,91 @@ function ns.BuildBar(rows)
     local stone = CreateFrame("Frame", nil, tray)
     stone:SetAllPoints()
     stone:SetFrameLevel(ns.levels.barPlate)
-    plate = stone:CreateTexture(nil, "ARTWORK")
+    plate = stone:CreateTexture(nil, "ARTWORK", nil, 1)
     plate:SetSize(art.width, art.height)
     plate:SetPoint("BOTTOM", console, "TOP", 0, art.bottom)
-    plate:SetTexture(ns.media .. "actionbar")
+    plate:SetTexture(ns.media .. (art.file or "actionbar"))
     plate:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
     ns.barPlate = plate
 
+    -- In the light profile, the trapezoid hybrid castbar/power row stands on
+    -- its own frame so it remains anchored atop the console when Bar 1 fades out.
+    local lowParent = tray
+    if art.hybridFile then
+        local hybrid = CreateFrame("Frame", "MedaluinHybridBar", console)
+        hybrid:SetPoint("BOTTOMLEFT", console, "TOP", frame[1], art.bottom)
+        hybrid:SetPoint("TOPRIGHT", console, "TOP", frame[2], art.bottom + art.hybridHeight)
+        hybrid:SetFrameLevel(ns.levels.actionBar)
+        ns.hybridBar = hybrid
+
+        local hBg = hybrid:CreateTexture(nil, "BACKGROUND")
+        hBg:SetSize(art.width, art.hybridHeight)
+        hBg:SetPoint("BOTTOM", console, "TOP", 0, art.bottom)
+        hBg:SetTexture(ns.media .. (art.hybridBgFile or "hybrid-light-bg"))
+        hBg:SetTexCoord(0, art.width / art.texWidth, 0, art.hybridHeight / art.hybridTexHeight)
+
+        local hStone = CreateFrame("Frame", nil, hybrid)
+        hStone:SetAllPoints()
+        hStone:SetFrameLevel(ns.levels.barPlate)
+        hybridPlate = hStone:CreateTexture(nil, "ARTWORK", nil, 0)
+        hybridPlate:SetSize(art.width, art.hybridHeight)
+        hybridPlate:SetPoint("BOTTOM", console, "TOP", 0, art.bottom)
+        hybridPlate:SetTexture(ns.media .. art.hybridFile)
+        hybridPlate:SetTexCoord(0, art.width / art.texWidth, 0, art.hybridHeight / art.hybridTexHeight)
+        lowParent = hybrid
+    end
+
+    -- Extra bars (Action Bars 2 and 3) live on their own frame managed by extraVisibility.
+    local extra = CreateFrame("Frame", "MedaluinExtraBars", console)
+    extra:SetFrameLevel(ns.levels.actionBar)
+    local row3
+    if rows >= 2 then
+        local r2 = windows[2]
+        extra:SetPoint("BOTTOMLEFT", console, "TOP", r2[1][1], r2[1][4])
+        extra:SetPoint("TOPRIGHT", console, "TOP", r2[#r2][2], r2[#r2][3])
+        if rows >= 3 then
+            local r3 = windows[3]
+            row3 = CreateFrame("Frame", nil, extra)
+            row3:SetPoint("BOTTOMLEFT", console, "TOP", r3[1][1], r3[1][4])
+            row3:SetPoint("TOPRIGHT", console, "TOP", r3[#r3][2], r3[#r3][3])
+        end
+    else
+        extra:SetPoint("BOTTOMLEFT", console, "TOP", frame[1], frame[3])
+        extra:SetPoint("TOPRIGHT", console, "TOP", frame[2], frame[3] + 1)
+    end
+    if art.wingFile and art.wingBoxes and rows >= 2 then
+        local wingStone = CreateFrame("Frame", nil, extra)
+        wingStone:SetAllPoints()
+        wingStone:SetFrameLevel(ns.levels.art + 1)
+        for r = 2, rows do
+            local wb = art.wingBoxes[r - 1]
+            if wb then
+                local wt = wingStone:CreateTexture(nil, "ARTWORK")
+                wt:SetSize(art.wingWidth, art.wingHeight)
+                wt:SetPoint("TOPLEFT", console, "TOP", wb[1], wb[3])
+                wt:SetTexture(ns.media .. art.wingFile)
+                wt:SetTexCoord(0, art.wingWidth / art.wingTexWidth, 0, art.wingHeight / art.wingTexHeight)
+                table.insert(wingPlates, wt)
+            end
+        end
+    end
+    ns.extraBars = extra
+
     ns.pager = Pager(tray)
-    if ns.BuildPower then ns.BuildPower(tray) end
-    if ns.BuildCast then ns.BuildCast(tray) end
+    if ns.BuildPower then ns.BuildPower(lowParent) end
+    if ns.BuildCast then ns.BuildCast(lowParent) end
     if ns.BuildDrawer then ns.BuildDrawer(tray) end
     Tint(ns.db.artColor)
     ns.OnSetting("artColor", Tint)
-    Fade(tray)
-    return tray, windows
+    ns.barFade = MakeFade(tray, "visibility", function()
+        return tray:IsMouseOver() or (ns.drawer and ns.drawer:IsShown() and ns.drawer:IsMouseOver())
+    end)
+    ns.extraBarFade = MakeFade(extra, "extraVisibility", function()
+        if extra:IsMouseOver() or (row3 and row3:IsMouseOver()) then return true end
+        for _, btn in ipairs(ns.extraButtons or {}) do
+            if btn:IsMouseOver() then return true end
+        end
+        return false
+    end)
+    return tray, windows, extra
 end

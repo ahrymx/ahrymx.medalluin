@@ -19,7 +19,9 @@
 local _, ns = ...
 
 local buttons = {}
+local extraButtons = {}
 ns.actionButtons = buttons
+ns.extraButtons = extraButtons
 
 local function Part(btn, key, suffix)
     return btn[key] or _G[btn:GetName() .. (suffix or key)]
@@ -105,6 +107,8 @@ local function ButtonBindingName(btn)
     if num then return "MULTIACTIONBAR3BUTTON" .. num end
     num = name:match("^MultiBarLeftButton(%d+)$")
     if num then return "MULTIACTIONBAR4BUTTON" .. num end
+    num = name:match("^MedaluinBar7Button(%d+)$")
+    if num then return "MULTIACTIONBAR7BUTTON" .. num end
     return btn.buttonType and (btn.buttonType .. (btn:GetID() or ""))
 end
 
@@ -217,13 +221,15 @@ local function Style(btn)
 end
 ns.StyleButton = Style
 
-local function Adopt(btn, slot)
-    btn:SetParent(ns.actionBar)
-    btn:SetFrameStrata(ns.actionBar:GetFrameStrata())
-    btn:SetFrameLevel(ns.levels.actionButtons)
+local function Adopt(btn, slot, parent, isExtra)
+    parent = parent or ns.actionBar
+    btn:SetParent(parent)
+    btn:SetFrameStrata(parent:GetFrameStrata())
+    btn:SetFrameLevel(slot[3] < 0 and (ns.levels.art + 2) or ns.levels.actionButtons)
     ns.PlaceOnBar(btn, slot)
     if ns.db.bareIcons then Style(btn) end
     table.insert(buttons, btn)
+    if isExtra then table.insert(extraButtons, btn) end
 end
 
 -- Blizzard hides countdown numbers unless the player's interface option
@@ -266,11 +272,12 @@ local ROWS = {
 ns.On("PLAYER_LOGIN", function()
     if not ns.db.actionBar then return end
     local rows = math.max(1, math.min(#ROWS, tonumber(ns.db.rows) or 1))
-    local _, slots = ns.BuildBar(rows)
+    local tray, slots, extra = ns.BuildBar(rows)
     ns.OutOfCombat(function()
         for r = 1, rows do
             local prefix, bar = ROWS[r][1], ROWS[r][2]()
-            for i, slot in ipairs(slots[r]) do Adopt(_G[prefix .. i], slot) end
+            local parent = (r == 1) and tray or extra
+            for i, slot in ipairs(slots[r]) do Adopt(_G[prefix .. i], slot, parent, r > 1) end
             ns.Kill(bar)
         end
         -- Blizzard's own art keeps its own range and cooldown display

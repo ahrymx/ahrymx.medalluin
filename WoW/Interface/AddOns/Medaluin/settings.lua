@@ -13,7 +13,8 @@ local DEFAULTS = {
     rows = 1,               -- 2 and 3 stack action bars 2 and 3 above it
     bareIcons = false,      -- WeakAuras-style icons instead of Blizzard's button art
     artColor = "ffffffff",  -- AARRGGBB, as the colour swatch stores it; white leaves the art as drawn
-    visibility = 1,         -- see VISIBILITY
+    visibility = 1,         -- Bar 1 visibility: see VISIBILITY
+    extraVisibility = 1,    -- Extra bar(s) visibility (action bars 2 and 3): see VISIBILITY
     drawer = 1,             -- which way the minimap button drawer opens: see DRAWER
     chat = true,            -- the chat in a panel on the left strip
     side = true,            -- the chat panel's mirror on the right strip: the meter, the loot, the auras
@@ -52,6 +53,8 @@ local DEFAULTS = {
     auraCC = true,          -- large center icon for crowd control
     auraBuffs = true,       -- row of player-cast buffs on outer health corner
     auraBoss = true,        -- boss debuffs on inner health corner
+    consoleProfile = "default", -- "default": medallion console; "light": central console with square minimap & bar 7
+    bar7State = "[bonusbar:1] 8; [form:1] 8; [form:2] 9; [form:3] 9; [stealth] 10; 7", -- state macro for bar 7 (8-10)
 }
 ns.VISIBILITY = { ALWAYS = 1, COMBAT = 2, MOUSEOVER = 3, COMBAT_OR_MOUSEOVER = 4 }
 ns.DRAWER = { LEFT = 1, UP = 2 }
@@ -131,8 +134,9 @@ local function Page()
     local subBags = Subcategory(category, "Bags")
 
     local function Setting(cat, key, kind, name)
+        local default = (key == "rows" and MedaluinDB.consoleProfile == "light") and 3 or DEFAULTS[key]
         local s = Settings.RegisterAddOnSetting(cat, "Medaluin_" .. key, key, MedaluinDB, kind, name,
-            DEFAULTS[key])
+            default)
         s:SetValueChangedCallback(function(_, value) Changed(key, value) end)
         registered[key] = s
         return s
@@ -163,12 +167,19 @@ local function Page()
             .. "instead of Blizzard's button art." .. RELOAD),
         Settings.CreateColorSwatch(subBar, Setting(subBar, "artColor", S, "Art colour"),
             "Tints the bar's stone frame. White leaves it as drawn."),
-        Settings.CreateDropdown(subBar, Setting(subBar, "visibility", N, "Show the bar"), Choices({
+        Settings.CreateDropdown(subBar, Setting(subBar, "visibility", N, "Bar 1 visibility"), Choices({
             { V.ALWAYS, "Always" },
             { V.COMBAT, "In combat", "Faded out of combat; it comes back while you drag a spell onto it." },
             { V.MOUSEOVER, "On mouseover", "Faded until the pointer is over it, or a spell is being dragged." },
             { V.COMBAT_OR_MOUSEOVER, "In combat or on mouseover" },
         }), "A faded bar still works: its buttons and key bindings stay live."),
+        Settings.CreateDropdown(subBar, Setting(subBar, "extraVisibility", N, "Extra bar(s) visibility"), Choices({
+            { V.ALWAYS, "Always" },
+            { V.COMBAT, "In combat", "Faded out of combat; they come back while you drag a spell onto them." },
+            { V.MOUSEOVER, "On mouseover", "Faded until the pointer is over them, or a spell is being dragged." },
+            { V.COMBAT_OR_MOUSEOVER, "In combat or on mouseover" },
+        }), "Manages the visibility of action bars 2 and 3. Faded bars still work: their buttons and key "
+            .. "bindings stay live."),
         Settings.CreateDropdown(subBar, Setting(subBar, "drawer", N, "Minimap buttons"), Choices({
             { ns.DRAWER.LEFT, "Open left", "One row, out to the left of the bar." },
             { ns.DRAWER.UP, "Open up", "One column, up from the bar's left end." },
@@ -178,6 +189,11 @@ local function Page()
     for _, child in ipairs(children) do child:SetParentInitializer(bar, BarOn) end
 
     -- Unit Frames subcategory
+    Settings.CreateDropdown(subUnit, Setting(subUnit, "consoleProfile", S, "Console profile"), Choices({
+        { "default", "Medallion (default)", "The classic round medallion console with integrated party wings." },
+        { "light", "Central Console (light)", "Flush-top player/target wings, dynamic square minimap / 2x5 Bar 7 bay, "
+            .. "split Action Bars 2 & 3, and detached vertical party frames." },
+    }), "Choose between the default medallion console and the lightweight central console profile." .. RELOAD)
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "simParty", B, "Simulate party frames"),
         "Show the console's party frame layer and simulated party members to preview party frames while solo. "
             .. "A small panel on the left changes the situation: bosses, deaths, range, ready and role checks.")
@@ -356,11 +372,20 @@ end
 ns.On("ADDON_LOADED", function(_, name)
     if name ~= addonName then return end
     MedaluinDB = MedaluinDB or {}
+    if MedaluinDB.consoleProfile == "light" and MedaluinDB.rows == nil then
+        MedaluinDB.rows = 3
+    end
     for k, v in pairs(DEFAULTS) do
         if MedaluinDB[k] == nil then MedaluinDB[k] = v end
     end
     ns.db = MedaluinDB
+    if ns.db.consoleProfile == "light" and ns.ApplyLightProfile then
+        ns.ApplyLightProfile()
+    end
     Page()
+    ns.OnSetting("consoleProfile", function(profile)
+        ns.SetOption("rows", profile == "light" and 3 or 1)
+    end)
 end)
 
 SLASH_MEDALUIN1 = "/medaluin"

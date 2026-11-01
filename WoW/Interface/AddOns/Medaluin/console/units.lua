@@ -615,6 +615,77 @@ for i = 1, 4 do
     ns.partyPets[petUnit] = pet
 end
 
+function ns.RelayoutUnits()
+    L = ns.layout
+    local uStyle, pStyle = L.unit, L.party
+    for _, unit in ipairs({ "player", "target" }) do
+        local b = ns.units[unit]
+        local _, side = unpack(ns.slots[unit])
+        ns.PlaceOn(b, console, "unit", side)
+        local h = b:GetHeight()
+        b.power:ClearAllPoints()
+        b.health:ClearAllPoints()
+        b.power:SetHeight(uStyle.power)
+        b.power:SetPoint("LEFT")
+        b.power:SetPoint("RIGHT")
+        b.health:SetHeight(h - uStyle.power - uStyle.seam)
+        b.health:SetPoint("LEFT")
+        b.health:SetPoint("RIGHT")
+        local healthEdge = uStyle.healthOnTop and "TOP" or "BOTTOM"
+        local powerEdge = uStyle.healthOnTop and "BOTTOM" or "TOP"
+        b.health:SetPoint(healthEdge)
+        b.power:SetPoint(powerEdge)
+    end
+    if pStyle.detached then
+        for i = 1, 4 do
+            local b = ns.units["party" .. i]
+            local step = pStyle.height + pStyle.gap + 18
+            local py = pStyle.y - (i - 1) * step
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", UIParent, "TOPLEFT", pStyle.x + 2, py - 2)
+            b:SetSize(pStyle.width - 4, pStyle.height - 4)
+            b.power:ClearAllPoints()
+            b.health:ClearAllPoints()
+            b.power:SetHeight(pStyle.power)
+            b.power:SetPoint("LEFT")
+            b.power:SetPoint("RIGHT")
+            b.power:SetPoint("BOTTOM")
+            b.health:SetHeight((pStyle.height - 4) - pStyle.power - pStyle.seam)
+            b.health:SetPoint("LEFT")
+            b.health:SetPoint("RIGHT")
+            b.health:SetPoint("TOP")
+            b.health:SetReverseFill(false)
+            b.power:SetReverseFill(false)
+            if not b.detachedBg then
+                local bg = b:CreateTexture(nil, "BACKGROUND")
+                bg:SetAllPoints()
+                bg:SetColorTexture(unpack(C.ink))
+                b.detachedBg = bg
+                local bf = CreateFrame("Frame", nil, b)
+                bf:SetPoint("TOPLEFT", b, "TOPLEFT", -2, 2)
+                bf:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 2, -2)
+                bf:SetFrameLevel(ns.levels.art)
+                local bt = bf:CreateTexture(nil, "ARTWORK")
+                bt:SetAllPoints()
+                bt:SetTexture(ns.media .. "party-light")
+                bt:SetTexCoord(0, pStyle.width / pStyle.texWidth, 0, pStyle.height / pStyle.texHeight)
+                b.detachedBezel = bt
+            end
+            if b.roleFrame then
+                b.roleFrame:ClearAllPoints()
+                b.roleFrame:SetPoint("CENTER", b, "LEFT", 10, 2)
+            end
+            b.name:ClearAllPoints()
+            b.name:SetPoint("LEFT", b.health, "LEFT", 22, 0)
+            b.name:SetPoint("RIGHT", b.health, "RIGHT", -6, 0)
+            b.name:SetJustifyH("LEFT")
+            if b.pet then
+                b.pet.health:SetReverseFill(false)
+            end
+        end
+    end
+end
+
 -- Range check logic: party frames fade when members are out of distance
 local function IsUnitInRange(unit, dist)
     if not dist or dist == 0 then return true end

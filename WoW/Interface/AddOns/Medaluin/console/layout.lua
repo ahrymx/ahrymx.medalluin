@@ -40,10 +40,21 @@ function ns.Rect(name, side)
     return x, top, outer - inner, bottom - top
 end
 
+-- Art pixels a window's contents reach under the art above and below the
+-- hole. The console is scaled by a non-integer factor, so the art's hole and
+-- a frame of exactly its size round to different screen rows: at 1.35 the
+-- beam sat one row below its hole and the world showed through between the
+-- unit frames and the experience/reputation halves. Everything placed on a
+-- bled window is below the art (ns.levels), so the art clips the overhang.
+-- Only vertical: a horizontal overhang would hide the first and last of the
+-- fill.
+ns.windowBleed = { xp = 1 }
+
 -- Anchor a region over a window of the console.
 function ns.PlaceOn(region, console, name, side)
     local x, y, w, h = ns.Rect(name, side)
+    local bleed = ns.windowBleed[name] or 0
     region:ClearAllPoints()
-    region:SetPoint("TOPLEFT", console, "TOP", x, -y)
-    region:SetSize(w, h)
+    region:SetPoint("TOPLEFT", console, "TOP", x, -(y - bleed))
+    region:SetSize(w, h + 2 * bleed)
 end

@@ -8,15 +8,62 @@ local console = ns.console
 ns.On("PLAYER_LOGIN", function()
     local _, r, top, bottom = unpack(ns.windows.ring)
     local size = 2 * r + 2 * ns.layout.minimapBleed
+    local mmCfg = ns.layout.minimap
 
     Minimap:SetParent(console)
     Minimap:SetFrameStrata(console:GetFrameStrata())
     Minimap:SetFrameLevel(ns.levels.bars)
     Minimap:ClearAllPoints()
     Minimap:SetPoint("CENTER", console, "TOP", 0, -(top + bottom) / 2)
-    Minimap:SetSize(size, size)
+    Minimap:SetSize(size, mmCfg and mmCfg.square and (bottom - top) or size)
     Minimap:SetScale(1)
-    Minimap:SetMaskTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
+    Minimap:SetMaskTexture(mmCfg and mmCfg.square
+        and "Interface\\Buttons\\WHITE8X8"
+        or "Interface\\CharacterFrame\\TempPortraitAlphaMask")
+
+    if mmCfg and mmCfg.relocate then
+        local bezel = CreateFrame("Frame", "MedaluinMinimapBezel", console)
+        bezel:SetFrameLevel(ns.levels.art)
+        bezel:SetSize(mmCfg.topRightSize, mmCfg.topRightSize)
+        bezel:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -mmCfg.topRightInset, -mmCfg.topRightInset)
+        local bt = bezel:CreateTexture(nil, "ARTWORK")
+        bt:SetAllPoints()
+        bt:SetTexture(ns.media .. "minimap-light")
+        bt:SetTexCoord(0, mmCfg.topRightSize / mmCfg.texWidth, 0, mmCfg.topRightSize / mmCfg.texHeight)
+        bezel:Hide()
+        ns.minimapBezel = bezel
+
+        local inCombat = UnitAffectingCombat and UnitAffectingCombat("player") or false
+        local function UpdateLocation()
+            local _, rx, rTop, rBottom = unpack(ns.windows.ring)
+            local w = 2 * rx + 2 * ns.layout.minimapBleed
+            local h = rBottom - rTop
+            local hasTarget = UnitExists and UnitExists("target") and true or false
+            local relocated = inCombat or hasTarget
+            Minimap:ClearAllPoints()
+            if relocated then
+                local trInner = mmCfg.topRightSize - 4
+                Minimap:SetPoint("CENTER", bezel, "CENTER", 0, 0)
+                Minimap:SetSize(trInner, trInner)
+                bezel:Show()
+            else
+                Minimap:SetPoint("CENTER", console, "TOP", 0, -(rTop + rBottom) / 2)
+                Minimap:SetSize(w, h)
+                bezel:Hide()
+            end
+            if ns.UpdateConsoleArt then ns.UpdateConsoleArt() end
+            if ns.UpdateBar7Visibility then ns.UpdateBar7Visibility(relocated) end
+        end
+        ns.UpdateMinimapLocation = UpdateLocation
+        ns.On("PLAYER_REGEN_DISABLED", function() inCombat = true; UpdateLocation() end)
+        ns.On("PLAYER_REGEN_ENABLED", function() inCombat = false; UpdateLocation() end)
+        ns.On("PLAYER_TARGET_CHANGED", UpdateLocation)
+        ns.On("PLAYER_ENTERING_WORLD", function()
+            inCombat = UnitAffectingCombat and UnitAffectingCombat("player") or false
+            UpdateLocation()
+        end)
+        UpdateLocation()
+    end
 
     Minimap:EnableMouseWheel(true)
     Minimap:SetScript("OnMouseWheel", function(self, delta)

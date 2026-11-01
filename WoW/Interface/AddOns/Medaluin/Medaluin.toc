@@ -12,11 +12,13 @@ casting.lua
 
 console\windows.lua
 console\layout.lua
+console\light_profile.lua
 console\frame.lua
 console\units.lua
 console\auras.lua
 console\xp.lua
 console\minimap.lua
+console\bar7.lua
 console\minimap_button.lua
 console\overhead_art.lua
 console\overhead.lua

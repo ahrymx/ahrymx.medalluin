@@ -34,7 +34,7 @@ ns.On("PLAYER_ENTERING_WORLD", Rescale)
 -- minimap fills that). The player and target frames wear a glassy vial
 -- backing so an empty bar reads as a depleted vial; party backings only
 -- show with the group art.
-local backings = { solo = {}, group = {} }
+local backings = { solo = {}, group = {}, byName = {} }
 local vialU, vialV = art.vialWidth / art.vialTexWidth, art.vialHeight / art.vialTexHeight
 for name in pairs(ns.windows) do
     if name ~= "ring" then
@@ -48,6 +48,7 @@ for name in pairs(ns.windows) do
             end
             ns.PlaceOn(t, console, name, side)
             table.insert(name:match("^party") and backings.group or backings.solo, t)
+            table.insert(backings.byName, { tex = t, name = name, side = side })
         end
     end
 end
@@ -58,6 +59,7 @@ artFrame:SetFrameLevel(ns.levels.art)
 local tex = artFrame:CreateTexture(nil, "ARTWORK")
 tex:SetAllPoints()
 tex:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
+ns.consoleTex = tex
 
 -- The combat colour code: glowing lava veins through the art's grey stone
 -- surface (never its gold trim), as a white mask drawn by art/console/export.py,
@@ -82,12 +84,16 @@ local function Threatened()
     if ns.IsSecret(s) or s == nil then return false end
     return s >= 1
 end
+
+local UpdateGroup
+
 local function UpdateTint()
     tint:SetShown(fighting)
     if fighting then
         local c = Threatened() and TINT.threat or TINT.combat
         tint:SetVertexColor(c[1], c[2], c[3], TINT_ALPHA)
     end
+    if ns.art.exploreFile and UpdateGroup then UpdateGroup() end
 end
 ns.On("PLAYER_REGEN_DISABLED", function() fighting = true; UpdateTint() end)
 ns.On("PLAYER_REGEN_ENABLED", function() fighting = false; UpdateTint() end)
@@ -102,15 +108,68 @@ threat:SetScript("OnEvent", UpdateTint)
 
 -- The group art adds the party row. Textures are not protected, so this
 -- can swap in combat too; the party buttons themselves follow their units.
-local function UpdateGroup()
+-- In the "light" profile, party frames are detached vertically, and the
+-- console plate swaps between its exploration (minimap bay) and combat/target
+-- (2x5 Bar 7 bay) textures.
+UpdateGroup = function()
+    if ns.art.exploreFile then
+        local active = fighting or (UnitExists and UnitExists("target"))
+        local file = ns.media .. (active and ns.art.combatFile or ns.art.exploreFile)
+        tex:SetTexture(file)
+        tint:SetTexture(ns.media .. ns.art.tintFile)
+        for _, t in ipairs(backings.group) do t:SetShown(false) end
+        return
+    end
     local grouped = IsInGroup() or (ns.db and ns.db.simParty)
     local file = ns.media .. (grouped and "console-group" or "console-solo")
     tex:SetTexture(file)
     tint:SetTexture(file .. "-tint")
     for _, t in ipairs(backings.group) do t:SetShown(grouped and true or false) end
 end
+ns.UpdateConsoleArt = UpdateGroup
 UpdateGroup()
 ns.On("GROUP_ROSTER_UPDATE", UpdateGroup)
+ns.On("PLAYER_TARGET_CHANGED", function()
+    if ns.art.exploreFile then UpdateGroup() end
+end)
 ns.On("PLAYER_ENTERING_WORLD", UpdateGroup)
 ns.On("ADDON_LOADED", UpdateGroup)
 ns.OnSetting("simParty", UpdateGroup)
+
+-- Switch the console, unit windows, XP/Rep slots and action bar tables to the
+-- built-in "light" profile when MedaluinDB.consoleProfile == "light".
+function ns.ApplyLightProfile()
+    local p = ns.lightProfile
+    if not p then return end
+    ns.art = p.art
+    ns.windows = p.windows
+    ns.layout = p.layout
+    ns.barArt = p.barArt
+    ns.barFrame = p.barFrame
+    ns.barLow = p.barLow
+    ns.barPager = p.barPager
+    ns.barDrawer = p.barDrawer
+    ns.barDrawerToggle = p.barDrawerToggle
+    ns.barDrawerCell = p.barDrawerCell
+    ns.barWindows = p.barWindows
+    ns.bar7 = p.bar7
+
+    art = ns.art
+    console:SetSize(art.width, art.height)
+    console:ClearAllPoints()
+    console:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, art.bottomGap)
+    tex:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
+    tint:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
+
+    for _, entry in ipairs(backings.byName) do
+        if ns.windows[entry.name] then
+            ns.PlaceOn(entry.tex, console, entry.name, entry.side)
+            entry.tex:Show()
+        else
+            entry.tex:Hide()
+        end
+    end
+    UpdateGroup()
+    if ns.RelayoutUnits then ns.RelayoutUnits() end
+    if ns.RelayoutXP then ns.RelayoutXP() end
+end
