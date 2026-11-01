@@ -6,11 +6,13 @@ icons (variant A, chosen 2026-11-01: one centred row, stances then pet bar;
 the icon column on the LEFT of every unit). Round 2 (variant C, chosen the
 same day): the icons sit inside a third deck, the tray, instead of hovering
 over the floor; unit cells are 200 wide and every cell stretches to fill a
-deck that had to grow.
+deck that had to grow. Round 3 (2026-11-01, variant A of `frames`): each
+command icon is edged in gold, as the unit cells are.
 
     python3 art/console/gen_overhead.py            mockup -> art/console/render/overhead-C.png
     python3 art/console/gen_overhead.py export     pieces -> media/overhead/*.tga,
                                                     data   -> console/overhead_art.lua (after the check)
+    python3 art/console/gen_overhead.py frames     the tray's gold-frame options -> render/overhead-frames.png
     python3 art/console/gen_overhead.py --check    assemble the pieces the way the Lua does, for every
                                                     boss/unit count, and compare with the plate drawn whole
 
@@ -301,13 +303,18 @@ def command_row(cx, y, stances, pets):
     x, top = cx - row_width(stances, pets) // 2, y + TRAY_TOP
     out = []
     for i in range(stances):
-        out.append(bare_icon(x, top, i, active=(i == 0)))
+        out.append(gold_edge(x, top) + bare_icon(x, top, i, active=(i == 0)))
         x += step
     x += sep
     for i in range(pets):
-        out.append(bare_icon(x, top, i + 3))
+        out.append(gold_edge(x, top) + bare_icon(x, top, i + 3))
         x += step
     return "".join(out)
+
+
+def gold_edge(x, y):
+    """The icon's 1px gold edge, outside its 1px black one."""
+    return f'<rect x="{x - 1}" y="{y - 1}" width="{ICON + 2}" height="{ICON + 2}" fill="url(#gold)"/>'
 
 
 def scene(cx, bosses, units, stances=0, pets=0):
@@ -601,9 +608,81 @@ def mockup():
     print(path)
 
 
+# ----------------------------------------------------------------- the tray's frame (2026-11-01, asked)
+# "putting a golden frame over pet/stance actionbars?" Three readings, drawn; the user chose A,
+# which command_row now draws and console/overhead.lua builds (Frame):
+#   A  each icon edged in gold, as the unit cells are (1px gold, 1px black, the icon)
+#   B  the row in one gold-edged ink well, a cell's frame, a gold hairline between stances and pets
+#   C  both
+FRAME_PAD = 2                     # B and C: the well's inside, around the icons
+
+
+def framed_row(cx, y, stances, pets, variant):
+    step = ICON + ICON_GAP
+    sep = ICON_SEP if stances and pets else 0
+    rw = row_width(stances, pets)
+    x0, top = cx - rw // 2, y + TRAY_TOP
+    out = []
+    if variant in ("B", "C"):
+        p = FRAME_PAD
+        out.append(f'<rect x="{x0 - p - 1}" y="{top - p - 1}" width="{rw + 2 * p + 2}" height="{ICON + 2 * p + 2}" '
+                   f'fill="{GOLD_D}"/>')
+        out.append(f'<rect x="{x0 - p}" y="{top - p}" width="{rw + 2 * p}" height="{ICON + 2 * p}" fill="{INK}"/>')
+        if sep:
+            hx = x0 + stances * step - ICON_GAP + sep / 2
+            out.append(f'<rect x="{hx - 0.5}" y="{top - p}" width="1" height="{ICON + 2 * p}" fill="{GOLD_D}"/>')
+    x = x0
+    for i in range(stances + pets):
+        if i == stances:
+            x += sep
+        icon = bare_icon(x, top, i if i < stances else i + 3, active=(i == 0 and stances > 0))
+        if variant in ("A", "C"):
+            out.append(f'<rect x="{x - 1}" y="{top - 1}" width="{ICON + 2}" height="{ICON + 2}" fill="url(#gold)"/>')
+        out.append(icon)
+        x += step
+    return "".join(out)
+
+
+def frames():
+    from PIL import ImageFont
+    os.makedirs(OUT, exist_ok=True)
+    font = ImageFont.truetype("/usr/local/share/fonts/wow-art/MarcellusSC-Regular.ttf", 20)
+    rows = [(0, 7), (3, 6)]
+    w, h, k = 420, 64, 3
+    tiles = []
+    for variant, label in (("0", "before: bare icons"), ("A", "A  each icon edged in gold"),
+                           ("B", "B  the row in one gold-edged well"), ("C", "C  both")):
+        for stances, pets in rows:
+            decks = stack(0, 1, stances, pets)
+            body = [plate_svg(w // 2, decks)]
+            for kind, n, y, half in decks:
+                if kind == "tray":
+                    body.append(framed_row(w // 2, y, stances, pets, variant))
+                else:
+                    for rect in cells(w // 2, kind, n, y, half):
+                        body.append(cell_svg("pet", rect, UNITS["pet"]))
+            art = rsvg(svg(w, h, "".join(body), f"0 0 {w} {h}", k))
+            x0 = 960 - w // 2
+            base = Image.open(BASE).convert("RGBA").crop((x0, 0, x0 + w, h)).resize((w * k, h * k))
+            tiles.append((f"{label}   ({stances} stances, {pets} pet)", Image.alpha_composite(base, art)))
+    lab = 30
+    sheet = Image.new("RGB", (w * k * 2 + 10, 4 * (h * k + lab)), "#0b0c10")
+    d = ImageDraw.Draw(sheet)
+    for i, (label, img) in enumerate(tiles):
+        col, row = i % 2, i // 2
+        x, y = col * (w * k + 10), row * (h * k + lab)
+        d.text((x + 12, y + 4), label, fill=TEXT, font=font)
+        sheet.paste(img.convert("RGB"), (x, y + lab))
+    path = os.path.join(OUT, "overhead-frames.png")
+    sheet.save(path)
+    print(path, sheet.size)
+
+
 if __name__ == "__main__":
     if "export" in sys.argv[1:]:
         export()
+    elif "frames" in sys.argv[1:]:
+        frames()
     elif "--check" in sys.argv[1:]:
         sys.exit(0 if check() else 1)
     else:

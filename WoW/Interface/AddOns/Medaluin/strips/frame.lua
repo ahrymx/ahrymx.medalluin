@@ -7,7 +7,7 @@
 --   console base + 1   the strip frames
 --   console base + 2   the medallion buttons (portrait, backpack)
 --   console base + 6   the strip art
---   console base + 8   glyph buttons, stats, the bag drawer
+--   console base + 8   glyph buttons, stats
 local _, ns = ...
 
 local art, L = ns.stripArt, ns.stripLayout

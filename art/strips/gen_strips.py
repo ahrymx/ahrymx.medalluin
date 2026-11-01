@@ -4,8 +4,9 @@ console left without a home when it retired Blizzard's main bar.
 
   left   the micro menu: a character medallion (the player's portrait) and a
          row of gold glyph buttons, one per Blizzard micro button
-  right  the status strip: a backpack medallion with a drawer arrow for the
-         bag slots, then Bags, Durability and the clock
+  right  the status strip: a backpack medallion, then Bags, Durability and
+         the clock (the bag drawer and its arrow were removed 2026-11-01: the
+         user is moving bags into a new inventory UI)
 
 After the user's references (one for each strip), drawn in the console's
 own styling and mirrored about the centre line, as the suite requires. The
@@ -20,7 +21,7 @@ references are not mirrored (portrait outer, backpack inner), so two mirrored re
 The user chose B. assets/layer3.png is B's two strips in the console's
 asset format (a 1920x1080 screen, the medallion wells cut out), and
 assets/strips/ holds the parts code places itself: one 32x32 PNG per glyph,
-the drawer arrow and a round mask. art/console/export.py turns both into
+and a round mask. art/console/export.py turns both into
 media/.
 
 Distances are 1080p screen pixels. The base is the console's combat render;
@@ -162,11 +163,6 @@ def backpack(cx, cy):
             f'<rect x="10" y="10" width="4" height="6" fill="#e8d6a0" stroke="#4a2408" stroke-width="0.8"/></g>')
 
 
-def arrow(x, y, pointing):
-    d = 4.5 * pointing
-    return f'<polygon points="{pts([(x + d, y), (x - d, y - 5), (x - d, y + 5)])}" fill="url(#gold)"/>'
-
-
 def text(x, y, s, anchor="middle", size=15):
     return (f'<text x="{x}" y="{y}" font-family="Marcellus SC" font-size="{size}" fill="{TEXT}" '
             f'text-anchor="{anchor}" stroke="#000" stroke-width="2.4" paint-order="stroke">{s}</text>')
@@ -215,7 +211,6 @@ def variant(kind):
         body.append(micro_buttons(lx - MED_R - 26, -PITCH))
         body.append(medallion(lx, MED_Y, portrait(lx, MED_Y)))
         body.append(medallion(rx, MED_Y, backpack(rx, MED_Y)))
-        body.append(arrow(rx - MED_R - 8, MED_Y + 6, -1))
         body.append(status(rx + MED_R + 10, W - 12))
     else:
         # medallions at the outer corners, the glyphs and stats reading inward
@@ -223,7 +218,6 @@ def variant(kind):
         body.append(micro_buttons(lx + MED_R + 26, PITCH))
         body.append(medallion(lx, MED_Y, portrait(lx, MED_Y)))
         body.append(medallion(rx, MED_Y, backpack(rx, MED_Y)))
-        body.append(arrow(rx - MED_R - 8, MED_Y + 6, -1))
         body.append(status(W - LENGTH + 4, rx - MED_R - 18))
     return svg("".join(body))
 
@@ -260,7 +254,7 @@ WELL_R = MED_R - 4            # the hole under the ring: portrait or bag icon
 
 def layer3():
     """Variant B's bare art: both strips and their medallion rings, the wells
-    cut out; plus the parts code places (glyphs, arrow, round mask)."""
+    cut out; plus the parts code places (glyphs, round mask)."""
     from PIL import ImageDraw
     os.makedirs(OUT, exist_ok=True)
     lx, rx = MED_R + 10, W - MED_R - 10
@@ -290,7 +284,6 @@ def layer3():
         subprocess.run(["rsvg-convert", "-o", os.path.join(parts, name + ".png")], input=doc.encode(), check=True)
     for g in GLYPHS:
         part(g, glyph(g, 6, 6))
-    part("arrow", arrow(8, 8, -1), size=16)
     # white disc: the backpack icon's mask and the medallions' hover glow
     part("round", '<circle cx="32" cy="32" r="31.5" fill="#fff"/>', size=64)
     # the numbers code needs that the art cannot show (screen px, 1080p)
@@ -303,8 +296,6 @@ def layer3():
                    "glyphDrop": GLYPH_DROP,
                    # the medallion ring's radius: the well is inside it
                    "ringRadius": MED_R,
-                   # the drawer arrow's centre: from the screen edge, from the bottom
-                   "arrowX": MED_R + 10 + MED_R + 8, "arrowY": MED_R + 3 - 6,
                    # the stats run between these, from the screen edge
                    "statsFrom": MED_R + 10 + MED_R + 18, "statsTo": LENGTH - 4}, f, indent=1)
     print(parts, len(os.listdir(parts)), "parts")

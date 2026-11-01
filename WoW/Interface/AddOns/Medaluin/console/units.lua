@@ -216,6 +216,8 @@ local STUBS = {
         power = 70, maxPower = 100 },
 }
 
+ns.partyStubs = STUBS     -- the simulation panel (simulate.lua) kills them and moves them out of range
+
 local PET_STUBS = {
     partypet2 = { name = "Water Elemental", class = "MAGE", health = 90, maxHealth = 100 },
 }
@@ -682,6 +684,7 @@ local function UpdatePartyFrames()
     UpdatePartyRange()
 end
 UpdatePartyFrames()
+ns.UpdatePartyFrames = UpdatePartyFrames
 ns.On("GROUP_ROSTER_UPDATE", UpdatePartyFrames)
 ns.On("PLAYER_ENTERING_WORLD", UpdatePartyFrames)
 ns.On("ADDON_LOADED", UpdatePartyFrames)

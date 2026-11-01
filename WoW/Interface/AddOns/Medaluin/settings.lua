@@ -4,7 +4,7 @@
 -- Two kinds of option. The Action bar and Rows options move Blizzard's
 -- secure buttons, which cannot be handed back mid-session, so they are read
 -- once at login and a change waits for a reload, as do Bare icons and the
--- Chat panel. The rest are drawing only (art colour, visibility, drawer,
+-- Chat and Side panels. The rest are drawing only (art colour, visibility, drawer,
 -- the beam's cast bars) and apply at once: modules hear about a change through ns.OnSetting.
 local addonName, ns = ...
 
@@ -16,6 +16,26 @@ local DEFAULTS = {
     visibility = 1,         -- see VISIBILITY
     drawer = 1,             -- which way the minimap button drawer opens: see DRAWER
     chat = true,            -- the chat in a panel on the left strip
+    side = true,            -- the chat panel's mirror on the right strip: the meter, the loot, the auras
+    sideAuras = true,       -- its Auras tab
+    sideMeter = true,       -- its Meter tab
+    sideLoot = true,        -- its Loot tab
+    sideTab = "meter",      -- the tab last shown (not on the page: the tabs set it)
+    meterColumns = 1,       -- 2 shows a second list beside the first
+    meterLeft = "damage",   -- what the first list shows: see METER_METRICS
+    meterRight = "healing", -- what the second list shows
+    meterSession = 1,       -- see METER_SESSION
+    meterRate = true,       -- damage and healing per second instead of totals
+    lootWho = 1,            -- see LOOT_WHO
+    lootQuality = 2,        -- the least item quality shown (2 = uncommon)
+    lootMoney = true,       -- money and currencies in the loot log
+    aurasColumns = 2,       -- 2: buffs and debuffs side by side; 1: one list of both
+    aurasTimeless = false,  -- list the auras that never run out too (they are over the portrait already)
+    bags = true,            -- Medaluin's bags window instead of Blizzard's bags
+    bagsView = "grid",      -- "grid": every slot, bag by bag; "groups": the items in fixed groups
+    bagsColumns = 10,       -- slots across the window (not on the page: the window's corner sets it, 8 to 24)
+    bagsItemLevel = true,   -- item levels on weapons and armour
+    bagsPoint = false,      -- where the window was dragged to: { point, relativePoint, x, y } (not on the page)
     xpCast = false,         -- the player's casts over the experience bar
     repCast = false,        -- the target's casts over the reputation bar
     simParty = false,       -- simulate party frames and show the group art layer
@@ -35,6 +55,21 @@ local DEFAULTS = {
 }
 ns.VISIBILITY = { ALWAYS = 1, COMBAT = 2, MOUSEOVER = 3, COMBAT_OR_MOUSEOVER = 4 }
 ns.DRAWER = { LEFT = 1, UP = 2 }
+ns.METER_SESSION = { OVERALL = 0, CURRENT = 1 }     -- Enum.DamageMeterSessionType's values
+ns.LOOT_WHO = { GROUP = 1, MINE = 2 }
+-- What a meter list can show: the key saved, the name on the page. The
+-- client's types for each are in meter.lua.
+ns.METER_METRICS = {
+    { "damage", "Damage" },
+    { "healing", "Healing" },
+    { "absorbs", "Absorbs" },
+    { "interrupts", "Interrupts" },
+    { "dispels", "Dispels" },
+    { "taken", "Damage taken" },
+    { "avoidable", "Avoidable damage taken" },
+}
+-- Item qualities, as the loot log's least-quality option offers them.
+ns.LOOT_QUALITIES = { { 0, "Poor" }, { 1, "Common" }, { 2, "Uncommon" }, { 3, "Rare" }, { 4, "Epic" } }
 
 -- Filled in from the saved table at ADDON_LOADED; defaults until then.
 ns.db = {}
@@ -49,6 +84,20 @@ end
 local function Changed(key, value)
     ns.db[key] = value
     for _, fn in ipairs(watchers[key] or {}) do fn(value) end
+end
+
+-- ns.SetOption(key, value): an option changed from Medaluin's own controls
+-- (the side panel's column buttons), through the page's setting when there
+-- is one, so the page shows the new value.
+local registered = {}
+function ns.SetOption(key, value)
+    local s = registered[key]
+    if s then
+        s:SetValue(value)
+    else
+        if MedaluinDB then MedaluinDB[key] = value end
+        Changed(key, value)
+    end
 end
 
 -- "ffRRGGBB" -> r, g, b in 0..1, white for anything unreadable.
@@ -78,11 +127,14 @@ local function Page()
     local subOverhead = Subcategory(category, "Overhead")
     local subCast = Subcategory(category, "Cast Bars")
     local subChat = Subcategory(category, "Chat")
+    local subSide = Subcategory(category, "Side panel")
+    local subBags = Subcategory(category, "Bags")
 
     local function Setting(cat, key, kind, name)
         local s = Settings.RegisterAddOnSetting(cat, "Medaluin_" .. key, key, MedaluinDB, kind, name,
             DEFAULTS[key])
         s:SetValueChangedCallback(function(_, value) Changed(key, value) end)
+        registered[key] = s
         return s
     end
     local function Choices(list)
@@ -127,7 +179,8 @@ local function Page()
 
     -- Unit Frames subcategory
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "simParty", B, "Simulate party frames"),
-        "Show the console's party frame layer and simulated party members to preview party frames while solo.")
+        "Show the console's party frame layer and simulated party members to preview party frames while solo. "
+            .. "A small panel on the left changes the situation: bosses, deaths, range, ready and role checks.")
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "partyPets", B, "Show party pets"),
         "Show pet unit frames directly below party members who have active pets.")
     Settings.CreateDropdown(subUnit, Setting(subUnit, "partyRange", N, "Fade out of range"), Choices({
@@ -181,6 +234,74 @@ local function Page()
         "Blizzard's chat in a panel on top of the micro menu, with the chat buttons in a column at its "
         .. "left. Untick it to keep the chat where Edit Mode puts it, or to use a chat addon." .. RELOAD)
 
+    -- Side panel subcategory
+    local side = Settings.CreateCheckbox(subSide, Setting(subSide, "side", B, "Side panel"),
+        "The chat panel's mirror on the right strip, over the stats, with an Auras tab, a Meter tab and a Loot tab. "
+        .. "Untick it to keep the right corner clear, or to use a meter addon." .. RELOAD)
+    local function SideOn() return MedaluinDB.side end
+    local metrics = {}
+    for _, m in ipairs(ns.METER_METRICS) do table.insert(metrics, { m[1], m[2] }) end
+    local qualities = {}
+    for _, q in ipairs(ns.LOOT_QUALITIES) do table.insert(qualities, { q[1], q[2] }) end
+    local M = ns.METER_SESSION
+    local sideChildren = {
+        Settings.CreateCheckbox(subSide, Setting(subSide, "sideAuras", B, "Auras tab"),
+            "Your buffs and debuffs, each with the time it has left, the longest first."),
+        Settings.CreateDropdown(subSide, Setting(subSide, "aurasColumns", N, "Aura lists"), Choices({
+            { 2, "Two", "Buffs and debuffs side by side." },
+            { 1, "One", "Buffs and debuffs in one list. In combat the game keeps the times to itself, so "
+                .. "there the list shows the debuffs first, then the buffs." },
+        }), "The column button with the bars on it switches this too."),
+        Settings.CreateCheckbox(subSide, Setting(subSide, "aurasTimeless", B, "Auras that never run out"),
+            "List forms, aspects, mounts and the like too, at the top. They are over the portrait already. "
+            .. "The infinity button switches this too."),
+        Settings.CreateCheckbox(subSide, Setting(subSide, "sideMeter", B, "Meter tab"),
+            "Damage, healing and more for each member of your group, from the game's own combat meter."),
+        Settings.CreateDropdown(subSide, Setting(subSide, "meterColumns", N, "Meter lists"), Choices({
+            { 1, "One", "One list across the panel." },
+            { 2, "Two", "Two lists side by side, each showing its own thing: damage and healing, say." },
+        }), "The column button with the bars on it switches this too."),
+        Settings.CreateDropdown(subSide, Setting(subSide, "meterLeft", S, "First list shows"), Choices(metrics),
+            "Clicking a list's heading steps through these too; a right click steps back."),
+        Settings.CreateDropdown(subSide, Setting(subSide, "meterRight", S, "Second list shows"), Choices(metrics),
+            "Shown when the meter has two lists."),
+        Settings.CreateDropdown(subSide, Setting(subSide, "meterSession", N, "Fight"), Choices({
+            { M.CURRENT, "Current", "The fight you are in, or the last one." },
+            { M.OVERALL, "Overall", "Every fight since the meter was last reset." },
+        }), "The clock button switches this too."),
+        Settings.CreateCheckbox(subSide, Setting(subSide, "meterRate", B, "Per second"),
+            "Damage and healing as amounts per second instead of totals. The /s button switches this too."),
+        Settings.CreateCheckbox(subSide, Setting(subSide, "sideLoot", B, "Loot tab"),
+            "What your group looted, boss by boss, with who won each roll. Not the chat's loot lines: "
+            .. "the chat keeps those."),
+        Settings.CreateDropdown(subSide, Setting(subSide, "lootWho", N, "Whose loot"), Choices({
+            { ns.LOOT_WHO.GROUP, "The group's", "Everything the group looted, yours included." },
+            { ns.LOOT_WHO.MINE, "Mine", "Only what you looted or won." },
+        }), "The funnel button switches this too."),
+        Settings.CreateDropdown(subSide, Setting(subSide, "lootQuality", N, "Least quality"), Choices(qualities),
+            "Items below this quality are left out. The diamond button steps through these too."),
+        Settings.CreateCheckbox(subSide, Setting(subSide, "lootMoney", B, "Money and currencies"),
+            "Your share of looted money on each heading, and the currencies you loot as lines."),
+    }
+    for _, child in ipairs(sideChildren) do child:SetParentInitializer(side, SideOn) end
+
+    -- Bags subcategory
+    local bags = Settings.CreateCheckbox(subBags, Setting(subBags, "bags", B, "Bags window"),
+        "Your backpack, bags and reagent bag in one window, with a search, the game's sort and the items in "
+        .. "groups if you like. The bank stays the game's. Untick it to keep the game's bags, or to use a "
+        .. "bag addon." .. RELOAD)
+    local function BagsOn() return MedaluinDB.bags end
+    local bagsChildren = {
+        Settings.CreateDropdown(subBags, Setting(subBags, "bagsView", S, "Show"), Choices({
+            { "grid", "Every slot", "Every slot, bag by bag, the reagent bag on rows of its own." },
+            { "groups", "Groups", "The items in groups: new, equipment, consumables, quest items, trade goods, "
+                .. "other and junk, with one slot for the free ones." },
+        }), "The window's Groups and Grid button switches this too."),
+        Settings.CreateCheckbox(subBags, Setting(subBags, "bagsItemLevel", B, "Item levels"),
+            "The item level in the corner of each weapon and piece of armour, in its quality's colour."),
+    }
+    for _, child in ipairs(bagsChildren) do child:SetParentInitializer(bags, BagsOn) end
+
     local function AddReload(cat)
         if CreateSettingsButtonInitializer and SettingsPanel and SettingsPanel.GetLayout then
             local layout = SettingsPanel:GetLayout(cat)
@@ -211,16 +332,25 @@ local function Page()
                 layout:AddInitializer(CreateSettingsButtonInitializer("", "Chat", function()
                     Settings.OpenToCategory(subChat:GetID())
                 end, "Open Chat settings.", true))
+                layout:AddInitializer(CreateSettingsButtonInitializer("", "Side panel", function()
+                    Settings.OpenToCategory(subSide:GetID())
+                end, "Open Side panel settings.", true))
+                layout:AddInitializer(CreateSettingsButtonInitializer("", "Bags", function()
+                    Settings.OpenToCategory(subBags:GetID())
+                end, "Open Bags settings.", true))
             end
         end
         AddReload(subBar)
         AddReload(subOverhead)
         AddReload(subChat)
+        AddReload(subSide)
+        AddReload(subBags)
     end
 
     Settings.RegisterAddOnCategory(category)
     ns.settingsCategory = category
-    ns.settingsSubcategories = { bar = subBar, unit = subUnit, overhead = subOverhead, cast = subCast, chat = subChat }
+    ns.settingsSubcategories = { bar = subBar, unit = subUnit, overhead = subOverhead, cast = subCast, chat = subChat,
+        side = subSide, bags = subBags }
 end
 
 ns.On("ADDON_LOADED", function(_, name)
@@ -252,6 +382,10 @@ local function OpenSettings(arg)
         target = ns.settingsSubcategories and ns.settingsSubcategories.cast or target
     elseif arg == "chat" then
         target = ns.settingsSubcategories and ns.settingsSubcategories.chat or target
+    elseif arg == "meter" or arg == "loot" or arg == "auras" or arg == "side" then
+        target = ns.settingsSubcategories and ns.settingsSubcategories.side or target
+    elseif arg == "bags" or arg == "bag" or arg == "inventory" then
+        target = ns.settingsSubcategories and ns.settingsSubcategories.bags or target
     end
     Settings.OpenToCategory(target:GetID())
 end

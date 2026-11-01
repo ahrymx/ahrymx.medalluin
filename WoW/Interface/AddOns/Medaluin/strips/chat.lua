@@ -97,7 +97,7 @@ end
 
 -- ------------------------------------------------------------------ tabs
 -- Three slices of a tab texture over the tab's whole face, the middle
--- stretched.
+-- stretched. The side panel's tabs (side.lua) wear them too.
 local function Slices(tab, file, layer, sub)
     local l = tab:CreateTexture(nil, layer, nil, sub)
     local m = tab:CreateTexture(nil, layer, nil, sub)
@@ -116,6 +116,7 @@ local function Slices(tab, file, layer, sub)
     m:SetTexCoord(CAP, 1 - CAP, 0, 1)
     return { l, m, r }
 end
+ns.TabSlices = Slices
 
 local TAB_ART = { "Left", "Middle", "Right", "ActiveLeft", "ActiveMiddle", "ActiveRight",
     "HighlightLeft", "HighlightMiddle", "HighlightRight" }

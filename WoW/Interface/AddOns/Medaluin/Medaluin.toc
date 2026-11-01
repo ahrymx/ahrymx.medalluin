@@ -1,6 +1,6 @@
 ## Interface: 16001, 120105
 ## Title: Medaluin
-## Notes: The console (player, target, party, XP, minimap), an optional action bar on it, and the corner strips (micro menu, bags, stats).
+## Notes: The console (player, target, party, XP, minimap), an optional action bar on it, the corner strips (micro menu, bags, stats), and over them the chat and a side panel of loot, a meter and your auras; and a bags window.
 ## Author: ahrymx
 ## Version: 0.1.0
 ## SavedVariables: MedaluinDB
@@ -17,8 +17,10 @@ console\units.lua
 console\auras.lua
 console\xp.lua
 console\minimap.lua
+console\minimap_button.lua
 console\overhead_art.lua
 console\overhead.lua
+console\simulate.lua
 
 bars\windows.lua
 bars\bar.lua
@@ -34,3 +36,8 @@ strips\bags.lua
 strips\status.lua
 strips\buffs.lua
 strips\chat.lua
+strips\side.lua
+strips\loot.lua
+strips\meter.lua
+strips\auras.lua
+inventory\bags.lua

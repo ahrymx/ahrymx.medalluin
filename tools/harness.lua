@@ -2,7 +2,9 @@
 -- named region's resolved rectangle, in art pixels from the console's
 -- top-left. tools/preview.py draws them over the art.
 --
---   lua5.1 tools/harness.lua [solo|group] [strips [nochat] | bar [nobar|rows2|rows3|bare|beamcast]] [modern] [CLASS]
+--   lua5.1 tools/harness.lua [solo|group] [strips [nochat] | side [noside] | bar [nobar|rows2|rows3|bare|beamcast]
+--                            | bags [nobags]]
+--                            [modern] [CLASS]
 --
 -- "bar" prints the action bar instead, as 1080p screen pixels to compare
 -- with assets/layer2.png: the settings page, the bar, its plate and pager,
@@ -19,6 +21,26 @@
 -- change, windows docking and leaving), and, with "modern", the timeless
 -- buffs through a combat. "strips nochat" plays a saved Chat panel option
 -- that is off.
+--
+-- "side" prints the side panel on the right strip, the chat panel's
+-- mirror: its tabs, column buttons and scroll bar, then the Loot tab through
+-- the chat's loot lines, money and currency (and, with "modern", the loot
+-- history's boss drops and the rolls the chat tells twice), its column
+-- buttons and options; then, with "modern", the Meter tab over a stubbed
+-- C_DamageMeter, out of combat and in it (every number and name secret),
+-- through its column buttons, headings, scroll and reset; then the Auras
+-- tab over stubbed buffs and debuffs, sorted, through combat (every time,
+-- name and stack secret), its column buttons, scroll, ticks and right
+-- clicks; then the tab options. "side noside" plays a saved Side panel
+-- option that is off.
+--
+-- "bags" (with "modern") prints the bags window over a stubbed C_Container
+-- and Blizzard's bag frames: hidden under ns.hidden, their opening and
+-- closing followed, every slot in the grid, then the groups, the search, the
+-- sort, the item levels, a bag swapped for a smaller one, events while shown
+-- and while closed, dragging and the options. Without "modern" there are no
+-- combined bags and no window. "bags nobags" plays a saved Bags window
+-- option that is off.
 --
 -- "modern" swaps the Classic-era world for an Edit Mode one shaped like
 -- Forever 1.60 and retail 12.x: secret values (health, power, combo points,
@@ -38,6 +60,10 @@ end
 local grouped = args[1] == "group"
 local stripsPass = args[2] == "strips"
 local barPass = args[2] == "bar"
+local sidePass = args[2] == "side"
+local savedNoSide = args[3] == "noside"
+local bagsPass = args[2] == "bags"
+local savedNoBags = args[3] == "nobags"
 local barOff = args[3] == "nobar"
 local savedRows = tonumber((args[3] or ""):match("^rows(%d)$"))
 local savedBare = args[3] == "bare"
@@ -59,7 +85,9 @@ local secretsUsed = 0
 
 -- ------------------------------------------------------------ regions
 local Region = {}
+local noTimer = false   -- a client whose status bars have no timer (the auras' fallback)
 Region.__index = function(self, k)
+    if noTimer and k == "SetTimerDuration" then return nil end
     local m = rawget(Region, k)
     if m then return m end
     -- unstubbed widget methods (verbs) are no-ops; anything else, a part a
@@ -141,6 +169,7 @@ function Region:SetColorTexture(r, g, b, a) self.color, self.atlas = { r, g, b, 
 function Region:SetAtlas(a) self.atlas = a end
 function Region:GetAtlas() return self.atlas end
 function Region:SetVertexColor(r, g, b, a) self.vertex = { r, g, b, a } end
+function Region:SetTextColor(r, g, b, a) self.textColor = { r, g, b, a } end
 function Region:SetBlendMode(m) self.blend = m end
 function Region:GetBlendMode() return self.blend or "BLEND" end
 function Region:SetText(t)
@@ -266,6 +295,7 @@ end
 function Region:GetHeight() return self.h end
 function Region:GetWidth() return self.w end
 function Region:GetName() return self.name end
+function Region:GetParent() return self.parent end
 function Region:GetText() return self.text end
 function Region:IsVisible() return self.shown end
 function Region:IsShown() return self.shown end
@@ -416,7 +446,9 @@ function IsInGroup() return grouped end
 function UnitExists(u) return u == "player" or u == "target" or (grouped and u:match("^party[12]$")) end
 function UnitName(u) return ({ player = "Ahrymx", target = "Defias Pillager", party1 = "Thalric",
     party2 = "Okun" })[u] end
-function UnitClass() return class, class end
+-- a group's classes, by name: the loot log asks UnitClass for a name
+local classOf = { Mira = "PRIEST", Thalen = "MAGE", Aldren = "WARRIOR" }
+function UnitClass(u) local c = classOf[u] or class; return c, c end
 function UnitIsPlayer(u) return u ~= "target" end
 function UnitIsConnected() return true end
 function UnitIsDeadOrGhost() return false end
@@ -503,6 +535,25 @@ RAID_CLASS_COLORS = setmetatable({}, { __index = function() return { r = 0.96, g
 FACTION_BAR_COLORS = setmetatable({}, { __index = function() return { r = 0.8, g = 0.3, b = 0.22 } end })
 PowerBarColor = setmetatable({}, { __index = function() return { r = 0, g = 0, b = 1 } end })
 wipe = function(t) for k in pairs(t) do t[k] = nil end end
+
+-- the loot log's world: the client's chat strings (enUS), a clock, a zone
+LOOT_ITEM_SELF, LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %s.", "You receive loot: %sx%d."
+LOOT_ITEM, LOOT_ITEM_MULTIPLE = "%s receives loot: %s.", "%s receives loot: %sx%d."
+CURRENCY_GAINED, CURRENCY_GAINED_MULTIPLE = "You receive currency: %s.", "You receive currency: %s x%d."
+YOU_LOOT_MONEY, YOU_LOOT_MONEY_GUILD = "You loot %s", "You loot %s (%s deposited to guild bank)"
+LOOT_MONEY_SPLIT, LOOT_MONEY_SPLIT_GUILD = "Your share of the loot is %s.",
+    "Your share of the loot is %s. (%s deposited to guild bank)"
+GOLD_AMOUNT, SILVER_AMOUNT, COPPER_AMOUNT = "%d Gold", "%d Silver", "%d Copper"
+local clock = "21:02"
+function date() return clock end
+local zone = "Black Temple"
+function GetRealZoneText() return zone end
+function Ambiguate(name) return (name:gsub("%-.*$", "")) end
+ITEM_QUALITY_COLORS = {}
+for q, c in pairs({ [0] = { 0.62, 0.62, 0.62, "9d9d9d" }, { 1, 1, 1, "ffffff" }, { 0.12, 1, 0, "1eff00" },
+    { 0, 0.44, 0.87, "0070dd" }, { 0.64, 0.21, 0.93, "a335ee" } }) do
+    ITEM_QUALITY_COLORS[q] = { r = c[1], g = c[2], b = c[3], hex = "|cff" .. c[4] }
+end
 format, unpack = string.format, unpack
 
 -- Blizzard's chat, as FloatingChatFrame.xml builds it: ten windows, the
@@ -691,7 +742,89 @@ if modern then
     function UnitPowerMax(_, kind) if kind == 4 then return 5 end return secret() end
     GetComboPoints = secret
     C_CurveUtil = { CreateCurve = function() return { SetType = function() end, AddPoint = function() end } end }
-    Enum = { LuaCurveType = { Linear = 0 }, StatusBarTimerDirection = { ElapsedTime = 0, RemainingTime = 1 } }
+    Enum = { LuaCurveType = { Linear = 0 }, StatusBarTimerDirection = { ElapsedTime = 0, RemainingTime = 1 },
+        StatusBarInterpolation = { Immediate = 0, ExponentialEaseOut = 1 },
+        UnitAuraSortRule = { Unsorted = 0, Default = 1, BigDefensive = 2, Expiration = 3, ExpirationOnly = 4,
+            Name = 5, NameOnly = 6 },
+        UnitAuraSortDirection = { Normal = 0, Reverse = 1 },
+        DamageMeterType = { DamageDone = 0, Dps = 1, HealingDone = 2, Hps = 3, Absorbs = 4, Interrupts = 5,
+            Dispels = 6, DamageTaken = 7, AvoidableDamageTaken = 8, Deaths = 9, EnemyDamageTaken = 10 } }
+end
+
+-- The client's combat meter (Forever 1.60, retail 12.x): per type, the
+-- sources in the order the client sorts them. In combat every amount and
+-- name is secret (GetCombatSessionFromType is SecretWhenInCombat); the class
+-- and spec icon never are. Overall is three times the current fight.
+local meter = { available = true, reason = "", asked = {}, resets = 0, data = {} }
+local function meterData()
+    local function list(n, top)
+        local names = { "Thalen", "Aldren", "Ahrymx", "Kesh", "Varo", "Mira", "Brann", "Ylla", "Dorn", "Esk" }
+        local classes = { "MAGE", "WARRIOR", "HUNTER", "ROGUE", "WARLOCK", "PRIEST", "PALADIN", "SHAMAN", "",
+            "DRUID" }
+        local out = {}
+        for i = 1, n do out[i] = { names[i], classes[i], top - (i - 1) * 1000, i == 3 and 0 or 60 + i } end
+        return out
+    end
+    meter.data = { [0] = list(10, 12400), [2] = list(5, 9880), [5] = list(2, 4) }
+end
+meterData()
+if modern then
+    C_DamageMeter = {
+        IsDamageMeterAvailable = function() return meter.available, meter.reason end,
+        GetCombatSessionFromType = function(sessionType, kind)
+            table.insert(meter.asked, sessionType .. "/" .. kind)
+            -- a rate type reads its total's sources, per second
+            local base = (kind == 1 or kind == 3) and kind - 1 or kind
+            local function v(x) if inCombat then return secret() end return x end
+            local out, top = {}, 0
+            for _, src in ipairs(meter.data[base] or {}) do
+                local amount = src[3] * (sessionType == 0 and 3 or 1)
+                top = math.max(top, amount)
+                table.insert(out, { name = inCombat and secret() or src[1], classFilename = src[2],
+                    specIconID = src[4], totalAmount = v(amount), amountPerSecond = v(amount / 100),
+                    isLocalPlayer = src[1] == "Ahrymx" })
+            end
+            return { combatSources = out, maxAmount = v(top), totalAmount = v(0), durationSeconds = v(102) }
+        end,
+        GetSessionDurationSeconds = function(sessionType) return sessionType == 0 and 750 or 102 end,
+        ResetAllCombatSessions = function() meter.resets = meter.resets + 1; meter.data = {} end,
+    }
+    function GetClassAtlas(c) return "classicon-" .. c:lower() end
+    -- Blizzard's formatter, which takes a secret and gives one back
+    function AbbreviateLargeNumbers(n)
+        if isSecret(n) then return secret() end
+        if n >= 1000 then return string.format("%.1fK", n / 1000) end
+        return tostring(n)
+    end
+end
+
+-- The loot history (Mainline): a boss from before the reload, with a roll
+-- won; later passes add drops. An item's quality comes from C_Item, or not
+-- yet (nil), as for an item the client has not cached.
+local loot = { encounters = {}, drops = {}, quality = { [30001] = 4, [30002] = 4, [30003] = 3, [30004] = 2,
+    [30005] = 0, [30006] = 1 } }
+-- Mainline links name their quality; older ones carry its colour
+local function itemLink(id, name, q)
+    if not modern then return string.format("%s|Hitem:%d::|h[%s]|h|r", ITEM_QUALITY_COLORS[q].hex, id, name) end
+    return string.format("|cnIQ%d:|Hitem:%d::|h[%s]|h|r", q, id, name)
+end
+if modern then
+    loot.encounters[1] = { encounterID = 601, encounterName = "High Warlord Naj'entus", startTime = 5 }
+    loot.drops[601] = { { lootListKey = 1, itemHyperlink = itemLink(30001, "Naj'entus Spine", 4),
+        winner = { playerName = "Aldren-Realm", playerClass = "WARRIOR", isSelf = false, state = 0, roll = 64 },
+        allPassed = false, rollInfos = {} } }
+    C_LootHistory = {
+        GetAllEncounterInfos = function() return loot.encounters end,
+        GetInfoForEncounter = function(id)
+            for _, e in ipairs(loot.encounters) do if e.encounterID == id then return e end end
+        end,
+        GetSortedDropsForEncounter = function(id) return loot.drops[id] end,
+    }
+    C_CurrencyInfo = { GetCurrencyInfoFromLink = function(link)
+        return { iconFileID = "currency" .. link:match("currency:(%d+)") }
+    end }
+    C_Item = { GetItemQualityByID = function(link) return loot.quality[tonumber(link:match("item:(%d+)"))] end,
+        GetItemIconByID = function(link) return "icon" .. link:match("item:(%d+)") end }
     function UnitCastingInfo(u)
         if casting and u == castUnit then return "Sinister Strike", nil, nil, secret(), secret(), false, secret() end
     end
@@ -750,6 +883,8 @@ Settings = {
         -- what the panel does when the player changes it
         function s:SetValueChangedCallback(fn) self.callback = fn end
         function s:Set(v) self.tbl[self.key] = v; if self.callback then self.callback(self, v) end end
+        -- Medaluin's own controls go through the setting, so the page shows the change
+        function s:SetValue(v) self.viaPage = (self.viaPage or 0) + 1; self:Set(v) end
         page.settings[key] = s
         return s
     end,
@@ -782,9 +917,134 @@ function ReloadUI() end
 MedaluinDB = barOff and { actionBar = false } or savedRows and { rows = savedRows }
     or savedBare and { bareIcons = true } or savedNoChat and { chat = false }
     or savedBeam and { xpCast = true, repCast = true }
-    or savedSimParty and { simParty = true } or nil
+    or savedSimParty and { simParty = true } or savedNoSide and { side = false }
+    or savedNoBags and { bags = false } or nil
 if modern then
+    function CreateColor(r, g, b, a) return { r, g, b, a } end
+    function Region:SetGradient(o, a, b) self.gradient = { o, a, b } end
     C_Texture = { GetAtlasInfo = function() return { width = 154, height = 95 } end }
+end
+
+-- ------------------------------------------------------------ the bags
+-- A backpack of 16, bag 1 of 12, no bag in slot 2, bags 3 and 4 of 10, and
+-- a reagent bag of 8; items of each group. Only for the bags pass, and only
+-- on an Edit Mode client: elsewhere there are no combined bags.
+local bagWorld
+-- a Classic-era client has C_Container, but not the combined bags
+if bagsPass and not modern then
+    C_Container = { GetContainerNumSlots = function() return 16 end, GetContainerNumFreeSlots = function() return 16 end,
+        GetContainerItemInfo = function() end }
+end
+if bagsPass and modern then
+    bagWorld = { sizes = { [0] = 16, [1] = 12, [2] = 0, [3] = 10, [4] = 10, [5] = 8 }, items = {},
+        new = {}, removed = {}, sorted = 0, search = nil, reads = 0 }
+    Enum.BagIndex = { Backpack = 0, ReagentBag = 5 }
+    NUM_BAG_SLOTS, NUM_CONTAINER_FRAMES = 4, 13
+    -- itemID -> name, class, quality, item level
+    local ITEMS = {
+        [101] = { "Glaive of the Fallen", 2, 4, 489 }, [102] = { "Felforged Breastplate", 4, 3, 476 },
+        [103] = { "Healing Potion", 0, 1 }, [104] = { "Sealed Orders", 15, 1 }, [111] = { "Ashtongue Cowl Fragment", 12, 1 },
+        [105] = { "Fel Iron Ore", 7, 1 }, [106] = { "Broken Fang", 15, 0 }, [107] = { "Hearthstone", 15, 1 },
+        [108] = { "Netherweave Cloth", 7, 1 }, [109] = { "Mana Potion", 0, 1 }, [110] = { "Draenic Dust", 7, 2 },
+    }
+    bagWorld.ITEMS = ITEMS
+    local function put(bag, slot, id, count, extra)
+        local it = ITEMS[id]
+        local info = { iconFileID = 9000 + id, stackCount = count or 1, isLocked = false, quality = it[3],
+            itemID = id, itemName = it[1], hyperlink = "item:" .. id, isFiltered = false, hasNoValue = it[3] == 0 }
+        for k, v in pairs(extra or {}) do info[k] = v end
+        bagWorld.items[bag .. ":" .. slot] = info
+    end
+    bagWorld.put = put
+    put(0, 1, 107); put(0, 2, 103, 12); put(0, 3, 101); put(0, 5, 104); put(0, 6, 106, 3)
+    put(0, 9, 102, 1, { isLocked = true }); put(1, 1, 109, 4); put(3, 2, 105, 20); put(4, 10, 108, 7)
+    put(5, 1, 110, 40); put(5, 2, 105, 5); put(4, 1, 111)
+    bagWorld.new["0:3"] = true                 -- the glaive was just looted
+    C_Container = {
+        GetContainerNumSlots = function(bag) return bagWorld.sizes[bag] or 0 end,
+        GetContainerNumFreeSlots = function(bag)
+            local n = 0
+            for slot = 1, bagWorld.sizes[bag] or 0 do
+                if not bagWorld.items[bag .. ":" .. slot] then n = n + 1 end
+            end
+            return n
+        end,
+        GetContainerItemInfo = function(bag, slot)
+            bagWorld.reads = bagWorld.reads + 1
+            return bagWorld.items[bag .. ":" .. slot]
+        end,
+        GetContainerItemQuestInfo = function(bag, slot)
+            local info = bagWorld.items[bag .. ":" .. slot]
+            return { isQuestItem = info ~= nil and info.itemID == 104, questID = 9, isActive = false }
+        end,
+        -- the client's search: an item whose name lacks the text is filtered
+        SetItemSearch = function(text)
+            bagWorld.search = text
+            for _, info in pairs(bagWorld.items) do
+                info.isFiltered = text ~= "" and not info.itemName:lower():find(text:lower(), 1, true)
+            end
+        end,
+        SortBags = function() bagWorld.sorted = bagWorld.sorted + 1 end,
+    }
+    C_NewItems = {
+        IsNewItem = function(bag, slot) return bagWorld.new[bag .. ":" .. slot] == true end,
+        RemoveNewItem = function(bag, slot)
+            bagWorld.new[bag .. ":" .. slot] = nil
+            table.insert(bagWorld.removed, bag .. ":" .. slot)
+        end,
+    }
+    C_Item = C_Item or {}
+    C_Item.GetItemInfoInstant = function(id)
+        local it = ITEMS[id]
+        if it then return id, "type", "subtype", "", 9000 + id, it[2] end
+    end
+    C_Item.GetCurrentItemLevel = function(loc)
+        local info = bagWorld.items[loc.bag .. ":" .. loc.slot]
+        return info and ITEMS[info.itemID][4]
+    end
+    ItemLocation = { CreateFromBagAndSlot = function(_, bag, slot) return { bag = bag, slot = slot } end }
+    function GetMoney() return 1234567 end
+    function GetMoneyString(c) return string.format("%dg %ds %dc", math.floor(c / 10000), math.floor(c / 100) % 100, c % 100) end
+    -- Blizzard's slot functions and the template's mixin, recording what they were told
+    function ClearItemButtonOverlay(b) b.overlayCleared = true end
+    function SetItemButtonQuality(b, q) b.quality = q end
+    function SetItemButtonCount(b, n) b.count = n end
+    function SetItemButtonDesaturated(b, d) b.desat = d end
+    function Region:SetID(id) self.idOf = id end
+    function Region:GetID() return self.idOf end
+    local plain = CreateFrame
+    function CreateFrame(kind, name, parent, template)
+        local f = plain(kind, name, parent, template)
+        f.template = template
+        if template == "ContainerFrameItemButtonTemplate" then
+            function f:SetHasItem(t) self.hasItem = t end
+            function f:SetItemButtonTexture(t) self.icon = t end
+            function f:UpdateNewItem() self.newGlow = C_NewItems.IsNewItem(self:GetParent():GetID(), self:GetID()) end
+            function f:UpdateQuestItem(q) self.quest = q end
+            function f:UpdateJunkItem(q, noValue) self.junk = q == 0 and noValue end
+            function f:SetMatchesSearch(m) self.matches = m end
+            function f:UpdateCooldown() end
+            function f:SetReadable() end
+            function f:UpdateItemContextMatching() end
+            function f:CheckUpdateTooltip() end
+        end
+        return f
+    end
+    -- Blizzard's bag frames: the combined bags, and one frame per bag
+    ContainerFrameCombinedBags = new("Frame", UIParent, "ContainerFrameCombinedBags")
+    ContainerFrameCombinedBags.shown = false
+    for i = 1, NUM_CONTAINER_FRAMES do
+        local f = new("Frame", UIParent, "ContainerFrame" .. i)
+        f.shown = false
+    end
+    function OpenAllBags() ContainerFrameCombinedBags:Show() end
+    function CloseAllBags()
+        ContainerFrameCombinedBags:Hide()
+        for i = 1, NUM_CONTAINER_FRAMES do _G["ContainerFrame" .. i]:Hide() end
+    end
+    function ToggleAllBags()
+        if ContainerFrameCombinedBags:IsShown() then CloseAllBags() else OpenAllBags() end
+    end
 end
 
 -- ------------------------------------------------------------ load + fire
@@ -836,6 +1096,35 @@ if barPass then
     print("/mdlui opens", tostring(page.opened))
     SlashCmdList.MDLUI("unit")
     print("/mdlui unit opens", tostring(page.opened))
+    -- Medaluin's minimap button: in the drawer, or on the minimap without one
+    do
+        local mb = ns.minimapButton
+        local where = mb.parent == ns.drawer and "drawer" or mb.parent == Minimap and "minimap" or tostring(mb.parent)
+        local p = mb.points.CENTER
+        print("minimapButton", where, "texture=" .. tostring(mb.icon.texture):match("[^\\]+$"),
+            "size=" .. mb.w .. "x" .. mb.h, "above the map=" .. tostring(mb.level > Minimap.level),
+            mb.parent == Minimap and p and ("at=" .. p[2] .. string.format("%+.0f,%+.0f", p[3], p[4])
+                .. " of " .. string.format("%.0f", Minimap.w)) or "")
+        local lines = {}
+        local add = GameTooltip.AddLine
+        GameTooltip.AddLine = function(_, t) table.insert(lines, t) end
+        local function tip(tag)
+            lines = {}
+            mb.scripts.OnEnter(mb)
+            print(tag, GameTooltip.text, table.concat(lines, " | "))
+        end
+        tip("minimapButton tip")
+        page.opened = nil
+        mb.scripts.OnClick(mb, "LeftButton")
+        print("minimapButton left", "opens=" .. tostring(page.opened), "simParty=" .. tostring(ns.db.simParty))
+        mb.scripts.OnClick(mb, "RightButton")
+        print("minimapButton right", "simParty=" .. tostring(ns.db.simParty),
+            "viaPage=" .. tostring(page.settings.simParty.viaPage), "opens=" .. tostring(page.opened))
+        tip("minimapButton tip on")
+        mb.scripts.OnClick(mb, "RightButton")
+        print("minimapButton right again", "simParty=" .. tostring(ns.db.simParty))
+        GameTooltip.AddLine = add
+    end
     if not ns.actionBar then
         print("tray none")
         -- no bar, no cast bar of Medaluin's: Blizzard's stays
@@ -1152,6 +1441,568 @@ if barPass then
     return
 end
 
+if sidePass then
+    -- the screen in console units: the console's top-left is (612, 916)
+    UIParent.fixed = { -612, -916, 1308, 164 }
+    local function rect(f)
+        local r = resolve(f)
+        return r[1] + 612, r[2] + 916, r[3] + 612, r[4] + 916
+    end
+    local function screen(tag, f, extra)
+        local l, t, r, b = rect(f)
+        print(string.format("%s\t%.1f\t%.1f\t%.1f\t%.1f\t%s", tag, l, t, r, b, extra or ""))
+    end
+    -- the group's own class colours, for this pass only
+    for k, c in pairs({ PRIEST = { 1, 1, 1 }, WARRIOR = { 0.78, 0.61, 0.43 }, MAGE = { 0.25, 0.78, 0.92 },
+        HUNTER = { 0.67, 0.83, 0.45 } }) do
+        rawset(RAID_CLASS_COLORS, k, { r = c[1], g = c[2], b = c[3] })
+    end
+    local side = ns.side
+    if not side.panel then
+        print("side none", "panel=" .. tostring(_G.MedaluinSide ~= nil))
+        return
+    end
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local p = side.panel
+    local tex = p:GetRegions()
+    screen("sidePanel", p, string.format("strata=%s texture=%s coords=%.3f,%.3f,%.3f,%.3f", tostring(p.strata),
+        tostring(tex.texture):match("[^\\]+$"), tex.coords[1], tex.coords[2], tex.coords[3], tex.coords[4]))
+    -- the mirror of the chat panel about the screen's middle (1920 wide)
+    if ns.chat then
+        local cl, ct, cr, cb = rect(ns.chat.panel)
+        local sl, st, sr, sb = rect(p)
+        print("mirror", string.format("left=%.1f right=%.1f top=%.1f bottom=%.1f", sl - (1920 - cr),
+            sr - (1920 - cl), st - ct, sb - cb))
+    end
+    local views = {}
+    for _, v in ipairs(side.views) do views[v.key] = v end
+    local function tabs()
+        local list = {}
+        for _, v in ipairs(side.views) do
+            if v.tab and v.tab.shown then
+                local l, _, r = rect(v.tab)
+                table.insert(list, string.format("%s@%.0f-%.0f%s", v.tab.label.text, l, r,
+                    v.tab.selected[1].shown and "*" or ""))
+            end
+        end
+        print("tabs", p.shown and "panel" or "panel hidden", #list > 0 and table.concat(list, " ") or "none")
+    end
+    local function column(v)
+        local list = {}
+        for _, b in ipairs(v.paint) do
+            local l, t, r, bt = rect(b)
+            table.insert(list, string.format("%s%s%s@%.0f,%.0f", b.glyph.texture:match("side%-(.*)$"),
+                b.well.texture:match("on$") and "+" or "", b.glyph.vertex and string.format("(%.2f,%.2f,%.2f)",
+                b.glyph.vertex[1], b.glyph.vertex[2], b.glyph.vertex[3]) or "", (l + r) / 2, (t + bt) / 2))
+        end
+        print("column " .. v.key, v.column.shown and "shown" or "hidden", table.concat(list, " "))
+    end
+    -- the scroll bar: its track, and the thumb when there is more than shows
+    local track, bar
+    for _, r in ipairs(p.all_) do
+        if r.kind == "Texture" and r.w == 8 then track = r elseif r.kind == "Texture" and r.w == 6 then bar = r end
+    end
+    screen("track", track)
+    local function thumb(tag)
+        if not bar.shown then print("thumb " .. tag, "hidden") return end
+        bar.rect = nil
+        screen("thumb " .. tag, bar)
+    end
+    local function click(v, i, mouse)
+        local b = v.paint[i]
+        b.scripts.OnClick(b, mouse or "LeftButton")
+    end
+    tabs()
+    for _, v in ipairs(side.views) do
+        if v.body then
+            screen("body " .. v.key, v.body)
+            column(v)
+        end
+    end
+
+    -- ---------------------------------------------------------- loot
+    local L = views.loot
+    local function lootState(tag)
+        print(tag)
+        for _, f in ipairs(L.body.all_) do
+            if f.shown and f.kind == "Frame" and f.title then
+                local _, t = rect(f)
+                print("", string.format("head@%.0f", t), f.title.text, f.when.text)
+            elseif f.shown and f.kind == "Button" and f.item then
+                local _, t = rect(f)
+                print("", string.format("row@%.0f", t), f.link.text, string.format("edge=%.2f,%.2f,%.2f",
+                    unpack(f.edge.color)), "icon=" .. tostring(f.icon.texture), f.who.text,
+                    f.who.textColor and string.format("(%.2f,%.2f,%.2f)", unpack(f.who.textColor)) or "",
+                    f.how.text, f.die.shown and tostring(f.die.texture):match("[^\\]+$") or "-")
+            end
+        end
+        local _, shown, total = L.Thumb()
+        print("", "thumb", L.Thumb(), shown, total)
+    end
+    side.views[1].tab.scripts.OnClick(side.views[1].tab)
+    lootState("loot at login")
+    -- chat lines: the player's loot, a group member's, a stack, trash money
+    local function chat(e, msg) fire(e, msg, "") end
+    chat("CHAT_MSG_LOOT", "You receive loot: " .. itemLink(30003, "Ashtongue Signet", 3) .. ".")
+    chat("CHAT_MSG_LOOT", "Thalen-Realm receives loot: " .. itemLink(30004, "Felsteel Bar", 2) .. "x4.")
+    chat("CHAT_MSG_LOOT", "You receive loot: " .. itemLink(30005, "Broken Fang", 0) .. ".")
+    chat("CHAT_MSG_LOOT", "You receive loot: " .. itemLink(30099, "Uncached Thing", 2) .. ".")
+    chat("CHAT_MSG_MONEY", "You loot 6 Gold, 75 Silver")
+    chat("CHAT_MSG_MONEY", "Your share of the loot is 1 Gold, 5 Copper.")
+    chat("CHAT_MSG_CURRENCY", "You receive currency: |cffffffff|Hcurrency:1792|h[Honor]|h|r x15.")
+    chat("CHAT_MSG_LOOT", "Ahrymx creates: something.")        -- not loot: left to the chat
+    lootState("loot after trash")
+    -- a boss: its drop rolls, the chat tells the win first, then the history
+    now = now + 300
+    clock = "21:14"
+    loot.encounters[2] = { encounterID = 602, encounterName = "Gurtogg Bloodboil", startTime = 9 }
+    loot.drops[602] = { { lootListKey = 1, itemHyperlink = itemLink(30002, "Shoulderpads of Renewed Life", 4),
+        allPassed = false, rollInfos = {} } }
+    fire("LOOT_HISTORY_UPDATE_ENCOUNTER", 602)
+    lootState("loot rolling")
+    chat("CHAT_MSG_LOOT", "Mira-Realm receives loot: " .. itemLink(30002, "Shoulderpads of Renewed Life", 4) .. ".")
+    loot.drops[602][1].winner = { playerName = "Mira-Realm", playerClass = "PRIEST", isSelf = false, state = 0,
+        roll = 87 }
+    fire("LOOT_HISTORY_UPDATE_DROP", 602, 1)
+    -- a second drop the player wins on greed, the history first this time
+    table.insert(loot.drops[602], { lootListKey = 2, itemHyperlink = itemLink(30006, "Bloodboil's Cord", 1),
+        winner = { playerName = "Ahrymx", playerClass = "HUNTER", isSelf = true, state = 3, roll = 51 },
+        allPassed = false, rollInfos = {} })
+    fire("LOOT_HISTORY_UPDATE_DROP", 602, 2)
+    chat("CHAT_MSG_LOOT", "You receive loot: " .. itemLink(30006, "Bloodboil's Cord", 1) .. ".")
+    chat("CHAT_MSG_MONEY", "You loot 14 Gold, 20 Silver")
+    lootState("loot after the boss")
+    -- the item the client had not cached arrives
+    loot.quality[30099] = 2
+    fire("GET_ITEM_INFO_RECEIVED", 30099)
+    -- the column: yours only, then the least quality up (and back), money off
+    column(L)
+    click(L, 1)
+    column(L)
+    lootState("loot mine")
+    click(L, 1)
+    click(L, 2)
+    click(L, 2)
+    column(L)
+    lootState("loot epic and up")
+    click(L, 2, "RightButton")
+    click(L, 2, "RightButton")
+    click(L, 2, "RightButton")
+    column(L)
+    -- down past poor wraps round to epic, and up past epic to poor
+    click(L, 2, "RightButton")
+    click(L, 2, "RightButton")
+    print("lootQuality down past poor", ns.db.lootQuality)
+    click(L, 2)
+    print("lootQuality up past epic", ns.db.lootQuality)
+    page.settings.lootQuality:Set(1)
+    print("lootQuality", ns.db.lootQuality, "through the page", page.settings.lootQuality.viaPage,
+        "lootWho through the page", page.settings.lootWho.viaPage)
+    page.settings.lootMoney:Set(false)
+    lootState("loot money off")
+    page.settings.lootMoney:Set(true)
+    -- the wheel: three lines down, then past the end
+    thumb("loot")
+    p.scripts.OnMouseWheel(p, -3)
+    lootState("loot scrolled")
+    -- a row passes the wheel on to the panel
+    for _, f in ipairs(L.body.all_) do
+        if f.kind == "Button" and f.item and f.shown then
+            f.scripts.OnMouseWheel(f, -1)
+            break
+        end
+    end
+    print("loot scrolled from a row", L.Thumb())
+    p.scripts.OnMouseWheel(p, 1)
+    thumb("loot scrolled")
+    p.scripts.OnMouseWheel(p, -50)
+    print("loot scrolled to the end", L.Thumb())
+    thumb("loot at the end")
+    p.scripts.OnMouseWheel(p, 99)
+    -- a chat line can be secret in combat: left to the chat
+    fire("CHAT_MSG_LOOT", secret(), "")
+    -- clear: the history's old rolls do not come back with its next update
+    L.foot.click()
+    side.Changed()
+    lootState("loot cleared")
+    fire("LOOT_HISTORY_UPDATE_DROP", 602, 2)
+    lootState("loot after a stale update")
+    -- money alone makes a heading, with its copper; the option takes it away
+    chat("CHAT_MSG_MONEY", "You loot 42 Silver, 35 Copper")
+    lootState("loot money only")
+    page.settings.lootMoney:Set(false)
+    lootState("loot money only, money off")
+    page.settings.lootMoney:Set(true)
+
+    -- --------------------------------------------------------- meter
+    local M = views.meter
+    if not M.body then
+        print("meter none")
+    else
+        local function meterState(tag)
+            print(tag)
+            for _, list in ipairs({ M.body.all_[1], M.body.all_[2] }) do
+                if list.shown then
+                    local head
+                    for _, c in ipairs(list.all_) do if c.kind == "Button" then head = c end end
+                    local l, _, r = rect(list)
+                    local title, when
+                    for _, fs in ipairs(head.all_) do
+                        if fs.kind == "FontString" then
+                            if title then when = fs else title = fs end
+                        end
+                    end
+                    print("", string.format("list %.0f-%.0f", l, r), title.text, when.text)
+                    for _, row in ipairs(list.all_) do
+                        if row.kind == "StatusBar" and row.shown then
+                            local _, t = rect(row)
+                            print("", string.format("bar@%.0f", t), tostring(row.label.text), tostring(row.amount.text),
+                                string.format("%s/%s", tostring(row.value), tostring(row.max)),
+                                string.format("(%.2f,%.2f,%.2f)", unpack(row.barColor)),
+                                tostring(row.icon.atlas or row.icon.texture))
+                        elseif row.kind == "FontString" and row.shown and row.text ~= "" then
+                            print("", "empty", row.text)
+                        end
+                    end
+                end
+            end
+        end
+        local function tick(dt) M.body.scripts.OnUpdate(M.body, dt or 0.3) end
+        side.views[2].tab.scripts.OnClick(side.views[2].tab)
+        tabs()
+        print("sideTab", ns.db.sideTab)
+        column(M)
+        meterState("meter")
+        -- in combat: every amount and name secret
+        local before = secretsUsed
+        inCombat = true
+        fire("PLAYER_REGEN_DISABLED")
+        fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 0, 1)
+        tick()
+        meterState("meter in combat")
+        print("secrets to the meter", secretsUsed - before)
+        -- the column: overall, totals, two lists
+        click(M, 1)
+        click(M, 2)
+        click(M, 3)
+        column(M)
+        meterState("meter overall, totals, two lists, in combat")
+        inCombat = false
+        fire("PLAYER_REGEN_ENABLED")
+        tick()
+        meterState("meter after combat")
+        -- the headings step their lists; per second again
+        local function heading(i, mouse)
+            local list = M.body.all_[i]
+            for _, c in ipairs(list.all_) do
+                if c.kind == "Button" then c.scripts.OnClick(c, mouse or "LeftButton") end
+            end
+        end
+        heading(2)
+        heading(1, "RightButton")
+        print("lists", ns.db.meterLeft, ns.db.meterRight)
+        click(M, 2)
+        click(M, 1)
+        meterState("meter stepped, per second, current")
+        heading(1)
+        heading(2, "RightButton")
+        click(M, 3)
+        -- the wheel: ten sources, eight rows
+        thumb("meter")
+        p.scripts.OnMouseWheel(p, -1)
+        meterState("meter scrolled one")
+        thumb("meter scrolled one")
+        p.scripts.OnMouseWheel(p, -10)
+        print("meter scrolled to the end", M.Thumb())
+        -- the clock ticks on its own; the bars only when told, and at most
+        -- four times a second
+        meter.asked = {}
+        tick(1)
+        print("asked on a quiet tick", #meter.asked)
+        fire("DAMAGE_METER_CURRENT_SESSION_UPDATED")
+        tick(0.01)
+        print("asked when told", #meter.asked, table.concat(meter.asked, ","))
+        fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 0, 1)
+        tick(0.1)
+        print("asked again within a quarter second", #meter.asked)
+        tick(0.2)
+        print("asked after it", #meter.asked)
+        -- reset
+        M.foot.click()
+        fire("DAMAGE_METER_RESET")
+        tick()
+        print("resets", meter.resets, "first", M.Thumb())
+        meterState("meter reset")
+        meterData()
+        -- unavailable
+        meter.available, meter.reason = false, "Not available in this instance."
+        tick()
+        fire("DAMAGE_METER_RESET")
+        tick()
+        meterState("meter unavailable")
+        meter.available = true
+    end
+
+    -- --------------------------------------------------------- auras
+    local A = views.auras
+    if not A or not A.body then
+        print("auras none")
+    else
+        -- the player's auras: buffs and debuffs, as the client keeps them.
+        -- In combat every time, name, stack and dispel type is secret; the
+        -- instance ids are not (the player's own).
+        local world = {
+            HELPFUL = {
+                { id = 31, name = "Swift Mount", icon = "mount" },
+                { id = 17, name = "Bear Form", icon = "form", count = 3 },
+                { id = 12, name = "Arcane Intellect", icon = "intellect", left = 3500, full = 3600 },
+                { id = 40, name = "Flask of the Currents", icon = "flask", left = 4360, full = 7200 },
+                { id = 41, name = "Bloodlust", icon = "lust", left = 28, full = 40, count = 1 },
+                { id = 42, name = "Rejuvenation", icon = "rejuv", left = 11, full = 15 },
+            },
+            HARMFUL = {
+                { id = 50, name = "Sated", icon = "sated", left = 492, full = 600 },
+                { id = 51, name = "Fel Rage", icon = "felrage", left = 18, full = 30, count = 3, dispel = "Magic" },
+                { id = 52, name = "Crippling Poison", icon = "poison", left = 6, full = 12, dispel = "Poison" },
+            },
+        }
+        local born = now
+        local function find(id)
+            for _, kind in pairs(world) do
+                for _, a in ipairs(kind) do if a.id == id then return a end end
+            end
+        end
+        local function hide(v) if inCombat then return secret() end return v end
+        local function data(a)
+            return { auraInstanceID = a.id, name = hide(a.name), icon = a.icon, applications = hide(a.count or 0),
+                dispelName = hide(a.dispel), duration = hide(a.full or 0),
+                expirationTime = hide(a.left and born + a.left or 0) }
+        end
+        local asked, formatted = {}, 0
+        -- the addon holds the client's table from load: change it in place
+        local base, saved = C_UnitAuras, {}
+        for k, v in pairs(C_UnitAuras) do saved[k] = v end
+        for k, v in pairs({
+            GetAuraDataByIndex = function(unit, i, filter)
+                if unit ~= "player" or not world[filter or "HELPFUL"] then
+                    return saved.GetAuraDataByIndex(unit, i, filter)
+                end
+                local a = world[filter or "HELPFUL"][i]
+                return a and data(a)
+            end,
+            -- the client's sort: the longest first, and the ones that never
+            -- run out after them all (where the client puts them is not
+            -- known; the tab must not rest on it)
+            GetUnitAuras = function(_, filter, _, rule, direction)
+                table.insert(asked, filter .. ":" .. tostring(rule) .. "/" .. tostring(direction))
+                local list = {}
+                for _, a in ipairs(world[filter]) do table.insert(list, a) end
+                table.sort(list, function(x, y)
+                    if (x.left ~= nil) ~= (y.left ~= nil) then return x.left ~= nil end
+                    if x.left then return x.left > y.left end
+                    return x.id > y.id
+                end)
+                local out = {}
+                for i, a in ipairs(list) do out[i] = data(a) end
+                return out
+            end,
+            DoesAuraHaveExpirationTime = function(unit, id)
+                if not find(id) then return saved.DoesAuraHaveExpirationTime(unit, id) end
+                return hide(find(id).left ~= nil)
+            end,
+            GetAuraDuration = function(_, id)
+                local a = find(id)
+                return { aura = id, GetRemainingDuration = function()
+                    return hide(a.left and math.max(0, born + a.left - now) or 0)
+                end }
+            end,
+            GetAuraApplicationDisplayCount = function(_, id, least)
+                local a = find(id)
+                return hide((a.count or 0) >= least and tostring(a.count) or "")
+            end,
+        }) do base[k] = v end
+        C_DurationUtil = { CreateDuration = function() return { aura = "zero" } end }
+        C_StringUtil = { CreateSecondsFormatter = function()
+            return { Format = function(_, v)
+                formatted = formatted + 1
+                if isSecret(v) then return "~time" end
+                return v .. " sec"
+            end }
+        end }
+        local function aurasState(tag)
+            print(tag)
+            for _, list in ipairs({ A.body.all_[1], A.body.all_[2] }) do
+                if list.shown then
+                    local l, _, r = rect(list)
+                    local fs = {}
+                    for _, c in ipairs(list.all_) do
+                        if c.kind == "FontString" then table.insert(fs, c) end
+                    end
+                    print("", string.format("list %.0f-%.0f", l, r), fs[1].text, fs[2].text,
+                        fs[3].shown and ("empty: " .. fs[3].text) or "")
+                    for _, row in ipairs(list.all_) do
+                        if row.kind == "StatusBar" and row.shown then
+                            local _, t = rect(row)
+                            local tc = row.left.textColor
+                            print("", string.format("row@%.0f", t), tostring(row.label.text),
+                                "x" .. tostring(row.count.text), tostring(row.icon.texture),
+                                string.format("edge=%.2f,%.2f,%.2f", unpack(row.edge.color)),
+                                string.format("bar=%.2f,%.2f,%.2f", unpack(row.barColor)),
+                                row.timer and ("timer=" .. tostring(row.timer[1] and row.timer[1].aura) .. "/"
+                                    .. tostring(row.timer[2])) or string.format("%s/%s", tostring(row.value),
+                                    tostring(row.max)),
+                                tostring(row.left.text), tc and string.format("(%.2f,%.2f,%.2f)", tc[1], tc[2], tc[3])
+                                    or "")
+                        end
+                    end
+                end
+            end
+            print("", "thumb", A.Thumb())
+        end
+        local function tick(dt) A.body.scripts.OnUpdate(A.body, dt or 0.3) end
+        local unitAura = {}
+        for _, f in ipairs(events.UNIT_AURA or {}) do table.insert(unitAura, f) end
+        local function changed()
+            for _, f in ipairs(unitAura) do f.scripts.OnEvent(f, "UNIT_AURA", "player", { isFullUpdate = true }) end
+        end
+        side.views[3].tab.scripts.OnClick(side.views[3].tab)
+        tabs()
+        print("sideTab", ns.db.sideTab)
+        column(A)
+        aurasState("auras")
+        print("sorted by", table.concat(asked, " "))
+        -- the times run down on their own, five times a second (a part
+        -- second left counts as a second)
+        now = now + 2.5
+        tick(0.1)
+        aurasState("auras a tenth later")
+        tick(0.15)
+        aurasState("auras three seconds on")
+        -- the timeless ones listed, then one list of both
+        click(A, 2)
+        column(A)
+        aurasState("auras timeless")
+        click(A, 1)
+        column(A)
+        aurasState("auras one list")
+        -- the wheel: eleven auras, fewer rows; a row passes it on
+        A.body.all_[1].all_[5].scripts.OnMouseWheel(A.body.all_[1].all_[5], -2)
+        aurasState("auras scrolled two")
+        thumb("auras")
+        p.scripts.OnMouseWheel(p, -50)
+        print("auras scrolled to the end", A.Thumb())
+        -- the list shrinks under the scroll: back to what it can show
+        click(A, 2)
+        print("auras scrolled, timeless off", A.Thumb())
+        click(A, 2)
+        p.scripts.OnMouseWheel(p, 99)
+        -- in combat: every time secret; the client's order
+        local before = secretsUsed
+        inCombat = true
+        fire("PLAYER_REGEN_DISABLED")
+        changed()
+        tick()
+        aurasState("auras one list in combat")
+        click(A, 1)
+        aurasState("auras two lists in combat")
+        print("secrets to the auras", secretsUsed - before, "formatted", formatted)
+        -- a buff gained in combat, whether it runs out not known: kept
+        -- where the client puts it, and listed even with the timeless off
+        table.insert(world.HELPFUL, { id = 43, name = "Mystery", icon = "mystery" })
+        click(A, 2)
+        changed()
+        tick()
+        aurasState("auras a new buff in combat, timeless off")
+        -- the debuffs wear off: their rows are no longer asked for times
+        local debuffs = world.HARMFUL
+        world.HARMFUL = {}
+        changed()
+        tick()
+        local asks = formatted
+        tick(0.25)
+        print("times asked on a tick in combat", formatted - asks)
+        world.HARMFUL = debuffs
+        changed()
+        tick()
+        -- a right click in combat cancels nothing
+        local row = A.body.all_[1].all_[5]
+        local rowsOf = {}
+        for _, c in ipairs(A.body.all_[1].all_) do if c.kind == "StatusBar" then table.insert(rowsOf, c) end end
+        row = rowsOf[1]
+        row.scripts.OnMouseUp(row, "RightButton")
+        print("cancelled in combat", #cancelled)
+        inCombat = false
+        fire("PLAYER_REGEN_ENABLED")
+        tick()
+        aurasState("auras after combat")
+        -- out of combat: a right click cancels a buff, not a debuff, and a
+        -- left click nothing
+        row.scripts.OnMouseUp(row, "LeftButton")
+        row.scripts.OnMouseUp(row, "RightButton")
+        local debuffRow
+        for _, c in ipairs(A.body.all_[2].all_) do if c.kind == "StatusBar" and not debuffRow then debuffRow = c end end
+        debuffRow.scripts.OnMouseUp(debuffRow, "RightButton")
+        print("cancelled", table.concat(cancelled, ","))
+        -- the auras are read only when they change, at most four times a second
+        asked = {}
+        tick(1)
+        print("read on a quiet tick", #asked)
+        changed()
+        tick(0.01)
+        print("read when told", #asked)
+        changed()
+        tick(0.1)
+        print("read again within a quarter second", #asked)
+        tick(0.2)
+        print("read after it", #asked)
+        -- a client whose status bars have no timer: the range is the full
+        -- duration and the time left is set on each tick
+        noTimer = true
+        for _, list in ipairs({ A.body.all_[1], A.body.all_[2] }) do
+            for _, r in ipairs(list.all_) do r.timer = nil end
+        end
+        changed()
+        tick()
+        aurasState("auras without a client timer")
+        now = now + 1
+        tick(0.25)
+        aurasState("auras without a client timer, a second on")
+        -- past an aura's end, before the client takes it away: nothing left, not less
+        now = now + 5
+        tick(0.25)
+        aurasState("auras past the poison's end")
+        noTimer = false
+        -- nothing at all
+        world.HELPFUL, world.HARMFUL = {}, {}
+        changed()
+        tick()
+        aurasState("auras none")
+        page.settings.aurasColumns:Set(1)
+        aurasState("auras none, one list")
+        print("aurasColumns through the page", page.settings.aurasColumns.viaPage,
+            "aurasTimeless through the page", page.settings.aurasTimeless.viaPage)
+        for k in pairs(base) do base[k] = saved[k] end
+    end
+
+    -- the tabs come and go with their options; none, no panel
+    page.settings.sideMeter:Set(false)
+    tabs()
+    page.settings.sideLoot:Set(false)
+    tabs()
+    page.settings.sideAuras:Set(false)
+    tabs()
+    page.settings.sideMeter:Set(true)
+    tabs()
+    page.settings.sideLoot:Set(true)
+    page.settings.sideAuras:Set(true)
+    tabs()
+    SlashCmdList.MDLUI("meter")
+    print("/mdlui meter opens", tostring(page.opened))
+    return
+end
+
 if stripsPass then
     -- the screen in console units: the console's top-left is (612, 916)
     UIParent.fixed = { -612, -916, 1308, 164 }
@@ -1249,14 +2100,14 @@ if stripsPass then
     local mark = pack.SlotHighlightTexture
     screen("backpack", pack, string.format("picture=%s drawn=%d open=%s", tostring(pack.icon.texture):match("[^\\]+$"),
         drawn(pack), mark and (mark.atlas or tostring(mark.texture):match("[^\\]+$") .. "@" .. tostring(mark.vertex and mark.vertex[1])) or "-"))
-    for i = 3, 0, -1 do
-        local b = _G["CharacterBag" .. i .. "Slot"]
-        local pushed = b:GetPushedTexture()
-        screen("bag" .. i, b, string.format("shown=%s pushed=%s drawn=%d", tostring(b.shown),
-            pushed and (pushed.atlas or (pushed.color and "ours")) or "-", drawn(b)))
+    -- no bag drawer (removed 2026-11-01): the slots stay with Blizzard's BagsBar
+    local left = {}
+    for _, n in ipairs({ "CharacterBag3Slot", "CharacterBag2Slot", "CharacterBag1Slot", "CharacterBag0Slot",
+        "CharacterReagentBag0Slot", "KeyRingButton" }) do
+        local b = _G[n]
+        if b then table.insert(left, n:gsub("Character", ""):gsub("Slot", "") .. "@" .. tostring(b.parent and b.parent.name)) end
     end
-    if CharacterReagentBag0Slot then screen("reagent", CharacterReagentBag0Slot) end
-    screen("drawer", ns.bagDrawer, "shown=" .. tostring(ns.bagDrawer.shown))
+    print("bags", "drawer=" .. tostring(_G.MedaluinBagDrawer ~= nil), table.concat(left, " "))
     for _, f in ipairs(all) do
         if f.kind == "FontString" and f.parent and f.parent.parent == ns.strips[1] and f.text then
             screen("stat", f.parent, string.format("%q", f.text))
@@ -1563,6 +2414,26 @@ if savedSimParty then
             "size=" .. tostring(row[1].w), "bare=" .. tostring(row[1].icon.coords and row[1].icon.coords[1]))
     end
     rowState("overhead.row")
+    -- each icon edged in gold outside, black inside, both behind the icon
+    do
+        local btn = ns.overheadRow[1]
+        local gold, black
+        for _, r in ipairs(btn.all_) do
+            if r.kind == "Texture" and r.layer == "BACKGROUND" and r.sub == -8 then gold = r end
+            if r.kind == "Texture" and r.layer == "BACKGROUND" and r.sub == -7 then black = r end
+        end
+        local g = gold.gradient
+        print("overhead.iconFrame", "gold=" .. gold.points.TOPLEFT[3] .. "," .. gold.points.TOPLEFT[4] .. "/"
+            .. gold.points.BOTTOMRIGHT[3] .. "," .. gold.points.BOTTOMRIGHT[4],
+            g and string.format("gradient=%s foot=%.3f,%.3f,%.3f top=%.3f,%.3f,%.3f", g[1], g[2][1], g[2][2], g[2][3],
+                g[3][1], g[3][2], g[3][3])
+                or string.format("solid=%.3f,%.3f,%.3f", gold.color[1], gold.color[2], gold.color[3]),
+            "black=" .. tostring(black and black.all == btn and black.color[1] == 0 and black.color[4] == 1),
+            "every icon=" .. tostring((function()
+                for _, b in ipairs(ns.overheadRow) do if not b.medaluinFrame then return false end end
+                return true
+            end)()))
+    end
     -- Blizzard's yellow autocast corners are faded, by key or by atlas; the shine stays
     local faded, shine = 0, 0
     for i = 1, 10 do
@@ -1651,6 +2522,423 @@ if savedSimParty then
     rowState("overhead.petArrives.row")
     petBar = false
     page.settings.simParty:Set(true)
+
+    -- 6. The simulation panel: shown while simulating, its buttons in order
+    -- (bosses -, count, +; dead 1-4; in range 1-4; ready, role; end)
+    local sp = _G.MedaluinSimPanel
+    local spb = {}
+    for _, c in ipairs(sp.all_) do if c.kind == "Button" then table.insert(spb, c) end end
+    local function press(i) spb[i].scripts.OnClick(spb[i], "LeftButton") end
+    local function panelState(tag)
+        local out = {}
+        for i, b in ipairs(spb) do
+            table.insert(out, string.format("%s%s%s", b.label.text, b.on.shown and "*" or "",
+                b.alpha == 0.4 and "(off)" or ""))
+            if i == 3 or i == 7 or i == 11 or i == 13 then table.insert(out, "|") end
+        end
+        print(tag, "shown=" .. tostring(sp.shown), table.concat(out, " "))
+    end
+    local function bosses()
+        local out = {}
+        for i = 1, 5 do
+            local b = ns.overheadUnits["boss" .. i]
+            if b.shown then table.insert(out, tostring(b.name.text)) end
+        end
+        return #out .. " " .. table.concat(out, ", ")
+    end
+    local function members(tag)
+        local out = {}
+        for i = 1, 4 do
+            local b = ns.units["party" .. i]
+            local st = b.statusWidget
+            local s = st.shown and st.icon.coords and string.format("%.2f", st.icon.coords[1]) or "-"
+            table.insert(out, string.format("p%d:hp=%s,rez=%s,a=%.2f,check=%s", i, tostring(b.health.value),
+                tostring(b.rezIcon.shown), b.alpha or 1, s))
+        end
+        print(tag, table.concat(out, " "))
+    end
+    local function wait(seconds)
+        for _ = 1, math.floor(seconds / 0.1 + 0.5) do sp.scripts.OnUpdate(sp, 0.1) end
+    end
+    print("simPanel.box", string.format("w=%s h=%s", tostring(sp.w), tostring(sp.h)),
+        "strata=" .. tostring(sp.strata), "point=" .. tostring(sp.points.LEFT and sp.points.LEFT[2]))
+    panelState("simPanel")
+    print("simPanel.bosses", bosses())
+    press(3)
+    press(3)
+    press(3)
+    panelState("simPanel.five")
+    print("simPanel.bosses five", bosses())
+    press(2)
+    panelState("simPanel.none")
+    print("simPanel.bosses none", bosses())
+    press(1)
+    press(2)
+    print("simPanel.bosses all again", bosses())
+    for _ = 1, 3 do press(1) end
+    print("simPanel.bosses back to two", bosses())
+    -- deaths and range
+    press(4)
+    press(7)
+    press(9)
+    panelState("simPanel.dead1,4 away2")
+    members("simPanel.members")
+    press(4)
+    press(7)
+    press(9)
+    members("simPanel.members restored")
+    page.settings.partyRange:Set(0)
+    panelState("simPanel.range fade off")
+    page.settings.partyRange:Set(40)
+    -- a ready check: all waiting, then one answer each STEP, then cleared
+    press(12)
+    panelState("simPanel.ready")
+    members("ready.start")
+    wait(1.2)
+    members("ready.two answered")
+    wait(1.2)
+    members("ready.all answered")
+    wait(2.0)
+    members("ready.held")
+    wait(1.6)
+    members("ready.cleared")
+    panelState("simPanel.after ready")
+    -- a role check, cut short by a fight; party4 is a real member here
+    -- (no stub), who answers for themselves and is left alone
+    local p4stub = ns.units.party4.stub
+    ns.units.party4.stub = nil
+    press(13)
+    ns.units.party4.stub = p4stub
+    panelState("simPanel.role")
+    wait(0.6)
+    members("role.one answered")
+    for _, f in ipairs(events.PLAYER_REGEN_DISABLED or {}) do f.scripts.OnEvent(f, "PLAYER_REGEN_DISABLED") end
+    for _, f in ipairs(events.PLAYER_REGEN_ENABLED or {}) do f.scripts.OnEvent(f, "PLAYER_REGEN_ENABLED") end
+    members("role.fight")
+    panelState("simPanel.after fight")
+    -- a check under way when the simulation ends is cleared with it
+    press(12)
+    press(14)
+    print("simPanel.ended", "simParty=" .. tostring(ns.db.simParty), "shown=" .. tostring(sp.shown))
+    members("ended")
+    page.settings.simParty:Set(true)
+    panelState("simPanel.again")
+end
+
+if bagsPass then
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local w = _G.MedaluinBags
+    print("bags", "window=" .. tostring(w ~= nil), "combined=" .. tostring(ContainerFrameCombinedBags ~= nil),
+        "setting=" .. tostring(ns.db.bags))
+    if not w then return end
+    local W = bagWorld
+    -- a slot's place in the body: column, and its top in pixels
+    local function at(b)
+        local p = b.points.TOPLEFT
+        return string.format("%d,%d", p[3] / 41, -p[4])
+    end
+    local function slot(bag, i) return _G["MedaluinBagsItem" .. bag .. "_" .. i] end
+    local function grid(tag)
+        print(tag, "shown=" .. tostring(w.shown), string.format("size=%dx%d", w.w, w.h),
+            "body=" .. string.format("%dx%d", w.parent and _G.MedaluinBagsBag0.parent.w or 0, _G.MedaluinBagsBag0.parent.h))
+        for _, bag in ipairs({ 0, 1, 2, 3, 4, 5 }) do
+            local first, last, n, items = nil, nil, 0, {}
+            for i = 1, 20 do
+                local b = slot(bag, i)
+                if b and b.shown then
+                    n = n + 1
+                    first, last = first or at(b), at(b)
+                    if b.hasItem then
+                        table.insert(items, string.format("%d@%s q=%s n=%s%s%s%s%s%s", i, at(b), tostring(b.quality),
+                            tostring(b.count), b.newGlow and " new" or "", b.quest and " quest" or "",
+                            b.junk and " junk" or "", b.desat and " locked" or "", b.matches == false and " dim" or ""))
+                    end
+                    if b.itemLevel.text and b.itemLevel.text ~= "" then
+                        items[#items] = items[#items] .. " ilvl=" .. b.itemLevel.text
+                            .. string.format("(%.2f)", b.itemLevel.textColor and b.itemLevel.textColor[1] or -1)
+                    end
+                    if b.spare.text and b.spare.text ~= "" then
+                        table.insert(items, string.format("%d@%s free=%s", i, at(b), tostring(b.spare.text)))
+                    end
+                end
+            end
+            print("  bag" .. bag, "slots=" .. n, "first=" .. tostring(first), "last=" .. tostring(last),
+                "id=" .. tostring(_G["MedaluinBagsBag" .. bag] and _G["MedaluinBagsBag" .. bag]:GetID()),
+                table.concat(items, "; "))
+        end
+        local heads = {}
+        for _, r in ipairs(_G.MedaluinBagsBag0.parent.all_) do
+            if r.kind == "FontString" and r.shown and r.text then
+                table.insert(heads, r.text .. "@" .. -r.points.TOPLEFT[4])
+            end
+        end
+        if #heads > 0 then print("  headings", table.concat(heads, ", ")) end
+    end
+    local function chrome(tag)
+        local labels = {}
+        for _, r in ipairs(w.all_) do
+            if r.kind == "Button" and r.label then table.insert(labels, r.label.text) end
+        end
+        local texts = {}
+        for _, r in ipairs(w.all_) do
+            if r.kind == "FontString" and r.text then table.insert(texts, r.text) end
+        end
+        print(tag, "buttons=" .. table.concat(labels, "|"), "texts=" .. table.concat(texts, "|"))
+    end
+    local function blizz(tag)
+        local parents, open = {}, {}
+        for _, f in ipairs(ns.bags.blizzard) do
+            if f.parent ~= ns.hidden then table.insert(parents, f.name) end
+            if f.shown then table.insert(open, f.name) end
+        end
+        print(tag, "kept=" .. #ns.bags.blizzard, "not hidden=" .. (#parents > 0 and table.concat(parents, ",") or "none"),
+            "open=" .. (#open > 0 and table.concat(open, ",") or "none"), "window=" .. tostring(w.shown))
+    end
+
+    -- 1. at login: Blizzard's frames out of sight, the window closed
+    blizz("bags.login")
+    print("bags.strata", w.strata, "parent=" .. tostring(w.parent == UIParent), "search=" .. tostring(_G.MedaluinBagsSearch ~= nil))
+
+    -- 2. Blizzard opens the bags (the B key): the window follows
+    W.reads = 0
+    OpenAllBags()
+    blizz("bags.open")
+    print("bags.reads on open", W.reads)
+    grid("bags.grid")
+    chrome("bags.chrome")
+    print("bags.anchor", tostring(w.points.BOTTOMRIGHT and w.points.BOTTOMRIGHT[1].name),
+        tostring(w.points.BOTTOMRIGHT and w.points.BOTTOMRIGHT[2]))
+
+    -- 3. Blizzard moves its frame for a full-screen panel: it goes back
+    ContainerFrameCombinedBags:SetParent(UIParent)
+    blizz("bags.reparented")
+
+    -- 4. events while open: one refresh, at the next frame
+    W.reads = 0
+    W.put(1, 2, 108, 3)
+    fire("BAG_UPDATE_DELAYED")
+    print("bags.reads before the frame", W.reads)
+    w.scripts.OnUpdate(w, 0.02)
+    print("bags.reads after the frame", W.reads)
+    w.scripts.OnUpdate(w, 0.02)
+    print("bags.reads next frame", W.reads)
+    grid("bags.picked up")
+    -- an item picked up is locked: the client says so with its own event
+    W.items["3:2"].isLocked = true
+    fire("ITEM_LOCK_CHANGED", 3, 2)
+    w.scripts.OnUpdate(w, 0.02)
+    print("bags.lock", "3:2 desaturated=" .. tostring(_G.MedaluinBagsItem3_2.desat))
+    W.items["3:2"].isLocked = false
+
+    -- 5. the groups
+    page.settings.bagsView:Set("groups")
+    grid("bags.groups")
+    chrome("bags.groups chrome")
+    -- the window's own button goes back, through the page
+    for _, r in ipairs(w.all_) do
+        if r.kind == "Button" and r.label and r.label.text == "Grid" then r.scripts.OnClick(r) end
+    end
+    print("bags.view button", ns.db.bagsView, "viaPage=" .. tostring(page.settings.bagsView.viaPage))
+    for _, r in ipairs(w.all_) do
+        if r.kind == "Button" and r.label and r.label.text == "Groups" then
+            r.scripts.OnEnter(r)
+            print("bags.view tip", tostring(GameTooltip.text))
+        end
+    end
+
+    -- 6. the search, the client's: what does not match is dimmed
+    local box = _G.MedaluinBagsSearch
+    box.text = "potion"
+    box.scripts.OnTextChanged(box)
+    fire("INVENTORY_SEARCH_UPDATE")
+    w.scripts.OnUpdate(w, 0.02)
+    print("bags.search", tostring(W.search))
+    grid("bags.searched")
+    box.text = ""
+    box.scripts.OnTextChanged(box)
+    fire("INVENTORY_SEARCH_UPDATE")
+    w.scripts.OnUpdate(w, 0.02)
+
+    -- 7. sort
+    for _, r in ipairs(w.all_) do
+        if r.kind == "Button" and r.label and r.label.text == "Sort" then r.scripts.OnClick(r) end
+    end
+    print("bags.sort", W.sorted)
+
+    -- 8. options: eight across, no item levels
+    ns.SetOption("bagsColumns", 8)
+    page.settings.bagsItemLevel:Set(false)
+    grid("bags.eight across")
+    ns.SetOption("bagsColumns", 10)
+    page.settings.bagsItemLevel:Set(true)
+
+    -- 9. bag 1 swapped for a bag of 6: its other slots go
+    W.sizes[1] = 6
+    W.items["1:2"] = nil
+    fire("BAG_CONTAINER_UPDATE")
+    w.scripts.OnUpdate(w, 0.02)
+    grid("bags.smaller bag")
+
+    -- 10. closed with the window's button: Blizzard's close, the new items seen
+    for _, r in ipairs(w.all_) do
+        if r.kind == "Button" and r.label and r.label.text == "x" then r.scripts.OnClick(r) end
+    end
+    blizz("bags.closed")
+    print("bags.seen", table.concat(W.removed, ","), "still new=" .. tostring(W.new["0:3"]))
+
+    -- 11. events while closed: no reads until it opens again
+    W.reads = 0
+    fire("BAG_UPDATE_DELAYED")
+    w.scripts.OnUpdate(w, 0.02)
+    print("bags.reads while closed", W.reads)
+
+    -- the groups again: nothing is new now, so New has no heading
+    page.settings.bagsView:Set("groups")
+    OpenAllBags()
+    grid("bags.groups, nothing new")
+    CloseAllBags()
+    page.settings.bagsView:Set("grid")
+
+    -- 12. one bag of Blizzard's opened alone (the bag button), then Esc
+    ContainerFrame3:Show()
+    blizz("bags.one bag")
+    CloseAllBags()
+    blizz("bags.esc")
+
+    -- 13. dragged: where it was left, after a reload too
+    w.points = { TOPLEFT = { UIParent, "TOPLEFT", 300, -200 } }
+    function w:GetPoint() return "TOPLEFT", UIParent, "TOPLEFT", 300, -200 end
+    function w:StopMovingOrSizing() self.moving = false end
+    w.scripts.OnDragStop(w)
+    print("bags.dragged", ns.db.bagsPoint and table.concat(ns.db.bagsPoint, ","))
+    ToggleAllBags()
+    print("bags.reopened", tostring(w.points.TOPLEFT and w.points.TOPLEFT[3]), tostring(w.points.TOPLEFT and w.points.TOPLEFT[4]),
+        "bottomright=" .. tostring(w.points.BOTTOMRIGHT ~= nil))
+    ToggleAllBags()
+
+    -- 14. the page and the slash command
+    for _, c in ipairs(page.controls) do
+        local st = c.setting
+        if st.key:match("^bags") then
+            local choices = {}
+            for _, o in ipairs(c.options or {}) do table.insert(choices, o.value .. "=" .. o.label) end
+            print("bags.page", c.kind, st.name, "default=" .. tostring(st.default),
+                c.parent and ("child, live=" .. tostring(c.predicate())) or "top", table.concat(choices, "; "))
+        end
+    end
+    SlashCmdList.MDLUI("bags")
+    print("/mdlui bags opens", tostring(page.opened))
+
+    -- 15. the head's rule: under the buttons, over the slots
+    OpenAllBags()
+    local rule, closeTop = w.rule, nil
+    print("bags.rule", "y=" .. -rule.points.TOPLEFT[4], "inset=" .. rule.points.TOPLEFT[3] .. "," .. rule.points.TOPRIGHT[3],
+        "h=" .. rule.h, "slots from=" .. -_G.MedaluinBagsBag0.parent.points.TOPLEFT[4])
+
+    -- 16. the drawer: Bags opens it above the window, growing to the right
+    local title = w.title
+    title.scripts.OnEnter(title)
+    print("bags.title tip", tostring(GameTooltip.text))
+    title.scripts.OnClick(title)
+    local d = _G.MedaluinBagsDrawer
+    local function drawerState(tag)
+        local order = {}
+        for _, n in ipairs({ "CharacterBag0Slot", "CharacterBag1Slot", "CharacterBag2Slot", "CharacterBag3Slot",
+            "CharacterReagentBag0Slot", "KeyRingButton" }) do
+            local b = _G[n]
+            local p = b.points.TOPLEFT
+            table.insert(order, string.format("%s@%s,%dx%d%s", n:gsub("Character", ""):gsub("Slot", ""),
+                p and p[3] or "-", b.w, b.h, b.parent == d.inner and "" or " NOT IN DRAWER"))
+        end
+        print(tag, "shown=" .. tostring(d.shown), "width=" .. string.format("%.0f", d.w), "full=" .. tostring(d.full),
+            "anchor=" .. tostring(d.points.BOTTOMLEFT and d.points.BOTTOMLEFT[2]), table.concat(order, " "))
+    end
+    drawerState("bags.drawer opened")
+    d.scripts.OnUpdate(d, 0.05)
+    drawerState("bags.drawer growing")
+    d.scripts.OnUpdate(d, 0.5)
+    drawerState("bags.drawer grown")
+    print("bags.drawer styled", "edge=" .. tostring(CharacterBag0Slot.medaluin ~= nil),
+        "ring styled=" .. tostring(KeyRingButton.medaluin ~= nil))
+    -- Blizzard re-sets the ring's art for its own button: fitted again
+    KeyRingButton:GetNormalTexture():ClearAllPoints()
+    KeyRingButton:UpdateTextures()
+    print("bags.ring art", "fitted=" .. tostring(KeyRingButton:GetNormalTexture().all == KeyRingButton))
+    -- and a bag slot's: its frame hidden again
+    CharacterBag0Slot:GetNormalTexture():SetAlpha(1)
+    CharacterBag0Slot:UpdateTextures()
+    print("bags.slot art", "normal alpha=" .. tostring(CharacterBag0Slot:GetNormalTexture():GetAlpha()))
+    -- Blizzard's bag bar collapsing would hide them
+    CharacterBag2Slot:SetBarExpanded(false)
+    print("bags.collapsed", "bag 2 shown=" .. tostring(CharacterBag2Slot.shown))
+    -- Blizzard's bag bar places its buttons again: they come back
+    BagsBar.layoutAtLoad()
+    drawerState("bags.drawer after BagsBar")
+    title.scripts.OnEnter(title)
+    print("bags.title tip open", tostring(GameTooltip.text))
+    title.scripts.OnClick(title)
+    drawerState("bags.drawer closed")
+    title.scripts.OnEnter(title)
+    print("bags.title tip closed", tostring(GameTooltip.text))
+    title.scripts.OnClick(title)
+    CloseAllBags()
+    drawerState("bags.drawer with the window closed")
+
+    -- 17. the corner: six dots; held, the window keeps its top-left and the
+    -- columns follow the pointer
+    OpenAllBags()
+    local g = _G.MedaluinBagsGrip
+    local dots = {}
+    for _, t in ipairs(g.dots) do table.insert(dots, t.points.BOTTOMRIGHT[3] .. "," .. t.points.BOTTOMRIGHT[4]) end
+    for _, r in ipairs(w.all_) do
+        if r.kind == "FontString" and r.points.BOTTOMRIGHT then
+            print("bags.free text", "right=" .. r.points.BOTTOMRIGHT[3], "clear of the dots=" .. tostring(-r.points.BOTTOMRIGHT[3] > 3 + 12))
+        end
+    end
+    print("bags.grip", "at=" .. g.points.BOTTOMRIGHT[3] .. "," .. g.points.BOTTOMRIGHT[4], "dots=" .. table.concat(dots, " "),
+        "colour=" .. string.format("%.2f", g.dots[1].color[1]))
+    g.scripts.OnEnter(g)
+    print("bags.grip hover", string.format("%.2f", g.dots[1].color[1]))
+    function w:GetLeft() return 500 end
+    function w:GetTop() return 700 end
+    local cursorX = 500 + 422
+    function GetCursorPosition() return cursorX, 0 end
+    g.scripts.OnMouseDown(g)
+    print("bags.grip held", "anchor=" .. tostring(w.points.TOPLEFT and w.points.TOPLEFT[2] .. "@" .. w.points.TOPLEFT[3]
+        .. "," .. w.points.TOPLEFT[4]))
+    g.scripts.OnUpdate(g, 0.02)
+    print("bags.grip still", "columns=" .. ns.db.bagsColumns, "viaPage=" .. tostring(page.settings.bagsColumns))
+    cursorX = 500 + 422 + 90           -- two slots and a bit wider
+    g.scripts.OnUpdate(g, 0.02)
+    print("bags.grip wider", "columns=" .. ns.db.bagsColumns, "size=" .. w.w .. "x" .. w.h)
+    cursorX = 500 + 422 + 15            -- under half a slot past ten: rounds back
+    g.scripts.OnUpdate(g, 0.02)
+    print("bags.grip back", "columns=" .. ns.db.bagsColumns)
+    cursorX = 500 + 447                 -- over half a slot past ten: rounds up
+    g.scripts.OnUpdate(g, 0.02)
+    print("bags.grip over half", "columns=" .. ns.db.bagsColumns)
+    cursorX = 500 + 30
+    g.scripts.OnUpdate(g, 0.02)
+    print("bags.grip narrowest", "columns=" .. ns.db.bagsColumns)
+    cursorX = 500 + 5000
+    g.scripts.OnUpdate(g, 0.02)
+    print("bags.grip widest", "columns=" .. ns.db.bagsColumns)
+    function w:GetPoint() return "TOPLEFT", UIParent, "BOTTOMLEFT", 500, 700 end
+    g.scripts.OnMouseUp(g)
+    print("bags.grip let go", "point=" .. table.concat(ns.db.bagsPoint, ","), "colour=" .. string.format("%.2f", g.dots[1].color[1]))
+    g.scripts.OnUpdate(g, 0.02)
+    cursorX = 500 + 422
+    g.scripts.OnUpdate(g, 0.02)
+    print("bags.grip not held", "columns=" .. ns.db.bagsColumns)
+    -- a place saved before the corner, { point, x, y }, still reads
+    ns.db.bagsPoint = { "TOPLEFT", 300, -200 }
+    CloseAllBags()
+    OpenAllBags()
+    local p = w.points.TOPLEFT
+    print("bags.old point", p and (p[2] .. "," .. p[3] .. "," .. p[4]))
+    CloseAllBags()
 end
 
 -- the combat tint over the art's grey surface: hidden out of combat,

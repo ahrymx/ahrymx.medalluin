@@ -10,8 +10,6 @@ ns.stripWindows = {
     well = { 14, 56, 14, 56 },
 }
 ns.stripLayout = {
-    arrowX = 68,
-    arrowY = 22,
     chatColumn = 29,
     chatEdit = 32,
     chatHeight = 180,

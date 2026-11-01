@@ -304,9 +304,34 @@ local stanceButtons, petButtons = {}, {}
 local laying = false
 local UpdateOverhead
 
+-- Each icon edged in gold, as the unit cells are (variant A, chosen
+-- 2026-11-01 from art/console/render/overhead-frames.png): a 1px black edge
+-- inside the button, around the icon, and a 1px gold one outside it, light
+-- at the top and dark at the foot, as the art's gold gradient runs.
+local GOLD_TOP, GOLD_FOOT = { 0.941, 0.831, 0.533 }, { 0.659, 0.510, 0.227 }   -- #f0d488, #a8823a
+
+local function Frame(btn)
+    local gold = btn:CreateTexture(nil, "BACKGROUND", nil, -8)
+    gold:SetPoint("TOPLEFT", -1, 1)
+    gold:SetPoint("BOTTOMRIGHT", 1, -1)
+    if gold.SetGradient and CreateColor then
+        gold:SetColorTexture(1, 1, 1, 1)
+        gold:SetGradient("VERTICAL", CreateColor(GOLD_FOOT[1], GOLD_FOOT[2], GOLD_FOOT[3], 1),
+            CreateColor(GOLD_TOP[1], GOLD_TOP[2], GOLD_TOP[3], 1))
+    else
+        gold:SetColorTexture((GOLD_TOP[1] + GOLD_FOOT[1]) / 2, (GOLD_TOP[2] + GOLD_FOOT[2]) / 2,
+            (GOLD_TOP[3] + GOLD_FOOT[3]) / 2, 1)
+    end
+    local black = btn:CreateTexture(nil, "BACKGROUND", nil, -7)
+    black:SetAllPoints()
+    black:SetColorTexture(0, 0, 0, 1)
+    btn.medaluinFrame = gold
+end
+
 local function Bare(btn)
     btn:SetSize(A.icon, A.icon)
     if ns.StyleButton then ns.StyleButton(btn) end
+    Frame(btn)
     -- StyleButton's text is sized for the 36px action bar
     if btn.medaluinTimer then btn.medaluinTimer:SetFont(ns.font, 10, "OUTLINE") end
     if btn.medaluinHotkey then btn.medaluinHotkey:SetFont(ns.font, 8, "OUTLINE") end
@@ -362,9 +387,13 @@ local function AdoptCommandButtons()
 end
 
 -- ------------------------------------------------------------ layout
+-- Bosses show up to the simulation panel's count (simulate.lua; two at first).
 local OVERHEAD_STUBS = {
-    boss1 = { name = "High Warlord Naj'entus", health = 85, maxHealth = 100, power = 100, class = "WARRIOR" },
-    boss2 = { name = "Supremus", health = 92, maxHealth = 100, power = 50, class = "WARRIOR" },
+    boss1 = { name = "High Warlord Naj'entus", health = 85, maxHealth = 100, power = 100, class = "WARRIOR", boss = 1 },
+    boss2 = { name = "Supremus", health = 92, maxHealth = 100, power = 50, class = "WARRIOR", boss = 2 },
+    boss3 = { name = "Teron Gorefiend", health = 64, maxHealth = 100, power = 100, class = "WARLOCK", boss = 3 },
+    boss4 = { name = "Gurtogg Bloodboil", health = 100, maxHealth = 100, power = 30, class = "WARRIOR", boss = 4 },
+    boss5 = { name = "Reliquary of Souls", health = 41, maxHealth = 100, power = 70, class = "PRIEST", boss = 5 },
     pet = { name = "Shadowfiend", health = 75, maxHealth = 100, power = 80, class = "PRIEST" },
     focus = { name = "Lady Sacrolash", health = 60, maxHealth = 100, power = 100, class = "MAGE" },
     targettarget = { name = "Main Tank", health = 88, maxHealth = 100, power = 40, class = "WARRIOR" },
@@ -377,8 +406,10 @@ local function Present(b, key)
         return false
     end
     local sim = ns.db and ns.db.simParty
-    if not UnitExists(b.unit) and sim and OVERHEAD_STUBS[b.unit] then
-        Watch(b, OVERHEAD_STUBS[b.unit])
+    local stub = sim and OVERHEAD_STUBS[b.unit]
+    if stub and stub.boss and stub.boss > ns.sim.bosses then stub = nil end
+    if not UnitExists(b.unit) and stub then
+        Watch(b, stub)
     else
         Watch(b, nil)
         if not UnitExists(b.unit) then

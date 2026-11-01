@@ -87,6 +87,10 @@ end
 
 -- Secret values (combat-restricted numbers) can be shown by status bars and
 -- font strings, but any arithmetic or comparison on one raises an error.
+-- The simulated frames' situation, set by the simulation panel (simulate.lua);
+-- for this session only.
+ns.sim = { bosses = 2 }
+
 function ns.IsSecret(v)
     return issecretvalue ~= nil and issecretvalue(v) or false
 end

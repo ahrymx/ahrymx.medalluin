@@ -45,6 +45,17 @@ read_globals = {
     "ChatFrame1", "CHAT_FRAMES", "CHAT_FRAME_TEXTURES", "NUM_CHAT_WINDOWS", "GENERAL_CHAT_DOCK",
     "FCFDock_GetSelectedWindow", "FCFTab_UpdateColors", "FCF_DockFrame", "FCF_UnDockFrame",
     "C_UnitAuras", "C_LossOfControl",
+    -- the side panel (strips/side.lua): the meter and the loot log
+    "C_DamageMeter", "C_StringUtil", "C_DurationUtil", "AbbreviateLargeNumbers", "SecondsToClock", "GetClassAtlas", "STANDARD_TEXT_FONT",
+    "C_LootHistory", "C_Item", "C_CurrencyInfo", "GetItemInfo", "GetItemIcon", "ITEM_QUALITY_COLORS",
+    "HandleModifiedItemClick", "Ambiguate", "GetRealZoneText",
+    "LOOT_ITEM", "LOOT_ITEM_MULTIPLE", "LOOT_ITEM_SELF", "LOOT_ITEM_SELF_MULTIPLE", "CURRENCY_GAINED",
+    "CURRENCY_GAINED_MULTIPLE", "YOU_LOOT_MONEY", "YOU_LOOT_MONEY_GUILD", "LOOT_MONEY_SPLIT",
+    "LOOT_MONEY_SPLIT_GUILD", "GOLD_AMOUNT", "SILVER_AMOUNT", "COPPER_AMOUNT",
+    -- the bags window (inventory/bags.lua)
+    "ContainerFrameCombinedBags", "NUM_CONTAINER_FRAMES", "NUM_BAG_SLOTS", "C_NewItems", "ItemLocation",
+    "ClearItemButtonOverlay", "SetItemButtonQuality", "SetItemButtonCount", "SetItemButtonDesaturated",
+    "GetMoney", "GetMoneyString", "CloseAllBags", "GetCursorPosition", "CreateColor",
     -- the settings page and the atlas sizes
     "Settings", "SettingsPanel", "CreateSettingsButtonInitializer", "ReloadUI", "C_Texture", "GetCursorInfo", "GetActionBarPage", "GetSpecialization",
     -- tables and strings
