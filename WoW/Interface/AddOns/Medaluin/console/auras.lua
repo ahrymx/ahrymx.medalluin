@@ -110,12 +110,13 @@ local function OnTimerUpdate(self, elapsed)
     end
 end
 
--- Border glow around the unit frame for dispellable debuffs
-local function CreateDispelGlow(parent)
-    local f = CreateFrame("Frame", nil, parent)
-    f:SetAllPoints(parent)
-    f:SetFrameLevel(ns.levels.text)
-    local t = 2
+-- Border glow behind the stone console art for dispellable debuffs
+local function CreateDispelGlow(btn, side, window)
+    local f = CreateFrame("Frame", nil, btn)
+    f:SetAllPoints(btn)
+    f:SetFrameStrata(btn:GetFrameStrata())
+    f:SetFrameLevel(ns.levels.art - 1)
+    local t = 3
     local top = f:CreateTexture(nil, "OVERLAY")
     top:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
     top:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
@@ -141,6 +142,38 @@ local function CreateDispelGlow(parent)
     right:SetBlendMode("ADD")
 
     local edges = { top, btm, left, right }
+
+    -- 45-degree diagonal cut on the inner end of the window
+    if window == "party1" or window == "unit" then
+        local h = btn:GetHeight()
+        if f.CreateLine then
+            local line = f:CreateLine(nil, "OVERLAY")
+            if side == -1 then
+                line:SetStartPoint("TOPRIGHT", f, -h, 0)
+                line:SetEndPoint("BOTTOMRIGHT", f, 0, 0)
+            else
+                line:SetStartPoint("TOPLEFT", f, h, 0)
+                line:SetEndPoint("BOTTOMLEFT", f, 0, 0)
+            end
+            line:SetThickness(t)
+            line:SetBlendMode("ADD")
+            table.insert(edges, line)
+        else
+            local diag = f:CreateTexture(nil, "OVERLAY")
+            local len = math.ceil(math.sqrt(h * h + h * h))
+            diag:SetSize(len, t)
+            if side == -1 then
+                diag:SetPoint("CENTER", f, "TOPRIGHT", -h / 2, -h / 2)
+                if diag.SetRotation then diag:SetRotation(-math.pi / 4) end
+            else
+                diag:SetPoint("CENTER", f, "TOPLEFT", h / 2, -h / 2)
+                if diag.SetRotation then diag:SetRotation(math.pi / 4) end
+            end
+            diag:SetBlendMode("ADD")
+            table.insert(edges, diag)
+        end
+    end
+
     for _, e in ipairs(edges) do e:SetColorTexture(1, 1, 1, 1) end
 
     function f:SetGlowColor(r, g, b, a)
@@ -372,6 +405,24 @@ local function ApplyStubAuras(b)
     end
 end
 
+local function IsTimeless(unit, aura)
+    if not aura then return false end
+    if Auras and Auras.DoesAuraHaveExpirationTime then
+        local timed = Auras.DoesAuraHaveExpirationTime(unit, aura.auraInstanceID)
+        if not ns.IsSecret(timed) and timed ~= nil then
+            return not timed
+        end
+    end
+    local exp = aura.expirationTime
+    local dur = aura.duration
+    if not ns.IsSecret(exp) and not ns.IsSecret(dur) then
+        if (exp == nil or exp == 0) and (dur == nil or dur == 0) then
+            return true
+        end
+    end
+    return false
+end
+
 -- Live aura scanning for active units
 local function ScanUnitAuras(b)
     local unit = b.unit
@@ -463,20 +514,23 @@ local function ScanUnitAuras(b)
             while btnIdx <= #b.buffWidgets do
                 local aura = Auras.GetAuraDataByIndex(unit, idx, "HELPFUL|PLAYER")
                 if not aura then break end
-                local btn = b.buffWidgets[btnIdx]
-                btn.unit = unit
-                btn.auraInstanceID = aura.auraInstanceID
-                btn.tooltipTitle = nil
-                btn.tooltipDesc = nil
-                btn.icon:SetTexture(aura.icon)
-                local n = aura.applications
-                btn.count:SetText((n and not ns.IsSecret(n) and n > 1) and tostring(n) or "")
-                if aura.duration and aura.expirationTime and not ns.IsSecret(aura.duration)
-                    and aura.duration > 0 then
-                    btn.cooldown:SetCooldown(aura.expirationTime - aura.duration, aura.duration)
+                -- Do not show timeless buffs on the player frame
+                if not (unit == "player" and IsTimeless(unit, aura)) then
+                    local btn = b.buffWidgets[btnIdx]
+                    btn.unit = unit
+                    btn.auraInstanceID = aura.auraInstanceID
+                    btn.tooltipTitle = nil
+                    btn.tooltipDesc = nil
+                    btn.icon:SetTexture(aura.icon)
+                    local n = aura.applications
+                    btn.count:SetText((n and not ns.IsSecret(n) and n > 1) and tostring(n) or "")
+                    if aura.duration and aura.expirationTime and not ns.IsSecret(aura.duration)
+                        and aura.duration > 0 then
+                        btn.cooldown:SetCooldown(aura.expirationTime - aura.duration, aura.duration)
+                    end
+                    btn:Show()
+                    btnIdx = btnIdx + 1
                 end
-                btn:Show()
-                btnIdx = btnIdx + 1
                 idx = idx + 1
             end
         end
@@ -554,7 +608,7 @@ for unit, b in pairs(ns.units or {}) do
     local window, side = unpack(ns.slots[unit])
     local isParty = window ~= "unit"
 
-    b.dispelGlow = CreateDispelGlow(b)
+    b.dispelGlow = CreateDispelGlow(b, side, window)
     b.ccWidget = CreateCCWidget(b.health, isParty and 24 or 32)
     b.buffWidgets = CreateBuffWidgets(b.health, side, isParty)
     b.bossDebuff = CreateBossDebuffWidget(b.health, side, isParty)

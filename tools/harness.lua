@@ -1341,9 +1341,15 @@ for _, unit in ipairs({ "player", "target", "party1", "party2", "party3", "party
 end
 out("minimap", Minimap)
 print("secrets handed to widgets", secretsUsed)
+if modern then
+    local pBuffs = 0
+    for _, btn in ipairs(ns.units.player.buffWidgets or {}) do if btn.shown then pBuffs = pBuffs + 1 end end
+    print("player.buffs", pBuffs)
+end
 if savedSimParty then
     local p1 = ns.units.party1
-    print("party1.glow", tostring(p1.dispelGlow and p1.dispelGlow.shown))
+    print("party1.glow", tostring(p1.dispelGlow and p1.dispelGlow.shown),
+        "behindArt=" .. tostring(p1.dispelGlow.level < ns.levels.art))
     local p2 = ns.units.party2
     print("party2.cc", tostring(p2.ccWidget and p2.ccWidget.shown),
         tostring(p2.ccWidget and p2.ccWidget.timer and p2.ccWidget.timer.text))
