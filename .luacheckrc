@@ -24,7 +24,7 @@ read_globals = {
     "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer",
     -- API
     "CreateFrame", "InCombatLockdown", "RegisterUnitWatch", "UnregisterUnitWatch", "IsInGroup", "UnitAffectingCombat", "UnitThreatSituation",
-    "UnitExists", "UnitName", "UnitClass", "UnitIsPlayer", "UnitIsConnected", "UnitIsDeadOrGhost",
+    "UnitExists", "UnitName", "UnitClass", "UnitIsPlayer", "UnitIsConnected", "UnitIsDeadOrGhost", "UnitIsFriend", "UnitIsUnit",
     "UnitIsTapDenied", "UnitReaction", "UnitHealth", "UnitHealthMax", "UnitPower", "UnitPowerMax",
     "UnitPowerType", "UnitLevel", "UnitXP", "UnitXPMax", "GetXPExhaustion", "GetMaxPlayerLevel",
     "GetWatchedFactionInfo", "C_Reputation", "BreakUpLargeNumbers", "GameTooltip_Hide",
@@ -42,7 +42,7 @@ read_globals = {
     -- the chat (strips/chat.lua) and the player's buffs (strips/buffs.lua)
     "ChatFrame1", "CHAT_FRAMES", "CHAT_FRAME_TEXTURES", "NUM_CHAT_WINDOWS", "GENERAL_CHAT_DOCK",
     "FCFDock_GetSelectedWindow", "FCFTab_UpdateColors", "FCF_DockFrame", "FCF_UnDockFrame",
-    "C_UnitAuras",
+    "C_UnitAuras", "C_LossOfControl",
     -- the settings page and the atlas sizes
     "Settings", "SettingsPanel", "CreateSettingsButtonInitializer", "ReloadUI", "C_Texture", "GetCursorInfo", "GetActionBarPage", "GetSpecialization",
     -- tables and strings

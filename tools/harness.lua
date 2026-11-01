@@ -1341,6 +1341,20 @@ for _, unit in ipairs({ "player", "target", "party1", "party2", "party3", "party
 end
 out("minimap", Minimap)
 print("secrets handed to widgets", secretsUsed)
+if savedSimParty then
+    local p1 = ns.units.party1
+    print("party1.glow", tostring(p1.dispelGlow and p1.dispelGlow.shown))
+    local p2 = ns.units.party2
+    print("party2.cc", tostring(p2.ccWidget and p2.ccWidget.shown),
+        tostring(p2.ccWidget and p2.ccWidget.timer and p2.ccWidget.timer.text))
+    local p3 = ns.units.party3
+    local bCount = 0
+    for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then bCount = bCount + 1 end end
+    print("party3.buffs", bCount)
+    local p4 = ns.units.party4
+    print("party4.boss", tostring(p4.bossDebuff and p4.bossDebuff.shown),
+        tostring(p4.bossDebuff and p4.bossDebuff.timer and p4.bossDebuff.timer.text))
+end
 
 -- the combat tint over the art's grey surface: hidden out of combat,
 -- yellow in it, red with any threat, and on the art the group swaps in

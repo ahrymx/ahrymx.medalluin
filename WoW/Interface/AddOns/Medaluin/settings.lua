@@ -19,6 +19,10 @@ local DEFAULTS = {
     xpCast = false,         -- the player's casts over the experience bar
     repCast = false,        -- the target's casts over the reputation bar
     simParty = false,       -- simulate party frames and show the group art layer
+    auraGlow = true,        -- border glow for dispellable debuffs
+    auraCC = true,          -- large center icon for crowd control
+    auraBuffs = true,       -- row of player-cast buffs on outer health corner
+    auraBoss = true,        -- boss debuffs on inner health corner
 }
 ns.VISIBILITY = { ALWAYS = 1, COMBAT = 2, MOUSEOVER = 3, COMBAT_OR_MOUSEOVER = 4 }
 ns.DRAWER = { LEFT = 1, UP = 2 }
@@ -114,6 +118,15 @@ local function Page()
     -- Unit Frames subcategory
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "simParty", B, "Simulate party frames"),
         "Show the console's party frame layer and simulated party members to preview party frames while solo.")
+    Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraGlow", B, "Dispel glow on frame borders"),
+        "Glow the frame's stone border in the debuff's color (purple for Curse, green for Poison, etc.) "
+        .. "when an ally has a debuff you can dispel.")
+    Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraCC", B, "Crowd control center icon"),
+        "Display a large icon in the middle of the frame with a radial timer sweep when a unit is affected by CC.")
+    Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraBuffs", B, "Player buffs on health"),
+        "Show a compact row of your own buffs and HoTs on the outer corner of the health bar.")
+    Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraBoss", B, "Boss debuffs"),
+        "Show critical boss debuffs on the inner corner of the health bar, away from the power bar.")
 
     -- Cast Bars subcategory
     Settings.CreateCheckbox(subCast, Setting(subCast, "xpCast", B, "Player casts on the experience bar"),
