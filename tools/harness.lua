@@ -392,6 +392,10 @@ function UnitPowerMax(_, kind) return kind == 4 and 5 or 100 end
 function GetComboPoints() return 3 end
 local now = 100
 function GetTime() return now end
+function GetBindingKey(action)
+    local n = action:match("^ACTIONBUTTON(%d+)$")
+    if n then return n end
+end
 function hooksecurefunc(t, k, f)
     if type(t) == "string" then t, k, f = _G, t, k end
     local old = t[k]
@@ -1050,6 +1054,9 @@ if barPass then
                 if i == 1 or i == 12 then
                     screen(b.name, b, "level=" .. b.level .. " scale=" .. b:GetScale()
                         .. " styled=" .. tostring(b.medaluinIcon ~= nil))
+                    if b.HotKey then
+                        print(b.name .. ".hotkey", tostring(b.HotKey.text), tostring(b.HotKey.shown))
+                    end
                 end
             end
         end

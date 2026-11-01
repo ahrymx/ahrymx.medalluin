@@ -13,10 +13,9 @@
 -- the Rows option leaves out stays Blizzard's too.
 --
 -- With Bare icons, what a WeakAuras icon shows that Blizzard's does not is drawn here: the
--- cooldown time centred on the icon, and range as a red tint (the hotkey
--- text that used to turn red is hidden). Where the cooldown frame can draw
--- its own countdown (Forever, retail) that text is used, restyled: there a
--- cooldown's numbers may be secret, and Lua cannot subtract them.
+-- cooldown time centred on the icon, keybind text at the top-right, and range as a red tint.
+-- Where the cooldown frame can draw its own countdown (Forever, retail) that text is used,
+-- restyled: there a cooldown's numbers may be secret, and Lua cannot subtract them.
 local _, ns = ...
 
 local buttons = {}
@@ -66,6 +65,79 @@ local function NativeCountdown(cd)
     return true
 end
 
+-- Format raw keybind names into clean, readable abbreviations
+local function FormatHotkey(text)
+    if not text or text == "" then return "" end
+    local range = _G.RANGE_INDICATOR
+    if (range and text == range) or text == "•" or text == "●" or text == " " then
+        return ""
+    end
+    text = text:gsub("KEY_", "")
+    text = text:gsub("SHIFT%-", "s-")
+    text = text:gsub("CTRL%-", "c-")
+    text = text:gsub("ALT%-", "a-")
+    text = text:gsub("META%-", "m-")
+    text = text:gsub("STRG%-", "c-")
+    text = text:gsub("BUTTON(%d+)", "M%1")
+    text = text:gsub("MOUSEWHEELUP", "WU")
+    text = text:gsub("MOUSEWHEELDOWN", "WD")
+    text = text:gsub("NUMPAD(%d+)", "N%1")
+    text = text:gsub("PAGEUP", "PU")
+    text = text:gsub("PAGEDOWN", "PD")
+    text = text:gsub("SPACE", "Spc")
+    text = text:gsub("INSERT", "Ins")
+    text = text:gsub("DELETE", "Del")
+    text = text:gsub("HOME", "Hm")
+    text = text:gsub("END", "End")
+    return text
+end
+
+local function ButtonBindingName(btn)
+    local name = btn:GetName()
+    if not name then return end
+    local num = name:match("^ActionButton(%d+)$")
+    if num then return "ACTIONBUTTON" .. num end
+    num = name:match("^MultiBarBottomLeftButton(%d+)$")
+    if num then return "MULTIACTIONBAR1BUTTON" .. num end
+    num = name:match("^MultiBarBottomRightButton(%d+)$")
+    if num then return "MULTIACTIONBAR2BUTTON" .. num end
+    num = name:match("^MultiBarRightButton(%d+)$")
+    if num then return "MULTIACTIONBAR3BUTTON" .. num end
+    num = name:match("^MultiBarLeftButton(%d+)$")
+    if num then return "MULTIACTIONBAR4BUTTON" .. num end
+    return btn.buttonType and (btn.buttonType .. (btn:GetID() or ""))
+end
+
+local function UpdateHotkey(btn)
+    local hotkey = btn.medaluinHotkey or Part(btn, "HotKey")
+    if not hotkey then return end
+    local text = hotkey:GetText()
+    local range = _G.RANGE_INDICATOR
+    if not text or text == "" or (range and text == range) or text == "•" or text == "●" then
+        local GetBindingKey = _G.GetBindingKey
+        local GetBindingText = _G.GetBindingText
+        if GetBindingKey then
+            local bName = ButtonBindingName(btn)
+            local key = bName and GetBindingKey(bName)
+            if key then
+                text = GetBindingText and GetBindingText(key, "KEY_") or key
+            end
+        end
+    end
+    local formatted = FormatHotkey(text)
+    if formatted and formatted ~= "" then
+        hotkey.medaluinSetting = true
+        hotkey:SetText(formatted)
+        hotkey.medaluinSetting = false
+        hotkey:SetTextColor(unpack(ns.colors.text))
+        hotkey:SetAlpha(1)
+        hotkey:Show()
+    else
+        hotkey:SetText("")
+        hotkey:Hide()
+    end
+end
+
 local function Style(btn)
     local icon = Part(btn, "icon", "Icon")
     btn.medaluinIcon = icon
@@ -76,7 +148,6 @@ local function Style(btn)
     if btn.IconMask then icon:RemoveMaskTexture(btn.IconMask) end
 
     Hide(Part(btn, "Border"))
-    Hide(Part(btn, "HotKey"))
     Hide(Part(btn, "Name"))
     Hide(_G[btn:GetName() .. "FloatingBG"])
     Hide(btn.SlotBackground)
@@ -118,6 +189,28 @@ local function Style(btn)
         count:ClearAllPoints()
         count:SetPoint("BOTTOMRIGHT", -1, 1)
     end
+    local hotkey = Part(btn, "HotKey")
+    if hotkey then
+        btn.medaluinHotkey = hotkey
+        hotkey:SetParent(over)
+        hotkey:SetFont(ns.font, 11, "OUTLINE")
+        hotkey:SetTextColor(unpack(ns.colors.text))
+        hotkey:ClearAllPoints()
+        hotkey:SetPoint("TOPRIGHT", over, "TOPRIGHT", -1, -1)
+        hotkey:SetDrawLayer("OVERLAY")
+        hotkey:SetAlpha(1)
+        hooksecurefunc(hotkey, "SetText", function(self)
+            if self.medaluinSetting then return end
+            UpdateHotkey(btn)
+        end)
+        hooksecurefunc(hotkey, "SetVertexColor", function(self)
+            if self.medaluinSetting then return end
+            self.medaluinSetting = true
+            self:SetTextColor(unpack(ns.colors.text))
+            self.medaluinSetting = false
+        end)
+        UpdateHotkey(btn)
+    end
 end
 
 local function Adopt(btn, slot)
@@ -136,6 +229,21 @@ if ActionButton_UpdateCooldownNumberHidden then
         if btn.medaluinNative then btn.cooldown:SetHideCountdownNumbers(false) end
     end)
 end
+
+if _G.ActionButton_UpdateHotkeys then
+    hooksecurefunc("ActionButton_UpdateHotkeys", function(btn)
+        if ns.db.bareIcons and btn and btn.medaluinHotkey then
+            UpdateHotkey(btn)
+        end
+    end)
+end
+
+ns.On("UPDATE_BINDINGS", function()
+    if not ns.db.bareIcons then return end
+    for _, btn in ipairs(buttons) do
+        UpdateHotkey(btn)
+    end
+end)
 
 local ticker = CreateFrame("Frame")
 ticker:Hide()

@@ -447,15 +447,18 @@ local function SpawnPet(parentBtn, unit, side)
     local outer = side == 1 and "RIGHT" or "LEFT"
     local inner = side == 1 and "LEFT" or "RIGHT"
 
-    pet.name = ns.Text(text, 9)
-    pet.name:SetPoint(outer, text, outer, -side * 4, 0)
-    pet.name:SetWordWrap(false)
-    pet.name:SetTextColor(unpack(C.text))
-
     pet.value = ns.Text(text, 9)
     pet.value:SetPoint(inner, text, inner, side * 4, 0)
+    pet.value:SetJustifyH(inner)
     pet.value:SetWordWrap(false)
     pet.value:SetTextColor(unpack(C.dim))
+
+    pet.name = ns.Text(text, 9)
+    pet.name:SetPoint(outer, text, outer, -side * 4, 0)
+    pet.name:SetPoint(inner, pet.value, outer, side * 4, 0)
+    pet.name:SetJustifyH(outer)
+    pet.name:SetWordWrap(false)
+    pet.name:SetTextColor(unpack(C.text))
 
     pet:SetScript("OnEnter", function(self)
         if self.stub and not UnitExists(self.unit) then
