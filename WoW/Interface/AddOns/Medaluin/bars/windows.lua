@@ -6,9 +6,11 @@ local _, ns = ...
 -- the plate's texture; bottom is how far its foot reaches below the console's top
 ns.barArt = {
     width = 652, height = 69, texWidth = 1024, texHeight = 128, bottom = -3,
+    -- the lower row standing alone, under the plate: it stays when Bar 1 fades
+    hybridBgFile = "hybrid", hybridHeight = 25, hybridTexHeight = 32,
 }
 ns.barFrame = { -324, 324, 65, -2 }
-ns.barLow = { -289, 289, 19, 5 }   -- the lower row: the cast bar, the class resource
+ns.barLow = { -289, 289, 19, 5 }   -- the lower row's top: the cast bar, the class resource
 -- the right end's boxes: the page chevrons and the page number
 ns.barPager = {
     up = { 255, 271, 57, 42 },

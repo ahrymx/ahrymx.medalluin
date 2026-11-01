@@ -83,7 +83,7 @@ local function MakeFade(frame, settingKey, isOver)
     local inCombat = InCombatLockdown()
     local function Wanted()
         local mode = ns.db[settingKey] or V.ALWAYS
-        if mode == V.ALWAYS or (GetCursorInfo and GetCursorInfo()) then return true end
+        if mode == V.ALWAYS or ns.keybinding or (GetCursorInfo and GetCursorInfo()) then return true end
         local over = isOver()
         if mode == V.COMBAT then return inCombat end
         if mode == V.MOUSEOVER then return over end
@@ -198,10 +198,13 @@ function ns.BuildBar(rows)
     plate:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
     ns.barPlate = plate
 
-    -- In the light profile, the trapezoid hybrid castbar/power row stands on
-    -- its own frame so it remains anchored atop the console when Bar 1 fades out.
+    -- The hybrid row: the lower row (the cast bar, the class resource) on
+    -- its own frame, so it stays on the console when Bar 1 fades out. Its
+    -- piece is a gold-rimmed trapezoid of ink under the bars; the plate
+    -- covers all of it but the window while Bar 1 shows. The light profile
+    -- also lays a frame over the bars (hybridFile).
     local lowParent = tray
-    if art.hybridFile then
+    if art.hybridBgFile then
         local hybrid = CreateFrame("Frame", "MedaluinHybridBar", console)
         hybrid:SetPoint("BOTTOMLEFT", console, "TOP", frame[1], art.bottom)
         hybrid:SetPoint("TOPRIGHT", console, "TOP", frame[2], art.bottom + art.hybridHeight)
@@ -211,17 +214,20 @@ function ns.BuildBar(rows)
         local hBg = hybrid:CreateTexture(nil, "BACKGROUND")
         hBg:SetSize(art.width, art.hybridHeight)
         hBg:SetPoint("BOTTOM", console, "TOP", 0, art.bottom)
-        hBg:SetTexture(ns.media .. (art.hybridBgFile or "hybrid-light-bg"))
+        hBg:SetTexture(ns.media .. art.hybridBgFile)
         hBg:SetTexCoord(0, art.width / art.texWidth, 0, art.hybridHeight / art.hybridTexHeight)
+        ns.hybridBacking = hBg
 
-        local hStone = CreateFrame("Frame", nil, hybrid)
-        hStone:SetAllPoints()
-        hStone:SetFrameLevel(ns.levels.barPlate)
-        hybridPlate = hStone:CreateTexture(nil, "ARTWORK", nil, 0)
-        hybridPlate:SetSize(art.width, art.hybridHeight)
-        hybridPlate:SetPoint("BOTTOM", console, "TOP", 0, art.bottom)
-        hybridPlate:SetTexture(ns.media .. art.hybridFile)
-        hybridPlate:SetTexCoord(0, art.width / art.texWidth, 0, art.hybridHeight / art.hybridTexHeight)
+        if art.hybridFile then
+            local hStone = CreateFrame("Frame", nil, hybrid)
+            hStone:SetAllPoints()
+            hStone:SetFrameLevel(ns.levels.barPlate)
+            hybridPlate = hStone:CreateTexture(nil, "ARTWORK", nil, 0)
+            hybridPlate:SetSize(art.width, art.hybridHeight)
+            hybridPlate:SetPoint("BOTTOM", console, "TOP", 0, art.bottom)
+            hybridPlate:SetTexture(ns.media .. art.hybridFile)
+            hybridPlate:SetTexCoord(0, art.width / art.texWidth, 0, art.hybridHeight / art.hybridTexHeight)
+        end
         lowParent = hybrid
     end
 

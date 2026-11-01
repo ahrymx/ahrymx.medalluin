@@ -344,24 +344,20 @@ def export_bar(console_top):
         sys.exit(f"layer2.json stands on y={layout['console_top']}, the console's top is {console_top}")
     alpha = img.getchannel("A").load()
 
-    def hole(w, name, round_=False):
-        """A window is a hole with a solid rim above and below it. A round
-        one (the lower row's pill) is a hole inside its rounded ends, a
-        pixel in from their soft edge, and its rim is checked along the
-        straight part."""
+    def hole(w, name, slant=0):
+        """A window is a hole with a solid rim above and below it. A sloped
+        one (the lower row's trapezoid) is listed by its top: the bars are
+        that rectangle, so all of it must be open, the stone must start
+        right beside its top corners, and its bottom must reach slant
+        further out each side."""
         l, t, r, b = w
-        rr = (b - t) / 2 if round_ else 0
-
-        def inside(x, y):
-            cx = min(max(x + 0.5, l + rr), r - rr)
-            return (x + 0.5 - cx) ** 2 + (y + 0.5 - (t + b) / 2) ** 2 <= (rr - 1) ** 2 if round_ else True
-        if any(alpha[x, y] for y in range(t, b) for x in range(l, r) if inside(x, y)):
+        if any(alpha[x, y] for y in range(t, b) for x in range(l, r)):
             sys.exit(f"layer2.png: {name} {w} is not a hole")
-        if not all(alpha[x, t - 1] and alpha[x, b] for x in range(int(l + rr), int(r - rr))):
+        if not all(alpha[x, t - 1] and alpha[x, b] for x in range(l, r)):
             sys.exit(f"layer2.png: {name} {w} is not framed")
-        # and a pill's corners are stone, so what shows through is cropped
-        if round_ and not (alpha[l, t] and alpha[r - 1, b - 1]):
-            sys.exit(f"layer2.png: {name} {w} is not rounded")
+        if slant and not (alpha[l - 1, t] and alpha[r, t] and not alpha[l - int(slant) + 1, b - 1]
+                          and not alpha[r + int(slant) - 2, b - 1] and alpha[l - int(slant) - 2, b - 1]):
+            sys.exit(f"layer2.png: {name} {w} is not a trapezoid {slant:.1f} wider at its foot")
 
     def up(w):
         l, t, r, b = w
@@ -370,7 +366,7 @@ def export_bar(console_top):
     rows1 = layout["rows"]["1"][0]
     for i, (l, r, t, b) in enumerate(rows1):
         hole((l, t, r, b), f"slot {i + 1}")
-    hole(layout["low"], "lower row", round_=True)
+    hole(layout["low"], "lower row", slant=layout["low_slant"])
     # the pager's boxes are drawn wells, not holes: inside the upper row's
     # right end
     fl, ft, fr, fb = layout["frame"]
@@ -418,6 +414,19 @@ def export_bar(console_top):
         bg_canvas = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
         bg_canvas.paste(bg_img.crop(box), (0, 0))
         to_tga(bg_canvas, os.path.join(MEDIA, "actionbar-bg.tga"))
+    # the hybrid piece (assets/layer2hybrid.png): the lower row standing
+    # alone, from just above its window down to the plate's foot, under the
+    # plate and the bars
+    hy_img = Image.open(os.path.join(ROOT, "assets", "layer2hybrid.png")).convert("RGBA")
+    hy_top = layout["hybrid_top"]
+    hy_box = hy_img.getchannel("A").getbbox()
+    if not (x0 < hy_box[0] and hy_box[2] < x1 and hy_top <= hy_box[1] and hy_box[3] <= y1):
+        sys.exit(f"layer2hybrid.png: the piece {hy_box} is not inside the plate {box} below y={hy_top}")
+    hy_h = y1 - hy_top
+    hy_th = pow2(hy_h)
+    hy_canvas = Image.new("RGBA", (tw, hy_th), (0, 0, 0, 0))
+    hy_canvas.paste(hy_img.crop((x0, hy_top, x1, y1)), (0, 0))
+    to_tga(hy_canvas, os.path.join(MEDIA, "hybrid.tga"))
     os.makedirs(os.path.join(MEDIA, "bar"), exist_ok=True)
     for name in layout["parts"]:
         part = Image.open(os.path.join(ROOT, "assets", "bar", f"{name}.png")).convert("RGBA")
@@ -435,9 +444,11 @@ def export_bar(console_top):
         "-- the plate's texture; bottom is how far its foot reaches below the console's top",
         "ns.barArt = {",
         f"    width = {w}, height = {h}, texWidth = {tw}, texHeight = {th}, bottom = {console_top - y1},",
+        "    -- the lower row standing alone, under the plate: it stays when Bar 1 fades",
+        f'    hybridBgFile = "hybrid", hybridHeight = {hy_h}, hybridTexHeight = {hy_th},',
         "}",
         f"ns.barFrame = {up((fl, ft, fr, fb))}",
-        f"ns.barLow = {up(layout['low'])}   -- the lower row: the cast bar, the class resource",
+        f"ns.barLow = {up(layout['low'])}   -- the lower row's top: the cast bar, the class resource",
         "-- the right end's boxes: the page chevrons and the page number",
         "ns.barPager = {",
         *[f"    {k} = {up(layout['pager'][k])}," for k in ("up", "down", "number")],

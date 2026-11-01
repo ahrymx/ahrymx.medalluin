@@ -23,9 +23,16 @@ geometry, no gryphons (after the user's sketch):
     and bar 1 stays centred on the console;
   * behind the slots, a dark backing drawn by code (bars/bar.lua), so an
     empty slot shows a well and not the world behind it;
-  * the lower row: one pill-shaped window as wide as the upper row, end
-    panels included, for the player's cast bar (bars/cast.lua) and, when no cast is
-    running, the class resource (bars/power.lua);
+  * the lower row: one trapezoid window, its top as wide as the upper row
+    (end panels included) and its sides sloping out at 70 degrees, as the
+    light profile's is, for the player's cast bar (bars/cast.lua) and, when
+    no cast is running, the class resource (bars/power.lua). The bars are a
+    rectangle as wide as the window's top, so they fit inside it anywhere;
+    the corners below them show the ink;
+  * the hybrid piece: the lower row standing alone, a gold-rimmed trapezoid
+    of ink down to the console's top, drawn UNDER the plate and the bars.
+    With Bar 1 shown, the plate covers all of it but the window; with Bar 1
+    faded, it stays, with the cast bar and the class resource in it;
   * the chevrons themselves (up and down, normal and pushed, and a shared
     highlight), as small textures for Blizzard's own page buttons to wear,
     and the drawer toggle: the user's toolkit icon (art/bars/toolkit.png),
@@ -36,7 +43,8 @@ Rows 2 and 3 (the Rows option) stand above the frame, bare.
 
     python3 art/bars/gen_bar.py          -> render/bar.png (1 row), render/bar-rows.png (1, 2, 3),
                                             render/bar-frame.png, render/bar-drawer.png
-    python3 art/bars/gen_bar.py layer2   -> assets/layer2.png, assets/layer2.json, assets/bar/*.png
+    python3 art/bars/gen_bar.py layer2   -> assets/layer2.png, assets/layer2bg.png, assets/layer2hybrid.png,
+                                            assets/layer2.json, assets/bar/*.png
 
 assets/layer2.png is the plate in the console's asset format (a 1920x1081
 screen) with every window punched out: the 12 slots and the lower row.
@@ -107,6 +115,28 @@ SLOT_TOP = SLOT_BOTTOM - ICON
 FRAME_TOP = SLOT_TOP - BAND
 FOOT_Y = CONSOLE_TOP + FOOT
 LOW = (CX - FRAME_HALF, LOW_TOP, CX + FRAME_HALF, LOW_BOTTOM)
+# The lower row's sides slope out at 70 degrees, as the light profile's do:
+# its bottom is SLANT wider each side than its top. The hybrid piece's rim
+# stands RIM outside the window and runs on down to the foot; it starts
+# HYBRID_PAD above the window.
+SLOPE = 1 / np.tan(np.radians(70))
+SLANT = LOW_H * SLOPE
+RIM, HYBRID_PAD = 1.5, 3
+
+
+def low_window():
+    """The lower row's trapezoid, from its top left round."""
+    l, t, r, b = LOW
+    return [(l, t), (r, t), (r + SLANT, b), (l - SLANT, b)]
+
+
+def hybrid_outline():
+    """The hybrid piece: the window grown by the rim, its sides carried on
+    down to the foot under the console's border."""
+    l, t, r, _ = LOW
+    top = t - RIM
+    dx = (FOOT_Y - top) * SLOPE
+    return [(l - RIM, top), (r + RIM, top), (r + RIM + dx, FOOT_Y), (l - RIM - dx, FOOT_Y)]
 
 
 def shoulder(y):
@@ -225,18 +255,17 @@ def well(l, t, r, b):
 
 def plate(defs):
     """The plate's art, its windows cut by a mask: the slots and the lower
-    row's pill, and the toggle's round window. The plate draws OVER what
+    row's trapezoid, and the toggle's round window. The plate draws OVER what
     shows through them (the slot backing, the cast bar and class resource,
     the toggle), so its edges crop them."""
     stone_defs(defs)
     cx, cy = toggle_centre()
-    l, t, r, b = LOW
-    rr = (b - t) / 2
+    low = low_window()
     defs.append(f'<mask id="holes" maskUnits="userSpaceOnUse" x="0" y="0" width="{W}" height="{H + 1}">'
                 f'<rect width="{W}" height="{H + 1}" fill="#fff"/>'
                 + "".join(f'<rect x="{x}" y="{y}" width="{ICON}" height="{ICON}" fill="#000"/>'
                           for x, y in slots(1)[0])
-                + f'<rect x="{l}" y="{t}" width="{r - l}" height="{b - t}" rx="{rr}" fill="#000"/>'
+                + f'<polygon points="{pts(low)}" fill="#000"/>'
                 f'<circle cx="{cx}" cy="{cy}" r="{HOLE_D / 2}" fill="#000"/></mask>')
     f = frame_outline()
     body = ['<g mask="url(#holes)">',
@@ -263,9 +292,8 @@ def plate(defs):
                     f'stroke="{STONE_LO}" stroke-width="1"/>')
     for x, y in slots(1)[0]:
         body.append(well(x, y, x + ICON, y + ICON))
-    # the pill and the round window: a black edge only
-    body.append(f'<rect x="{l - 1}" y="{t - 1}" width="{r - l + 2}" height="{b - t + 2}" rx="{rr + 1}" '
-                f'fill="{STONE_EDGE}"/>'
+    # the lower row and the round window: a black edge only
+    body.append(f'<polygon points="{pts(low)}" fill="none" stroke="{STONE_EDGE}" stroke-width="2"/>'
                 f'<circle cx="{cx}" cy="{cy}" r="{HOLE_D / 2 + 1.2}" fill="{STONE_EDGE}"/>')
     b = pager_boxes()
     for k in ("up", "down", "number"):
@@ -277,6 +305,20 @@ def plate(defs):
                     f'fill="none" stroke="{GOLD_D}" stroke-width="1"/>')
     body.append('</g>')
     return "".join(body)
+
+
+def hybrid():
+    """The hybrid piece, under the plate and the bars: ink in a gold rim,
+    and a fine dark-gold line just outside the window, as the light
+    profile's has."""
+    o, low = hybrid_outline(), low_window()
+    return (f'<linearGradient id="hybridGold" x1="0" y1="0" x2="0" y2="1">'
+            f'<stop offset="0" stop-color="#fff2b0"/><stop offset="0.45" stop-color="{GOLD}"/>'
+            f'<stop offset="1" stop-color="{GOLD_D}"/></linearGradient>'
+            f'<mask id="window" maskUnits="userSpaceOnUse" x="0" y="0" width="{W}" height="{H + 1}">'
+            f'<rect width="{W}" height="{H + 1}" fill="#fff"/><polygon points="{pts(low)}" fill="#000"/></mask>',
+            f'<polygon points="{pts(o)}" fill="{INK}" stroke="url(#hybridGold)" stroke-width="1.6"/>'
+            f'<polygon points="{pts(low)}" fill="none" stroke="{GOLD_D}" stroke-width="1.2" mask="url(#window)"/>')
 
 
 def backing():
@@ -449,7 +491,7 @@ def layer2():
     defs = []
     img = rsvg(wrap(defs, [plate(defs)], height=1081), os.path.join(OUT, "layer2.png"))
     px = img.load()
-    # the slots again by pixel, so a slot is exactly its hole (the pill and
+    # the slots again by pixel, so a slot is exactly its hole (the trapezoid and
     # the round window keep the mask's soft edge)
     for l, t, r, b in holes()[:-1]:
         for y in range(t, b):
@@ -465,12 +507,18 @@ def layer2():
     bg_path = os.path.join(ROOT, "assets", "layer2bg.png")
     bg_img.save(bg_path)
 
+    hdefs, hbody = hybrid()
+    hybrid_img = rsvg(wrap([hdefs], [hbody], height=1081), os.path.join(OUT, "layer2hybrid.png"))
+    hybrid_img.save(os.path.join(ROOT, "assets", "layer2hybrid.png"))
+
     parts()
     layout = {
         "console_top": CONSOLE_TOP,
         "frame": [CX - FOOT_HALF, FRAME_TOP, CX + FOOT_HALF, FOOT_Y],
         "upper": [CX - FRAME_HALF, FRAME_TOP, CX + FRAME_HALF, SLOT_BOTTOM + MID_BAND],
         "low": list(LOW),
+        "low_slant": SLANT,
+        "hybrid_top": LOW_TOP - HYBRID_PAD,
         "pager": {k: list(v) for k, v in pager_boxes().items()},
         "drawer": list(drawer_box()),
         "toggle": {"diameter": TOOL_D, "hole": HOLE_D},
@@ -485,6 +533,17 @@ def layer2():
     with open(os.path.join(ROOT, "assets", "layer2.json"), "w") as f:
         json.dump(layout, f, indent=1)
     print(path, img.getchannel("A").getbbox())
+
+
+def faded(lit=3):
+    """Bar 1 faded out: the hybrid piece alone on the console, the class
+    resource in it."""
+    hdefs, hbody = hybrid()
+    over = rsvg(wrap([hdefs], [hbody, power(5, lit)]), os.path.join(OUT, "bar-faded.png"))
+    base = Image.open(BASE).convert("RGBA").crop((0, 0, W, H))
+    shot = Image.alpha_composite(base, over)
+    shot.paste(base.crop((0, CONSOLE_TOP, W, H)), (0, CONSOLE_TOP), base.crop((0, CONSOLE_TOP, W, H)))
+    return shot.convert("RGB")
 
 
 def cast(fraction, label):
@@ -529,7 +588,9 @@ def screen(rows, lit=3, casting=False, drawer_open=None):
     the console art, so the console is pasted back over it."""
     defs = []
     row = cast(0.62, "Frostbolt") if casting else power(5, lit)
-    body = [backing(), row, toggle_drawn(), plate(defs), icons(rows, defs), chevrons_drawn()]
+    hdefs, hbody = hybrid()
+    defs.append(hdefs)
+    body = [hbody, backing(), row, toggle_drawn(), plate(defs), icons(rows, defs), chevrons_drawn()]
     if drawer_open:
         body.append(drawer(drawer_open))
     over = rsvg(wrap(defs, body), os.path.join(OUT, f"bar-{rows}.png"))
@@ -547,9 +608,10 @@ def main():
     # bar 1 alone at twice the size: the class resource, then a cast
     frame = (620, 844, 1300, 930)
     w, h = frame[2] - frame[0], frame[3] - frame[1]
-    pair = Image.new("RGB", (2 * w, 4 * h + 8), (10, 10, 10))
+    pair = Image.new("RGB", (2 * w, 6 * h + 16), (10, 10, 10))
     pair.paste(shots[0].crop(frame).resize((2 * w, 2 * h), Image.LANCZOS), (0, 0))
     pair.paste(screen(1, casting=True).crop(frame).resize((2 * w, 2 * h), Image.LANCZOS), (0, 2 * h + 8))
+    pair.paste(faded().crop(frame).resize((2 * w, 2 * h), Image.LANCZOS), (0, 4 * h + 16))
     pair.save(os.path.join(OUT, "bar-frame.png"))
     # the drawer open, left and up (with three rows, so it clears them)
     crop = (380, 620, 1360, 1000)

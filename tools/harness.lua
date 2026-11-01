@@ -77,6 +77,11 @@ local lightPass = args[2] == "light"
 -- each profile's own choices coming back with it, and Reset profile.
 -- "profiles saved" loads one already layered, as every later login does.
 local profilesPass = args[2] == "profiles"
+-- "keybind" (alone, or after "light") plays the hover binding mode
+-- (keybind.lua): /mdlui kb and the page's button, binding through the
+-- binder, the chords, the keys it skips, a key moved off another button,
+-- Esc, the fade it lifts, and combat ending it.
+local keybindPass = args[2] == "keybind" or args[3] == "keybind"
 local actionPage = 1
 local class = argClass or "PALADIN"
 
@@ -326,6 +331,7 @@ function Region:HookScript(k, f)
     end
 end
 function Region:GetAlpha() return self.alpha or 1 end
+function Region:SetPropagateKeyboardInput(v) self.propagate = v end
 
 -- ------------------------------------------------------------ the API
 UIParent = new("Frame", nil, "UIParent")
@@ -482,10 +488,27 @@ function UnitPowerMax(_, kind) return kind == 4 and 5 or 100 end
 function GetComboPoints() return 3 end
 local now = 100
 function GetTime() return now end
+-- the game's bindings, key -> command: the number keys on action bar 1
+local bindings, bindingSaves = {}, {}
+for i = 1, 12 do bindings[tostring(i)] = "ACTIONBUTTON" .. i end
 function GetBindingKey(action)
-    local n = action:match("^ACTIONBUTTON(%d+)$")
-    if n then return n end
+    local keys = {}
+    for k, c in pairs(bindings) do if c == action then table.insert(keys, k) end end
+    table.sort(keys)
+    return unpack(keys)
 end
+function SetBinding(key, command)
+    if inCombat then error("SetBinding in combat") end
+    bindings[key] = command
+    return true
+end
+function GetCurrentBindingSet() return 2 end
+function SaveBindings(set) table.insert(bindingSaves, set) end
+function GetBindingText(key) return key end
+local modsDown = {}
+function IsAltKeyDown() return modsDown.ALT end
+function IsControlKeyDown() return modsDown.CTRL end
+function IsShiftKeyDown() return modsDown.SHIFT end
 function hooksecurefunc(t, k, f)
     if type(t) == "string" then t, k, f = _G, t, k end
     local old = t[k]
@@ -891,11 +914,12 @@ local page = { controls = {}, buttons = {}, settings = {}, subcategories = {} }
 Settings = {
     RegisterVerticalLayoutCategory = function(name)
         page.name = name
-        return { GetID = function() return 7 end }
+        page.root = { name = name, rows = {}, GetID = function() return 7 end }
+        return page.root
     end,
     RegisterVerticalLayoutSubcategory = function(parent, name)
         local id = #page.subcategories + 8
-        local sub = { name = name, parent = parent, GetID = function() return id end }
+        local sub = { name = name, parent = parent, rows = {}, GetID = function() return id end }
         table.insert(page.subcategories, sub)
         return sub
     end,
@@ -936,6 +960,7 @@ for _, kind in ipairs({ "Checkbox", "Dropdown", "ColorSwatch" }) do
     Settings["Create" .. kind] = function(_, setting, a, b)
         local options = kind == "Dropdown" and a()
         local control = { kind = kind, setting = setting, options = options }
+        table.insert(_.rows, setting.name)
         function control:SetParentInitializer(parent, predicate) self.parent, self.predicate = parent, predicate end
         table.insert(page.controls, control)
         return control
@@ -943,10 +968,20 @@ for _, kind in ipairs({ "Checkbox", "Dropdown", "ColorSwatch" }) do
 end
 local cursor
 function GetCursorInfo() return cursor end
-SettingsPanel = { GetLayout = function()
-    return { AddInitializer = function(_, i) table.insert(page.buttons, i) end }
+-- a page's rows in order: settings by name, [buttons], # headings
+SettingsPanel = { GetLayout = function(_, cat)
+    return { AddInitializer = function(_, i)
+        if not i:match("^#") then table.insert(page.buttons, i) end
+        table.insert(cat.rows, i:match("^#") and i or "[" .. i .. "]")
+    end }
 end }
-function CreateSettingsButtonInitializer(_, text) return text end
+local buttonClicks = {}
+function CreateSettingsButtonInitializer(_, text, click)
+    buttonClicks[text] = click
+    return text
+end
+function HideUIPanel(f) f.shown = false end
+function CreateSettingsListSectionHeaderInitializer(name) return "# " .. name end
 StaticPopupDialogs = {}
 SlashCmdList = {}
 function ReloadUI() end
@@ -1132,8 +1167,18 @@ if barPass then
         print(c.kind, s.name, s.variable, "saved=" .. tostring(s:Get()), "default=" .. tostring(s:Default()),
             c.parent and ("child, live=" .. tostring(c.predicate())) or "top", table.concat(choices, "; "))
     end
+    -- the tree on the left, each page with its rows in order
+    local function tree(cat, depth)
+        print("tree", string.rep("  ", depth) .. cat.name, table.concat(cat.rows, " | "))
+        for _, sub in ipairs(page.subcategories) do
+            if sub.parent == cat then tree(sub, depth + 1) end
+        end
+    end
+    tree(page.root, 0)
     SlashCmdList.MEDALUIN()
     print("/medaluin opens", tostring(page.opened))
+    SlashCmdList.MDLUI("console")
+    print("/mdlui console opens", tostring(page.opened))
     SlashCmdList.MDLUI()
     print("/mdlui opens", tostring(page.opened))
     SlashCmdList.MDLUI("unit")
@@ -1178,7 +1223,7 @@ if barPass then
         screen("plate", ns.barPlate, "texture=" .. tostring(ns.barPlate.texture):match("[^\\]+$")
             .. " level=" .. ns.barPlate.parent.level)
         -- behind the slots, a dark band; the plate stands over the bars and
-        -- the toggle, so its pill and round window crop them
+        -- the toggle, so its trapezoid and round window crop them
         local bk = ns.barBacking
         screen("backing", bk, "colour=" .. (bk.color and string.format("%.2f,%.2f,%.2f,%s", bk.color[1],
             bk.color[2], bk.color[3], tostring(bk.color[4] or 1)) or "-") .. " level=" .. bk.parent.level)
@@ -1191,6 +1236,16 @@ if barPass then
             "cast text inset=" .. ns.barCast.name.points.LEFT[3] .. "," .. ns.barCast.clock.points.RIGHT[3])
         local strip, shown = ns.barPower, {}
         screen("lowRow", strip, "level=" .. strip.level)
+        -- the hybrid row: the lower row on its own frame, its piece under
+        -- the bars, so it outlives Bar 1's fade
+        local hy, hb = ns.hybridBar, ns.hybridBacking
+        if hy then
+            screen("hybrid", hb, "texture=" .. tostring(hb.texture):match("[^\\]+$") .. " layer=" .. tostring(hb.layer)
+                .. " level=" .. hy.level .. " holds power=" .. tostring(strip.parent == hy)
+                .. " cast=" .. tostring(ns.barCast.parent == hy) .. " in the tray=" .. tostring(hy.parent == ns.actionBar))
+        else
+            print("hybrid", "none")
+        end
         for i, b in ipairs(strip.segments) do
             if b.shown then table.insert(shown, i) end
         end
@@ -1464,6 +1519,12 @@ if barPass then
         for _ = 1, 20 do ns.barFade.scripts.OnUpdate(ns.barFade, 0.05) end
         return string.format("%.2f", ns.actionBar.alpha or 1)
     end
+    -- what is left of the lower row: its alpha down the parents
+    local function low()
+        local a, r = 1, ns.barPower
+        while r do a, r = a * (r.alpha or 1), r.parent end
+        return string.format("%.2f", a)
+    end
     local function settleExtra()
         for _ = 1, 20 do ns.extraBarFade.scripts.OnUpdate(ns.extraBarFade, 0.05) end
         return string.format("%.2f", ns.extraBars.alpha or 1)
@@ -1472,7 +1533,7 @@ if barPass then
         S.visibility:Set(mode)
         local line = {}
         mouseOver, cursor = false, nil
-        table.insert(line, "idle=" .. settle())
+        table.insert(line, "idle=" .. settle() .. "(low=" .. low() .. ")")
         mouseOver = true
         table.insert(line, "hover=" .. settle())
         mouseOver = false
@@ -2337,6 +2398,146 @@ if profilesPass then
     ns.ResetProfile()
     state("default reset")
 end
+-- ------------------------------------------------------------ key binding
+local function KeybindPass()
+    local printed = {}
+    local realPrint = print
+    local function say(...) realPrint(...) end
+    local function keysOf(command) return table.concat({ GetBindingKey(command) }, ",") end
+    local binder = ns.keybinder
+    local function state(tag)
+        local marked = 0
+        for _, b in ipairs({ ActionButton1, StanceButton1, PetActionButton1, _G.MedaluinBar7Button1 }) do
+            for _, t in ipairs(b and b.all_ or {}) do
+                if t.kind == "Texture" and t.layer == "OVERLAY" and t.sub == 7 and t.shown then marked = marked + 1 end
+            end
+        end
+        say("kb " .. tag, "on=" .. tostring(ns.keybinding), "banner=" .. tostring(_G.MedaluinKeybindBanner
+            and _G.MedaluinKeybindBanner.shown), "binder=" .. tostring(binder.shown)
+            .. (binder.shown and binder.target and ("@" .. binder.target:GetName()) or ""),
+            "keyboard=" .. tostring(binder.keyboard), "marked=" .. marked, "saves=" .. #bindingSaves)
+    end
+    binder.EnableKeyboard = function(self, on) self.keyboard = on end
+    local tip = {}
+    GameTooltip.SetText = function(_, t) tip = { t } end
+    GameTooltip.AddLine = function(_, t) table.insert(tip, t) end
+    local function hover(btn) if btn.scripts.OnEnter then btn.scripts.OnEnter(btn) end end
+    local function key(k) binder.scripts.OnKeyDown(binder, k) end
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+
+    say("kb commands", ns.BindingCommand(ActionButton3), ns.BindingCommand(MultiBarBottomLeftButton2),
+        ns.BindingCommand(StanceButton1), ns.BindingCommand(PetActionButton2),
+        tostring(ns.BindingCommand(_G.MedaluinBar7Button1)), tostring(ns.BindingCommand(Minimap)))
+    state("at login")
+    hover(ActionButton3)
+    state("hover while off")
+    -- refused in combat, with a word
+    inCombat = true
+    print = function(...) table.insert(printed, table.concat({ ... }, " ")) end
+    SlashCmdList.MDLUI("kb")
+    print = realPrint
+    inCombat = false
+    state("in combat")
+    say("kb refused", printed[1] or "-")
+    -- the page's button closes the page and starts it
+    SettingsPanel.shown = true
+    function SettingsPanel:IsShown() return self.shown end
+    buttonClicks["Bind keys"]()
+    state("from the page")
+    say("kb page closed", tostring(not SettingsPanel.shown))
+    -- a faded bar comes back while binding
+    local fade = ns.barFade
+    if fade then
+        page.settings.visibility:Set(2)
+        for _ = 1, 20 do fade.scripts.OnUpdate(fade, 0.05) end
+        say("kb fade", "bar1 alpha while binding=" .. tostring(ns.actionBar.alpha))
+    end
+    -- point, press
+    hover(ActionButton3)
+    state("hover 3")
+    say("kb binder", "over the button=" .. tostring(binder.all == ActionButton3), "tip=" .. table.concat(tip, " | "))
+    key("Q")
+    say("kb Q on 3", "3=" .. keysOf("ACTIONBUTTON3"), "Q=" .. tostring(bindings.Q),
+        "propagated=" .. tostring(binder.propagate), "tip=" .. table.concat(tip, " | "))
+    -- a modifier alone is no binding; with a key it makes a chord
+    modsDown.SHIFT = true
+    key("LSHIFT")
+    key("LMETA")
+    say("kb LSHIFT, LMETA", "3=" .. keysOf("ACTIONBUTTON3"))
+    key("E")
+    modsDown.SHIFT = nil
+    say("kb SHIFT-E on 3", "3=" .. keysOf("ACTIONBUTTON3"), "Q=" .. tostring(bindings.Q))
+    modsDown.ALT, modsDown.CTRL = true, true
+    key("4")
+    modsDown.ALT, modsDown.CTRL = nil, nil
+    say("kb ALT-CTRL-4 on 3", "3=" .. keysOf("ACTIONBUTTON3"), "4=" .. keysOf("ACTIONBUTTON4"))
+    -- a key another button has moves over
+    hover(ActionButton5)
+    modsDown.ALT, modsDown.CTRL = true, true
+    key("4")
+    modsDown.ALT, modsDown.CTRL = nil, nil
+    say("kb moved", "3=" .. keysOf("ACTIONBUTTON3"), "5=" .. keysOf("ACTIONBUTTON5"))
+    -- the mouse: the two clicking buttons skipped, the rest bound, the wheel
+    binder.scripts.OnMouseDown(binder, "LeftButton")
+    binder.scripts.OnMouseDown(binder, "RightButton")
+    say("kb clicks", "5=" .. keysOf("ACTIONBUTTON5"))
+    binder.scripts.OnMouseDown(binder, "MiddleButton")
+    say("kb middle", "5=" .. keysOf("ACTIONBUTTON5"))
+    binder.scripts.OnMouseWheel(binder, 1)
+    say("kb wheel", "5=" .. keysOf("ACTIONBUTTON5"))
+    -- Esc over a button removes its keys and keeps the mode
+    key("ESCAPE")
+    state("Esc over 5")
+    say("kb Esc", "5=" .. keysOf("ACTIONBUTTON5"), "saved to set " .. tostring(bindingSaves[#bindingSaves]))
+    -- the other bars
+    hover(StanceButton1); key("Z")
+    hover(PetActionButton2); key("X")
+    say("kb stance, pet", "SHAPESHIFTBUTTON1=" .. keysOf("SHAPESHIFTBUTTON1"),
+        "BONUSACTIONBUTTON2=" .. keysOf("BONUSACTIONBUTTON2"))
+    if _G.MedaluinBar7Button1 then
+        hover(_G.MedaluinBar7Button1); key("V")
+        local b7 = _G.MedaluinBar7Button1
+        fire("UPDATE_BINDINGS")
+        local hk = b7.medaluinHotkey or b7.HotKey
+        say("kb grid", "click=" .. keysOf("CLICK MedaluinBar7Button1:LeftButton"),
+            "buttonType=" .. tostring(b7.buttonType), "bare=" .. tostring(ns.db.bareIcons),
+            "hotkey=" .. tostring(hk and hk.text))
+    end
+    binder.scripts.OnLeave(binder)
+    state("left")
+    -- the banner: Esc ends it, other keys go on to the game
+    local banner = _G.MedaluinKeybindBanner
+    banner.scripts.OnKeyDown(banner, "W")
+    say("kb banner W", "propagated=" .. tostring(banner.propagate))
+    banner.scripts.OnKeyDown(banner, "ESCAPE")
+    say("kb banner Esc", "propagated=" .. tostring(banner.propagate))
+    state("Esc away")
+    hover(ActionButton3)
+    state("hover after")
+    if fade then
+        for _ = 1, 20 do fade.scripts.OnUpdate(fade, 0.05) end
+        say("kb fade", "bar1 alpha after=" .. tostring(ns.actionBar.alpha))
+    end
+    -- /mdlui kb toggles; Done ends it; combat ends it
+    SlashCmdList.MDLUI("kb")
+    state("/mdlui kb")
+    SlashCmdList.MDLUI("KB")
+    state("/mdlui KB again")
+    SlashCmdList.MDLUI("bind")
+    state("/mdlui bind")
+    banner.done.scripts.OnClick(banner.done)
+    state("Done")
+    SlashCmdList.MDLUI("keybind")
+    hover(ActionButton1)
+    state("/mdlui keybind, over 1")
+    inCombat = true
+    fire("PLAYER_REGEN_DISABLED")
+    state("combat starts")
+    inCombat = false
+end
+
 if lightPass then
     UIParent.fixed = { -648, -904, 1272, 176 }
     local function fire(e, ...)
@@ -2396,6 +2597,7 @@ if lightPass then
         local p = ns.units["party" .. i]
         out("party" .. i, p, "bezel=" .. tostring(p.detachedBezel and p.detachedBezel.shown))
     end
+    if keybindPass then KeybindPass() end
     do return end
 end
 
@@ -3166,3 +3368,5 @@ inCombat = true
 fire("PLAYER_ENTERING_WORLD")
 tintState("reload in combat")
 inCombat, threatOf = false, nil
+
+if keybindPass then KeybindPass() end

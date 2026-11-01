@@ -43,6 +43,10 @@ ns.On("PLAYER_LOGIN", function()
         btn:SetFrameLevel(ns.levels.art + 2)
         ns.PlaceOnBar(btn, slot)
         btn:SetAttribute("type", "action")
+        -- a command no key is bound to: Blizzard's hotkey then reads the
+        -- button's click binding (keybind.lua), not action bar 1's keys
+        btn.buttonType = "MEDALUINBAR7BUTTON"
+        if btn.UpdateHotkeys then btn:UpdateHotkeys(btn.buttonType) end
         if ns.StyleButton then ns.StyleButton(btn) end
         if ns.actionButtons then table.insert(ns.actionButtons, btn) end
         btns[i] = btn

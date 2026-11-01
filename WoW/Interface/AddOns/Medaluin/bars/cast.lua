@@ -1,5 +1,5 @@
--- The player's cast bar, in the action bar's lower row (a pill: the plate
--- above crops its square ends), over the class resource (bars/power.lua):
+-- The player's cast bar, in the action bar's lower row (a trapezoid; the bar
+-- is as wide as its top, so it fits inside), over the class resource (bars/power.lua):
 -- spell name left, time left right, its own ink covering the resource
 -- while it is up. The casts themselves are casting.lua's.
 --
@@ -26,7 +26,7 @@ function ns.BuildCast(tray)
     spark:SetPoint("CENTER", bar:GetStatusBarTexture(), "RIGHT")
 
     local name, clock = ns.Text(bar, 10), ns.Text(bar, 10)
-    -- clear of the pill's rounded ends
+    -- clear of the window's gold edge
     name:SetPoint("LEFT", 8, 0)
     clock:SetPoint("RIGHT", -8, 0)
     clock:SetJustifyH("RIGHT")

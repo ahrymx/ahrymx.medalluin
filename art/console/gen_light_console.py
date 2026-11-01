@@ -461,7 +461,10 @@ def export_all():
     bar1_top = FLUSH_TOP_Y - BAR1_Y                # 904 - 856 = 48
     bar1_half = BAR1_BOT_W // 2                    # 504 // 2 = 252
 
-    hyb_half = int(round(HYBRID_BOT_W / 2))         # 230
+    # The bars are a rectangle as wide as the window's TOP, so their top
+    # corners stay inside the slanted gold edge; the slivers below them,
+    # where the window widens, show the ink under them.
+    hyb_half = int(HYBRID_TOP_W // 2)                # 226
     hyb_top = FLUSH_TOP_Y - HYBRID_Y                # 904 - 893 = 11
     hyb_bot = FLUSH_TOP_Y - (HYBRID_Y + HYBRID_H)   # 904 - 903 = 1 (rests flush on console top)
 

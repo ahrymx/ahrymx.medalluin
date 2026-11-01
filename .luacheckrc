@@ -57,7 +57,12 @@ read_globals = {
     "ClearItemButtonOverlay", "SetItemButtonQuality", "SetItemButtonCount", "SetItemButtonDesaturated",
     "GetMoney", "GetMoneyString", "CloseAllBags", "GetCursorPosition", "CreateColor",
     -- the settings page and the atlas sizes
-    "Settings", "SettingsPanel", "CreateSettingsButtonInitializer", "ReloadUI", "C_Texture", "GetCursorInfo", "GetActionBarPage", "GetSpecialization",
+    -- key binding on hover (keybind.lua)
+    "GetBindingKey", "GetBindingText", "SetBinding", "SaveBindings", "GetCurrentBindingSet",
+    "GetConvertedKeyOrButton", "IsKeyPressIgnoredForBinding", "CreateKeyChordStringUsingMetaKeyState",
+    "IsAltKeyDown", "IsControlKeyDown", "IsShiftKeyDown", "HideUIPanel", "DONE",
+    "Settings", "SettingsPanel", "CreateSettingsButtonInitializer", "CreateSettingsListSectionHeaderInitializer",
+    "ReloadUI", "C_Texture", "GetCursorInfo", "GetActionBarPage", "GetSpecialization",
     -- tables and strings
     "RAID_CLASS_COLORS", "FACTION_BAR_COLORS", "PowerBarColor", "MAX_PLAYER_LEVEL",
     "PLAYER_OFFLINE", "DEAD", "LEVEL", "XP", "REPUTATION", "FAILED", "INTERRUPTED",

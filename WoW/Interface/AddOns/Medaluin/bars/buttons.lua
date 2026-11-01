@@ -94,22 +94,10 @@ local function FormatHotkey(text)
     return text
 end
 
+-- keybind.lua names every button's command; its binder sets them
 local function ButtonBindingName(btn)
-    local name = btn:GetName()
-    if not name then return end
-    local num = name:match("^ActionButton(%d+)$")
-    if num then return "ACTIONBUTTON" .. num end
-    num = name:match("^MultiBarBottomLeftButton(%d+)$")
-    if num then return "MULTIACTIONBAR1BUTTON" .. num end
-    num = name:match("^MultiBarBottomRightButton(%d+)$")
-    if num then return "MULTIACTIONBAR2BUTTON" .. num end
-    num = name:match("^MultiBarRightButton(%d+)$")
-    if num then return "MULTIACTIONBAR3BUTTON" .. num end
-    num = name:match("^MultiBarLeftButton(%d+)$")
-    if num then return "MULTIACTIONBAR4BUTTON" .. num end
-    num = name:match("^MedaluinBar7Button(%d+)$")
-    if num then return "MULTIACTIONBAR7BUTTON" .. num end
-    return btn.buttonType and (btn.buttonType .. (btn:GetID() or ""))
+    return ns.BindingCommand and ns.BindingCommand(btn)
+        or btn.buttonType and (btn.buttonType .. (btn:GetID() or ""))
 end
 
 local function UpdateHotkey(btn)

@@ -241,10 +241,14 @@ local function Page()
         return parent
     end
 
-    local subBar = Subcategory(category, "Action Bar")
-    local subUnit = Subcategory(category, "Unit Frames")
-    local subOverhead = Subcategory(category, "Overhead")
-    local subCast = Subcategory(category, "Cast Bars")
+    -- The tree on the left is the way round: the console's pages sit under
+    -- Console, which holds the profile they are remembered by; the pages
+    -- every profile shares sit beside it.
+    local subConsole = Subcategory(category, "Console")
+    local subBar = Subcategory(subConsole, "Action Bar")
+    local subUnit = Subcategory(subConsole, "Unit Frames")
+    local subOverhead = Subcategory(subConsole, "Overhead")
+    local subCast = Subcategory(subConsole, "Cast Bars")
     local subChat = Subcategory(category, "Chat")
     local subSide = Subcategory(category, "Side panel")
     local subBags = Subcategory(category, "Bags")
@@ -271,18 +275,64 @@ local function Page()
     end
     local V, B, N, S = ns.VISIBILITY, Settings.VarType.Boolean, Settings.VarType.Number, Settings.VarType.String
 
-    -- The profile heads the root page: every other option starts from it.
-    Settings.CreateDropdown(category, Setting(category, "consoleProfile", S, "Console profile"),
-        Choices(ns.PROFILE_NAMES), "The console every option starts from. Each profile remembers your own "
-        .. "Action Bar, Unit Frames, Overhead and Cast Bars options; Chat, Side panel and Bags are shared by "
-        .. "all of them." .. RELOAD)
+    -- Rows that are not settings (headings, buttons) go straight into a
+    -- page's layout, in order with the settings around them.
+    local function Add(cat, initializer)
+        local layout = SettingsPanel and SettingsPanel.GetLayout and SettingsPanel:GetLayout(cat)
+        if layout and layout.AddInitializer then layout:AddInitializer(initializer) end
+    end
+    local function Header(cat, name, tooltip)
+        if CreateSettingsListSectionHeaderInitializer then
+            Add(cat, CreateSettingsListSectionHeaderInitializer(name, tooltip))
+        end
+    end
+    local function Button(cat, text, click, tooltip)
+        if CreateSettingsButtonInitializer then
+            Add(cat, CreateSettingsButtonInitializer("", text, click, tooltip, true))
+        end
+    end
+    local function Reload(cat)
+        Button(cat, "Reload UI", ReloadUI, "Reload the interface so a changed option takes effect.")
+    end
+    -- Each list's controls hang off a page's master checkbox. A heading is
+    -- not one of them: it would be indented like a setting.
+    local function Under(parent, predicate, ...)
+        for _, list in ipairs({ ... }) do
+            for _, child in ipairs(list) do child:SetParentInitializer(parent, predicate) end
+        end
+    end
+
+    -- Root page: what belongs to no console.
+    Header(category, "Preview", "Tools for seeing Medaluin's frames without a group. Shared by every profile.")
+    Settings.CreateCheckbox(category, Setting(category, "simParty", B, "Simulate party frames"),
+        "Show the console's party frame layer and simulated party members to preview party frames while solo. "
+            .. "A small panel on the left changes the situation: bosses, deaths, range, ready and role checks.")
+    Header(category, "Key bindings", "Shared by every profile: they are the game's own bindings.")
+    Button(category, "Bind keys", function()
+        if SettingsPanel and SettingsPanel:IsShown() and HideUIPanel then HideUIPanel(SettingsPanel) end
+        ns.KeybindMode(true)
+    end, "Closes this window. Point at an action button and press a key to bind it; Esc over a button "
+        .. "removes its keys. Also /mdlui kb.")
+    Reload(category)
+
+    -- Console page: the profile the pages under it are remembered by.
+    Header(subConsole, "Profile", "Each profile remembers its own Action Bar, Unit Frames, Overhead and Cast Bars "
+        .. "options. Chat, Side panel and Bags are shared by every profile.")
+    Settings.CreateDropdown(subConsole, Setting(subConsole, "consoleProfile", S, "Console profile"),
+        Choices(ns.PROFILE_NAMES), "The console the pages under Console start from. Switching brings back "
+        .. "the options you chose on that profile." .. RELOAD)
+    Button(subConsole, "Reset profile", function() StaticPopup_Show("MEDALUIN_RESET_PROFILE") end,
+        "This profile's Action Bar, Unit Frames, Overhead and Cast Bars options back to its own. "
+        .. "Chat, Side panel and Bags are left as they are.")
+    Reload(subConsole)
 
     -- Action Bar subcategory
     local bar = Settings.CreateCheckbox(subBar, Setting(subBar, "actionBar", B, "Action bar"),
         "Medaluin's bar on top of the console, holding action bar 1. Untick it to keep Blizzard's bars or "
         .. "use another action-bar addon." .. RELOAD)
     local function BarOn() return ns.db.actionBar end
-    local children = {
+    Header(subBar, "Look")
+    local look = {
         Settings.CreateDropdown(subBar, Setting(subBar, "rows", N, "Rows"), Choices({
             { 1, "1 row", "Action bar 1." },
             { 2, "2 rows", "Action bar 2 stacked above action bar 1." },
@@ -294,6 +344,9 @@ local function Page()
             .. "instead of Blizzard's button art." .. RELOAD),
         Settings.CreateColorSwatch(subBar, Setting(subBar, "artColor", S, "Art colour"),
             "Tints the bar's stone frame. White leaves it as drawn."),
+    }
+    Header(subBar, "Fading", "A faded bar still works: its buttons and key bindings stay live.")
+    local fading = {
         Settings.CreateDropdown(subBar, Setting(subBar, "visibility", N, "Bar 1 visibility"), Choices({
             { V.ALWAYS, "Always" },
             { V.COMBAT, "In combat", "Faded out of combat; it comes back while you drag a spell onto it." },
@@ -307,18 +360,19 @@ local function Page()
             { V.COMBAT_OR_MOUSEOVER, "In combat or on mouseover" },
         }), "Manages the visibility of action bars 2 and 3. Faded bars still work: their buttons and key "
             .. "bindings stay live."),
-        Settings.CreateDropdown(subBar, Setting(subBar, "drawer", N, "Minimap buttons"), Choices({
+    }
+    Header(subBar, "Minimap buttons")
+    local drawer = {
+        Settings.CreateDropdown(subBar, Setting(subBar, "drawer", N, "Drawer opens"), Choices({
             { ns.DRAWER.LEFT, "Open left", "One row, out to the left of the bar." },
             { ns.DRAWER.UP, "Open up", "One column, up from the bar's left end." },
         }), "The addons' minimap buttons gather in a drawer behind the box on the bar's left end. "
             .. "This is the way it opens."),
     }
-    for _, child in ipairs(children) do child:SetParentInitializer(bar, BarOn) end
+    Under(bar, BarOn, look, fading, drawer)
 
     -- Unit Frames subcategory
-    Settings.CreateCheckbox(subUnit, Setting(subUnit, "simParty", B, "Simulate party frames"),
-        "Show the console's party frame layer and simulated party members to preview party frames while solo. "
-            .. "A small panel on the left changes the situation: bosses, deaths, range, ready and role checks.")
+    Header(subUnit, "Party")
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "partyPets", B, "Show party pets"),
         "Show pet unit frames directly below party members who have active pets.")
     Settings.CreateDropdown(subUnit, Setting(subUnit, "partyRange", N, "Fade out of range"), Choices({
@@ -328,6 +382,7 @@ local function Page()
         { 10, "10 yards", "Melee and interaction distance." },
         { 0, "Disabled", "Never fade party frames based on distance." },
     }), "Fade party unit frames when members move beyond the chosen distance.")
+    Header(subUnit, "Auras")
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraGlow", B, "Dispel glow on frame borders"),
         "Glow the frame's stone border in the debuff's color (purple for Curse, green for Poison, etc.) "
         .. "when an ally has a debuff you can dispel.")
@@ -343,7 +398,8 @@ local function Page()
         "Top-of-screen cascading trapezoid structure for boss frames, pet, focus, target of target, and action bars."
         .. RELOAD)
     local function OverheadOn() return ns.db.overhead end
-    local overheadChildren = {
+    Header(subOverhead, "Frames")
+    local overheadFrames = {
         Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topBoss", B, "Boss frames"),
             "Encounter boss frames on the top tier, dynamically dividing into 1, 2, or 3 columns."),
         Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topPet", B, "Player pet frame"),
@@ -352,12 +408,15 @@ local function Page()
             "Focus target unit frame on the middle tier."),
         Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topToT", B, "Target of target frame"),
             "Target's target unit frame on the middle tier."),
+    }
+    Header(subOverhead, "Bars")
+    local overheadBars = {
         Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topPetBar", B, "Pet action bar"),
             "Pet command and ability buttons on the bottom tier." .. RELOAD),
         Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topStances", B, "Stance bar"),
             "Shapeshift forms, stealth, stances, and auras on the bottom tier." .. RELOAD),
     }
-    for _, child in ipairs(overheadChildren) do child:SetParentInitializer(ovh, OverheadOn) end
+    Under(ovh, OverheadOn, overheadFrames, overheadBars)
 
     -- Cast Bars subcategory
     Settings.CreateCheckbox(subCast, Setting(subCast, "xpCast", B, "Player casts on the experience bar"),
@@ -382,7 +441,8 @@ local function Page()
     local qualities = {}
     for _, q in ipairs(ns.LOOT_QUALITIES) do table.insert(qualities, { q[1], q[2] }) end
     local M = ns.METER_SESSION
-    local sideChildren = {
+    Header(subSide, "Auras")
+    local sideAuras = {
         Settings.CreateCheckbox(subSide, Setting(subSide, "sideAuras", B, "Auras tab"),
             "Your buffs and debuffs, each with the time it has left, the longest first."),
         Settings.CreateDropdown(subSide, Setting(subSide, "aurasColumns", N, "Aura lists"), Choices({
@@ -393,6 +453,9 @@ local function Page()
         Settings.CreateCheckbox(subSide, Setting(subSide, "aurasTimeless", B, "Auras that never run out"),
             "List forms, aspects, mounts and the like too, at the top. They are over the portrait already. "
             .. "The infinity button switches this too."),
+    }
+    Header(subSide, "Meter")
+    local sideMeter = {
         Settings.CreateCheckbox(subSide, Setting(subSide, "sideMeter", B, "Meter tab"),
             "Damage, healing and more for each member of your group, from the game's own combat meter."),
         Settings.CreateDropdown(subSide, Setting(subSide, "meterColumns", N, "Meter lists"), Choices({
@@ -409,6 +472,9 @@ local function Page()
         }), "The clock button switches this too."),
         Settings.CreateCheckbox(subSide, Setting(subSide, "meterRate", B, "Per second"),
             "Damage and healing as amounts per second instead of totals. The /s button switches this too."),
+    }
+    Header(subSide, "Loot")
+    local sideLoot = {
         Settings.CreateCheckbox(subSide, Setting(subSide, "sideLoot", B, "Loot tab"),
             "What your group looted, boss by boss, with who won each roll. Not the chat's loot lines: "
             .. "the chat keeps those."),
@@ -421,7 +487,7 @@ local function Page()
         Settings.CreateCheckbox(subSide, Setting(subSide, "lootMoney", B, "Money and currencies"),
             "Your share of looted money on each heading, and the currencies you loot as lines."),
     }
-    for _, child in ipairs(sideChildren) do child:SetParentInitializer(side, SideOn) end
+    Under(side, SideOn, sideAuras, sideMeter, sideLoot)
 
     -- Bags subcategory
     local bags = Settings.CreateCheckbox(subBags, Setting(subBags, "bags", B, "Bags window"),
@@ -438,66 +504,18 @@ local function Page()
         Settings.CreateCheckbox(subBags, Setting(subBags, "bagsItemLevel", B, "Item levels"),
             "The item level in the corner of each weapon and piece of armour, in its quality's colour."),
     }
-    for _, child in ipairs(bagsChildren) do child:SetParentInitializer(bags, BagsOn) end
+    Under(bags, BagsOn, bagsChildren)
 
-    local function AddReload(cat)
-        if CreateSettingsButtonInitializer and SettingsPanel and SettingsPanel.GetLayout then
-            local layout = SettingsPanel:GetLayout(cat)
-            if layout and layout.AddInitializer then
-                layout:AddInitializer(CreateSettingsButtonInitializer("", "Reload UI", ReloadUI,
-                    "Reload the interface so a changed option takes effect.", true))
-            end
-        end
-    end
-
-    if CreateSettingsButtonInitializer and SettingsPanel and SettingsPanel.GetLayout then
-        local layout = SettingsPanel:GetLayout(category)
-        if layout and layout.AddInitializer then
-            layout:AddInitializer(CreateSettingsButtonInitializer("", "Reset profile", function()
-                StaticPopup_Show("MEDALUIN_RESET_PROFILE")
-            end, "This profile's Action Bar, Unit Frames, Overhead and Cast Bars options back to its own. "
-                .. "Chat, Side panel and Bags are left as they are.", true))
-        end
-    end
-    AddReload(category)
-    if subBar ~= category then
-        if CreateSettingsButtonInitializer and SettingsPanel and SettingsPanel.GetLayout then
-            local layout = SettingsPanel:GetLayout(category)
-            if layout and layout.AddInitializer then
-                layout:AddInitializer(CreateSettingsButtonInitializer("", "Action Bar", function()
-                    Settings.OpenToCategory(subBar:GetID())
-                end, "Open Action Bar settings.", true))
-                layout:AddInitializer(CreateSettingsButtonInitializer("", "Unit Frames", function()
-                    Settings.OpenToCategory(subUnit:GetID())
-                end, "Open Unit Frames settings.", true))
-                layout:AddInitializer(CreateSettingsButtonInitializer("", "Overhead", function()
-                    Settings.OpenToCategory(subOverhead:GetID())
-                end, "Open Overhead console settings.", true))
-                layout:AddInitializer(CreateSettingsButtonInitializer("", "Cast Bars", function()
-                    Settings.OpenToCategory(subCast:GetID())
-                end, "Open Cast Bars settings.", true))
-                layout:AddInitializer(CreateSettingsButtonInitializer("", "Chat", function()
-                    Settings.OpenToCategory(subChat:GetID())
-                end, "Open Chat settings.", true))
-                layout:AddInitializer(CreateSettingsButtonInitializer("", "Side panel", function()
-                    Settings.OpenToCategory(subSide:GetID())
-                end, "Open Side panel settings.", true))
-                layout:AddInitializer(CreateSettingsButtonInitializer("", "Bags", function()
-                    Settings.OpenToCategory(subBags:GetID())
-                end, "Open Bags settings.", true))
-            end
-        end
-        AddReload(subBar)
-        AddReload(subOverhead)
-        AddReload(subChat)
-        AddReload(subSide)
-        AddReload(subBags)
-    end
+    Reload(subBar)
+    Reload(subOverhead)
+    Reload(subChat)
+    Reload(subSide)
+    Reload(subBags)
 
     Settings.RegisterAddOnCategory(category)
     ns.settingsCategory = category
-    ns.settingsSubcategories = { bar = subBar, unit = subUnit, overhead = subOverhead, cast = subCast, chat = subChat,
-        side = subSide, bags = subBags }
+    ns.settingsSubcategories = { console = subConsole, bar = subBar, unit = subUnit, overhead = subOverhead,
+        cast = subCast, chat = subChat, side = subSide, bags = subBags }
 end
 
 -- Only a key is added: assigning StaticPopupDialogs itself would taint it.
@@ -527,11 +545,19 @@ SLASH_MEDALUIN1 = "/medaluin"
 SLASH_MEDALUIN2 = "/mdlui"
 SLASH_MDLUI1 = "/mdlui"
 
+local KEYBIND = { kb = true, keybind = true, keybinds = true, bind = true, binds = true }
+
 local function OpenSettings(arg)
-    if not ns.settingsCategory then return end
     arg = tostring(arg or ""):lower():match("^%s*(%S+)")
+    if KEYBIND[arg] then
+        if ns.KeybindMode then ns.KeybindMode() end
+        return
+    end
+    if not ns.settingsCategory then return end
     local target = ns.settingsCategory
-    if arg == "bar" or arg == "actionbar" or arg == "bars" then
+    if arg == "console" or arg == "profile" or arg == "profiles" then
+        target = ns.settingsSubcategories and ns.settingsSubcategories.console or target
+    elseif arg == "bar" or arg == "actionbar" or arg == "bars" then
         target = ns.settingsSubcategories and ns.settingsSubcategories.bar or target
     elseif arg == "unit" or arg == "units" or arg == "unitframe" or arg == "unitframes"
         or arg == "uf" or arg == "party" then
