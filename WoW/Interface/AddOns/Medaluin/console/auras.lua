@@ -288,19 +288,13 @@ local function CreateBuffWidgets(health, side, isParty)
     return buttons
 end
 
--- Boss debuff widget: alternate (inner) corner of health, strictly away from power
-local function CreateBossDebuffWidget(health, side, isParty)
-    local size = isParty and 22 or 24
+-- Boss debuff centerpiece widget: shares the center threat slot with CC (Priority B)
+local function CreateBossDebuffWidget(health, isParty)
+    local size = isParty and 24 or 32
     local btn = CreateFrame("Button", nil, health)
     btn:SetSize(size, size)
-    btn:SetFrameLevel(ns.levels.text + 1)
-
-    local vert = isParty and "TOP" or "BOTTOM"
-    local horiz = side == -1 and "RIGHT" or "LEFT"
-    local point = vert .. horiz
-    local offsetX = side == -1 and -4 or 4
-    local offsetY = isParty and -2 or 2
-    btn:SetPoint(point, health, point, offsetX, offsetY)
+    btn:SetPoint("CENTER", health, "CENTER", 0, 0)
+    btn:SetFrameLevel(ns.levels.text + 2)
 
     local rim = btn:CreateTexture(nil, "BACKGROUND")
     rim:SetAllPoints()
@@ -325,7 +319,7 @@ local function CreateBossDebuffWidget(health, side, isParty)
         btn.cooldown:SetHideCountdownNumbers(true)
     end
 
-    btn.timer = ns.Text(btn.cooldown, 11)
+    btn.timer = ns.Text(btn.cooldown, size <= 26 and 11 or 13)
     btn.timer:SetPoint("CENTER", btn.cooldown, "CENTER", 0, 0)
     btn.timer:SetTextColor(1, 0.9, 0.2)
 
@@ -388,9 +382,9 @@ local function ApplyStubAuras(b)
         end
     end
 
-    -- Boss debuff stub (Party 4 has critical boss aura)
+    -- Boss debuff stub (Party 4 has critical boss aura, shown in centerpiece)
     if b.bossDebuff then
-        if unit == "party4" and ns.db.auraBoss ~= false then
+        if unit == "party4" and ns.db.auraBoss ~= false and not (b.ccWidget and b.ccWidget:IsShown()) then
             b.bossDebuff.icon:SetTexture("Interface\\Icons\\Ability_Creature_Cursed_01")
             b.bossDebuff.stubText = "8"
             b.bossDebuff.expires = nil
@@ -536,9 +530,9 @@ local function ScanUnitAuras(b)
         end
     end
 
-    -- 4. Boss Debuffs
+    -- 4. Boss Debuffs (shares the center threat slot with CC; P0 is CC, P1 is Boss Debuff)
     local bossAura = nil
-    if ns.db.auraBoss ~= false and Auras and Auras.GetAuraDataByIndex then
+    if ns.db.auraBoss ~= false and not ccAura and Auras and Auras.GetAuraDataByIndex then
         local i = 1
         while true do
             local aura = Auras.GetAuraDataByIndex(unit, i, "HARMFUL")
@@ -551,7 +545,7 @@ local function ScanUnitAuras(b)
         end
     end
     if b.bossDebuff then
-        if bossAura then
+        if bossAura and not ccAura then
             b.bossDebuff.unit = unit
             b.bossDebuff.auraInstanceID = bossAura.auraInstanceID
             b.bossDebuff.tooltipTitle = nil
@@ -611,7 +605,7 @@ for unit, b in pairs(ns.units or {}) do
     b.dispelGlow = CreateDispelGlow(b, side, window)
     b.ccWidget = CreateCCWidget(b.health, isParty and 24 or 32)
     b.buffWidgets = CreateBuffWidgets(b.health, side, isParty)
-    b.bossDebuff = CreateBossDebuffWidget(b.health, side, isParty)
+    b.bossDebuff = CreateBossDebuffWidget(b.health, isParty)
 end
 
 local events = CreateFrame("Frame")
