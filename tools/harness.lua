@@ -71,6 +71,12 @@ local savedNoChat = args[3] == "nochat"
 local savedBeam = args[3] == "beamcast"
 local savedSimParty = args[2] == "simparty" or args[3] == "simparty" or args[4] == "simparty"
 local lightPass = args[2] == "light"
+-- "profiles" loads a saved table from before profiles (flat, every option at
+-- the top, the light profile's forced rows) and plays the layers: a choice
+-- per profile (the console's) and global (the rest) through profile switches,
+-- each profile's own choices coming back with it, and Reset profile.
+-- "profiles saved" loads one already layered, as every later login does.
+local profilesPass = args[2] == "profiles"
 local actionPage = 1
 local class = argClass or "PALADIN"
 
@@ -894,11 +900,24 @@ Settings = {
         return sub
     end,
     VarType = { Boolean = "boolean", Number = "number", String = "string" },
-    RegisterAddOnSetting = function(_, variable, key, tbl, kind, name, default)
-        local s = { variable = variable, key = key, tbl = tbl, kind = kind, name = name, default = default }
+    -- As Blizzard_Setting.lua's ProxySettingMixin: the default may be a
+    -- function, asked each time; ApplyValue writes only a changed value, then
+    -- always calls back; NotifyUpdate calls back with the value read again.
+    RegisterProxySetting = function(_, variable, kind, name, default, get, set)
+        local key = variable:match("^Medaluin_(.+)$")
+        local s = { variable = variable, key = key, kind = kind, name = name, get = get, set = set }
+        function s:Default() if type(default) == "function" then return default() end return default end
+        function s:Get() return self.get() end
         -- what the panel does when the player changes it
         function s:SetValueChangedCallback(fn) self.callback = fn end
-        function s:Set(v) self.tbl[self.key] = v; if self.callback then self.callback(self, v) end end
+        function s:Set(v)
+            if self.get() ~= v then self.set(v) end
+            if self.callback then self.callback(self, v) end
+        end
+        function s:NotifyUpdate()
+            self.notified = (self.notified or 0) + 1
+            if self.callback then self.callback(self, self.get()) end
+        end
         -- Medaluin's own controls go through the setting, so the page shows the change
         function s:SetValue(v) self.viaPage = (self.viaPage or 0) + 1; self:Set(v) end
         page.settings[key] = s
@@ -928,9 +947,15 @@ SettingsPanel = { GetLayout = function()
     return { AddInitializer = function(_, i) table.insert(page.buttons, i) end }
 end }
 function CreateSettingsButtonInitializer(_, text) return text end
+StaticPopupDialogs = {}
 SlashCmdList = {}
 function ReloadUI() end
-MedaluinDB = lightPass and { consoleProfile = "light", bareIcons = true, simParty = grouped }
+MedaluinDB = profilesPass and args[3] == "saved" and { consoleProfile = "light",
+        profiles = { default = { drawer = 2 }, light = { rows = 2 } }, global = { lootMoney = false } }
+    or profilesPass and { consoleProfile = "light", rows = 3, actionBar = true, bareIcons = true,
+        artColor = "ffffffff", drawer = 2, sideTab = "loot", bagsPoint = { "TOP", "TOP", 4, -8 },
+        bagsColumns = 12, retired = "kept" }
+    or lightPass and { consoleProfile = "light", bareIcons = true, simParty = grouped }
     or barOff and { actionBar = false } or savedRows and { rows = savedRows }
     or savedBare and { bareIcons = true } or savedNoChat and { chat = false }
     or savedBeam and { xpCast = true, repCast = true }
@@ -1104,7 +1129,7 @@ if barPass then
     for _, c in ipairs(page.controls) do
         local s, choices = c.setting, {}
         for _, o in ipairs(c.options or {}) do table.insert(choices, o.value .. "=" .. o.label) end
-        print(c.kind, s.name, s.variable, "saved=" .. tostring(s.tbl[s.key]), "default=" .. tostring(s.default),
+        print(c.kind, s.name, s.variable, "saved=" .. tostring(s:Get()), "default=" .. tostring(s:Default()),
             c.parent and ("child, live=" .. tostring(c.predicate())) or "top", table.concat(choices, "; "))
     end
     SlashCmdList.MEDALUIN()
@@ -2262,6 +2287,56 @@ if stripsPass then
     do return end
 end
 
+if profilesPass then
+    local S = page.settings
+    local heard = {}
+    for _, key in ipairs({ "rows", "bareIcons", "drawer", "lootMoney", "sideTab", "bagsPoint", "bagsColumns" }) do
+        ns.OnSetting(key, function(v) table.insert(heard, key .. "=" .. tostring(v)) end)
+    end
+    local function list(t)
+        local o = {}
+        for k, v in pairs(t) do
+            table.insert(o, k .. "=" .. (type(v) == "table" and table.concat(v, ",") or tostring(v)))
+        end
+        table.sort(o)
+        return table.concat(o, " ")
+    end
+    local function state(tag)
+        local n = {}
+        for k, s in pairs(S) do if s.notified then table.insert(n, k .. "x" .. s.notified); s.notified = nil end end
+        table.sort(n)
+        print("profiles " .. tag, "profile=" .. ns.db.consoleProfile, "rows=" .. tostring(ns.db.rows),
+            "bare=" .. tostring(ns.db.bareIcons), "drawer=" .. tostring(ns.db.drawer),
+            "lootMoney=" .. tostring(ns.db.lootMoney), "sideTab=" .. tostring(ns.db.sideTab),
+            "rowsDefault=" .. tostring(S.rows:Default()), "page.rows=" .. tostring(S.rows:Get()))
+        print("  default", list(MedaluinDB.profiles.default))
+        print("  light", list(MedaluinDB.profiles.light))
+        print("  global", list(MedaluinDB.global))
+        print("  top", "rows=" .. tostring(rawget(MedaluinDB, "rows")), "bareIcons=" .. tostring(rawget(MedaluinDB,
+            "bareIcons")), "retired=" .. tostring(MedaluinDB.retired))
+        print("  notified", table.concat(n, " "), "heard", table.concat(heard, " "))
+        heard = {}
+    end
+    state("migrated")
+    S.rows:Set(2)
+    S.lootMoney:Set(false)
+    state("rows 2 and no loot money on the page")
+    S.consoleProfile:Set("default")
+    state("switched to default")
+    ns.SetOption("drawer", 2)
+    ns.db.sideTab = "auras"
+    state("own controls on default")
+    S.consoleProfile:Set("light")
+    state("back to light")
+    S.rows:Set(3)
+    state("rows 3 = the profile's")
+    StaticPopupDialogs.MEDALUIN_RESET_PROFILE.OnAccept()
+    state("light reset")
+    S.consoleProfile:Set("default")
+    state("default again")
+    ns.ResetProfile()
+    state("default reset")
+end
 if lightPass then
     UIParent.fixed = { -648, -904, 1272, 176 }
     local function fire(e, ...)
@@ -2925,7 +3000,7 @@ if bagsPass then
         if st.key:match("^bags") then
             local choices = {}
             for _, o in ipairs(c.options or {}) do table.insert(choices, o.value .. "=" .. o.label) end
-            print("bags.page", c.kind, st.name, "default=" .. tostring(st.default),
+            print("bags.page", c.kind, st.name, "default=" .. tostring(st:Default()),
                 c.parent and ("child, live=" .. tostring(c.predicate())) or "top", table.concat(choices, "; "))
         end
     end

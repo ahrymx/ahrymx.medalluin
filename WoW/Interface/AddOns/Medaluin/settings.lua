@@ -1,5 +1,7 @@
 -- The addon's settings: saved per account in MedaluinDB, shown as a page in
--- the game's Options > AddOns, opened by /medaluin.
+-- the game's Options > AddOns, opened by /medaluin. Every option starts from
+-- the chosen console profile, and only the player's own choices are saved,
+-- on top of it: the console's per profile, the rest shared (see PROFILES below).
 --
 -- Two kinds of option. The Action bar and Rows options move Blizzard's
 -- secure buttons, which cannot be handed back mid-session, so they are read
@@ -74,9 +76,77 @@ ns.METER_METRICS = {
 -- Item qualities, as the loot log's least-quality option offers them.
 ns.LOOT_QUALITIES = { { 0, "Poor" }, { 1, "Common" }, { 2, "Uncommon" }, { 3, "Rare" }, { 4, "Epic" } }
 
--- Filled in from the saved table at ADDON_LOADED; defaults until then.
+-- The built-in profiles. Each is a look the console starts from: what it
+-- changes from DEFAULTS. The art the light profile draws is
+-- console/light_profile.lua; this is only what it means for the options.
+local PROFILES = {
+    default = {},
+    light = { rows = 3 },
+}
+ns.PROFILE_NAMES = {
+    { "default", "Medallion (default)", "The classic round medallion console with integrated party wings." },
+    { "light", "Central Console (light)", "Flush-top player/target wings, dynamic square minimap / 2x5 Bar 7 bay, "
+        .. "split Action Bars 2 & 3, and detached vertical party frames." },
+}
+
+-- The options are layered: DEFAULTS, then the chosen profile, then the
+-- player's own choices on top. Only a choice that differs from the profile
+-- is saved.
+--
+-- What shapes the console (the Action Bar, Unit Frames, Overhead and Cast
+-- Bars pages, and Bar 7's state macro) is remembered per profile, in
+-- MedaluinDB.profiles[name]: each profile keeps its own choices, so a switch
+-- brings back the ones made on the profile switched to. Everything else (the
+-- chat, the side panel, the bags, where windows were left, the party preview)
+-- has nothing to do with the console and is one set, MedaluinDB.global.
+-- Reset profile clears the current profile's choices and nothing else.
+local PER_PROFILE = {}
+for _, key in ipairs({
+    "actionBar", "rows", "bareIcons", "artColor", "visibility", "extraVisibility", "drawer", "bar7State",
+    "partyPets", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss",
+    "overhead", "topBoss", "topPet", "topFocus", "topToT", "topPetBar", "topStances",
+    "xpCast", "repCast",
+}) do PER_PROFILE[key] = true end
+ns.PER_PROFILE = PER_PROFILE
+
+local function Profile()
+    return MedaluinDB and PROFILES[MedaluinDB.consoleProfile] and MedaluinDB.consoleProfile or "default"
+end
+
+-- What an option is when the player has not chosen: the profile's, else DEFAULTS.
+local function Base(key)
+    local v = PROFILES[Profile()][key]
+    if v == nil then v = DEFAULTS[key] end
+    return v
+end
+
+-- Where the player's choice for an option is kept.
+local function Store(key)
+    if PER_PROFILE[key] then return MedaluinDB.profiles[Profile()] end
+    return MedaluinDB.global
+end
+
+-- ns.db reads through the layers and writes the player's choices; it holds
+-- nothing itself. Defaults only until ADDON_LOADED, before the saved table.
 ns.db = {}
 for k, v in pairs(DEFAULTS) do ns.db[k] = v end
+local layered = setmetatable({}, {
+    __index = function(_, key)
+        if key == "consoleProfile" then return Profile() end
+        local v = Store(key)[key]
+        if v == nil then v = Base(key) end
+        return v
+    end,
+    __newindex = function(_, key, value)
+        if key == "consoleProfile" then
+            MedaluinDB.consoleProfile = value
+        elseif value == Base(key) then
+            Store(key)[key] = nil
+        else
+            Store(key)[key] = value
+        end
+    end,
+})
 
 -- ns.OnSetting(key, fn): fn(value) whenever the player changes that option.
 local watchers = {}
@@ -98,8 +168,54 @@ function ns.SetOption(key, value)
     if s then
         s:SetValue(value)
     else
-        if MedaluinDB then MedaluinDB[key] = value end
         Changed(key, value)
+    end
+end
+
+-- Run change(), which moves layers under the options, then tell the page and
+-- the modules about every option whose value it moved. A page setting is told
+-- through NotifyUpdate, which redraws its control and calls back into Changed.
+local function Relayer(change)
+    local before = {}
+    for key in pairs(DEFAULTS) do before[key] = ns.db[key] end
+    change()
+    for key in pairs(DEFAULTS) do
+        local now = ns.db[key]
+        -- the profile's own setting reports itself, as any setting does
+        if now ~= before[key] and key ~= "consoleProfile" then
+            if registered[key] then registered[key]:NotifyUpdate() else Changed(key, now) end
+        end
+    end
+end
+
+-- Switching profile brings back that profile's own choices; the global
+-- options stay as they are.
+local function SwitchProfile(profile)
+    if not PROFILES[profile] or profile == Profile() then return end
+    Relayer(function() MedaluinDB.consoleProfile = profile end)
+end
+
+-- Reset profile: the current profile's options back to its own.
+function ns.ResetProfile()
+    Relayer(function() wipe(MedaluinDB.profiles[Profile()]) end)
+end
+
+-- A saved table from before profiles is flat, every option at the top with
+-- the defaults filled in. Its console options become the choices of the
+-- profile it was on (the other profile starts as it is drawn), the rest the
+-- global ones; only what differs from the profile is kept, and anything
+-- unknown is left where it is.
+local function Migrate()
+    local db = MedaluinDB
+    db.global = db.global or {}
+    db.profiles = db.profiles or {}
+    for name in pairs(PROFILES) do db.profiles[name] = db.profiles[name] or {} end
+    for key in pairs(DEFAULTS) do
+        local v = db[key]
+        if key ~= "consoleProfile" and v ~= nil then
+            if v ~= Base(key) then Store(key)[key] = v end
+            db[key] = nil
+        end
     end
 end
 
@@ -133,10 +249,15 @@ local function Page()
     local subSide = Subcategory(category, "Side panel")
     local subBags = Subcategory(category, "Bags")
 
+    -- A proxy, not an add-on setting: an add-on setting reads and writes one
+    -- flat table and fills it with its default, which would make every option
+    -- a choice. The default is the profile's, asked for each time, so the
+    -- page's Defaults button means the profile too.
     local function Setting(cat, key, kind, name)
-        local default = (key == "rows" and MedaluinDB.consoleProfile == "light") and 3 or DEFAULTS[key]
-        local s = Settings.RegisterAddOnSetting(cat, "Medaluin_" .. key, key, MedaluinDB, kind, name,
-            default)
+        local get, set = function() return ns.db[key] end, function(value) ns.db[key] = value end
+        if key == "consoleProfile" then set = SwitchProfile end
+        local s = Settings.RegisterProxySetting(cat, "Medaluin_" .. key, kind, name,
+            function() return Base(key) end, get, set)
         s:SetValueChangedCallback(function(_, value) Changed(key, value) end)
         registered[key] = s
         return s
@@ -150,11 +271,17 @@ local function Page()
     end
     local V, B, N, S = ns.VISIBILITY, Settings.VarType.Boolean, Settings.VarType.Number, Settings.VarType.String
 
+    -- The profile heads the root page: every other option starts from it.
+    Settings.CreateDropdown(category, Setting(category, "consoleProfile", S, "Console profile"),
+        Choices(ns.PROFILE_NAMES), "The console every option starts from. Each profile remembers your own "
+        .. "Action Bar, Unit Frames, Overhead and Cast Bars options; Chat, Side panel and Bags are shared by "
+        .. "all of them." .. RELOAD)
+
     -- Action Bar subcategory
     local bar = Settings.CreateCheckbox(subBar, Setting(subBar, "actionBar", B, "Action bar"),
         "Medaluin's bar on top of the console, holding action bar 1. Untick it to keep Blizzard's bars or "
         .. "use another action-bar addon." .. RELOAD)
-    local function BarOn() return MedaluinDB.actionBar end
+    local function BarOn() return ns.db.actionBar end
     local children = {
         Settings.CreateDropdown(subBar, Setting(subBar, "rows", N, "Rows"), Choices({
             { 1, "1 row", "Action bar 1." },
@@ -189,11 +316,6 @@ local function Page()
     for _, child in ipairs(children) do child:SetParentInitializer(bar, BarOn) end
 
     -- Unit Frames subcategory
-    Settings.CreateDropdown(subUnit, Setting(subUnit, "consoleProfile", S, "Console profile"), Choices({
-        { "default", "Medallion (default)", "The classic round medallion console with integrated party wings." },
-        { "light", "Central Console (light)", "Flush-top player/target wings, dynamic square minimap / 2x5 Bar 7 bay, "
-            .. "split Action Bars 2 & 3, and detached vertical party frames." },
-    }), "Choose between the default medallion console and the lightweight central console profile." .. RELOAD)
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "simParty", B, "Simulate party frames"),
         "Show the console's party frame layer and simulated party members to preview party frames while solo. "
             .. "A small panel on the left changes the situation: bosses, deaths, range, ready and role checks.")
@@ -220,7 +342,7 @@ local function Page()
     local ovh = Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "overhead", B, "Overhead console"),
         "Top-of-screen cascading trapezoid structure for boss frames, pet, focus, target of target, and action bars."
         .. RELOAD)
-    local function OverheadOn() return MedaluinDB.overhead end
+    local function OverheadOn() return ns.db.overhead end
     local overheadChildren = {
         Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topBoss", B, "Boss frames"),
             "Encounter boss frames on the top tier, dynamically dividing into 1, 2, or 3 columns."),
@@ -254,7 +376,7 @@ local function Page()
     local side = Settings.CreateCheckbox(subSide, Setting(subSide, "side", B, "Side panel"),
         "The chat panel's mirror on the right strip, over the stats, with an Auras tab, a Meter tab and a Loot tab. "
         .. "Untick it to keep the right corner clear, or to use a meter addon." .. RELOAD)
-    local function SideOn() return MedaluinDB.side end
+    local function SideOn() return ns.db.side end
     local metrics = {}
     for _, m in ipairs(ns.METER_METRICS) do table.insert(metrics, { m[1], m[2] }) end
     local qualities = {}
@@ -306,7 +428,7 @@ local function Page()
         "Your backpack, bags and reagent bag in one window, with a search, the game's sort and the items in "
         .. "groups if you like. The bank stays the game's. Untick it to keep the game's bags, or to use a "
         .. "bag addon." .. RELOAD)
-    local function BagsOn() return MedaluinDB.bags end
+    local function BagsOn() return ns.db.bags end
     local bagsChildren = {
         Settings.CreateDropdown(subBags, Setting(subBags, "bagsView", S, "Show"), Choices({
             { "grid", "Every slot", "Every slot, bag by bag, the reagent bag on rows of its own." },
@@ -328,6 +450,15 @@ local function Page()
         end
     end
 
+    if CreateSettingsButtonInitializer and SettingsPanel and SettingsPanel.GetLayout then
+        local layout = SettingsPanel:GetLayout(category)
+        if layout and layout.AddInitializer then
+            layout:AddInitializer(CreateSettingsButtonInitializer("", "Reset profile", function()
+                StaticPopup_Show("MEDALUIN_RESET_PROFILE")
+            end, "This profile's Action Bar, Unit Frames, Overhead and Cast Bars options back to its own. "
+                .. "Chat, Side panel and Bags are left as they are.", true))
+        end
+    end
     AddReload(category)
     if subBar ~= category then
         if CreateSettingsButtonInitializer and SettingsPanel and SettingsPanel.GetLayout then
@@ -369,23 +500,27 @@ local function Page()
         side = subSide, bags = subBags }
 end
 
+-- Only a key is added: assigning StaticPopupDialogs itself would taint it.
+StaticPopupDialogs.MEDALUIN_RESET_PROFILE = {
+    text = "Put this console profile's options back to its own?\n\n"
+        .. "Options that take effect after a reload need one.",
+    button1 = OKAY or "Okay",
+    button2 = CANCEL or "Cancel",
+    OnAccept = function() ns.ResetProfile() end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}
+
 ns.On("ADDON_LOADED", function(_, name)
     if name ~= addonName then return end
     MedaluinDB = MedaluinDB or {}
-    if MedaluinDB.consoleProfile == "light" and MedaluinDB.rows == nil then
-        MedaluinDB.rows = 3
-    end
-    for k, v in pairs(DEFAULTS) do
-        if MedaluinDB[k] == nil then MedaluinDB[k] = v end
-    end
-    ns.db = MedaluinDB
+    Migrate()
+    ns.db = layered
     if ns.db.consoleProfile == "light" and ns.ApplyLightProfile then
         ns.ApplyLightProfile()
     end
     Page()
-    ns.OnSetting("consoleProfile", function(profile)
-        ns.SetOption("rows", profile == "light" and 3 or 1)
-    end)
 end)
 
 SLASH_MEDALUIN1 = "/medaluin"

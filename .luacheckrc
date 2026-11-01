@@ -62,9 +62,10 @@ read_globals = {
     "RAID_CLASS_COLORS", "FACTION_BAR_COLORS", "PowerBarColor", "MAX_PLAYER_LEVEL",
     "PLAYER_OFFLINE", "DEAD", "LEVEL", "XP", "REPUTATION", "FAILED", "INTERRUPTED",
     "BAGSLOTTEXT", "NUM_BAG_SLOTS", "DURABILITY", "TIMEMANAGER_TITLE", "TIMEMANAGER_TOOLTIP_LOCALTIME",
-    "TIMEMANAGER_TOOLTIP_REALMTIME",
+    "TIMEMANAGER_TOOLTIP_REALMTIME", "OKAY", "CANCEL", "StaticPopup_Show",
     -- Lua extras WoW provides
     "wipe", "format", "unpack", "CopyTable",
 }
--- the saved variables and the slash command
-globals = { "_G", "MedaluinDB", "SLASH_MEDALUIN1", "SLASH_MEDALUIN2", "SLASH_MDLUI1", "SlashCmdList" }
+-- the saved variables, the slash command and the reset popup's key
+globals = { "_G", "MedaluinDB", "SLASH_MEDALUIN1", "SLASH_MEDALUIN2", "SLASH_MDLUI1", "SlashCmdList",
+    "StaticPopupDialogs" }
