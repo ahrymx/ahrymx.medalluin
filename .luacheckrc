@@ -37,7 +37,7 @@ read_globals = {
     "date", "LibStub", "C_Timer", "C_Spell", "GetSpellCharges", "C_PlayerInfo", "IsMounted",
     "QueueStatusButton", "QueueStatusMinimapButton", "MiniMapLFGFrame",
     -- the Edit Mode clients' API: secret values, curves, duration objects
-    "issecretvalue", "C_ActionBar", "C_CurveUtil", "CurveConstants", "Enum", "UnitHealthPercent",
+    "issecretvalue", "C_ActionBar", "C_CurveUtil", "CurveConstants", "Enum", "UnitHealthPercent", "UnitPowerPercent",
     "UnitCastingDuration", "UnitChannelDuration", "ActionButton_UpdateCooldownNumberHidden",
     -- the chat (strips/chat.lua) and the player's buffs (strips/buffs.lua)
     "ChatFrame1", "CHAT_FRAMES", "CHAT_FRAME_TEXTURES", "NUM_CHAT_WINDOWS", "GENERAL_CHAT_DOCK",

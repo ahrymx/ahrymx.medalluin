@@ -46,6 +46,25 @@ local function HealthPercent(unit, cur, max)
     return max > 0 and math.floor(cur / max * 100 + 0.5) or 0
 end
 
+local function PowerPercent(unit, cur, max)
+    if UnitPowerPercent and percentCurve then return UnitPowerPercent(unit, false, percentCurve) end
+    if ns.IsSecret(cur) or ns.IsSecret(max) then return nil end
+    return max > 0 and math.floor(cur / max * 100 + 0.5) or 0
+end
+
+local function FormatPower(cur)
+    if ns.IsSecret(cur) then return cur end
+    if cur >= 1e6 then
+        return (cur % 1e6 == 0) and string.format("%.0fm", cur / 1e6) or string.format("%.1fm", cur / 1e6)
+    elseif cur >= 1e4 then
+        return string.format("%.0fk", cur / 1e3)
+    elseif cur >= 1e3 then
+        return (cur % 1000 == 0) and string.format("%.0fk", cur / 1e3) or string.format("%.1fk", cur / 1e3)
+    else
+        return string.format("%d", math.floor(cur + 0.5))
+    end
+end
+
 local function UpdateHealth(self)
     local unit = self.unit
     local max = UnitHealthMax(unit)
@@ -71,9 +90,25 @@ local function UpdatePower(self)
     self.power:SetShown(ns.IsSecret(max) or max > 0)
     if not ns.IsSecret(max) and max <= 0 then max = 1 end
     self.power:SetMinMaxValues(0, max)
-    self.power:SetValue(UnitPower(unit))
+    local cur = UnitPower(unit)
+    self.power:SetValue(cur)
     local c = PowerBarColor[UnitPowerType(unit)] or PowerBarColor.MANA
     self.power:SetStatusBarColor(Muted(c.r, c.g, c.b))
+    if not self.powerValue then return end
+    if not UnitIsConnected(unit) or UnitIsDeadOrGhost(unit) or not self.power:IsShown() then
+        self.powerValue:SetText("")
+        return
+    end
+    if ns.IsSecret(cur) or ns.IsSecret(max) then
+        local pct = PowerPercent(unit, cur, max)
+        if pct then
+            self.powerValue:SetFormattedText("%s | %.0f%%", cur, pct)
+        else
+            self.powerValue:SetText(cur)
+        end
+    else
+        self.powerValue:SetFormattedText("%s | %d%%", FormatPower(cur), PowerPercent(unit, cur, max))
+    end
 end
 
 local function UpdateName(self)
@@ -88,13 +123,18 @@ local function UpdateAll(self)
     UpdatePower(self)
 end
 
+local function UpdateState(self)
+    UpdateHealth(self)
+    UpdatePower(self)
+end
+
 local unitEvents = {
     UNIT_HEALTH = UpdateHealth,
     UNIT_HEALTH_FREQUENT = UpdateHealth,
     UNIT_MAXHEALTH = UpdateHealth,
-    UNIT_CONNECTION = UpdateHealth,
+    UNIT_CONNECTION = UpdateState,
     UNIT_FACTION = UpdateHealth,
-    UNIT_FLAGS = UpdateHealth,
+    UNIT_FLAGS = UpdateState,
     UNIT_POWER_FREQUENT = UpdatePower,
     UNIT_POWER_UPDATE = UpdatePower,
     UNIT_MAXPOWER = UpdatePower,
@@ -156,6 +196,15 @@ local function Spawn(unit)
         b.value:SetPoint(inner, text, inner, side * style.valueInset, 0)
         b.name:SetPoint(inner, b.value, outer, side * 6, 0)
         b.name:SetJustifyH(outer)
+
+        local ptext = CreateFrame("Frame", nil, b.power)
+        ptext:SetAllPoints(b.power)
+        ptext:SetFrameLevel(ns.levels.text)
+        b.powerValue = ns.Text(ptext, style.powerSize)
+        b.powerValue:SetTextColor(unpack(C.dim))
+        b.powerValue:SetPoint("CENTER", ptext, "CENTER", 0, 0)
+        b.powerValue:SetJustifyH("CENTER")
+        b.powerValue:SetWordWrap(false)
     else
         b.name:SetPoint(inner, text, inner, side * style.textInset, 0)
         b.name:SetJustifyH(outer)

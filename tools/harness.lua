@@ -1317,8 +1317,8 @@ for unit, b in pairs(ns.units) do
     if UnitExists(unit) then
         out(unit .. ".health", b.health, string.format("fill=%s rev=%s text=%s", tostring(b.health.value),
             tostring(b.health.reverse), tostring(b.value and b.value.text)))
-        out(unit .. ".power", b.power, string.format("fill=%s shown=%s", tostring(b.power.value),
-            tostring(b.power.shown)))
+        out(unit .. ".power", b.power, string.format("fill=%s shown=%s text=%s", tostring(b.power.value),
+            tostring(b.power.shown), tostring(b.powerValue and b.powerValue.text)))
         print(string.format("%s.name\t%s", unit, tostring(b.name.text)))
     end
 end

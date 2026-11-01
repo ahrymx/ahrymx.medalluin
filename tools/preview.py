@@ -81,6 +81,14 @@ def draw(state, scale=3, tint=None):
             d.text(((r - 10) * scale, y), name, font=f, anchor="rm", fill=(242, 234, 210))
         else:
             d.text(((l + 10) * scale, y), name, font=f, anchor="lm", fill=(242, 234, 210))
+        if unit in ("player", "target") and unit + ".power" in rects:
+            (pl, pt, pr, pb), pextra = rects[unit + ".power"]
+            if "text=" in pextra:
+                ptext = pextra.split("text=")[1].strip()
+                if ptext and ptext != "nil" and ptext != "<secret>":
+                    f_pow = ImageFont.truetype(FONT, 10 * scale)
+                    d.text(((pl + pr) / 2 * scale, (pt + pb) / 2 * scale), ptext, font=f_pow,
+                           anchor="mm", fill=(178, 168, 140))
     return img
 
 
