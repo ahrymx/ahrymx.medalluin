@@ -1235,13 +1235,13 @@ if stripsPass then
         screen("ChatFrame2", ChatFrame2, art(ChatFrame2) .. " " .. tab(ChatFrame2))
         screen("ChatFrame3", ChatFrame3, art(ChatFrame3) .. " " .. tab(ChatFrame3))
         screen("editBox", ChatFrame1.editBox)
-        -- the toast in the column's corner of the tab row: inside the
-        -- panel, clear of the column's first button and the messages
+        -- the toast at the top of the button column: inside the
+        -- panel, clear of the messages
         local t, c, a, p = resolve(QuickJoinToastButton), resolve(ChatFrame1.buttonFrame), resolve(chat.area),
             resolve(chat.panel)
-        screen("friends", QuickJoinToastButton, string.format("inPanel=%s aboveColumn=%s leftOfArea=%s centred=%.1f",
-            tostring(t[1] >= p[1] and t[2] >= p[2]), tostring(t[4] <= c[2]), tostring(t[3] <= a[1] + 0.01),
-            (t[1] + t[3]) / 2 - (c[1] + c[3]) / 2))
+        screen("friends", QuickJoinToastButton, string.format("inPanel=%s inColumn=%s leftOfArea=%s centred=%.1f",
+            tostring(t[1] >= p[1] and t[2] >= p[2]), tostring(t[2] <= c[2] + 0.01 and t[4] <= c[4]),
+            tostring(t[3] <= a[1] + 0.01), (t[1] + t[3]) / 2 - (c[1] + c[3]) / 2))
     end
     if not chat then
         print("chat none")

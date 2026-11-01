@@ -83,15 +83,15 @@ local function Place()
 end
 
 -- The alert frame the friends toast stacks on: Blizzard's sits 27 above
--- the column (FloatingChatFrameAlertFrame.xml); ours on the column's top,
+-- the column (FloatingChatFrameAlertFrame.xml); ours at the column's top,
 -- the 32-wide toast centred on the 29-wide column, as the channel button
 -- under it is. Both are in the chat's scale.
-local ALERT_LIFT = 2
 local function PlaceAlerts()
     local column = ChatFrame1.buttonFrame
     placing = true
+    ChatAlertFrame:SetSize(32, 32)
     ChatAlertFrame:ClearAllPoints()
-    ChatAlertFrame:SetPoint("BOTTOMLEFT", column, "TOPLEFT", (column:GetWidth() - 32) / 2, ALERT_LIFT)
+    ChatAlertFrame:SetPoint("TOPLEFT", column, "TOPLEFT", (column:GetWidth() - 32) / 2, 0)
     placing = false
 end
 

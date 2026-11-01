@@ -320,7 +320,7 @@ CHAT_LEFT = MED_R * 2 + 16        # clear of the medallion and its shadow
 CHAT_W, CHAT_H = LENGTH - CHAT_LEFT, 180
 CHAT_PAD = 4
 CHAT_COLUMN = 29                  # Blizzard's button frame, in the left column
-CHAT_TOP = 36                     # the tab row above the messages
+CHAT_TOP = 0                      # tabs rest on top of the panel, not inside
 CHAT_RIGHT = 14                   # the scroll bar (8) and a margin
 CHAT_EDIT = 32                    # the edit box, over the messages' foot
 CHAT_R = 6                        # the top corners
@@ -328,16 +328,13 @@ TAB_W, TAB_H, TAB_CAP, TAB_TOP = 64, 32, 16, 8    # the tab's art: three slices,
 
 
 def chat_panel():
-    """The panel: translucent navy, a dark-gold rim on three sides, open at the
+    """The panel: translucent black fading from bottom to top, open at the
     foot, where the strip's own gold edge is its border."""
-    w, h, r = CHAT_W, CHAT_H, CHAT_R        # the foot meets the strip's gold edge, which overdraws it
-    d = (f"M0.5,{h} L0.5,{r + 0.5} Q0.5,0.5 {r + 0.5},0.5 L{w - r - 0.5},0.5 "
-         f"Q{w - 0.5},0.5 {w - 0.5},{r + 0.5} L{w - 0.5},{h}")
+    w, h = CHAT_W, CHAT_H
     return (f'<linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">'
-            f'<stop offset="0" stop-color="#2c3242" stop-opacity="0.62"/>'
-            f'<stop offset="1" stop-color="#1c202b" stop-opacity="0.80"/></linearGradient>'
-            f'<path d="{d} Z" fill="url(#panel)"/>'
-            f'<path d="{d}" fill="none" stroke="{GOLD_D}" stroke-width="1" opacity="0.7"/>')
+            f'<stop offset="0" stop-color="#000000" stop-opacity="0"/>'
+            f'<stop offset="1" stop-color="#000000" stop-opacity="0.80"/></linearGradient>'
+            f'<rect width="{w}" height="{h}" fill="url(#panel)"/>')
 
 
 def chat_tab(selected):
@@ -395,7 +392,7 @@ def chat_preview():
         img.paste(tab.crop((0, 0, cap, TAB_H)), (0, 0))
         img.paste(tab.crop((cap, 0, TAB_W - cap, TAB_H)).resize((tw - 2 * cap, TAB_H)), (cap, 0))
         img.paste(tab.crop((TAB_W - cap, 0, TAB_W, TAB_H)), (tw - cap, 0))
-        ty = top + CHAT_TOP - 3 - TAB_H
+        ty = top - TAB_H
         layer.alpha_composite(img, (x, ty))
         ImageDraw.Draw(layer).text((x + tw / 2, ty + 21), label, font=font, anchor="mm",
                                    fill=(255, 210, 0) if i == 0 else (200, 170, 80))
@@ -408,13 +405,13 @@ def chat_preview():
         d.text((mx, H - STRIP_H - 6 - 14 * (len(lines) - i)), s, font=font, fill=(242, 234, 210))
     # the button column's three Blizzard buttons, as boxes
     cx = CHAT_LEFT + CHAT_PAD + CHAT_COLUMN / 2
-    for y in (top + CHAT_TOP - 30, top + CHAT_TOP + 2, H - STRIP_H - 4 - 26):
+    for y in (top + 4, top + 34, H - STRIP_H - 4 - 26):
         d.rounded_rectangle((cx - 12, y, cx + 12, y + 24), 4, outline=(196, 165, 87), width=1)
     screen = Image.alpha_composite(base, layer)
     # the left strip over it, as in game
     strip = Image.open(os.path.join(ROOT, "assets", "layer3.png")).convert("RGBA")
     screen = Image.alpha_composite(screen, strip)
-    crop = screen.crop((0, top - 30, LENGTH + 60, H)).convert("RGB")
+    crop = screen.crop((0, top - 36, LENGTH + 60, H)).convert("RGB")
     crop = crop.resize((crop.width * 2, crop.height * 2), Image.LANCZOS)
     path = os.path.join(OUT, "chat.png")
     crop.save(path)
