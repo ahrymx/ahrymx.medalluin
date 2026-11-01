@@ -5,17 +5,20 @@
 --   bar 1         ActionButton1-12              Blizzard's own paging by default
 --   row 2         MultiBarBottomLeftButton1-12  page 6 (action bar 2) by default
 --   row 3         MultiBarBottomRightButton1-12 page 5 (action bar 3) by default
---   centre grid   MedaluinBar7Button1-10        the light profile's forms and stealth
+--   centre grid   MedaluinBar7Button1-10        the light profile's forms, stealth, flying
 --
 -- A page is 12 slots: page n holds actions (n - 1) * 12 + 1 to n * 12. Pages
--- 7 to 10 are the ones the game swaps bar 1 to for stances, forms and stealth.
+-- 7 to 10 are the ones the game swaps bar 1 to for stances, forms and stealth,
+-- and 11 the one it flies on (skyriding).
 --
 -- Blizzard's buttons read their page from an "actionpage" attribute, their
 -- own or else their parent's. Their bars kept it on the bar frame, which
 -- the buttons left when Medaluin took them, so each button now carries its
 -- own, set by a secure state header from the conditional, in combat too.
 -- Bar 1 left on Blizzard's paging carries none, and the game's own rules
--- (page arrows, stances, vehicles, override and possess bars) decide.
+-- (page arrows, stances, vehicles, override and possess bars) decide;
+-- except where there is a centre grid, which takes the skyriding page from
+-- it: there bar 1 carries Blizzard's rules written out, less that one.
 --
 -- The word "possess" in a conditional stands for whatever bar the game
 -- puts up instead of bar 1: a vehicle's, an override, a temporary
@@ -28,21 +31,29 @@ local MAIN = "[overridebar][vehicleui][possessbar][shapeshift] possess; [bonusba
     .. "[bar:2] 2; [bar:3] 3; [bar:4] 4; [bar:5] 5; [bar:6] 6; "
     .. "[bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10; 1"
 
+-- Bar 1 where the centre grid flies instead (the light profile): the same,
+-- without skyriding, so bar 1 keeps its page and the skyriding page shows
+-- on the grid alone (the user's call, 2026-11-01).
+local GROUNDED = MAIN:gsub("%[bonusbar:5%] 11; ", "")
+
 -- key: the option; base: the page it shows by default (nil: Blizzard's
 -- rules); default: the default's own conditional, where it has one.
 ns.PAGING_BARS = {
     { key = "bar1Paging", name = "Bar 1", base = nil,
       defaultLabel = "Blizzard's", defaultTip = "The game's own paging: the page arrows, stances, forms and "
-        .. "stealth, skyriding, vehicles and override bars." },
+        .. "stealth, skyriding, vehicles and override bars. With the centre grid (the light profile), "
+        .. "skyriding pages the grid instead, and bar 1 keeps its page." },
     { key = "row2Paging", name = "Row 2", base = 6,
       defaultLabel = "Action bar 2 (page 6)", defaultTip = "What Blizzard's action bar 2 shows." },
     { key = "row3Paging", name = "Row 3", base = 5,
       defaultLabel = "Action bar 3 (page 5)", defaultTip = "What Blizzard's action bar 3 shows." },
     { key = "gridPaging", name = "Centre grid", base = 7, grid = true,
-      defaultLabel = "Forms and stealth (pages 7-10)", defaultTip = "The light profile's: page 7, page 8 in "
-        .. "the first form or stance, 9 in the second and third, 10 in stealth." },
+      defaultLabel = "Forms, stealth and flying (pages 7-11)", defaultTip = "The light profile's: page 7, page 8 "
+        .. "in the first form or stance, 9 in the second and third, 10 in stealth, and 11 on a skyriding "
+        .. "mount, the page bar 1 flies on, so skyriding skills can go on the grid." },
 }
-local GRID_DEFAULT = "[bonusbar:1] 8; [form:1] 8; [form:2] 9; [form:3] 9; [stealth] 10; 7"
+-- Skyriding first, as on bar 1 (MAIN): a druid flying in a form flies.
+local GRID_DEFAULT = "[bonusbar:5] 11; [bonusbar:1] 8; [form:1] 8; [form:2] 9; [form:3] 9; [stealth] 10; 7"
 
 local function Stances(base)
     return "[bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10; " .. base
@@ -79,6 +90,7 @@ function ns.PagingConditional(key, choice, custom)
     if choice == "custom" and custom and custom:match("%S") then return custom end
     if choice == "stances" then return bar.base and Stances(bar.base) or MAIN end
     if bar.grid then return GRID_DEFAULT end
+    if not bar.base and ns.bar7 then return GROUNDED end
     return bar.base and tostring(bar.base) or nil
 end
 

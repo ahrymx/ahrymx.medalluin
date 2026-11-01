@@ -164,6 +164,8 @@ function Region:SetWidth(w) moved(); self.w = w end
 function Region:SetHeight(h) moved(); self.h = h end
 function Region:GetFrameLevel() return self.level end
 function Region:SetFrameLevel(l) self.level = l end
+function Region:SetID(id) self.idOf = id end
+function Region:GetID() return self.idOf end
 function Region:GetFrameStrata() return self.strata or "LOW" end
 function Region:SetFrameStrata(s) self.strata = s end
 function Region:SetParent(p) self.parent = p end
@@ -427,6 +429,7 @@ end
 -- Forever's bar divider (a three-slice of textures) exists only on an Edit
 -- Mode client; elsewhere it raises, as an unknown template does in WoW.
 local DIVIDER = "HorizontalDividerTemplate"
+harnessBarPage = 1      -- bar 1's page, where a button with no page of its own falls back to
 function CreateFrame(kind, name, parent, template)
     if template == DIVIDER and not modern then error("unknown template " .. template) end
     local f = new(kind, parent, name)
@@ -435,6 +438,23 @@ function CreateFrame(kind, name, parent, template)
         for _ = 1, 3 do new("Texture", f) end
     elseif template == "ActionBarButtonTemplate" then
         f.template, f.w, f.h = template, 36, 36
+        -- the game's CalculateAction (C, and Classic's Lua before it): a
+        -- button with an ID takes the page from its own "actionpage", else
+        -- its parent's (the template sets useparent-actionpage), else bar
+        -- 1's; its "action" attribute counts only at ID 0. UpdateAction runs
+        -- on every attribute change.
+        f.attrs["useparent-actionpage"] = true
+        function f:SetAttribute(k, v)
+            Region.SetAttribute(self, k, v)
+            local id = self:GetID() or 0
+            if id > 0 then
+                local page = self.attrs.actionpage or self.parent and self.parent.attrs.actionpage
+                    or harnessBarPage
+                self.action = (page - 1) * 12 + id
+            else
+                self.action = self.attrs.action
+            end
+        end
         f.icon = new("Texture", f, (name or "") .. "Icon")
         for _, part in ipairs({ "Count", "HotKey", "Name", "Border", "Flash" }) do
             f[part] = new("FontString", f, (name or "") .. part)
@@ -2713,6 +2733,35 @@ local function PagingPass()
         bars("grid page9")
         S.gridPaging:Set("default")
         bars("grid default")
+        -- the macro conditional as the game reads it: the first clause whose
+        -- every [condition] holds, or the bare fallback
+        local function pick(conditional, holds)
+            for clause in (conditional .. ";"):gmatch("%s*(.-)%s*;") do
+                local conds, value = clause:match("^(.*%])%s*(%S+)$")
+                if not conds then return clause end
+                local ok = true
+                for c in conds:gmatch("%[(.-)%]") do ok = ok and holds[c] or false end
+                if ok then return value end
+            end
+        end
+        local grid = ns.bar7Frame
+        local function gridRun(newstate)
+            local env = { self = grid, newstate = newstate, tonumber = tonumber }
+            setfenv(assert(loadstring(grid.attrs["_onstate-page"])), env)()
+            local b1, b10 = grid:GetFrameRef("btn1"), grid:GetFrameRef("btn10")
+            return string.format("slots %s-%s", tostring(b1.action), tostring(b10.action))
+        end
+        local driver = grid.stateDrivers.page
+        local bar1 = H.bar1Paging and H.bar1Paging.stateDrivers and H.bar1Paging.stateDrivers.page
+        print("paging bar1 with a grid", "driver=" .. tostring(bar1),
+            "skyriding=" .. tostring(bar1 and pick(bar1, { ["bonusbar:5"] = true })),
+            "cat=" .. tostring(bar1 and pick(bar1, { ["bonusbar:1"] = true })))
+        for _, case in ipairs({ { "standing", {} }, { "cat form", { ["bonusbar:1"] = true, ["form:1"] = true } },
+            { "stealth", { stealth = true } }, { "skyriding", { ["bonusbar:5"] = true } },
+            { "skyriding in a form", { ["bonusbar:5"] = true, ["form:3"] = true } } }) do
+            local page = pick(driver, case[2])
+            print("paging grid " .. case[1], "page=" .. tostring(page), gridRun(page))
+        end
     end
     -- per profile: the other profile has its own, and coming back brings these
     -- back; row 2 is Custom on both, so only its conditional moves
@@ -2771,6 +2820,28 @@ if lightPass then
         "bezelShown=" .. tostring(_G.MedaluinMinimapBezel.shown),
         "bar7Alpha=" .. tostring(ns.bar7Frame.alpha))
     out("minimap(explore)", Minimap)
+    -- Skyriding out of combat, no target: the grid comes out to fly on page
+    -- 11, as the game's own conditional says, and goes back on landing
+    local flight = ns.skyridingWatch
+    local function sky(tag, value)
+        flight.scripts.OnAttributeChanged(flight, "state-skyriding", value)
+        print("skyriding " .. tag, "driver=" .. tostring(flight.stateDrivers and flight.stateDrivers.skyriding),
+            "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"),
+            "minimapRelocated=" .. tostring(Minimap.points.CENTER[1] == _G.MedaluinMinimapBezel),
+            "bezelShown=" .. tostring(_G.MedaluinMinimapBezel.shown),
+            "bar7Alpha=" .. tostring(ns.bar7Frame.alpha))
+    end
+    sky("mounted", "on")
+    flight.scripts.OnAttributeChanged(flight, "state-page", "off")     -- another attribute: no answer
+    print("skyriding other attribute", "skyriding=" .. tostring(ns.skyriding),
+        "bar7Alpha=" .. tostring(ns.bar7Frame.alpha))
+    sky("landed", "off")
+    -- landing with a target keeps it out
+    hasTarget = true
+    sky("mounted, targeting", "on")
+    sky("landed, targeting", "off")
+    hasTarget = false
+    fire("PLAYER_TARGET_CHANGED")
     -- Enter combat without target -> combat mode: minimap moves to TOPRIGHT bezel, bar7 revealed
     inCombat = true
     fire("PLAYER_REGEN_DISABLED")
@@ -2784,6 +2855,13 @@ if lightPass then
     ns.SetBar7Page(8)
     print("bar7(page 8)", "slot1=" .. tostring(ns.bar7Buttons[1].action),
         "slot10=" .. tostring(ns.bar7Buttons[10].action))
+    -- in combat a protected button's attributes cannot change: the page
+    -- waits for the state driver, and the buttons keep theirs
+    inCombat = true
+    ns.SetBar7Page(9)
+    print("bar7(page 9 asked in combat)", "slot1=" .. tostring(ns.bar7Buttons[1].action),
+        "header page=" .. tostring(ns.bar7Frame.page))
+    inCombat = false
     fire("PLAYER_REGEN_ENABLED")
     -- Detached vertical party frames
     for i = 1, 4 do

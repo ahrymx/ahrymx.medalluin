@@ -110,10 +110,10 @@ threat:SetScript("OnEvent", UpdateTint)
 -- can swap in combat too; the party buttons themselves follow their units.
 -- In the "light" profile, party frames are detached vertically, and the
 -- console plate swaps between its exploration (minimap bay) and combat/target
--- (2x5 Bar 7 bay) textures.
+-- (2x5 Bar 7 bay) textures; skyriding counts as active (console/minimap.lua).
 UpdateGroup = function()
     if ns.art.exploreFile then
-        local active = fighting or (UnitExists and UnitExists("target"))
+        local active = fighting or (UnitExists and UnitExists("target")) or ns.skyriding
         local file = ns.media .. (active and ns.art.combatFile or ns.art.exploreFile)
         tex:SetTexture(file)
         tint:SetTexture(ns.media .. ns.art.tintFile)

@@ -39,7 +39,7 @@ ns.On("PLAYER_LOGIN", function()
             local w = 2 * rx + 2 * ns.layout.minimapBleed
             local h = rBottom - rTop
             local hasTarget = UnitExists and UnitExists("target") and true or false
-            local relocated = inCombat or hasTarget
+            local relocated = inCombat or hasTarget or ns.skyriding or false
             Minimap:ClearAllPoints()
             if relocated then
                 local trInner = mmCfg.topRightSize - 4
@@ -58,6 +58,18 @@ ns.On("PLAYER_LOGIN", function()
         ns.On("PLAYER_REGEN_DISABLED", function() inCombat = true; UpdateLocation() end)
         ns.On("PLAYER_REGEN_ENABLED", function() inCombat = false; UpdateLocation() end)
         ns.On("PLAYER_TARGET_CHANGED", UpdateLocation)
+        -- skyriding brings the grid out too: it flies on page 11
+        -- (bars/paging.lua), and its skills must be seen to be placed. The
+        -- game's own conditional decides, as it does the grid's page, so
+        -- the two cannot disagree; a state driver runs in combat too.
+        local flight = CreateFrame("Frame")
+        flight:SetScript("OnAttributeChanged", function(_, name, value)
+            if name ~= "state-skyriding" then return end
+            ns.skyriding = value == "on"
+            UpdateLocation()
+        end)
+        RegisterStateDriver(flight, "skyriding", "[bonusbar:5] on; off")
+        ns.skyridingWatch = flight
         ns.On("PLAYER_ENTERING_WORLD", function()
             inCombat = UnitAffectingCombat and UnitAffectingCombat("player") or false
             UpdateLocation()

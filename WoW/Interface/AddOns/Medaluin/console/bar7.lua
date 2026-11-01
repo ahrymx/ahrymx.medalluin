@@ -1,10 +1,11 @@
 -- The 2x5 WeakTextures center grid in the "light" console profile: 10 buttons
 -- mapped to Action Bar 7 (slots 73..82), with state-configurable paging across
--- Action Bars 8, 9, and 10 (slots 85..118) via RegisterStateDriver.
+-- Action Bars 8, 9, and 10 (slots 85..118) and the skyriding page 11 (121..130)
+-- via RegisterStateDriver.
 --
 -- Out of combat with no target, the square minimap occupies the center bay and
--- the grid's alpha is 0. In combat or with a target, the minimap relocates to
--- the top-right and the grid's alpha is 1.
+-- the grid's alpha is 0. In combat, with a target or skyriding, the minimap
+-- relocates to the top-right and the grid's alpha is 1 (console/minimap.lua).
 local _, ns = ...
 
 local console = ns.console
@@ -21,17 +22,16 @@ ns.On("PLAYER_LOGIN", function()
     local btns = {}
     ns.bar7Buttons = btns
 
+    -- A button of Blizzard's template with an ID reads its page, never its
+    -- "action": its own "actionpage", else its parent's, else bar 1's page.
+    -- So each button carries its own (as bars/paging.lua's rows do), and
+    -- the button works out its action, and redraws, from that; set an
+    -- "action" only and the grid shows whatever bar 1 shows.
     local function ApplyPage(page)
         page = tonumber(page) or cfg.basePage
         header.page = page
-        local base = (page - 1) * 12
-        for i, btn in ipairs(btns) do
-            local action = base + i
-            btn.action = action
-            if not InCombatLockdown() then
-                btn:SetAttribute("action", action)
-            end
-        end
+        if InCombatLockdown() then return end
+        for _, btn in ipairs(btns) do btn:SetAttribute("actionpage", page) end
     end
     ns.SetBar7Page = ApplyPage
 
@@ -66,10 +66,9 @@ ns.On("PLAYER_LOGIN", function()
     if header.SetAttribute then
         header:SetAttribute("_onstate-page", [=[
             local page = tonumber(newstate) or 7
-            local base = (page - 1) * 12
             for i = 1, 10 do
                 local btn = self:GetFrameRef("btn" .. i)
-                if btn then btn:SetAttribute("action", base + i) end
+                if btn then btn:SetAttribute("actionpage", page) end
             end
         ]=])
         if header.SetFrameRef then
@@ -81,7 +80,6 @@ ns.On("PLAYER_LOGIN", function()
         header:SetAlpha(relocated and 1 or 0)
     end
 
-    local inCombat = UnitAffectingCombat and UnitAffectingCombat("player") or false
-    local hasTarget = UnitExists and UnitExists("target") and true or false
-    ns.UpdateBar7Visibility(inCombat or hasTarget)
+    -- shown by console/minimap.lua's one rule (combat, a target, skyriding),
+    -- first at PLAYER_ENTERING_WORLD, which always follows login
 end)

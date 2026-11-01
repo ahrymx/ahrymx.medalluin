@@ -140,7 +140,7 @@ ns.lightProfile = {
     },
     bar7 = {
         basePage = 7,
-        stateDriver = "[bonusbar:1] 8; [form:1] 8; [form:2] 9; [form:3] 9; [stealth] 10; 7",
+        stateDriver = "[bonusbar:5] 11; [bonusbar:1] 8; [form:1] 8; [form:2] 9; [form:3] 9; [stealth] 10; 7",
         slots = {
             { -98, -62, -6, -42 },
             { -58, -22, -6, -42 },
