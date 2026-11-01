@@ -263,3 +263,100 @@ function ns.KeybindMode(on)
 end
 
 ns.On("PLAYER_REGEN_DISABLED", function() Stop() end)
+
+-- ------------------------------------------------------------ keys per profile
+-- Each profile's own keys on the action buttons (every command in BARS), as
+-- its skills are its own (bars/skills.lua): switching profile saves the keys
+-- of the one left and puts back the other's. Every other binding (movement,
+-- targeting, menus) is shared, so a key the other profile has given to one
+-- of those stays there. A profile with nothing saved takes the keys as they
+-- are, the first time.
+--
+-- Kept with the binding set in use: account bindings in MedaluinDB, a
+-- character's own in MedaluinCharDB. Account bindings are every character's,
+-- so at login the profile's keys are put back, as another character may
+-- have left the other profile's. Bindings change only out of combat.
+local function Managed()
+    local list = {}
+    for _, bar in ipairs(BARS) do
+        for i = 1, bar[4] do
+            if bar[2] then
+                table.insert(list, bar[2] .. i)
+            elseif _G[bar[1] .. i] then
+                table.insert(list, "CLICK " .. bar[1] .. i .. ":LeftButton")
+            end
+        end
+    end
+    return list
+end
+
+local function KeySets()
+    local account = GetCurrentBindingSet and GetCurrentBindingSet() == 1
+    local db = account and MedaluinDB or MedaluinCharDB
+    if not db then return end
+    db.keys = db.keys or {}
+    return db.keys
+end
+
+local function SnapshotKeys(profile)
+    local sets = KeySets()
+    if not sets then return end
+    local saved = {}
+    for _, command in ipairs(Managed()) do
+        local keys = Keys(command)
+        if #keys > 0 then saved[command] = keys end
+    end
+    sets[profile] = saved
+end
+
+local function Has(list, key)
+    for _, k in ipairs(list or {}) do if k == key then return true end end
+end
+
+local function RestoreKeys(profile)
+    local sets = KeySets()
+    local saved = sets and sets[profile]
+    if not saved then return end   -- the first time: the keys as they are
+    local commands, ours, changed = Managed(), {}, false
+    for _, command in ipairs(commands) do ours[command] = true end
+    -- off: every key on an action button the profile has elsewhere, or not at all
+    for _, command in ipairs(commands) do
+        for _, key in ipairs(Keys(command)) do
+            if not Has(saved[command], key) then
+                SetBinding(key)
+                changed = true
+            end
+        end
+    end
+    -- on: the profile's keys, in their order, unless another binding holds one
+    for _, command in ipairs(commands) do
+        for _, key in ipairs(saved[command] or {}) do
+            local now = GetBindingAction(key)
+            if now ~= command and (not now or now == "" or ours[now]) then
+                SetBinding(key, command)
+                changed = true
+            end
+        end
+    end
+    if changed then Save() end
+end
+
+-- Called by the profile switch (settings.lua) before the profile changes;
+-- as the skills do, a switch in combat waits for it to end.
+local keysWaiting
+function ns.SwitchKeys(from, to)
+    if InCombatLockdown() then keysWaiting = keysWaiting or from end
+    ns.OutOfCombat(function()
+        keysWaiting = nil
+        Stop()
+        SnapshotKeys(from)
+        RestoreKeys(to)
+    end)
+end
+
+ns.On("PLAYER_LOGIN", function()
+    ns.OutOfCombat(function() RestoreKeys(ns.db.consoleProfile) end)
+end)
+ns.On("PLAYER_LOGOUT", function()
+    if ns.db and ns.db.consoleProfile then SnapshotKeys(keysWaiting or ns.db.consoleProfile) end
+end)

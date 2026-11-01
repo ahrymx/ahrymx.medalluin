@@ -201,6 +201,10 @@ end
 -- options stay as they are.
 local function SwitchProfile(profile)
     if not PROFILES[profile] or profile == Profile() then return end
+    -- and its own skills on the bars (bars/skills.lua), and keys on them
+    -- (keybind.lua)
+    if ns.SwitchSkills then ns.SwitchSkills(Profile(), profile) end
+    if ns.SwitchKeys then ns.SwitchKeys(Profile(), profile) end
     Relayer(function() MedaluinDB.consoleProfile = profile end)
 end
 

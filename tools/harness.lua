@@ -604,7 +604,7 @@ function GetComboPoints() return 3 end
 local now = 100
 function GetTime() return now end
 -- the game's bindings, key -> command: the number keys on action bar 1
-local bindings, bindingSaves = {}, {}
+bindings, bindingSaves = {}, {}
 for i = 1, 12 do bindings[tostring(i)] = "ACTIONBUTTON" .. i end
 -- a key bound to the centre grid's old buttons, before it took Action bar 7's
 bindings.G = "CLICK MedaluinBar7Button3:LeftButton"
@@ -619,7 +619,9 @@ function SetBinding(key, command)
     bindings[key] = command
     return true
 end
-function GetCurrentBindingSet() return 2 end
+function GetBindingAction(key) return bindings[key] or "" end
+bindingSet = 2
+function GetCurrentBindingSet() return bindingSet end
 function SaveBindings(set) table.insert(bindingSaves, set) end
 function GetBindingText(key) return key end
 local modsDown = {}
@@ -1135,6 +1137,32 @@ for _, kind in ipairs({ "Checkbox", "Dropdown", "ColorSwatch" }) do
 end
 local cursor
 function GetCursorInfo() return cursor end
+-- The action slots and what can go in them (bars/skills.lua): a slot holds
+-- { type, id }; the cursor holds what a pickup took. Spells known, items in
+-- the bags and macros are the "skills" pass's to change.
+actionSlots, known, inBags, macros = {}, { [133] = true, [116] = true, [2136] = true, [122] = true }, { [6948] = true },
+    { "Heal", "Focus" }
+function GetActionInfo(slot)
+    local a = actionSlots[slot]
+    if a then return a[1], a[1] == "macro" and 7 or a[2] end
+end
+function GetActionText(slot)
+    local a = actionSlots[slot]
+    return a and a[1] == "macro" and a[2] or nil
+end
+function PickupAction(slot) cursor, actionSlots[slot] = actionSlots[slot], nil end
+function PlaceAction(slot)
+    if type(cursor) ~= "table" then return end
+    cursor, actionSlots[slot] = actionSlots[slot], cursor
+end
+function ClearCursor() cursor = nil end
+function GetMacroIndexByName(name)
+    for i, m in ipairs(macros) do if m == name then return i end end
+    return 0
+end
+function PickupMacro(i) cursor = { "macro", macros[i] } end
+C_Item = C_Item or {}
+C_Item.PickupItem = function(id) if inBags[id] then cursor = { "item", id } end end
 -- a page's rows in order: settings by name, [buttons], # headings
 SettingsPanel = { GetLayout = function(_, cat)
     return { AddInitializer = function(_, i)
@@ -2630,6 +2658,115 @@ if profilesPass then
     state("default again")
     ns.ResetProfile()
     state("default reset")
+end
+-- ------------------------------------------------------------ skills per profile
+-- "skills" plays each profile's own action slots (bars/skills.lua): the first
+-- switch keeping the bars, the second bringing the first profile's back, a
+-- switch in combat waiting, a skill that cannot come back (an item no longer
+-- in the bags, a macro removed) and kept, logout, Reset profile, and a spec
+-- of its own.
+if args[2] == "skills" then
+    C_Spell.PickupSpell = function(id) if known[id] then cursor = { "spell", id } end end
+    local S = page.settings
+    local function bars()
+        local o = {}
+        for slot = 1, 180 do
+            local a = actionSlots[slot]
+            if a then table.insert(o, slot .. "=" .. a[1]:sub(1, 1) .. ":" .. tostring(a[2])) end
+        end
+        return table.concat(o, " ")
+    end
+    local function saved(profile, spec)
+        local t = MedaluinCharDB.layouts[profile] and MedaluinCharDB.layouts[profile][spec or "1"]
+        if not t then return "none" end
+        local o = {}
+        for slot = 1, 180 do
+            if t[slot] then table.insert(o, slot .. "=" .. t[slot][1]:sub(1, 1) .. ":" .. tostring(t[slot][2])) end
+        end
+        return table.concat(o, " ")
+    end
+    local function state(tag)
+        print("skills " .. tag, "profile=" .. ns.db.consoleProfile, "cursor=" .. tostring(cursor))
+        print("  bars", bars())
+        print("  saved default", saved("default"), "light", saved("light"))
+        local keys = {}
+        for k, c in pairs(bindings) do
+            table.insert(keys, k .. "=" .. c:gsub("ACTIONBUTTON", "A"):gsub("MULTIACTIONBAR(%d)BUTTON", "M%1-"))
+        end
+        table.sort(keys)
+        print("  keys", table.concat(keys, " "), "saves=" .. #bindingSaves)
+    end
+    local function keySets(db)
+        local o = {}
+        for profile, set in pairs(db.keys or {}) do
+            local n = 0
+            for _ in pairs(set) do n = n + 1 end
+            table.insert(o, profile .. ":" .. n .. (set.ACTIONBUTTON1 and ("(A1=" .. table.concat(set.ACTIONBUTTON1, ",")
+                .. ")") or ""))
+        end
+        table.sort(o)
+        return table.concat(o, " ")
+    end
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    -- the medallion's bars: two spells, a macro, an item, and a skyriding slot
+    actionSlots = { [1] = { "spell", 133 }, [2] = { "spell", 116 }, [3] = { "macro", "Heal" },
+        [4] = { "item", 6948 }, [121] = { "spell", 372608 }, [181] = { "spell", 999 } }
+    state("login")
+    S.consoleProfile:Set("light")
+    state("first switch: the bars as they are")
+    -- light's own keys: Q too on button 1, 2 off, 3 to bar 2, 4 to the map
+    -- (no action button: shared by both profiles)
+    SetBinding("Q", "ACTIONBUTTON1")
+    SetBinding("2")
+    SetBinding("3", "MULTIACTIONBAR1BUTTON1")
+    SetBinding("4", "TOGGLEWORLDMAP")
+    actionSlots[1], actionSlots[3], actionSlots[4] = { "spell", 2136 }, nil, { "spell", 116 }
+    actionSlots[12] = { "macro", "Focus" }
+    actionSlots[100] = { "item", 6948 }
+    state("light's own bars")
+    S.consoleProfile:Set("default")
+    state("back to default")
+    S.consoleProfile:Set("light")
+    state("light again")
+    inCombat = true
+    S.consoleProfile:Set("default")
+    state("default in combat: waits")
+    S.consoleProfile:Set("light")
+    S.consoleProfile:Set("default")
+    fire("PLAYER_LOGOUT")
+    state("logout with two more waiting")
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    state("combat over")
+    inBags[6948], macros[1] = nil, "Renamed"
+    S.consoleProfile:Set("light")
+    S.consoleProfile:Set("default")
+    state("hearthstone gone, Heal renamed: kept for default")
+    actionSlots[4] = { "spell", 122 }
+    S.consoleProfile:Set("light")
+    state("slot 4 used on default: the hearthstone gone from it")
+    StaticPopupDialogs.MEDALUIN_RESET_PROFILE.OnAccept()
+    state("light reset: the bars stay")
+    fire("PLAYER_LOGOUT")
+    state("logout")
+    GetSpecialization = function() return 2 end
+    S.consoleProfile:Set("default")
+    state("other spec: its first switch")
+    print("  saved on spec 2", "light", saved("light", "2"), "default", saved("default", "2"))
+    print("  key sets", "character", keySets(MedaluinCharDB), "account", keySets(MedaluinDB))
+    -- account bindings: kept account-wide, and put back at login, where
+    -- another character left the other profile's
+    bindingSet = 1
+    S.consoleProfile:Set("light")
+    state("account bindings: the first switch keeps the keys")
+    SetBinding("E", "ACTIONBUTTON1")
+    S.consoleProfile:Set("default")
+    print("  key sets", "character", keySets(MedaluinCharDB), "account", keySets(MedaluinDB))
+    MedaluinDB.keys.default.ACTIONBUTTON2 = { "Z" }   -- another character's default
+    fire("PLAYER_LOGIN")
+    state("login: the account's default keys")
 end
 -- ------------------------------------------------------------ key binding
 local function KeybindPass()

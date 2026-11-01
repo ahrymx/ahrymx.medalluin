@@ -4,6 +4,7 @@
 ## Author: ahrymx
 ## Version: 0.1.0
 ## SavedVariables: MedaluinDB
+## SavedVariablesPerCharacter: MedaluinCharDB
 
 core.lua
 settings.lua
@@ -32,6 +33,7 @@ bars\paging.lua
 bars\power.lua
 bars\cast.lua
 bars\drawer.lua
+bars\skills.lua
 
 strips\windows.lua
 strips\frame.lua

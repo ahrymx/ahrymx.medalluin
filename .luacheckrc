@@ -61,7 +61,7 @@ read_globals = {
     -- paging (bars/paging.lua)
     "SAVE",
     -- key binding on hover (keybind.lua)
-    "GetBindingKey", "GetBindingText", "SetBinding", "SaveBindings", "GetCurrentBindingSet",
+    "GetBindingKey", "GetBindingAction", "GetBindingText", "SetBinding", "SaveBindings", "GetCurrentBindingSet",
     "GetConvertedKeyOrButton", "IsKeyPressIgnoredForBinding", "CreateKeyChordStringUsingMetaKeyState",
     "IsAltKeyDown", "IsControlKeyDown", "IsShiftKeyDown", "HideUIPanel", "DONE",
     "Settings", "SettingsPanel", "CreateSettingsButtonInitializer", "CreateSettingsListSectionHeaderInitializer",
@@ -73,7 +73,12 @@ read_globals = {
     "TIMEMANAGER_TOOLTIP_REALMTIME", "OKAY", "CANCEL", "StaticPopup_Show",
     -- Lua extras WoW provides
     "wipe", "format", "unpack", "CopyTable",
+    -- the action slots (bars/skills.lua)
+    "GetActionInfo", "GetActionText", "GetMacroInfo", "GetMacroIndexByName", "PickupMacro", "PickupAction",
+    "PlaceAction", "ClearCursor", "GetCursorInfo", "PickupSpell", "PickupItem", "C_Item", "C_MountJournal",
+    "C_PetJournal", "C_SpellBook", "C_EquipmentSet", "C_SpecializationInfo", "GetSpecialization",
+    "GetActiveTalentGroup", "Enum",
 }
 -- the saved variables, the slash command and the reset popup's key
-globals = { "_G", "MedaluinDB", "SLASH_MEDALUIN1", "SLASH_MEDALUIN2", "SLASH_MDLUI1", "SlashCmdList",
+globals = { "_G", "MedaluinDB", "MedaluinCharDB", "SLASH_MEDALUIN1", "SLASH_MEDALUIN2", "SLASH_MDLUI1", "SlashCmdList",
     "StaticPopupDialogs" }
