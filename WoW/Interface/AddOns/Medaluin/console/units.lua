@@ -407,44 +407,53 @@ local function SpawnPet(parentBtn, unit, side)
     pet.unit = unit
     pet.owner = parentBtn.unit
     pet:SetFrameLevel(ns.levels.text + 2)
-    pet:SetHeight(12)
-    pet:SetPoint("TOPLEFT", parentBtn, "BOTTOMLEFT", 2, -10)
-    pet:SetPoint("TOPRIGHT", parentBtn, "BOTTOMRIGHT", -2, -10)
+    pet:SetHeight(18)
+    pet:SetPoint("TOPLEFT", parentBtn, "BOTTOMLEFT", 0, -8)
+    pet:SetPoint("TOPRIGHT", parentBtn, "BOTTOMRIGHT", 0, -8)
 
     pet:SetAttribute("unit", unit)
     pet:SetAttribute("*type1", "target")
     pet:SetAttribute("*type2", "togglemenu")
     pet:RegisterForClicks("AnyUp")
 
-    local rim = pet:CreateTexture(nil, "BACKGROUND")
-    rim:SetPoint("TOPLEFT", -1, 1)
-    rim:SetPoint("BOTTOMRIGHT", 1, -1)
-    rim:SetColorTexture(0.25, 0.23, 0.20, 0.85)
+    -- Melded stone trapezoid bracket texture
+    local bracket = pet:CreateTexture(nil, "BORDER")
+    bracket:SetAllPoints()
+    bracket:SetTexture(ns.media .. "pet-bracket")
+    local u1, u2 = 0, 129 / 256
+    if side == -1 then u1, u2 = u2, u1 end
+    bracket:SetTexCoord(u1, u2, 0, 18 / 32)
+    pet.bracket = bracket
 
-    local bg = pet:CreateTexture(nil, "BACKGROUND", nil, 1)
-    bg:SetAllPoints()
-    bg:SetColorTexture(unpack(ns.colors.ink))
-
+    -- Health bar status bar inset inside the trapezoid window cutout (x=14..115, y=3..15)
     local bar = CreateFrame("StatusBar", nil, pet)
-    bar:SetAllPoints()
+    bar:SetPoint("TOPLEFT", pet, "TOPLEFT", 14, -3)
+    bar:SetPoint("BOTTOMRIGHT", pet, "BOTTOMRIGHT", -14, 3)
     bar:SetStatusBarTexture(ns.bar)
     bar:SetReverseFill(side == 1)
     pet.health = bar
 
+    -- Ink backing behind health bar
+    local bg = pet:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(bar)
+    bg:SetColorTexture(unpack(ns.colors.ink))
+    pet.bg = bg
+
+    -- Text overlay
     local text = CreateFrame("Frame", nil, pet)
-    text:SetAllPoints(pet)
+    text:SetAllPoints(bar)
     text:SetFrameLevel(pet:GetFrameLevel() + 2)
 
     local outer = side == 1 and "RIGHT" or "LEFT"
     local inner = side == 1 and "LEFT" or "RIGHT"
 
     pet.name = ns.Text(text, 9)
-    pet.name:SetPoint(outer, text, outer, -side * 3, 0)
+    pet.name:SetPoint(outer, text, outer, -side * 4, 0)
     pet.name:SetWordWrap(false)
     pet.name:SetTextColor(unpack(C.text))
 
     pet.value = ns.Text(text, 9)
-    pet.value:SetPoint(inner, text, inner, side * 3, 0)
+    pet.value:SetPoint(inner, text, inner, side * 4, 0)
     pet.value:SetWordWrap(false)
     pet.value:SetTextColor(unpack(C.dim))
 
