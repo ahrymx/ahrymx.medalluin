@@ -45,3 +45,25 @@ ns.On("PLAYER_LOGIN", function()
         ns.Kill(SecondaryStatusTrackingBarContainer)
     end)
 end)
+
+-- Blizzard's buff and debuff rows (top right), hidden unless the Unit Frames
+-- page's option asks for them: the console's own auras (the portrait's
+-- column, the side panel's Auras tab) show the same. Hidden by the hidden
+-- parent, not by Hide(): Edit Mode shows them again whenever it updates
+-- (AuraFrameEditModeMixin:UpdateShownState). Not Park: they must come
+-- back to UIParent when the option is turned on. Classic Era keeps its
+-- weapon enchants in a frame of their own.
+local AURA_ROWS = { "BuffFrame", "DebuffFrame", "TemporaryEnchantFrame" }
+local function BlizzardAuras(show)
+    ns.OutOfCombat(function()
+        for _, name in ipairs(AURA_ROWS) do
+            local frame = _G[name]
+            if frame then frame:SetParent(show and UIParent or ns.hidden) end
+        end
+    end)
+end
+-- left alone at login when shown: they are where Blizzard put them
+ns.On("PLAYER_LOGIN", function()
+    if not ns.db.blizzardAuras then BlizzardAuras(false) end
+end)
+ns.OnSetting("blizzardAuras", BlizzardAuras)

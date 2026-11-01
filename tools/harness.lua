@@ -368,6 +368,8 @@ MinimapButton(nil, 12)
 MinimapCluster = new("Frame", UIParent, "MinimapCluster")
 GameTooltip = new("Frame", UIParent, "GameTooltip")
 PlayerFrame, TargetFrame = new("Frame", UIParent), new("Frame", UIParent)
+-- Blizzard's buff and debuff rows, top right (Forever and retail)
+BuffFrame, DebuffFrame = new("Frame", UIParent, "BuffFrame"), new("Frame", UIParent, "DebuffFrame")
 MainMenuBar = new("Frame", UIParent, "MainMenuBar")
 
 -- Blizzard's action buttons, with the parts bars/buttons.lua restyles.
@@ -2280,6 +2282,23 @@ if stripsPass then
     end
     screen("stripLeft", ns.strips[-1])
     screen("stripRight", ns.strips[1])
+    -- Blizzard's buff and debuff rows: out of sight by default, back on
+    -- UIParent with the option, and a change in combat waits for its end
+    local function rows(tag)
+        local function where(f) return f.parent == UIParent and "UIParent" or f.parent == ns.hidden and "hidden"
+            or tostring(f.parent) end
+        print("blizzard auras " .. tag, "option=" .. tostring(ns.db.blizzardAuras),
+            "buffs=" .. where(BuffFrame), "debuffs=" .. where(DebuffFrame))
+    end
+    rows("at login")
+    page.settings.blizzardAuras:Set(true)
+    rows("on")
+    inCombat = true
+    page.settings.blizzardAuras:Set(false)
+    rows("off in combat")
+    inCombat = false
+    for _, f in ipairs(events.PLAYER_REGEN_ENABLED or {}) do f.scripts.OnEvent(f, "PLAYER_REGEN_ENABLED") end
+    rows("after combat")
     if modern then
         -- Blizzard's own passes, after login: they must not undo the strips
         BagsBar.layoutAtLoad(BagsBar)

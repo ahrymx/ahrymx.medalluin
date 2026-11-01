@@ -55,6 +55,7 @@ local DEFAULTS = {
     auraCC = true,          -- large center icon for crowd control
     auraBuffs = true,       -- row of player-cast buffs on outer health corner
     auraBoss = true,        -- boss debuffs on inner health corner
+    blizzardAuras = false,  -- Blizzard's own buff and debuff rows, top right (blizzard.lua)
     consoleProfile = "default", -- "default": medallion console; "light": central console with square minimap & bar 7
     -- which page each bar shows (bars/paging.lua): "default", "stances", "page1".."page10" or
     -- "custom", with the custom conditional beside it
@@ -413,6 +414,9 @@ local function Page()
         "Show a compact row of your own buffs and HoTs on the outer corner of the health bar.")
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraBoss", B, "Boss debuffs"),
         "Show critical boss debuffs on the inner corner of the health bar, away from the power bar.")
+    Settings.CreateCheckbox(subUnit, Setting(subUnit, "blizzardAuras", B, "Blizzard's buff and debuff rows"),
+        "Show Blizzard's own rows of buffs and debuffs at the top right of the screen. Off, Medaluin's "
+        .. "auras stand in for them: the column over the portrait and the side panel's Auras tab.")
 
     -- Overhead subcategory
     local ovh = Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "overhead", B, "Overhead console"),
