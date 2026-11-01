@@ -66,6 +66,17 @@ local function FormatPower(cur)
 end
 
 local function UpdateHealth(self)
+    local stub = self.stub
+    if stub then
+        self.health:SetMinMaxValues(0, stub.maxHealth)
+        self.health:SetValue(stub.health)
+        local c = RAID_CLASS_COLORS[stub.class]
+        if c then self.health:SetStatusBarColor(Muted(c.r, c.g, c.b)) end
+        if self.value then
+            self.value:SetFormattedText("%.0f%%", math.floor(stub.health / stub.maxHealth * 100 + 0.5))
+        end
+        return
+    end
     local unit = self.unit
     local max = UnitHealthMax(unit)
     local cur = UnitHealth(unit)
@@ -84,6 +95,19 @@ local function UpdateHealth(self)
 end
 
 local function UpdatePower(self)
+    local stub = self.stub
+    if stub then
+        self.power:SetShown(true)
+        self.power:SetMinMaxValues(0, stub.maxPower)
+        self.power:SetValue(stub.power)
+        local c = PowerBarColor[stub.powerType] or PowerBarColor.MANA
+        if c then self.power:SetStatusBarColor(Muted(c.r, c.g, c.b)) end
+        if self.powerValue then
+            self.powerValue:SetFormattedText("%s | %d%%", FormatPower(stub.power),
+                math.floor(stub.power / stub.maxPower * 100 + 0.5))
+        end
+        return
+    end
     local unit = self.unit
     local max = UnitPowerMax(unit)
     -- a unit with no power of this type shows no bar; a secret max is shown
@@ -112,15 +136,55 @@ local function UpdatePower(self)
 end
 
 local function UpdateName(self)
+    if self.stub then
+        self.name:SetText(self.stub.name)
+        return
+    end
     -- a secret name still displays
     self.name:SetText(ns.Or(UnitName(self.unit), ""))
 end
 
 local function UpdateAll(self)
-    if not UnitExists(self.unit) then return end
+    if not UnitExists(self.unit) and not self.stub then return end
     UpdateName(self)
     UpdateHealth(self)
     UpdatePower(self)
+end
+
+local STUBS = {
+    party1 = { name = "Party 1", class = "PRIEST", powerType = 0, health = 85, maxHealth = 100,
+        power = 80, maxPower = 100 },
+    party2 = { name = "Party 2", class = "MAGE", powerType = 0, health = 92, maxHealth = 100,
+        power = 100, maxPower = 100 },
+    party3 = { name = "Party 3", class = "WARRIOR", powerType = 1, health = 78, maxHealth = 100,
+        power = 45, maxPower = 100 },
+    party4 = { name = "Party 4", class = "ROGUE", powerType = 3, health = 88, maxHealth = 100,
+        power = 70, maxPower = 100 },
+}
+
+local function UpdatePartyUnit(b)
+    local unit = b.unit
+    local sim = ns.db and ns.db.simParty
+    if UnitExists(unit) then
+        b.stub = nil
+        ns.OutOfCombat(function()
+            RegisterUnitWatch(b)
+        end)
+        UpdateAll(b)
+    elseif sim then
+        b.stub = STUBS[unit]
+        ns.OutOfCombat(function()
+            if UnregisterUnitWatch then UnregisterUnitWatch(b) end
+            if not b:IsShown() then b:Show() end
+        end)
+        UpdateAll(b)
+    else
+        b.stub = nil
+        ns.OutOfCombat(function()
+            RegisterUnitWatch(b)
+            if b:IsShown() then b:Hide() end
+        end)
+    end
 end
 
 local function UpdateState(self)
@@ -162,10 +226,23 @@ local function Spawn(unit)
     b:SetAttribute("*type1", "target")
     b:SetAttribute("*type2", "togglemenu")
     b:RegisterForClicks("AnyUp")
-    if UnitFrame_OnEnter then
-        b:SetScript("OnEnter", UnitFrame_OnEnter)
-        b:SetScript("OnLeave", UnitFrame_OnLeave)
-    end
+    b:SetScript("OnEnter", function(self)
+        if self.stub and not UnitExists(self.unit) then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(self.stub.name, 1, 1, 1)
+            GameTooltip:AddLine("Simulated party member", 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+        elseif UnitFrame_OnEnter then
+            UnitFrame_OnEnter(self)
+        end
+    end)
+    b:SetScript("OnLeave", function(self)
+        if self.stub and not UnitExists(self.unit) then
+            GameTooltip_Hide()
+        elseif UnitFrame_OnLeave then
+            UnitFrame_OnLeave(self)
+        end
+    end)
 
     -- Player and target: power and health. Party flips it across the beam.
     local h = b:GetHeight()
@@ -216,7 +293,13 @@ local function Spawn(unit)
     end
     b:SetScript("OnEvent", function(self, event)
         local fn = unitEvents[event]
-        if fn then fn(self) else UpdateAll(self) end
+        if fn then
+            fn(self)
+        elseif self.unit:match("^party") then
+            UpdatePartyUnit(self)
+        else
+            UpdateAll(self)
+        end
     end)
     b:SetScript("OnShow", UpdateAll)
 
@@ -234,3 +317,15 @@ ns.units = {}
 for _, unit in ipairs({ "player", "target", "party1", "party2", "party3", "party4" }) do
     ns.units[unit] = Spawn(unit)
 end
+
+local function UpdatePartyFrames()
+    for _, unit in ipairs({ "party1", "party2", "party3", "party4" }) do
+        local b = ns.units[unit]
+        if b then UpdatePartyUnit(b) end
+    end
+end
+UpdatePartyFrames()
+ns.On("GROUP_ROSTER_UPDATE", UpdatePartyFrames)
+ns.On("PLAYER_ENTERING_WORLD", UpdatePartyFrames)
+ns.On("ADDON_LOADED", UpdatePartyFrames)
+ns.OnSetting("simParty", UpdatePartyFrames)

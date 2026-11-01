@@ -15,7 +15,7 @@ MEDIA = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medaluin", "media")
 FONT = os.path.join(MEDIA, "fonts", "MarcellusSC-Regular.ttf")
 INK = (18, 17, 16, 255)
 COLOURS = {"health": {"player": (196, 110, 147), "target": (163, 61, 45), "party1": (196, 110, 147),
-                      "party2": (196, 110, 147)},
+                      "party2": (196, 110, 147), "party3": (196, 110, 147), "party4": (196, 110, 147)},
            "power": (0, 0, 204)}
 
 

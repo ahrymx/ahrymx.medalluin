@@ -43,6 +43,7 @@ local savedRows = tonumber((args[3] or ""):match("^rows(%d)$"))
 local savedBare = args[3] == "bare"
 local savedNoChat = args[3] == "nochat"
 local savedBeam = args[3] == "beamcast"
+local savedSimParty = args[2] == "simparty" or args[3] == "simparty" or args[4] == "simparty"
 local actionPage = 1
 local class = argClass or "PALADIN"
 
@@ -370,7 +371,11 @@ function InCombatLockdown() return inCombat end
 local threatOf = nil
 function UnitAffectingCombat(u) return u == "player" and inCombat end
 function UnitThreatSituation(u) if u == "player" then return threatOf end end
-function RegisterUnitWatch(f) f.watched = true end
+function RegisterUnitWatch(f)
+    f.watched = true
+    if f.unit and not UnitExists(f.unit) and not f.stub then f:Hide() end
+end
+function UnregisterUnitWatch(f) f.watched = false end
 function IsInGroup() return grouped end
 function UnitExists(u) return u == "player" or u == "target" or (grouped and u:match("^party[12]$")) end
 function UnitName(u) return ({ player = "Ahrymx", target = "Defias Pillager", party1 = "Thalric",
@@ -736,7 +741,8 @@ SlashCmdList = {}
 function ReloadUI() end
 MedaluinDB = barOff and { actionBar = false } or savedRows and { rows = savedRows }
     or savedBare and { bareIcons = true } or savedNoChat and { chat = false }
-    or savedBeam and { xpCast = true, repCast = true } or nil
+    or savedBeam and { xpCast = true, repCast = true }
+    or savedSimParty and { simParty = true } or nil
 if modern then
     C_Texture = { GetAtlasInfo = function() return { width = 154, height = 95 } end }
 end
@@ -757,7 +763,7 @@ for _, e in ipairs({ "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD" }) do
     end
 end
 for _, b in pairs(ns.units) do
-    if UnitExists(b.unit) and b.scripts.OnShow then b.scripts.OnShow(b) end
+    if (UnitExists(b.unit) or b.stub) and b.scripts.OnShow then b.scripts.OnShow(b) end
 end
 
 -- The console's own rectangle defines the origin: its top-left is (0, 0).
@@ -788,6 +794,8 @@ if barPass then
     print("/medaluin opens", tostring(page.opened))
     SlashCmdList.MDLUI()
     print("/mdlui opens", tostring(page.opened))
+    SlashCmdList.MDLUI("unit")
+    print("/mdlui unit opens", tostring(page.opened))
     if not ns.actionBar then
         print("tray none")
         -- no bar, no cast bar of Medaluin's: Blizzard's stays
@@ -1321,8 +1329,9 @@ if stripsPass then
     do return end
 end
 
-for unit, b in pairs(ns.units) do
-    if UnitExists(unit) then
+for _, unit in ipairs({ "player", "target", "party1", "party2", "party3", "party4" }) do
+    local b = ns.units[unit]
+    if b and (UnitExists(unit) or b.stub) then
         out(unit .. ".health", b.health, string.format("fill=%s rev=%s text=%s", tostring(b.health.value),
             tostring(b.health.reverse), tostring(b.value and b.value.text)))
         out(unit .. ".power", b.power, string.format("fill=%s shown=%s text=%s", tostring(b.power.value),

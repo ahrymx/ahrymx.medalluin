@@ -103,12 +103,14 @@ threat:SetScript("OnEvent", UpdateTint)
 -- The group art adds the party row. Textures are not protected, so this
 -- can swap in combat too; the party buttons themselves follow their units.
 local function UpdateGroup()
-    local grouped = IsInGroup()
+    local grouped = IsInGroup() or (ns.db and ns.db.simParty)
     local file = ns.media .. (grouped and "console-group" or "console-solo")
     tex:SetTexture(file)
     tint:SetTexture(file .. "-tint")
-    for _, t in ipairs(backings.group) do t:SetShown(grouped) end
+    for _, t in ipairs(backings.group) do t:SetShown(grouped and true or false) end
 end
 UpdateGroup()
 ns.On("GROUP_ROSTER_UPDATE", UpdateGroup)
 ns.On("PLAYER_ENTERING_WORLD", UpdateGroup)
+ns.On("ADDON_LOADED", UpdateGroup)
+ns.OnSetting("simParty", UpdateGroup)

@@ -18,6 +18,7 @@ local DEFAULTS = {
     chat = true,            -- the chat in a panel on the left strip
     xpCast = false,         -- the player's casts over the experience bar
     repCast = false,        -- the target's casts over the reputation bar
+    simParty = false,       -- simulate party frames and show the group art layer
 }
 ns.VISIBILITY = { ALWAYS = 1, COMBAT = 2, MOUSEOVER = 3, COMBAT_OR_MOUSEOVER = 4 }
 ns.DRAWER = { LEFT = 1, UP = 2 }
@@ -33,6 +34,7 @@ function ns.OnSetting(key, fn)
     table.insert(watchers[key], fn)
 end
 local function Changed(key, value)
+    ns.db[key] = value
     for _, fn in ipairs(watchers[key] or {}) do fn(value) end
 end
 
@@ -59,6 +61,7 @@ local function Page()
     end
 
     local subBar = Subcategory(category, "Action Bar")
+    local subUnit = Subcategory(category, "Unit Frames")
     local subCast = Subcategory(category, "Cast Bars")
     local subChat = Subcategory(category, "Chat")
 
@@ -108,6 +111,10 @@ local function Page()
     }
     for _, child in ipairs(children) do child:SetParentInitializer(bar, BarOn) end
 
+    -- Unit Frames subcategory
+    Settings.CreateCheckbox(subUnit, Setting(subUnit, "simParty", B, "Simulate party frames"),
+        "Show the console's party frame layer and simulated party members to preview party frames while solo.")
+
     -- Cast Bars subcategory
     Settings.CreateCheckbox(subCast, Setting(subCast, "xpCast", B, "Player casts on the experience bar"),
         "The experience bar under your portrait becomes your cast bar while you cast, and goes back to "
@@ -139,6 +146,9 @@ local function Page()
                 layout:AddInitializer(CreateSettingsButtonInitializer("", "Action Bar", function()
                     Settings.OpenToCategory(subBar:GetID())
                 end, "Open Action Bar settings.", true))
+                layout:AddInitializer(CreateSettingsButtonInitializer("", "Unit Frames", function()
+                    Settings.OpenToCategory(subUnit:GetID())
+                end, "Open Unit Frames settings.", true))
                 layout:AddInitializer(CreateSettingsButtonInitializer("", "Cast Bars", function()
                     Settings.OpenToCategory(subCast:GetID())
                 end, "Open Cast Bars settings.", true))
@@ -153,7 +163,7 @@ local function Page()
 
     Settings.RegisterAddOnCategory(category)
     ns.settingsCategory = category
-    ns.settingsSubcategories = { bar = subBar, cast = subCast, chat = subChat }
+    ns.settingsSubcategories = { bar = subBar, unit = subUnit, cast = subCast, chat = subChat }
 end
 
 ns.On("ADDON_LOADED", function(_, name)
@@ -176,6 +186,9 @@ local function OpenSettings(arg)
     local target = ns.settingsCategory
     if arg == "bar" or arg == "actionbar" or arg == "bars" then
         target = ns.settingsSubcategories and ns.settingsSubcategories.bar or target
+    elseif arg == "unit" or arg == "units" or arg == "unitframe" or arg == "unitframes"
+        or arg == "uf" or arg == "party" then
+        target = ns.settingsSubcategories and ns.settingsSubcategories.unit or target
     elseif arg == "cast" or arg == "castbars" or arg == "casting" then
         target = ns.settingsSubcategories and ns.settingsSubcategories.cast or target
     elseif arg == "chat" then
