@@ -182,17 +182,6 @@ function ns.BuildBar(rows)
     backing:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
     ns.barBacking = backing
 
-    -- if multiple rows are active, upper rows stand above the plate and get their own backing bands
-    if rows > 1 then
-        for r = 2, rows do
-            local rSlots = windows[r]
-            local rBacking = tray:CreateTexture(nil, "BACKGROUND")
-            rBacking:SetPoint("TOPLEFT", console, "TOP", rSlots[1][1], rSlots[1][3])
-            rBacking:SetPoint("BOTTOMRIGHT", console, "TOP", rSlots[#rSlots][2], rSlots[#rSlots][4])
-            rBacking:SetColorTexture(unpack(ns.colors.ink))
-        end
-    end
-
     -- the plate stands over the bars and the toggle, so its own frame
     local stone = CreateFrame("Frame", nil, tray)
     stone:SetAllPoints()

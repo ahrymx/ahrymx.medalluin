@@ -425,18 +425,19 @@ local function SpawnPet(parentBtn, unit, side)
     pet.unit = unit
     pet.owner = parentBtn.unit
     pet:SetFrameLevel(ns.levels.bars)
-    pet:SetSize(118, 16)
-    pet:SetPoint("TOP", parentBtn, "BOTTOM", 0, -10)
+    pet:SetHeight(18)
+    pet:SetPoint("TOPLEFT", parentBtn, "BOTTOMLEFT", 0, -8)
+    pet:SetPoint("TOPRIGHT", parentBtn, "BOTTOMRIGHT", 0, -8)
 
     pet:SetAttribute("unit", unit)
     pet:SetAttribute("*type1", "target")
     pet:SetAttribute("*type2", "togglemenu")
     pet:RegisterForClicks("AnyUp")
 
-    -- Health bar status bar inside the pill window cutout
+    -- Health bar status bar inset inside the trapezoid (rectangular bar underneath)
     local bar = CreateFrame("StatusBar", nil, pet)
-    bar:SetPoint("TOPLEFT", pet, "TOPLEFT", 3, -2)
-    bar:SetPoint("BOTTOMRIGHT", pet, "BOTTOMRIGHT", -3, 2)
+    bar:SetPoint("TOPLEFT", pet, "TOPLEFT", 12, -3)
+    bar:SetPoint("BOTTOMRIGHT", pet, "BOTTOMRIGHT", -12, 3)
     bar:SetStatusBarTexture(ns.bar)
     bar:SetReverseFill(side == 1)
     pet.health = bar
@@ -447,14 +448,14 @@ local function SpawnPet(parentBtn, unit, side)
     bg:SetColorTexture(unpack(ns.colors.ink))
     pet.bg = bg
 
-    -- Pill frame overlay with rounded corners and gold rim, framing the bar
+    -- Melded stone trapezoid surface with pill cutout layered ON TOP of the rectangular bar to round its edges
     local frameOverlay = CreateFrame("Frame", nil, pet)
     frameOverlay:SetAllPoints(pet)
     frameOverlay:SetFrameLevel(bar:GetFrameLevel() + 1)
     local bracket = frameOverlay:CreateTexture(nil, "ARTWORK")
     bracket:SetAllPoints()
     bracket:SetTexture(ns.media .. "pet-bracket")
-    bracket:SetTexCoord(0, 118 / 256, 0, 16 / 32)
+    bracket:SetTexCoord(0, 129 / 256, 0, 18 / 32)
     pet.bracket = bracket
 
     -- Text overlay
