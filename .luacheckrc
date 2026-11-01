@@ -57,6 +57,8 @@ read_globals = {
     "ClearItemButtonOverlay", "SetItemButtonQuality", "SetItemButtonCount", "SetItemButtonDesaturated",
     "GetMoney", "GetMoneyString", "CloseAllBags", "GetCursorPosition", "CreateColor",
     -- the settings page and the atlas sizes
+    -- paging (bars/paging.lua)
+    "SAVE",
     -- key binding on hover (keybind.lua)
     "GetBindingKey", "GetBindingText", "SetBinding", "SaveBindings", "GetCurrentBindingSet",
     "GetConvertedKeyOrButton", "IsKeyPressIgnoredForBinding", "CreateKeyChordStringUsingMetaKeyState",

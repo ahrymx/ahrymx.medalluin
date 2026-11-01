@@ -56,7 +56,12 @@ local DEFAULTS = {
     auraBuffs = true,       -- row of player-cast buffs on outer health corner
     auraBoss = true,        -- boss debuffs on inner health corner
     consoleProfile = "default", -- "default": medallion console; "light": central console with square minimap & bar 7
-    bar7State = "[bonusbar:1] 8; [form:1] 8; [form:2] 9; [form:3] 9; [stealth] 10; 7", -- state macro for bar 7 (8-10)
+    -- which page each bar shows (bars/paging.lua): "default", "stances", "page1".."page10" or
+    -- "custom", with the custom conditional beside it
+    bar1Paging = "default", bar1PagingCustom = "",
+    row2Paging = "default", row2PagingCustom = "",
+    row3Paging = "default", row3PagingCustom = "",
+    gridPaging = "default", gridPagingCustom = "",
 }
 ns.VISIBILITY = { ALWAYS = 1, COMBAT = 2, MOUSEOVER = 3, COMBAT_OR_MOUSEOVER = 4 }
 ns.DRAWER = { LEFT = 1, UP = 2 }
@@ -94,7 +99,7 @@ ns.PROFILE_NAMES = {
 -- is saved.
 --
 -- What shapes the console (the Action Bar, Unit Frames, Overhead and Cast
--- Bars pages, and Bar 7's state macro) is remembered per profile, in
+-- Bars pages, and Paging) is remembered per profile, in
 -- MedaluinDB.profiles[name]: each profile keeps its own choices, so a switch
 -- brings back the ones made on the profile switched to. Everything else (the
 -- chat, the side panel, the bags, where windows were left, the party preview)
@@ -102,7 +107,9 @@ ns.PROFILE_NAMES = {
 -- Reset profile clears the current profile's choices and nothing else.
 local PER_PROFILE = {}
 for _, key in ipairs({
-    "actionBar", "rows", "bareIcons", "artColor", "visibility", "extraVisibility", "drawer", "bar7State",
+    "actionBar", "rows", "bareIcons", "artColor", "visibility", "extraVisibility", "drawer",
+    "bar1Paging", "bar1PagingCustom", "row2Paging", "row2PagingCustom", "row3Paging", "row3PagingCustom",
+    "gridPaging", "gridPagingCustom",
     "partyPets", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss",
     "overhead", "topBoss", "topPet", "topFocus", "topToT", "topPetBar", "topStances",
     "xpCast", "repCast",
@@ -246,6 +253,7 @@ local function Page()
     -- every profile shares sit beside it.
     local subConsole = Subcategory(category, "Console")
     local subBar = Subcategory(subConsole, "Action Bar")
+    local subPaging = Subcategory(subConsole, "Paging")
     local subUnit = Subcategory(subConsole, "Unit Frames")
     local subOverhead = Subcategory(subConsole, "Overhead")
     local subCast = Subcategory(subConsole, "Cast Bars")
@@ -370,6 +378,19 @@ local function Page()
             .. "This is the way it opens."),
     }
     Under(bar, BarOn, look, fading, drawer)
+
+    -- Paging subcategory: a preset per bar, or Custom with a conditional
+    -- edited in a popup (the page has no text box)
+    for _, pb in ipairs(ns.PAGING_BARS or {}) do
+        Header(subPaging, pb.name, pb.grid and "The light profile's 2x5 grid in the centre bay."
+            or pb.base and ("Shown with Rows at " .. pb.name:match("%d") .. " or more.")
+            or "Action bar 1, in the bar's frame.")
+        Settings.CreateDropdown(subPaging, Setting(subPaging, pb.key, S, "Pages"), Choices(ns.PagingChoices(pb)),
+            "Which action page the bar shows. A page is 12 slots: page n holds slots (n-1)x12+1 to nx12.")
+        Button(subPaging, "Edit conditional", function() ns.EditPaging(pb) end,
+            "A macro conditional naming the page, e.g. [mod:shift] 2; [stealth] 7; 1. \"possess\" is the "
+            .. "bar the game puts up for a vehicle, an override or a possessed unit. Saving it picks Custom.")
+    end
 
     -- Unit Frames subcategory
     Header(subUnit, "Party")
@@ -514,7 +535,8 @@ local function Page()
 
     Settings.RegisterAddOnCategory(category)
     ns.settingsCategory = category
-    ns.settingsSubcategories = { console = subConsole, bar = subBar, unit = subUnit, overhead = subOverhead,
+    ns.settingsSubcategories = { console = subConsole, bar = subBar, paging = subPaging, unit = subUnit,
+        overhead = subOverhead,
         cast = subCast, chat = subChat, side = subSide, bags = subBags }
 end
 
@@ -529,6 +551,48 @@ StaticPopupDialogs.MEDALUIN_RESET_PROFILE = {
     whileDead = true,
     hideOnEscape = true,
 }
+
+-- The conditional editor: the bar's conditional in use, in a text box.
+-- Saving one picks Custom; saving it empty, or cancelling a Custom that has
+-- none, goes back to the bar's default.
+local function PagingBox(dialog)
+    return dialog.editBox or dialog.EditBox or (dialog.GetEditBox and dialog:GetEditBox())
+end
+local function SavePaging(dialog, bar)
+    local text = (PagingBox(dialog):GetText() or ""):match("^%s*(.-)%s*$")
+    ns.SetOption(bar.key .. "Custom", text)
+    ns.SetOption(bar.key, text ~= "" and "custom" or "default")
+end
+StaticPopupDialogs.MEDALUIN_PAGING = {
+    text = "%s: the page, by macro conditional",
+    button1 = SAVE or "Save",
+    button2 = CANCEL or "Cancel",
+    hasEditBox = true,
+    editBoxWidth = 420,
+    OnShow = function(self, bar)
+        local box = PagingBox(self)
+        box:SetText(ns.PagingStart(bar.key))
+        box:HighlightText()
+    end,
+    OnAccept = function(self, bar) SavePaging(self, bar) end,
+    OnCancel = function(_, bar)
+        if ns.db[bar.key] == "custom" and not tostring(ns.db[bar.key .. "Custom"]):match("%S") then
+            ns.SetOption(bar.key, "default")
+        end
+    end,
+    EditBoxOnEnterPressed = function(self, bar)
+        local dialog = self:GetParent()
+        SavePaging(dialog, bar)
+        dialog:Hide()
+    end,
+    EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}
+function ns.EditPaging(bar)
+    StaticPopup_Show("MEDALUIN_PAGING", bar.name, nil, bar)
+end
 
 ns.On("ADDON_LOADED", function(_, name)
     if name ~= addonName then return end
@@ -557,6 +621,8 @@ local function OpenSettings(arg)
     local target = ns.settingsCategory
     if arg == "console" or arg == "profile" or arg == "profiles" then
         target = ns.settingsSubcategories and ns.settingsSubcategories.console or target
+    elseif arg == "paging" or arg == "page" or arg == "pages" then
+        target = ns.settingsSubcategories and ns.settingsSubcategories.paging or target
     elseif arg == "bar" or arg == "actionbar" or arg == "bars" then
         target = ns.settingsSubcategories and ns.settingsSubcategories.bar or target
     elseif arg == "unit" or arg == "units" or arg == "unitframe" or arg == "unitframes"

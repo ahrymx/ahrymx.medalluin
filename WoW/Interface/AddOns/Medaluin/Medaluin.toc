@@ -27,6 +27,7 @@ console\simulate.lua
 bars\windows.lua
 bars\bar.lua
 bars\buttons.lua
+bars\paging.lua
 bars\power.lua
 bars\cast.lua
 bars\drawer.lua

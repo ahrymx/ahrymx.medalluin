@@ -82,6 +82,11 @@ local profilesPass = args[2] == "profiles"
 -- binder, the chords, the keys it skips, a key moved off another button,
 -- Esc, the fade it lifts, and combat ending it.
 local keybindPass = args[2] == "keybind" or args[3] == "keybind"
+-- "paging" (alone, with rows at 3, or after "light" for the centre grid)
+-- plays the Paging page (bars/paging.lua): each bar's state driver by its
+-- option, the secure snippet run as the game would run it, Custom's editor,
+-- combat holding a change back, and the options kept per profile.
+local pagingPass = args[2] == "paging" or args[3] == "paging"
 local actionPage = 1
 local class = argClass or "PALADIN"
 
@@ -175,6 +180,9 @@ function Region:SetShown(s)
 end
 function Region:SetScript(k, f) self.scripts[k] = f end
 function Region:SetAttribute(k, v) self.attrs[k] = v end
+function Region:GetAttribute(k) return self.attrs[k] end
+function Region:SetFrameRef(k, f) self.refs = self.refs or {}; self.refs[k] = f end
+function Region:GetFrameRef(k) return self.refs and self.refs[k] end
 function Region:SetTexture(t) self.texture, self.atlas = t, nil end
 function Region:GetTexture() return self.texture end
 function Region:SetColorTexture(r, g, b, a) self.color, self.atlas = { r, g, b, a }, nil end
@@ -992,6 +1000,7 @@ MedaluinDB = profilesPass and args[3] == "saved" and { consoleProfile = "light",
         bagsColumns = 12, retired = "kept" }
     or lightPass and { consoleProfile = "light", bareIcons = true, simParty = grouped }
     or barOff and { actionBar = false } or savedRows and { rows = savedRows }
+    or pagingPass and { rows = 3 }
     or savedBare and { bareIcons = true } or savedNoChat and { chat = false }
     or savedBeam and { xpCast = true, repCast = true }
     or savedSimParty and { simParty = true } or savedNoSide and { side = false }
@@ -2538,6 +2547,131 @@ local function KeybindPass()
     inCombat = false
 end
 
+-- ------------------------------------------------------------ paging
+local function PagingPass()
+    local S = page.settings
+    local shown = {}
+    function StaticPopup_Show(which, a, _, data) table.insert(shown, which .. ":" .. tostring(a)); return data end
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local function driver(h) return tostring(h and h.stateDrivers and h.stateDrivers.page) end
+    local H = ns.pagingHeaders
+    local function bars(tag)
+        local line = {}
+        for _, key in ipairs({ "bar1Paging", "row2Paging", "row3Paging" }) do
+            local h = H[key]
+            table.insert(line, key .. "=" .. (h and driver(h) or "no header"))
+        end
+        if ns.bar7Frame then table.insert(line, "grid=" .. driver(ns.bar7Frame)) end
+        print("paging " .. tag, table.concat(line, " | "))
+    end
+    -- the game's state driver: the snippet with the conditional's result, in
+    -- an environment of the restricted API
+    local world = { vehicle = false, override = false, temp = false, bonus = false }
+    local function run(h, newstate)
+        local env = {
+            self = h, newstate = newstate, tonumber = tonumber,
+            HasVehicleActionBar = function() return world.vehicle end, GetVehicleBarIndex = function() return 16 end,
+            HasOverrideActionBar = function() return world.override end, GetOverrideBarIndex = function() return 18 end,
+            HasTempShapeshiftActionBar = function() return world.temp end,
+            GetTempShapeshiftBarIndex = function() return 17 end,
+            HasBonusActionBar = function() return world.bonus end, GetBonusBarIndex = function() return 7 end,
+        }
+        local f = assert(loadstring(h.attrs["_onstate-page"]))
+        setfenv(f, env)()
+        local b1, b12 = h.buttons[1], h.buttons[#h.buttons]
+        return string.format("page=%s b1=%s b12=%s", tostring(h.attrs.page), tostring(b1.attrs.actionpage),
+            tostring(b12.attrs.actionpage))
+    end
+    print("paging headers", "bar1 buttons=" .. (H.bar1Paging and #H.bar1Paging.buttons or 0),
+        "row2 first=" .. (H.row2Paging and H.row2Paging.buttons[1]:GetName() or "-"),
+        "row3 first=" .. (H.row3Paging and H.row3Paging.buttons[1]:GetName() or "-"))
+    bars("at login")
+    if H.row2Paging then
+        print("paging run row2 6", run(H.row2Paging, "6"))
+        print("paging run bar1 possess, vehicle", (function() world.vehicle = true
+            local r = run(H.bar1Paging, "possess"); world.vehicle = false; return r end)())
+        print("paging run bar1 possess, override", (function() world.override = true
+            local r = run(H.bar1Paging, "possess"); world.override = false; return r end)())
+        print("paging run bar1 possess, nothing up", run(H.bar1Paging, "possess"))
+        -- bar 1 on a page, then back to Blizzard's: its pages taken off again
+        S.bar1Paging:Set("page3")
+        bars("bar1 page3")
+        print("paging run bar1 3", run(H.bar1Paging, "3"))
+        S.bar1Paging:Set("stances")
+        bars("bar1 stances")
+        S.row2Paging:Set("stances")
+        bars("row2 stances")
+        S.bar1Paging:Set("default")
+        bars("bar1 default")
+        print("paging bar1 cleared", "page=" .. tostring(H.bar1Paging.attrs.page),
+            "b1=" .. tostring(H.bar1Paging.buttons[1].attrs.actionpage))
+        S.row2Paging:Set("default")
+    end
+    -- Custom with nothing yet opens the editor; its first text is the
+    -- conditional in use
+    S.row3Paging:Set("custom")
+    print("paging custom, empty", "popups=" .. table.concat(shown, ","),
+        "editor starts=" .. ns.PagingStart("row3Paging"))
+    bars("custom, empty")
+    local dialog = StaticPopupDialogs.MEDALUIN_PAGING
+    local box = { text = "" }
+    function box:SetText(t) self.text = t end
+    function box:GetText() return self.text end
+    function box:HighlightText() end
+    local fake = { editBox = box }
+    function fake:Hide() self.hidden = true end
+    box.GetParent = function() return fake end
+    local bar3 = ns.PAGING_BARS[3]
+    dialog.OnShow(fake, bar3)
+    print("paging editor shows", box.text)
+    -- cancelling a Custom with no conditional goes back to the default
+    dialog.OnCancel(fake, bar3)
+    print("paging cancelled", "row3=" .. ns.db.row3Paging)
+    box.text = "  [mod:shift] 2; [stealth] 7; 5  "
+    dialog.OnAccept(fake, bar3)
+    print("paging saved", "row3=" .. ns.db.row3Paging, "custom=" .. ns.db.row3PagingCustom,
+        "page shows=" .. tostring(S.row3Paging:Get()))
+    bars("custom saved")
+    dialog.OnShow(fake, bar3)
+    print("paging editor reopens", box.text)
+    box.text = ""
+    dialog.EditBoxOnEnterPressed(box, bar3)
+    print("paging saved empty", "row3=" .. ns.db.row3Paging, "hidden=" .. tostring(fake.hidden))
+    bars("custom emptied")
+    -- in combat a change waits for combat to end
+    inCombat = true
+    fire("PLAYER_REGEN_DISABLED")
+    S.row3Paging:Set("page9")
+    bars("combat, row3 page9 asked")
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    bars("combat over")
+    -- the grid, where there is one
+    if ns.bar7Frame then
+        S.gridPaging:Set("page9")
+        bars("grid page9")
+        S.gridPaging:Set("default")
+        bars("grid default")
+    end
+    -- per profile: the other profile has its own, and coming back brings these
+    -- back; row 2 is Custom on both, so only its conditional moves
+    ns.SetOption("row2PagingCustom", "[mod:alt] 3; 6")
+    ns.SetOption("row2Paging", "custom")
+    S.consoleProfile:Set(ns.db.consoleProfile == "light" and "default" or "light")
+    print("paging other profile", "row3=" .. ns.db.row3Paging)
+    bars("other profile")
+    ns.SetOption("row2PagingCustom", "[mod:ctrl] 4; 6")
+    ns.SetOption("row2Paging", "custom")
+    bars("other profile, row2 custom")
+    S.consoleProfile:Set(ns.db.consoleProfile == "light" and "default" or "light")
+    print("paging back", "row3=" .. ns.db.row3Paging)
+    bars("back")
+    SlashCmdList.MDLUI("paging")
+    print("/mdlui paging opens", tostring(page.opened))
+end
+
 if lightPass then
     UIParent.fixed = { -648, -904, 1272, 176 }
     local function fire(e, ...)
@@ -2598,6 +2732,7 @@ if lightPass then
         out("party" .. i, p, "bezel=" .. tostring(p.detachedBezel and p.detachedBezel.shown))
     end
     if keybindPass then KeybindPass() end
+    if pagingPass then PagingPass() end
     do return end
 end
 
@@ -3370,3 +3505,4 @@ tintState("reload in combat")
 inCombat, threatOf = false, nil
 
 if keybindPass then KeybindPass() end
+if pagingPass then PagingPass() end

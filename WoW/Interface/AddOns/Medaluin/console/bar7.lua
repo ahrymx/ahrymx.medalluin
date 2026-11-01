@@ -54,12 +54,15 @@ ns.On("PLAYER_LOGIN", function()
 
     ApplyPage(cfg.basePage)
 
-    local stateDriver = (ns.db and ns.db.bar7State and ns.db.bar7State ~= "")
-        and ns.db.bar7State or cfg.stateDriver
-    header.stateDriver = stateDriver
-    if RegisterStateDriver then
-        RegisterStateDriver(header, "page", stateDriver)
+    -- the page by the Paging page's Centre grid option (bars/paging.lua)
+    function ns.ApplyGridPaging()
+        local stateDriver = ns.PagingConditional and ns.PagingConditional("gridPaging") or cfg.stateDriver
+        header.stateDriver = stateDriver
+        if RegisterStateDriver then
+            RegisterStateDriver(header, "page", stateDriver)
+        end
     end
+    ns.ApplyGridPaging()
     if header.SetAttribute then
         header:SetAttribute("_onstate-page", [=[
             local page = tonumber(newstate) or 7
