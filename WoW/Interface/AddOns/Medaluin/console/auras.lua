@@ -143,7 +143,10 @@ local function CreateDispelGlow(btn, side, window)
 
     local edges = { top, btm, left, right }
 
-    -- 45-degree diagonal cut on the inner end of the window
+    -- 45-degree diagonal cut on the inner end of the window, built for the
+    -- windows that have one in the medallion's art and shown only while the
+    -- layout says the window is cut (ns.ShapeDispelGlows)
+    f.window = window
     if window == "party1" or window == "unit" then
         local h = btn:GetHeight()
         if f.CreateLine then
@@ -158,6 +161,7 @@ local function CreateDispelGlow(btn, side, window)
             line:SetThickness(t)
             line:SetBlendMode("ADD")
             table.insert(edges, line)
+            f.cut = line
         else
             local diag = f:CreateTexture(nil, "OVERLAY")
             local len = math.ceil(math.sqrt(h * h + h * h))
@@ -171,6 +175,7 @@ local function CreateDispelGlow(btn, side, window)
             end
             diag:SetBlendMode("ADD")
             table.insert(edges, diag)
+            f.cut = diag
         end
     end
 
@@ -618,6 +623,17 @@ for unit, b in pairs(ns.units or {}) do
     b.ccWidget = CreateCCWidget(b.health, isParty and 24 or 32)
     b.buffWidgets = CreateBuffWidgets(b.health, side, isParty)
     b.bossDebuff = CreateBossDebuffWidget(b.health, isParty)
+end
+
+-- The glow's cut follows the layout's. A cut is built shown, which is the
+-- medallion's; the light profile swaps its layout in after this file has run,
+-- and ns.RelayoutUnits (called by ns.ApplyLightProfile) reshapes the glows.
+function ns.ShapeDispelGlows()
+    local cuts = ns.layout.cuts or {}
+    for _, b in pairs(ns.units or {}) do
+        local g = b.dispelGlow
+        if g and g.cut then g.cut:SetShown(cuts[g.window] and true or false) end
+    end
 end
 
 local events = CreateFrame("Frame")

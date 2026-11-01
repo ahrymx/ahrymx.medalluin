@@ -43,6 +43,7 @@ local DEFAULTS = {
     repCast = false,        -- the target's casts over the reputation bar
     simParty = false,       -- simulate party frames and show the group art layer
     partyPets = true,       -- show pet frames directly below party members with pets
+    partyLayout = "vertical", -- light profile: "vertical" stack on the left, or a "horizontal" row under the console
     partyRange = 40,        -- distance in yards to fade out-of-range party frames (0 = off)
     overhead = true,        -- top-of-screen cascading trapezoid structure
     topBoss = true,         -- boss frames on the top tier
@@ -92,7 +93,7 @@ local PROFILES = {
 ns.PROFILE_NAMES = {
     { "default", "Medallion (default)", "The classic round medallion console with integrated party wings." },
     { "light", "Central Console (light)", "Flush-top player/target wings, dynamic square minimap / 2x5 Bar 7 bay, "
-        .. "split Action Bars 2 & 3, and detached vertical party frames." },
+        .. "split Action Bars 2 & 3, and party frames in a vertical stack or a row under the console." },
 }
 
 -- The options are layered: DEFAULTS, then the chosen profile, then the
@@ -111,7 +112,7 @@ for _, key in ipairs({
     "actionBar", "rows", "bareIcons", "artColor", "visibility", "extraVisibility", "drawer",
     "bar1Paging", "bar1PagingCustom", "row2Paging", "row2PagingCustom", "row3Paging", "row3PagingCustom",
     "gridPaging", "gridPagingCustom",
-    "partyPets", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss",
+    "partyPets", "partyLayout", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss",
     "overhead", "topBoss", "topPet", "topFocus", "topToT", "topPetBar", "topStances",
     "xpCast", "repCast",
 }) do PER_PROFILE[key] = true end
@@ -264,13 +265,21 @@ local function Page()
 
     -- A proxy, not an add-on setting: an add-on setting reads and writes one
     -- flat table and fills it with its default, which would make every option
-    -- a choice. The default is the profile's, asked for each time, so the
-    -- page's Defaults button means the profile too.
+    -- a choice.
+    --
+    -- Its default is a value, the profile's at login, never a function:
+    -- ProxySettingMixin:Init calls a function default to check its type
+    -- before it writes the setting's variable, so the setting was built in
+    -- Medaluin's code. Settings.GetSetting compares every setting's variable,
+    -- and a click asks it for lockActionBars (ActionButton OnClick) just
+    -- before the secure click, so every click on an action button was blocked
+    -- (UseAction; keys, which skip OnClick, worked). /mdlui taint, 2026-11-01.
+    -- The page's Defaults button so means the login profile's defaults until
+    -- a reload; Reset profile is always the profile's own.
     local function Setting(cat, key, kind, name)
         local get, set = function() return ns.db[key] end, function(value) ns.db[key] = value end
         if key == "consoleProfile" then set = SwitchProfile end
-        local s = Settings.RegisterProxySetting(cat, "Medaluin_" .. key, kind, name,
-            function() return Base(key) end, get, set)
+        local s = Settings.RegisterProxySetting(cat, "Medaluin_" .. key, kind, name, Base(key), get, set)
         s:SetValueChangedCallback(function(_, value) Changed(key, value) end)
         registered[key] = s
         return s
@@ -395,6 +404,13 @@ local function Page()
 
     -- Unit Frames subcategory
     Header(subUnit, "Party")
+    Settings.CreateDropdown(subUnit, Setting(subUnit, "partyLayout", S, "Party layout"), Choices({
+        { "vertical", "Vertical", "A stack of party frames on the left of the screen." },
+        { "horizontal", "Horizontal", "A row of four frames under the console. A pet takes part of its "
+            .. "owner's frame. While you are in a group the minimap stays in the top right corner and the "
+            .. "centre grid stays out." },
+    }), "Where the party frames sit. Central Console (light) profile only: the medallion console has its own "
+        .. "party wings.")
     Settings.CreateCheckbox(subUnit, Setting(subUnit, "partyPets", B, "Show party pets"),
         "Show pet unit frames directly below party members who have active pets.")
     Settings.CreateDropdown(subUnit, Setting(subUnit, "partyRange", N, "Fade out of range"), Choices({
@@ -617,6 +633,10 @@ local KEYBIND = { kb = true, keybind = true, keybinds = true, bind = true, binds
 
 local function OpenSettings(arg)
     arg = tostring(arg or ""):lower():match("^%s*(%S+)")
+    if (arg == "taint" or arg == "debug") and ns.TaintReport then
+        ns.TaintReport()
+        return
+    end
     if KEYBIND[arg] then
         if ns.KeybindMode then ns.KeybindMode() end
         return

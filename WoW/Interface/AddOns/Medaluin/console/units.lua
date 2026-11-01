@@ -221,6 +221,7 @@ ns.partyStubs = STUBS     -- the simulation panel (simulate.lua) kills them and 
 local PET_STUBS = {
     partypet2 = { name = "Water Elemental", class = "MAGE", health = 90, maxHealth = 100 },
 }
+ns.partyPetStubs = PET_STUBS    -- the horizontal row gives a simulated pet its cell (party_row.lua)
 
 local function AbbreviateName(name)
     if not name or name == "" then return "" end
@@ -507,14 +508,50 @@ local petEvents = {
     UNIT_FACTION = true,
 }
 
+-- A pet's frame has two shapes. With no box it hangs under its owner in a
+-- stone bracket (the medallion's party wings, the vertical stack). With a box
+-- (the horizontal row, party_row.lua) it fills that box: no bracket, the bar
+-- edge to edge, its name over its value. Out of combat only: it is secure.
+function ns.LayoutPet(pet, box)
+    local side = pet.side
+    local outer = side == 1 and "RIGHT" or "LEFT"
+    local inner = side == 1 and "LEFT" or "RIGHT"
+    pet:ClearAllPoints()
+    pet.health:ClearAllPoints()
+    pet.name:ClearAllPoints()
+    pet.value:ClearAllPoints()
+    if box then
+        pet:SetPoint("TOPLEFT", console, "TOP", box[1], box[3])
+        pet:SetPoint("BOTTOMRIGHT", console, "TOP", box[2], box[4])
+        pet.health:SetAllPoints(pet)
+        pet.bracket:Hide()
+        pet.name:SetPoint("TOPLEFT", pet.text, "TOPLEFT", 2, -3)
+        pet.name:SetPoint("TOPRIGHT", pet.text, "TOPRIGHT", -2, -3)
+        pet.name:SetJustifyH("CENTER")
+        pet.value:SetPoint("BOTTOM", pet.text, "BOTTOM", 0, 3)
+        pet.value:SetJustifyH("CENTER")
+        return
+    end
+    pet:SetHeight(18)
+    pet:SetPoint("TOPLEFT", pet.ownerButton, "BOTTOMLEFT", 0, -8)
+    pet:SetPoint("TOPRIGHT", pet.ownerButton, "BOTTOMRIGHT", 0, -8)
+    pet.health:SetPoint("TOPLEFT", pet, "TOPLEFT", 12, -3)
+    pet.health:SetPoint("BOTTOMRIGHT", pet, "BOTTOMRIGHT", -12, 3)
+    pet.bracket:Show()
+    pet.value:SetPoint(inner, pet.text, inner, side * 6, 0)
+    pet.value:SetJustifyH(inner)
+    pet.name:SetPoint(outer, pet.text, outer, -side * 6, 0)
+    pet.name:SetPoint(inner, pet.value, outer, side * 6, 0)
+    pet.name:SetJustifyH(outer)
+end
+
 local function SpawnPet(parentBtn, unit, side)
     local pet = CreateFrame("Button", "MedaluinUnit_" .. unit, console, "SecureUnitButtonTemplate")
     pet.unit = unit
     pet.owner = parentBtn.unit
+    pet.ownerButton = parentBtn
+    pet.side = side
     pet:SetFrameLevel(ns.levels.bars)
-    pet:SetHeight(18)
-    pet:SetPoint("TOPLEFT", parentBtn, "BOTTOMLEFT", 0, -8)
-    pet:SetPoint("TOPRIGHT", parentBtn, "BOTTOMRIGHT", 0, -8)
 
     pet:SetAttribute("unit", unit)
     pet:SetAttribute("*type1", "target")
@@ -523,8 +560,6 @@ local function SpawnPet(parentBtn, unit, side)
 
     -- Health bar status bar inset inside the trapezoid (rectangular bar underneath)
     local bar = CreateFrame("StatusBar", nil, pet)
-    bar:SetPoint("TOPLEFT", pet, "TOPLEFT", 12, -3)
-    bar:SetPoint("BOTTOMRIGHT", pet, "BOTTOMRIGHT", -12, 3)
     bar:SetStatusBarTexture(ns.bar)
     bar:SetReverseFill(side == 1)
     pet.health = bar
@@ -549,22 +584,16 @@ local function SpawnPet(parentBtn, unit, side)
     local text = CreateFrame("Frame", nil, pet)
     text:SetAllPoints(bar)
     text:SetFrameLevel(frameOverlay:GetFrameLevel() + 1)
-
-    local outer = side == 1 and "RIGHT" or "LEFT"
-    local inner = side == 1 and "LEFT" or "RIGHT"
+    pet.text = text
 
     pet.value = ns.Text(text, 9)
-    pet.value:SetPoint(inner, text, inner, side * 6, 0)
-    pet.value:SetJustifyH(inner)
     pet.value:SetWordWrap(false)
     pet.value:SetTextColor(unpack(C.dim))
 
     pet.name = ns.Text(text, 9)
-    pet.name:SetPoint(outer, text, outer, -side * 6, 0)
-    pet.name:SetPoint(inner, pet.value, outer, side * 6, 0)
-    pet.name:SetJustifyH(outer)
     pet.name:SetWordWrap(false)
     pet.name:SetTextColor(unpack(C.text))
+    ns.LayoutPet(pet)
 
     pet:SetScript("OnEnter", function(self)
         if self.stub and not UnitExists(self.unit) then
@@ -637,20 +666,26 @@ function ns.RelayoutUnits()
         b.power:SetPoint(powerEdge)
     end
     if pStyle.detached then
+        -- the vertical stack, or the horizontal row (party_row.lua), which
+        -- places the buttons itself
+        local row = ns.PartyRowLayout and ns.PartyRowLayout()
+        local h = row and (pStyle.row.frames[1][3] - pStyle.row.frames[1][4]) or (pStyle.height - 4)
         for i = 1, 4 do
             local b = ns.units["party" .. i]
-            local step = pStyle.height + pStyle.gap + 18
-            local py = pStyle.y - (i - 1) * step
-            b:ClearAllPoints()
-            b:SetPoint("TOPLEFT", UIParent, "TOPLEFT", pStyle.x + 2, py - 2)
-            b:SetSize(pStyle.width - 4, pStyle.height - 4)
+            if not row then
+                local step = pStyle.height + pStyle.gap + 18
+                local py = pStyle.y - (i - 1) * step
+                b:ClearAllPoints()
+                b:SetPoint("TOPLEFT", UIParent, "TOPLEFT", pStyle.x + 2, py - 2)
+                b:SetSize(pStyle.width - 4, pStyle.height - 4)
+            end
             b.power:ClearAllPoints()
             b.health:ClearAllPoints()
             b.power:SetHeight(pStyle.power)
             b.power:SetPoint("LEFT")
             b.power:SetPoint("RIGHT")
             b.power:SetPoint("BOTTOM")
-            b.health:SetHeight((pStyle.height - 4) - pStyle.power - pStyle.seam)
+            b.health:SetHeight(h - pStyle.power - pStyle.seam)
             b.health:SetPoint("LEFT")
             b.health:SetPoint("RIGHT")
             b.health:SetPoint("TOP")
@@ -671,6 +706,8 @@ function ns.RelayoutUnits()
                 bt:SetTexCoord(0, pStyle.width / pStyle.texWidth, 0, pStyle.height / pStyle.texHeight)
                 b.detachedBezel = bt
             end
+            -- the row's band is the frame there
+            b.detachedBezel:SetShown(not row)
             if b.roleFrame then
                 b.roleFrame:ClearAllPoints()
                 b.roleFrame:SetPoint("CENTER", b, "LEFT", 10, 2)
@@ -683,7 +720,9 @@ function ns.RelayoutUnits()
                 b.pet.health:SetReverseFill(false)
             end
         end
+        if ns.LayoutPartyRow then ns.LayoutPartyRow() end
     end
+    if ns.ShapeDispelGlows then ns.ShapeDispelGlows() end
 end
 
 -- Range check logic: party frames fade when members are out of distance

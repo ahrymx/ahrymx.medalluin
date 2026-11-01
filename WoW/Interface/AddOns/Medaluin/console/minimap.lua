@@ -39,7 +39,10 @@ ns.On("PLAYER_LOGIN", function()
             local w = 2 * rx + 2 * ns.layout.minimapBleed
             local h = rBottom - rTop
             local hasTarget = UnitExists and UnitExists("target") and true or false
-            local relocated = inCombat or hasTarget or ns.skyriding or false
+            -- a party row under the console takes the bay's foot: in a group
+            -- the minimap keeps to the corner (party_row.lua)
+            local row = ns.PartyRowShown and ns.PartyRowShown()
+            local relocated = inCombat or hasTarget or ns.skyriding or row or false
             Minimap:ClearAllPoints()
             if relocated then
                 local trInner = mmCfg.topRightSize - 4

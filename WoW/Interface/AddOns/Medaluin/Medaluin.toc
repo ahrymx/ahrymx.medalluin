@@ -15,6 +15,7 @@ console\layout.lua
 console\light_profile.lua
 console\frame.lua
 console\units.lua
+console\party_row.lua
 console\auras.lua
 console\xp.lua
 console\minimap.lua
@@ -46,3 +47,4 @@ strips\meter.lua
 strips\auras.lua
 inventory\bags.lua
 keybind.lua
+diag.lua

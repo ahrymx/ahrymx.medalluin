@@ -87,6 +87,12 @@ local keybindPass = args[2] == "keybind" or args[3] == "keybind"
 -- option, the secure snippet run as the game would run it, Custom's editor,
 -- combat holding a change back, and the options kept per profile.
 local pagingPass = args[2] == "paging" or args[3] == "paging"
+-- "row" (after "light") plays the horizontal party row (console/party_row.lua):
+-- the Party layout option saved on the light profile, each member's frame by
+-- its pet's state driver, the snippet run from the game's secure update (in
+-- combat too), pets turned off, the row with no group, and the option played
+-- back to the vertical stack and forth again.
+local rowPass = args[3] == "row"
 local actionPage = 1
 local class = argClass or "PALADIN"
 
@@ -1051,7 +1057,7 @@ if modern then
 end
 
 -- the settings page, recorded; atlas sizes as Forever's end caps
-local page = { controls = {}, buttons = {}, settings = {}, subcategories = {} }
+local page = { controls = {}, buttons = {}, settings = {}, subcategories = {}, callbacks = {} }
 Settings = {
     RegisterVerticalLayoutCategory = function(name)
         page.name = name
@@ -1068,20 +1074,33 @@ Settings = {
     -- As Blizzard_Setting.lua's ProxySettingMixin: the default may be a
     -- function, asked each time; ApplyValue writes only a changed value, then
     -- always calls back; NotifyUpdate calls back with the value read again.
+    -- Its Init calls a function default, unwrapped, before it writes the
+    -- variable, so such a setting is built in the add-on's code (tainted).
     RegisterProxySetting = function(_, variable, kind, name, default, get, set)
+        if type(default) == "function" then page.builtTainted = (page.builtTainted or 0) + 1 end
+        if default ~= nil and type(default) ~= "function" and type(default) ~= kind then
+            error(("default for %s is a %s, not a %s"):format(variable, type(default), kind))
+        end
         local key = variable:match("^Medaluin_(.+)$")
         local s = { variable = variable, key = key, kind = kind, name = name, get = get, set = set }
         function s:Default() if type(default) == "function" then return default() end return default end
         function s:Get() return self.get() end
-        -- what the panel does when the player changes it
-        function s:SetValueChangedCallback(fn) self.callback = fn end
+        -- what the panel does when the player changes it: the registry calls
+        -- back with (owner, setting, value)
+        function s:SetValueChangedCallback(fn)
+            Settings.SetOnValueChangedCallback(self.variable, function(_, setting, value) fn(setting, value) end)
+        end
+        local function Call(self, v)
+            local cb = page.callbacks[self.variable]
+            if cb then cb[2](cb[1], self, v) end
+        end
         function s:Set(v)
             if self.get() ~= v then self.set(v) end
-            if self.callback then self.callback(self, v) end
+            Call(self, v)
         end
         function s:NotifyUpdate()
             self.notified = (self.notified or 0) + 1
-            if self.callback then self.callback(self, self.get()) end
+            Call(self, self.get())
         end
         -- Medaluin's own controls go through the setting, so the page shows the change
         function s:SetValue(v) self.viaPage = (self.viaPage or 0) + 1; self:Set(v) end
@@ -1093,6 +1112,13 @@ Settings = {
         function c:Add(value, label) table.insert(self.data, { value = value, label = label }) end
         function c:GetData() return self.data end
         return c
+    end,
+    SetOnValueChangedCallback = function(variable, fn, owner)
+        page.callbacks[variable] = { owner or variable, fn }
+    end,
+    GetSetting = function(variable)
+        local key = variable:match("^Medaluin_(.+)$")
+        return key and page.settings[key]
     end,
     RegisterAddOnCategory = function() page.registered = true end,
     OpenToCategory = function(id) page.opened = id end,
@@ -1131,7 +1157,8 @@ MedaluinDB = profilesPass and args[3] == "saved" and { consoleProfile = "light",
     or profilesPass and { consoleProfile = "light", rows = 3, actionBar = true, bareIcons = true,
         artColor = "ffffffff", drawer = 2, sideTab = "loot", bagsPoint = { "TOP", "TOP", 4, -8 },
         bagsColumns = 12, retired = "kept" }
-    or lightPass and { consoleProfile = "light", bareIcons = true, simParty = grouped }
+    or lightPass and { consoleProfile = "light", bareIcons = true, simParty = grouped,
+        partyLayout = rowPass and "horizontal" or nil }
     or barOff and { actionBar = false } or savedRows and { rows = savedRows }
     or pagingPass and { rows = 3 }
     or savedBare and { bareIcons = true } or savedNoChat and { chat = false }
@@ -1305,6 +1332,7 @@ if barPass then
             r[4] + 916, extra or ""))
     end
     print("page", page.name, page.registered and "registered" or "-", "buttons=" .. table.concat(page.buttons, ","))
+    print("page settings built in Medaluin's code", page.builtTainted or 0)
     for _, c in ipairs(page.controls) do
         local s, choices = c.setting, {}
         for _, o in ipairs(c.options or {}) do table.insert(choices, o.value .. "=" .. o.label) end
@@ -2903,6 +2931,39 @@ local function PagingPass()
         inCombat = false
     end
     taint("after every change")
+    -- /mdlui taint: WoW's own answer for every field and global the click
+    -- reads; here a stub that knows two tainted values and one of ours
+    do
+        -- a machinery table with one field Medaluin wrote, and a global it did
+        local spareGlobal = NUM_ACTIONBAR_BUTTONS
+        NUM_ACTIONBAR_BUTTONS = 12
+        HarnessCVarRegistry = { cache = 1, clean = 2 }
+        local tainted = { [ActionButton1] = { isExtra = "Medaluin", medaluinIcon = "Medaluin" },
+            [page.settings.consoleProfile] = { variable = "Medaluin" },
+            [HarnessCVarRegistry] = { cache = "Medaluin" } }
+        ActionButton1.isExtra, ActionButton1.medaluinIcon = false, true
+        function issecurevariable(t, k)
+            if k == nil then
+                if t == "NUM_ACTIONBAR_BUTTONS" then return false, "SomeAddon" end
+                return true
+            end
+            local by = tainted[t] and tainted[t][k]
+            return not by, by
+        end
+        SlashCmdList.MDLUI("taint")
+        -- a blocked click prints it by itself, with the button under the mouse
+        function GetMouseFoci() return { MultiBarBottomLeftButton1 } end
+        for _, f in ipairs(events.ADDON_ACTION_FORBIDDEN or {}) do
+            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "OtherAddon", "UseAction()")
+            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "Medaluin", "UseAction()")
+            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "Medaluin", "UseAction()")
+        end
+        GetMouseFoci = nil
+        issecurevariable = nil
+        HarnessCVarRegistry, NUM_ACTIONBAR_BUTTONS = nil, spareGlobal
+        ActionButton1.isExtra, ActionButton1.medaluinIcon = nil, nil
+        SlashCmdList.MDLUI("debug")
+    end
     -- per profile: the other profile has its own, and coming back brings these
     -- back; row 2 is Custom on both, so only its conditional moves
     ns.SetOption("row2PagingCustom", "[mod:alt] 3; 6")
@@ -2918,6 +2979,101 @@ local function PagingPass()
     bars("back")
     SlashCmdList.MDLUI("paging")
     print("/mdlui paging opens", tostring(page.opened))
+end
+
+local function RowPass()
+    local S = page.settings
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local h = _G.MedaluinPartyRow
+    local function shown(r) return tostring(r and r.shown) end
+    local function console(tag)
+        print(tag, "row=" .. tostring(ns.PartyRowShown()), "band=" .. shown(ns.partyRowBand),
+            "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"),
+            "minimapRelocated=" .. tostring(Minimap.points.CENTER[1] == _G.MedaluinMinimapBezel),
+            "bar7Alpha=" .. tostring(ns.bar7Frame.alpha))
+    end
+    local function members(tag)
+        for i = 1, 4 do
+            local b = ns.units["party" .. i]
+            out(tag .. " party" .. i, b, string.format("state=%s bezel=%s health=%s power=%s",
+                tostring(h.attrs["state-pet" .. i]), shown(b.detachedBezel), tostring(b.health.h),
+                tostring(b.power.h)))
+            out(tag .. " partypet" .. i, b.pet, string.format("bracket=%s seam=%s", shown(b.pet.bracket),
+                shown(b.pet.rowSeam)))
+            out(tag .. " partypet" .. i .. ".health", b.pet.health)
+        end
+    end
+    print("row option", "saved=" .. tostring(ns.db.partyLayout), "profile=" .. ns.db.consoleProfile,
+        "stored=" .. tostring(MedaluinDB.profiles.light.partyLayout))
+    for i = 1, 4 do print("row driver " .. i, tostring(h.stateDrivers and h.stateDrivers["pet" .. i])) end
+    hasTarget = false
+    inCombat = false
+    fire("PLAYER_TARGET_CHANGED")
+    fire("PLAYER_REGEN_ENABLED")
+    console("row, no target")
+    out("row band", ns.partyRowBand)
+    for i, bg in ipairs(ns.partyRowBackings) do out("row backing " .. i, bg, "shown=" .. shown(bg)) end
+    stateTick()
+    members("row")
+    -- a pet comes, in combat: the game's update narrows its owner
+    inCombat = true
+    fire("PLAYER_REGEN_DISABLED")
+    harnessHolds["@partypet1,exists"] = true
+    harnessHolds["@partypet4,exists"] = true
+    stateTick()
+    members("row, pets in combat")
+    harnessHolds["@partypet1,exists"] = nil
+    stateTick()
+    out("row, pet 1 gone party1", ns.units.party1, "state=" .. tostring(h.attrs["state-pet1"]))
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    -- pets off: no member gives up its slot
+    S.partyPets:Set(false)
+    for i = 1, 4 do print("row pets off driver " .. i, tostring(h.stateDrivers["pet" .. i])) end
+    stateTick()
+    members("row, pets off")
+    S.partyPets:Set(true)
+    stateTick()
+    -- no group and no preview: the row folds and the minimap comes back. The
+    -- group leaving and the preview going each tell the row on their own.
+    local wasGrouped, wasSim = grouped, ns.db.simParty
+    S.simParty:Set(false)
+    console("row, preview off")
+    grouped = false
+    fire("GROUP_ROSTER_UPDATE")
+    console("row, solo")
+    for i, bg in ipairs(ns.partyRowBackings) do print("row solo backing " .. i, shown(bg)) end
+    S.simParty:Set(true)
+    console("row, solo, preview on")
+    S.simParty:Set(false)
+    console("row, solo, preview off")
+    grouped = true
+    fire("GROUP_ROSTER_UPDATE")
+    console("row, group again")
+    grouped = wasGrouped
+    S.simParty:Set(wasSim)
+    fire("GROUP_ROSTER_UPDATE")
+    -- the option, played back to the stack and forth again
+    S.partyLayout:Set("vertical")
+    stateTick()
+    console("vertical")
+    for i = 1, 4 do print("vertical driver " .. i, tostring(h.stateDrivers["pet" .. i])) end
+    members("vertical")
+    S.partyLayout:Set("horizontal")
+    -- placed at once, before the game's update brings the pets' states
+    out("horizontal before the update party4", ns.units.party4, "state=" .. tostring(h.attrs["state-pet4"]))
+    stateTick()
+    console("horizontal again")
+    members("horizontal again")
+    -- a change asked for in combat waits for it to end
+    inCombat = true
+    S.partyLayout:Set("vertical")
+    out("vertical asked in combat party1", ns.units.party1)
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    out("vertical after combat party1", ns.units.party1)
 end
 
 if lightPass then
@@ -3016,8 +3172,16 @@ if lightPass then
         local p = ns.units["party" .. i]
         out("party" .. i, p, "bezel=" .. tostring(p.detachedBezel and p.detachedBezel.shown))
     end
+    -- the light profile's windows are rectangles: no glow traces a cut
+    local cuts = {}
+    for _, u in ipairs({ "player", "target", "party1", "party2", "party3", "party4" }) do
+        local cut = ns.units[u].dispelGlow.cut
+        table.insert(cuts, u .. "=" .. (cut and tostring(cut.shown) or "none"))
+    end
+    print("glow cuts", table.concat(cuts, " "))
     if keybindPass then KeybindPass() end
     if pagingPass then PagingPass() end
+    if rowPass then RowPass() end
     do return end
 end
 
@@ -3042,6 +3206,10 @@ if savedSimParty then
     local p1 = ns.units.party1
     print("party1.glow", tostring(p1.dispelGlow and p1.dispelGlow.shown),
         "behindArt=" .. tostring(p1.dispelGlow.level < ns.levels.art))
+    -- the medallion's party1 and unit windows are cut at 45 degrees; party2's is not
+    print("glow cuts", "party1=" .. tostring(p1.dispelGlow.cut and p1.dispelGlow.cut.shown),
+        "party3=" .. tostring(ns.units.party3.dispelGlow.cut and ns.units.party3.dispelGlow.cut.shown),
+        "player=" .. tostring(ns.units.player.dispelGlow.cut and ns.units.player.dispelGlow.cut.shown))
     local p2 = ns.units.party2
     print("party2.cc", tostring(p2.ccWidget and p2.ccWidget.shown),
         tostring(p2.ccWidget and p2.ccWidget.timer and p2.ccWidget.timer.text))

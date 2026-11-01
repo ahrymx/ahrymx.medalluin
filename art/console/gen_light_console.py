@@ -19,7 +19,10 @@ Layout architecture:
      and flush against the sides of the Minimap / Center Bay.
   4. Action Bars 2 and 3 (`30x30` buttons, `38px` frame height) attached directly below
      the Exp and Rep bars (`42 + 8 + 38 = 88px`, locking flush with the bottom of Bar 7!).
-  5. Detached Vertical Party Stack on the left of the screen (`184x30` each).
+  5. Party frames, by the Party layout option: a detached vertical stack on the left
+     of the screen (`184x30` each), or a horizontal row hanging under the console
+     (one band, four `156px` slots, `80deg` outer ends; a pet takes `40px` of its
+     owner's slot on the centre-ward side; drafted in gen_party_row.py).
 
 Usage:
     python3 art/console/gen_light_console.py          -> render/light-console-*.png
@@ -183,6 +186,42 @@ BOTTOM_GAP = H - (FLUSH_TOP_Y + CONSOLE_H)          # 1080 - 1060 = 20
 TR_MINIMAP_SIZE = 188
 # Detached vertical party frame size
 PARTY_W, PARTY_H, PARTY_GAP = 184, 30, 8
+# Horizontal party row: one band under the console's bottom edge (tucked 1px
+# under it), cut into four equal slots. Only its two outer ends slant. Every
+# window is a rectangle the bars fill: the outer ones stop short of the slant's
+# FOOT, so no bar corner pokes past it, and the art inks the rest of the band.
+ROW_TOP = UNIT_H + XP_H + BAR23_H - 1                # 87 below the console's top
+ROW_H = 32
+ROW_ANGLE = 80
+ROW_RUN = ROW_H / np.tan(np.radians(ROW_ANGLE))     # 5.64: how far an outer end slants in
+ROW_SLOT = CONSOLE_W // 4                           # 156
+ROW_PET = 40                                        # a pet's share of its owner's slot
+ROW_INSET = 2                                       # window edge to gold
+ROW_OUTER = int(np.ceil(ROW_RUN)) + ROW_INSET       # 8: window edge to the band's outer corner
+
+
+def party_row_boxes():
+    """Per member, x signed from the console's centre and y up from its top
+    (negative below), as the grid's slots are: the frame alone, the frame and
+    its pet, and the x of the seam between them."""
+    left = -CONSOLE_W // 2
+    top, bottom = -(ROW_TOP + ROW_INSET), -(ROW_TOP + ROW_H - ROW_INSET)
+    frames, framesPet, pets, seams = [], [], [], []
+    for i in range(4):
+        a, b = left + i * ROW_SLOT, left + (i + 1) * ROW_SLOT
+        fl = a + (ROW_OUTER if i == 0 else ROW_INSET)
+        fr = b - (ROW_OUTER if i == 3 else ROW_INSET)
+        frames.append((fl, fr, top, bottom))
+        if i < 2:       # left half: the pet on the right, toward the centre
+            seam = b - ROW_PET
+            framesPet.append((fl, seam - ROW_INSET, top, bottom))
+            pets.append((seam + ROW_INSET, b - ROW_INSET, top, bottom))
+        else:           # right half: the pet on the left
+            seam = a + ROW_PET
+            framesPet.append((seam + ROW_INSET, fr, top, bottom))
+            pets.append((a + ROW_INSET, seam - ROW_INSET, top, bottom))
+        seams.append(seam)
+    return frames, framesPet, pets, seams
 
 
 def svg_defs():
@@ -428,6 +467,31 @@ def render_party_bezel():
     return img
 
 
+def render_party_row():
+    """The horizontal party row's band: gold edge and slot seams, and ink over
+    everything the windows leave (the slants' slivers, the seams' margins).
+    Transparent in the windows, where the party buttons and their backing are."""
+    w, h, run = CONSOLE_W, ROW_H, ROW_RUN
+    band = f"0,0.8 {w},0.8 {w - run:.2f},{h - 0.8} {run:.2f},{h - 0.8}"
+    frames, _, _, _ = party_row_boxes()
+    holes = "".join(f'<rect x="{l + w // 2}" y="{-t - ROW_TOP}" width="{r - l}" height="{t - b}" fill="#000"/>'
+                    for l, r, t, b in frames)
+    # rectangles, not lines: a gradient has no box to stretch over on a line
+    seams = "".join(f'<rect x="{i * ROW_SLOT - 0.8}" y="0" width="1.6" height="{h}" fill="url(#goldGrad)"/>'
+                    for i in range(1, 4))
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}">'
+           f'<defs>{svg_defs()}<mask id="rowcut"><rect width="{w}" height="{h}" fill="#fff"/>{holes}</mask>'
+           f'<clipPath id="rowclip"><polygon points="{band}"/></clipPath></defs>'
+           f'<polygon points="{band}" fill="{INK}" mask="url(#rowcut)"/>'
+           f'<g clip-path="url(#rowclip)">{seams}</g>'
+           f'<polygon points="{band}" fill="none" stroke="url(#goldGrad)" stroke-width="1.6"/></svg>')
+    tmp = os.path.join(OUT, "_tmp_row.png")
+    img = rsvg(svg, tmp)
+    if os.path.exists(tmp):
+        os.remove(tmp)
+    return img
+
+
 def export_all():
     """Export all TGA textures to media/ and generate console/light_profile.lua."""
     os.makedirs(OUT, exist_ok=True)
@@ -443,6 +507,7 @@ def export_all():
     wing_plate = render_wing_piece()
     mm_bezel = render_minimap_bezel()
     party_bezel = render_party_bezel()
+    party_row = render_party_row()
 
     cw_tex, ch_tex = to_tga(c_explore, os.path.join(MEDIA, "console-light-explore.tga"))
     to_tga(c_combat, os.path.join(MEDIA, "console-light-combat.tga"))
@@ -454,6 +519,8 @@ def export_all():
     ww_tex, wh_tex = to_tga(wing_plate, os.path.join(MEDIA, "bar-wing-light.tga"))
     mw_tex, mh_tex = to_tga(mm_bezel, os.path.join(MEDIA, "minimap-light.tga"))
     pw_tex, ph_tex = to_tga(party_bezel, os.path.join(MEDIA, "party-light.tga"))
+    rw_tex, rh_tex = to_tga(party_row, os.path.join(MEDIA, "party-row-light.tga"))
+    row_frames, row_frames_pet, row_pets, row_seams = party_row_boxes()
 
     # Compute exact coordinates relative to console TOP-CENTER (CX = 960, FLUSH_TOP_Y = 904)
     # Bar 1 coordinates: x signed from CX, y height ABOVE FLUSH_TOP_Y (negative below)
@@ -511,13 +578,14 @@ def export_all():
             bx = -BAY_HALF + GRID_PAD + c * (GRID_BTN + GRID_GAP)
             bar7_slots.append((bx, bx + GRID_BTN, by_top, by_bot))
 
-    def fmt_slots(slist):
-        return ",\n            ".join(f"{{ {a}, {b}, {c}, {d} }}" for a, b, c, d in slist)
+    def fmt_slots(slist, indent=12):
+        return (",\n" + " " * indent).join(f"{{ {a}, {b}, {c}, {d} }}" for a, b, c, d in slist)
 
     lua = f"""-- Generated by art/console/gen_light_console.py; do not edit.
 -- Built-in "light" console profile: WeakTextures 2x5 center grid (Action Bar 7),
 -- dynamic square minimap, compact Action Bar 1 on top with drawer/pager/slim hybrid
--- castbar, attached Exp/Rep bars and Bar 2/3 wings, and detached vertical party stack.
+-- castbar, attached Exp/Rep bars and Bar 2/3 wings, and the party frames: a detached
+-- vertical stack, or a horizontal row under the console (console/party_row.lua).
 local _, ns = ...
 
 ns.lightProfile = {{
@@ -545,6 +613,21 @@ ns.lightProfile = {{
             power = 5, seam = 1, nameSize = 11, textInset = 6,
             detached = true, width = {PARTY_W}, height = {PARTY_H}, gap = {PARTY_GAP},
             x = 36, y = -500, texWidth = {pw_tex}, texHeight = {ph_tex},
+            -- the horizontal row: x from the console's centre, y up from its top
+            row = {{
+                file = "party-row-light", top = {-ROW_TOP}, width = {CONSOLE_W}, height = {ROW_H},
+                texWidth = {rw_tex}, texHeight = {rh_tex},
+                frames = {{
+                    {fmt_slots(row_frames, 20)}
+                }},
+                framesPet = {{
+                    {fmt_slots(row_frames_pet, 20)}
+                }},
+                pets = {{
+                    {fmt_slots(row_pets, 20)}
+                }},
+                seams = {{ {", ".join(str(x) for x in row_seams)} }},
+            }},
         }},
         minimapBleed = 0,
         minimap = {{

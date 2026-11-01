@@ -4,8 +4,9 @@
 -- 85..118) and the skyriding page 11 (121..130) via a state driver.
 --
 -- Out of combat with no target, the square minimap occupies the center bay and
--- the grid's alpha is 0. In combat, with a target or skyriding, the minimap
--- relocates to the top-right and the grid's alpha is 1 (console/minimap.lua).
+-- the grid's alpha is 0. In combat, with a target, skyriding or a party row up,
+-- the minimap relocates to the top-right and the grid's alpha is 1
+-- (console/minimap.lua).
 local _, ns = ...
 
 local console = ns.console
@@ -92,6 +93,6 @@ ns.On("PLAYER_LOGIN", function()
         header:SetAlpha(relocated and 1 or 0)
     end
 
-    -- shown by console/minimap.lua's one rule (combat, a target, skyriding),
+    -- shown by console/minimap.lua's one rule (combat, a target, skyriding, a party row),
     -- first at PLAYER_ENTERING_WORLD, which always follows login
 end)

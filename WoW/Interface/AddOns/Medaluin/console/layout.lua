@@ -19,6 +19,11 @@ ns.layout = {
     -- The minimap is a little larger than the ring's hole so its edge
     -- tucks under the gold.
     minimapBleed = 2,
+
+    -- Windows whose inner end the art cuts at 45 degrees: the dispel glow
+    -- (auras.lua) traces the cut. The light profile's windows are plain
+    -- rectangles, so its layout has none.
+    cuts = { unit = true, party1 = true },
 }
 
 -- Slots, as (window, side): side -1 is the left copy, 1 the right. party1

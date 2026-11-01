@@ -108,16 +108,19 @@ threat:SetScript("OnEvent", UpdateTint)
 
 -- The group art adds the party row. Textures are not protected, so this
 -- can swap in combat too; the party buttons themselves follow their units.
--- In the "light" profile, party frames are detached vertically, and the
--- console plate swaps between its exploration (minimap bay) and combat/target
--- (2x5 Bar 7 bay) textures; skyriding counts as active (console/minimap.lua).
+-- In the "light" profile, party frames are detached (a vertical stack, or a
+-- row under the console: party_row.lua), and the console plate swaps between
+-- its exploration (minimap bay) and combat/target (2x5 Bar 7 bay) textures;
+-- skyriding and a shown party row count as active (console/minimap.lua).
 UpdateGroup = function()
     if ns.art.exploreFile then
-        local active = fighting or (UnitExists and UnitExists("target")) or ns.skyriding
+        local row = ns.PartyRowShown and ns.PartyRowShown()
+        local active = fighting or (UnitExists and UnitExists("target")) or ns.skyriding or row
         local file = ns.media .. (active and ns.art.combatFile or ns.art.exploreFile)
         tex:SetTexture(file)
         tint:SetTexture(ns.media .. ns.art.tintFile)
         for _, t in ipairs(backings.group) do t:SetShown(false) end
+        if ns.ShowPartyRow then ns.ShowPartyRow() end
         return
     end
     local grouped = IsInGroup() or (ns.db and ns.db.simParty)
