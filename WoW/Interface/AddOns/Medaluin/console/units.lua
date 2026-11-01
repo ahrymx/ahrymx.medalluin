@@ -166,6 +166,16 @@ local PET_STUBS = {
     partypet2 = { name = "Water Elemental", class = "MAGE", health = 90, maxHealth = 100 },
 }
 
+local function AbbreviateName(name)
+    if not name or name == "" then return "" end
+    local first, rest = name:match("^(%S+)%s+(%S.*)$")
+    if first and rest then
+        local initial = first:match("([%z\1-\127\194-\244][\128-\191]*)") or first:sub(1, 1)
+        return initial .. ". " .. AbbreviateName(rest)
+    end
+    return name
+end
+
 local function PetHealthColor(pet)
     local unit = pet.unit
     if not UnitIsConnected(unit) or UnitIsDeadOrGhost(unit) then
@@ -207,7 +217,7 @@ local function UpdatePartyPet(pet)
         pet.health:SetMinMaxValues(0, max)
         pet.health:SetValue(cur)
         pet.health:SetStatusBarColor(PetHealthColor(pet))
-        pet.name:SetText(ns.Or(UnitName(unit), "Pet"))
+        pet.name:SetText(AbbreviateName(ns.Or(UnitName(unit), "Pet")))
         if pet.value then
             if not UnitIsConnected(unit) then
                 pet.value:SetText(PLAYER_OFFLINE)
@@ -228,7 +238,7 @@ local function UpdatePartyPet(pet)
         pet.health:SetValue(stub.health)
         local c = RAID_CLASS_COLORS[stub.class]
         if c then pet.health:SetStatusBarColor(Muted(c.r * 0.85, c.g * 0.85, c.b * 0.85)) end
-        pet.name:SetText(stub.name)
+        pet.name:SetText(AbbreviateName(stub.name))
         if pet.value then
             pet.value:SetFormattedText("%.0f%%", math.floor(stub.health / stub.maxHealth * 100 + 0.5))
         end
@@ -406,29 +416,19 @@ local function SpawnPet(parentBtn, unit, side)
     local pet = CreateFrame("Button", "MedaluinUnit_" .. unit, console, "SecureUnitButtonTemplate")
     pet.unit = unit
     pet.owner = parentBtn.unit
-    pet:SetFrameLevel(ns.levels.text + 2)
-    pet:SetHeight(18)
-    pet:SetPoint("TOPLEFT", parentBtn, "BOTTOMLEFT", 0, -8)
-    pet:SetPoint("TOPRIGHT", parentBtn, "BOTTOMRIGHT", 0, -8)
+    pet:SetFrameLevel(ns.levels.bars)
+    pet:SetSize(118, 16)
+    pet:SetPoint("TOP", parentBtn, "BOTTOM", 0, -10)
 
     pet:SetAttribute("unit", unit)
     pet:SetAttribute("*type1", "target")
     pet:SetAttribute("*type2", "togglemenu")
     pet:RegisterForClicks("AnyUp")
 
-    -- Melded stone trapezoid bracket texture
-    local bracket = pet:CreateTexture(nil, "BORDER")
-    bracket:SetAllPoints()
-    bracket:SetTexture(ns.media .. "pet-bracket")
-    local u1, u2 = 0, 129 / 256
-    if side == -1 then u1, u2 = u2, u1 end
-    bracket:SetTexCoord(u1, u2, 0, 18 / 32)
-    pet.bracket = bracket
-
-    -- Health bar status bar inset inside the trapezoid window cutout (x=14..115, y=3..15)
+    -- Health bar status bar inside the pill window cutout
     local bar = CreateFrame("StatusBar", nil, pet)
-    bar:SetPoint("TOPLEFT", pet, "TOPLEFT", 14, -3)
-    bar:SetPoint("BOTTOMRIGHT", pet, "BOTTOMRIGHT", -14, 3)
+    bar:SetPoint("TOPLEFT", pet, "TOPLEFT", 3, -2)
+    bar:SetPoint("BOTTOMRIGHT", pet, "BOTTOMRIGHT", -3, 2)
     bar:SetStatusBarTexture(ns.bar)
     bar:SetReverseFill(side == 1)
     pet.health = bar
@@ -439,23 +439,33 @@ local function SpawnPet(parentBtn, unit, side)
     bg:SetColorTexture(unpack(ns.colors.ink))
     pet.bg = bg
 
+    -- Pill frame overlay with rounded corners and gold rim, framing the bar
+    local frameOverlay = CreateFrame("Frame", nil, pet)
+    frameOverlay:SetAllPoints(pet)
+    frameOverlay:SetFrameLevel(bar:GetFrameLevel() + 1)
+    local bracket = frameOverlay:CreateTexture(nil, "ARTWORK")
+    bracket:SetAllPoints()
+    bracket:SetTexture(ns.media .. "pet-bracket")
+    bracket:SetTexCoord(0, 118 / 256, 0, 16 / 32)
+    pet.bracket = bracket
+
     -- Text overlay
     local text = CreateFrame("Frame", nil, pet)
     text:SetAllPoints(bar)
-    text:SetFrameLevel(pet:GetFrameLevel() + 2)
+    text:SetFrameLevel(frameOverlay:GetFrameLevel() + 1)
 
     local outer = side == 1 and "RIGHT" or "LEFT"
     local inner = side == 1 and "LEFT" or "RIGHT"
 
     pet.value = ns.Text(text, 9)
-    pet.value:SetPoint(inner, text, inner, side * 4, 0)
+    pet.value:SetPoint(inner, text, inner, side * 6, 0)
     pet.value:SetJustifyH(inner)
     pet.value:SetWordWrap(false)
     pet.value:SetTextColor(unpack(C.dim))
 
     pet.name = ns.Text(text, 9)
-    pet.name:SetPoint(outer, text, outer, -side * 4, 0)
-    pet.name:SetPoint(inner, pet.value, outer, side * 4, 0)
+    pet.name:SetPoint(outer, text, outer, -side * 6, 0)
+    pet.name:SetPoint(inner, pet.value, outer, side * 6, 0)
     pet.name:SetJustifyH(outer)
     pet.name:SetWordWrap(false)
     pet.name:SetTextColor(unpack(C.text))

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Generate the stone trapezoid bracket texture for party pet frames.
-Melded onto the bottom edge of the console under each party member.
+"""Generate the refined pill frame texture for party pet frames.
+Sleek capsule/pill shape with rounded corners, consistent gold/bronze rim,
+and dark ink bevel around the health bar cutout.
 
     python3 art/console/gen_pet_bracket.py -> WoW/Interface/AddOns/Medaluin/media/pet-bracket.tga
 """
@@ -16,48 +17,91 @@ OUT_TGA = os.path.join(MEDIA, "pet-bracket.tga")
 OUT_PNG = os.path.join(HERE, "render", "pet-bracket.png")
 
 
-def generate():
-    W, H = 129, 18
+def create_pill(W=118, H=16, r=8):
     tex_w, tex_h = 256, 32
-    img = Image.new("RGBA", (tex_w, tex_h), (0, 0, 0, 0))
+    ss = 8  # 8x supersampling for ultra smooth anti-aliased curves
+    big_w, big_h = tex_w * ss, tex_h * ss
+    img = Image.new("RGBA", (big_w, big_h), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
 
-    # Base stone trapezoid:
-    # Top: (0, 0) to (W-1, 0)
-    # Bottom: (14, H-1) to (W-15, H-1)
-    poly = [(0, 0), (W - 1, 0), (W - 15, H - 1), (14, H - 1)]
-    d.polygon(poly, fill=(37, 41, 53, 255))
+    s_w, s_h, s_r = W * ss, H * ss, r * ss
 
-    # Left wing outer highlight \ (light from top-left)
-    d.line([(0, 0), (14, H - 1)], fill=(160, 145, 100, 255), width=1)
-    d.line([(1, 0), (15, H - 1)], fill=(120, 110, 80, 255), width=1)
+    # 1. Outer gold/bronze rim (1.5px in base coords = 12px in ss)
+    # Slate stone fill
+    d.rounded_rectangle(
+        (0, 0, s_w - 1, s_h - 1),
+        radius=s_r,
+        fill=(37, 41, 53, 255),
+        outline=(146, 134, 94, 255),
+        width=int(1.5 * ss),
+    )
 
-    # Right wing outer shadow / (shadow side)
-    d.line([(W - 1, 0), (W - 15, H - 1)], fill=(55, 52, 48, 255), width=1)
-    d.line([(W - 2, 0), (W - 16, H - 1)], fill=(45, 42, 38, 255), width=1)
+    # 2. Subtle top highlight on the gold rim
+    hi_mask = Image.new("L", (big_w, big_h), 0)
+    hd = ImageDraw.Draw(hi_mask)
+    hd.rounded_rectangle((0, 0, s_w - 1, s_h - 1), radius=s_r, outline=255, width=int(1.2 * ss))
+    for y in range(s_h // 2, s_h):
+        for x in range(s_w):
+            hi_mask.putpixel((x, y), 0)
 
-    # Bottom rim bevels
-    d.line([(14, H - 1), (W - 15, H - 1)], fill=(145, 130, 90, 255), width=1)
-    d.line([(15, H - 2), (W - 16, H - 2)], fill=(95, 88, 70, 255), width=1)
+    hi_color = (175, 162, 118, 255)
+    for y in range(0, s_h // 2):
+        for x in range(0, s_w):
+            if hi_mask.getpixel((x, y)) > 0:
+                img.putpixel((x, y), hi_color)
 
-    # Top seam connection (smooth transition into console art at y=136)
-    d.line([(0, 0), (W - 1, 0)], fill=(37, 41, 53, 255), width=1)
+    # 3. Inner stone bevel (slate highlight)
+    d.rounded_rectangle(
+        (int(1.5 * ss), int(1.5 * ss), s_w - 1 - int(1.5 * ss), s_h - 1 - int(1.5 * ss)),
+        radius=s_r - int(1.5 * ss),
+        outline=(48, 54, 68, 200),
+        width=int(0.8 * ss),
+    )
 
-    # Cutout window for the pet status bar (x = 14..114, y = 3..14, height 12)
-    for y in range(3, 15):
-        for x in range(14, W - 14):
-            img.putpixel((x, y), (0, 0, 0, 0))
+    # 4. Cutout window for status bar (inset 2px top/bottom, 3px left/right)
+    cut_x0 = int(3.0 * ss)
+    cut_y0 = int(2.0 * ss)
+    cut_x1 = s_w - 1 - int(3.0 * ss)
+    cut_y1 = s_h - 1 - int(2.0 * ss)
+    cut_r = int((r - 2.0) * ss)
 
-    # Inner window border (dark ink bevel around cutout)
-    d.rectangle((13, 2, W - 14, 15), outline=(22, 22, 26, 255))
-    d.line([(13, 15), (W - 14, 15)], fill=(80, 75, 60, 200), width=1)
+    # Dark ink bevel around cutout window
+    d.rounded_rectangle(
+        (cut_x0, cut_y0, cut_x1, cut_y1),
+        radius=cut_r,
+        outline=(20, 20, 24, 255),
+        width=int(1.0 * ss),
+    )
 
-    # Save PNG preview
+    # Cutout hole inside (transparent)
+    hole_x0 = cut_x0 + int(0.9 * ss)
+    hole_y0 = cut_y0 + int(0.9 * ss)
+    hole_x1 = cut_x1 - int(0.9 * ss)
+    hole_y1 = cut_y1 - int(0.9 * ss)
+    hole_r = cut_r - int(0.9 * ss)
+
+    hole_mask = Image.new("L", (big_w, big_h), 0)
+    hmd = ImageDraw.Draw(hole_mask)
+    hmd.rounded_rectangle((hole_x0, hole_y0, hole_x1, hole_y1), radius=hole_r, fill=255)
+
+    for y in range(hole_y0, hole_y1 + 1):
+        for x in range(hole_x0, hole_x1 + 1):
+            if hole_mask.getpixel((x, y)) > 0:
+                img.putpixel((x, y), (0, 0, 0, 0))
+
+    # Downsample using Lanczos
+    res = img.resize((tex_w, tex_h), Image.Resampling.LANCZOS)
+    return res
+
+
+def generate():
+    W, H, r = 118, 16, 8
+    img = create_pill(W, H, r)
+
     os.makedirs(os.path.dirname(OUT_PNG), exist_ok=True)
     img.save(OUT_PNG)
     print("Saved preview:", OUT_PNG)
 
-    # Convert to 32-bit uncompressed TGA via magick
     tmp_png = OUT_TGA + ".tmp.png"
     img.save(tmp_png)
     os.makedirs(os.path.dirname(OUT_TGA), exist_ok=True)
