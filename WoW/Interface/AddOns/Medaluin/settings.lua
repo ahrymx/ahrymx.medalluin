@@ -617,6 +617,10 @@ local function OpenSettings(arg)
         if ns.KeybindMode then ns.KeybindMode() end
         return
     end
+    if arg == "taint" then
+        if ns.TaintReport then ns.TaintReport() end
+        return
+    end
     if not ns.settingsCategory then return end
     local target = ns.settingsCategory
     if arg == "console" or arg == "profile" or arg == "profiles" then

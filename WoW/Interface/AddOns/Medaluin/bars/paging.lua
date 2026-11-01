@@ -5,7 +5,7 @@
 --   bar 1         ActionButton1-12              Blizzard's own paging by default
 --   row 2         MultiBarBottomLeftButton1-12  page 6 (action bar 2) by default
 --   row 3         MultiBarBottomRightButton1-12 page 5 (action bar 3) by default
---   centre grid   MedaluinBar7Button1-10        the light profile's forms, stealth, flying
+--   centre grid   MultiBar6Button1-10           the light profile's forms, stealth, flying
 --
 -- A page is 12 slots: page n holds actions (n - 1) * 12 + 1 to n * 12. Pages
 -- 7 to 10 are the ones the game swaps bar 1 to for stances, forms and stealth,
@@ -14,7 +14,9 @@
 -- Blizzard's buttons read their page from an "actionpage" attribute, their
 -- own or else their parent's. Their bars kept it on the bar frame, which
 -- the buttons left when Medaluin took them, so each button now carries its
--- own, set by a secure state header from the conditional, in combat too.
+-- own, set by a secure state header from the conditional, in combat too,
+-- and never by Medaluin's own code, which would taint the buttons' clicks
+-- (ns.DriveState, core.lua).
 -- Bar 1 left on Blizzard's paging carries none, and the game's own rules
 -- (page arrows, stances, vehicles, override and possess bars) decide;
 -- except where there is a centre grid, which takes the skyriding page from
@@ -101,8 +103,10 @@ function ns.PagingStart(key)
 end
 
 -- Run in the secure environment on every change of state: "possess" made a
--- page as the game's own bar 1 would, and the page put on each button.
+-- page as the game's own bar 1 would, and the page put on each button. Only
+-- the game's secure update ever runs it to the end (ns.DriveState).
 local SNIPPET = [=[
+    if self:GetAttribute("medaluin-hold") then return end
     local page = newstate
     if page == "possess" then
         if HasVehicleActionBar() then page = GetVehicleBarIndex()
@@ -111,7 +115,8 @@ local SNIPPET = [=[
         elseif HasBonusActionBar() then page = GetBonusBarIndex()
         else page = 1 end
     end
-    page = tonumber(page) or 1
+    -- no state (no conditional): no page of its own, Blizzard's paging
+    if newstate ~= nil then page = tonumber(page) or 1 end
     self:SetAttribute("page", page)
     for i = 1, 12 do
         local b = self:GetFrameRef("b" .. i)
@@ -128,13 +133,7 @@ local function Apply(bar)
     if not header then return end
     local conditional = ns.PagingConditional(bar.key)
     header.conditional = conditional
-    if conditional then
-        RegisterStateDriver(header, "page", conditional)
-    else
-        UnregisterStateDriver(header, "page")
-        header:SetAttribute("page", nil)
-        for _, b in ipairs(header.buttons) do b:SetAttribute("actionpage", nil) end
-    end
+    ns.DriveState(header, "page", conditional)
 end
 
 -- A header for one row of Blizzard's buttons, once they are on the bar.

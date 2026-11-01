@@ -13,9 +13,10 @@ local _, ns = ...
 
 -- A button's binding command, by its name: Blizzard's bars bind through
 -- their own commands, so a key set here shows in Blizzard's Keybindings page
--- too. The centre grid (console/bar7.lua) is Medaluin's own, so its keys are
--- click bindings, the form Blizzard's buttons read a hotkey from when they
--- have no command of their own.
+-- too. The centre grid (console/bar7.lua) is Blizzard's Action bar 7, so it
+-- binds as bar 7; only where the client has no bar 7 (Classic Era) is it
+-- Medaluin's own, with click bindings, the form Blizzard's buttons read a
+-- hotkey from when they have no command of their own.
 local BARS = {
     { "ActionButton", "ACTIONBUTTON", "Action bar 1", 12 },
     { "MultiBarBottomLeftButton", "MULTIACTIONBAR1BUTTON", "Action bar 2", 12 },
@@ -48,6 +49,21 @@ end
 
 local function Keys(command)
     return { GetBindingKey(command) }
+end
+
+-- The centre grid became Blizzard's Action bar 7 (console/bar7.lua): keys
+-- bound to the old buttons' clicks go to bar 7's own commands, once, at
+-- login. Its own commands press the button through Blizzard's code
+-- (MultiActionButtonDown); a click binding clicked it from outside.
+function ns.MoveGridBindings(count)
+    local moved = false
+    for i = 1, count do
+        for _, key in ipairs(Keys("CLICK MedaluinBar7Button" .. i .. ":LeftButton")) do
+            SetBinding(key, "MULTIACTIONBAR6BUTTON" .. i)
+            moved = true
+        end
+    end
+    if moved and SaveBindings then SaveBindings(GetCurrentBindingSet and GetCurrentBindingSet() or 1) end
 end
 
 local function KeyText(key)

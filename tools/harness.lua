@@ -374,6 +374,12 @@ MainMenuBar = new("Frame", UIParent, "MainMenuBar")
 local function ActionButton(name, parent, action)
     local b = new("CheckButton", parent, name)
     b.w, b.h, b.action = 36, 36, action
+    -- Blizzard's own buttons are tainted the same way as the template's
+    -- (harnessSecure, below)
+    function b:SetAttribute(k, v)
+        Region.SetAttribute(self, k, v)
+        if not harnessSecure then self.taintedBy = k end
+    end
     b.icon = new("Texture", b, name .. "Icon")
     for _, part in ipairs({ "Count", "HotKey", "Name", "Border", "Flash" }) do
         b[part] = new("FontString", b, name .. part)
@@ -428,6 +434,8 @@ end
 
 -- Forever's bar divider (a three-slice of textures) exists only on an Edit
 -- Mode client; elsewhere it raises, as an unknown template does in WoW.
+-- Events Forever does not have (BugSack, 2026-11-01): registering one raises
+missingEvents = modern and { ROLE_POLL_UPDATE = true, QUEUE_STATUS_UPDATE = true } or {}
 local DIVIDER = "HorizontalDividerTemplate"
 harnessBarPage = 1      -- bar 1's page, where a button with no page of its own falls back to
 function CreateFrame(kind, name, parent, template)
@@ -438,6 +446,9 @@ function CreateFrame(kind, name, parent, template)
         for _ = 1, 3 do new("Texture", f) end
     elseif template == "ActionBarButtonTemplate" then
         f.template, f.w, f.h = template, 36, 36
+        -- made by an addon, the template's own OnLoad runs in the addon's
+        -- execution, and the fields it writes are tainted from birth
+        if not harnessSecure then f.taintedBy = "created" end
         -- the game's CalculateAction (C, and Classic's Lua before it): a
         -- button with an ID takes the page from its own "actionpage", else
         -- its parent's (the template sets useparent-actionpage), else bar
@@ -446,6 +457,7 @@ function CreateFrame(kind, name, parent, template)
         f.attrs["useparent-actionpage"] = true
         function f:SetAttribute(k, v)
             Region.SetAttribute(self, k, v)
+            if not harnessSecure then self.taintedBy = k end
             local id = self:GetID() or 0
             if id > 0 then
                 local page = self.attrs.actionpage or self.parent and self.parent.attrs.actionpage
@@ -460,13 +472,80 @@ function CreateFrame(kind, name, parent, template)
             f[part] = new("FontString", f, (name or "") .. part)
         end
         f.cooldown = new("Cooldown", f, (name or "") .. "Cooldown")
+    elseif template == "SecureHandlerStateTemplate" then
+        -- a state-<name> attribute runs the _onstate-<name> snippet
+        function f:SetAttribute(k, v)
+            Region.SetAttribute(self, k, v)
+            local state = type(k) == "string" and k:match("^state%-(.+)$")
+            local body = state and self.attrs["_onstate-" .. state]
+            if body then setfenv(assert(loadstring(body)), harnessSnippetEnv(self, v))() end
+        end
     end
-    function f:RegisterEvent(e) events[e] = events[e] or {}; table.insert(events[e], self) end
+    function f:RegisterEvent(e)
+        -- an event the client does not have raises, as in WoW
+        if missingEvents[e] then error("Attempt to register unknown event \"" .. e .. "\"", 2) end
+        events[e] = events[e] or {}
+        table.insert(events[e], self)
+    end
     return f
 end
+-- The macro conditional as the game reads it: the first clause whose every
+-- [condition] is in harnessHolds, or the bare fallback.
+harnessHolds = {}
+function harnessPick(conditional, holds)
+    holds = holds or harnessHolds
+    for clause in (conditional .. ";"):gmatch("%s*(.-)%s*;") do
+        local conds, value = clause:match("^(.*%])%s*(%S+)$")
+        if not conds then return clause end
+        local ok = true
+        for c in conds:gmatch("%[(.-)%]") do ok = ok and holds[c] or false end
+        if ok then return value end
+    end
+end
+-- Taint: Medaluin's code is insecure; only the game's own update (stateTick)
+-- runs secure. An attribute set on an action button outside it runs the
+-- button's OnAttributeChanged tainted, and its clicks are blocked after that
+-- (UseAction, BugSack 2026-11-01): the button keeps the attribute's name.
+harnessSecure = false
+-- The restricted environment a state snippet runs in.
+harnessWorld = { vehicle = false, override = false, temp = false, bonus = false }
+local function SnippetEnv(self, newstate)
+    local w = harnessWorld
+    return {
+        self = self, newstate = newstate, tonumber = tonumber,
+        HasVehicleActionBar = function() return w.vehicle end, GetVehicleBarIndex = function() return 16 end,
+        HasOverrideActionBar = function() return w.override end, GetOverrideBarIndex = function() return 18 end,
+        HasTempShapeshiftActionBar = function() return w.temp end,
+        GetTempShapeshiftBarIndex = function() return 17 end,
+        HasBonusActionBar = function() return w.bonus end, GetBonusBarIndex = function() return 7 end,
+    }
+end
+harnessSnippetEnv = SnippetEnv
+-- SecureStateDriverManager's resolveDriver: the conditional's state, set
+-- only when it differs from the frame's ("nil" is no state).
+local drivenFrames = {}
+local function Resolve(f, attribute, values)
+    local v = harnessPick(values)
+    if v == "nil" then v = nil else v = tonumber(v) or v end
+    if v ~= f.attrs[attribute] then
+        f:SetAttribute(attribute, v)
+        if f.scripts.OnAttributeChanged then f.scripts.OnAttributeChanged(f, attribute, v) end
+    end
+end
+-- RegisterStateDriver applies the state at once, in the caller (tainted)
 function RegisterStateDriver(f, state, values)
     f.stateDrivers = f.stateDrivers or {}
     f.stateDrivers[state] = values
+    drivenFrames[f] = true
+    Resolve(f, "state-" .. state, values)
+end
+-- The manager's OnUpdate (every 0.2 s): secure.
+function stateTick()
+    harnessSecure = true
+    for f in pairs(drivenFrames) do
+        for state, values in pairs(f.stateDrivers or {}) do Resolve(f, "state-" .. state, values) end
+    end
+    harnessSecure = false
 end
 function UnregisterStateDriver(f, state)
     if f.stateDrivers then f.stateDrivers[state] = nil end
@@ -519,6 +598,8 @@ function GetTime() return now end
 -- the game's bindings, key -> command: the number keys on action bar 1
 local bindings, bindingSaves = {}, {}
 for i = 1, 12 do bindings[tostring(i)] = "ACTIONBUTTON" .. i end
+-- a key bound to the centre grid's old buttons, before it took Action bar 7's
+bindings.G = "CLICK MedaluinBar7Button3:LeftButton"
 function GetBindingKey(action)
     local keys = {}
     for k, c in pairs(bindings) do if c == action then table.insert(keys, k) end end
@@ -741,6 +822,21 @@ if modern then
     MainMenuBarVehicleLeaveButton:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
     MultiBarBottomLeft = new("Frame", UIParent, "MultiBarBottomLeft")
     MultiBarBottomRight = new("Frame", UIParent, "MultiBarBottomRight")
+    -- Action bar 7, hidden by default: its buttons made by Blizzard's own
+    -- OnLoad (secure), on page 14 by their bar
+    MultiBar6 = new("Frame", UIParent, "MultiBar6")
+    MultiBar6.shown = false
+    MultiBar6.attrs.actionpage = 14
+    MultiBar6.actionButtons = {}
+    harnessSecure = true
+    for i = 1, 12 do
+        local b = CreateFrame("CheckButton", "MultiBar6Button" .. i, MultiBar6, "ActionBarButtonTemplate")
+        b:SetID(i)
+        b.bar, b.buttonType = MultiBar6, "MULTIACTIONBAR6BUTTON"
+        b:SetAttribute("useparent-actionpage", true)
+        MultiBar6.actionButtons[i] = b
+    end
+    harnessSecure = false
     for _, bar in ipairs({ { MainActionBar, "ActionButton" }, { MultiBarBottomLeft, "MultiBarBottomLeftButton" },
         { MultiBarBottomRight, "MultiBarBottomRightButton" } }) do
         for i = 1, 12 do
@@ -1183,6 +1279,8 @@ for _, e in ipairs({ "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD" }) do
         if h then h(f, e) end
     end
 end
+-- the state driver manager's first update after login: the pages land
+stateTick()
 for _, b in pairs(ns.units) do
     if (UnitExists(b.unit) or b.stub) and b.scripts.OnShow then b.scripts.OnShow(b) end
 end
@@ -2495,7 +2593,7 @@ local function KeybindPass()
     local binder = ns.keybinder
     local function state(tag)
         local marked = 0
-        for _, b in ipairs({ ActionButton1, StanceButton1, PetActionButton1, _G.MedaluinBar7Button1 }) do
+        for _, b in ipairs({ ActionButton1, StanceButton1, PetActionButton1, ns.bar7Buttons and ns.bar7Buttons[1] }) do
             for _, t in ipairs(b and b.all_ or {}) do
                 if t.kind == "Texture" and t.layer == "OVERLAY" and t.sub == 7 and t.shown then marked = marked + 1 end
             end
@@ -2517,7 +2615,7 @@ local function KeybindPass()
 
     say("kb commands", ns.BindingCommand(ActionButton3), ns.BindingCommand(MultiBarBottomLeftButton2),
         ns.BindingCommand(StanceButton1), ns.BindingCommand(PetActionButton2),
-        tostring(ns.BindingCommand(_G.MedaluinBar7Button1)), tostring(ns.BindingCommand(Minimap)))
+        tostring(ns.BindingCommand(ns.bar7Buttons and ns.bar7Buttons[1])), tostring(ns.BindingCommand(Minimap)))
     state("at login")
     hover(ActionButton3)
     state("hover while off")
@@ -2584,12 +2682,12 @@ local function KeybindPass()
     hover(PetActionButton2); key("X")
     say("kb stance, pet", "SHAPESHIFTBUTTON1=" .. keysOf("SHAPESHIFTBUTTON1"),
         "BONUSACTIONBUTTON2=" .. keysOf("BONUSACTIONBUTTON2"))
-    if _G.MedaluinBar7Button1 then
-        hover(_G.MedaluinBar7Button1); key("V")
-        local b7 = _G.MedaluinBar7Button1
+    local b7 = ns.bar7Buttons and ns.bar7Buttons[1]
+    if b7 then
+        hover(b7); key("V")
         fire("UPDATE_BINDINGS")
         local hk = b7.medaluinHotkey or b7.HotKey
-        say("kb grid", "click=" .. keysOf("CLICK MedaluinBar7Button1:LeftButton"),
+        say("kb grid", "keys=" .. keysOf(ns.BindingCommand(b7)),
             "buttonType=" .. tostring(b7.buttonType), "bare=" .. tostring(ns.db.bareIcons),
             "hotkey=" .. tostring(hk and hk.text))
     end
@@ -2646,23 +2744,43 @@ local function PagingPass()
         print("paging " .. tag, table.concat(line, " | "))
     end
     -- the game's state driver: the snippet with the conditional's result, in
-    -- an environment of the restricted API
-    local world = { vehicle = false, override = false, temp = false, bonus = false }
+    -- an environment of the restricted API, run securely
+    local world = harnessWorld
     local function run(h, newstate)
-        local env = {
-            self = h, newstate = newstate, tonumber = tonumber,
-            HasVehicleActionBar = function() return world.vehicle end, GetVehicleBarIndex = function() return 16 end,
-            HasOverrideActionBar = function() return world.override end, GetOverrideBarIndex = function() return 18 end,
-            HasTempShapeshiftActionBar = function() return world.temp end,
-            GetTempShapeshiftBarIndex = function() return 17 end,
-            HasBonusActionBar = function() return world.bonus end, GetBonusBarIndex = function() return 7 end,
-        }
-        local f = assert(loadstring(h.attrs["_onstate-page"]))
-        setfenv(f, env)()
+        harnessSecure = true
+        setfenv(assert(loadstring(h.attrs["_onstate-page"])), harnessSnippetEnv(h, newstate))()
+        harnessSecure = false
         local b1, b12 = h.buttons[1], h.buttons[#h.buttons]
         return string.format("page=%s b1=%s b12=%s", tostring(h.attrs.page), tostring(b1.attrs.actionpage),
             tostring(b12.attrs.actionpage))
     end
+    -- which buttons Medaluin's own code set an attribute on (each a blocked
+    -- click), by row
+    local function taint(tag)
+        local line = {}
+        local rows = { { "bar1", H.bar1Paging and H.bar1Paging.buttons }, { "row2", H.row2Paging and H.row2Paging.buttons },
+            { "row3", H.row3Paging and H.row3Paging.buttons }, { "grid", ns.bar7Buttons } }
+        for _, row in ipairs(rows) do
+            local n, by = 0, nil
+            for _, b in ipairs(row[2] or {}) do
+                if b.taintedBy then n, by = n + 1, b.taintedBy end
+            end
+            if row[2] then table.insert(line, row[1] .. "=" .. n .. (by and " (" .. by .. ")" or "")) end
+        end
+        print("paging tainted " .. tag, table.concat(line, " | "))
+    end
+    local function pages(tag)
+        local line = {}
+        for _, key in ipairs({ "bar1Paging", "row2Paging", "row3Paging" }) do
+            local h = H[key]
+            if h then table.insert(line, key .. " b1=" .. tostring(h.buttons[1].attrs.actionpage)) end
+        end
+        if ns.bar7Buttons then table.insert(line, "grid slot1=" .. tostring(ns.bar7Buttons[1].action)) end
+        print("paging pages " .. tag, table.concat(line, " | "))
+    end
+    -- after login: paged by the game's first update, none by Medaluin
+    pages("after login")
+    taint("at login")
     print("paging headers", "bar1 buttons=" .. (H.bar1Paging and #H.bar1Paging.buttons or 0),
         "row2 first=" .. (H.row2Paging and H.row2Paging.buttons[1]:GetName() or "-"),
         "row3 first=" .. (H.row3Paging and H.row3Paging.buttons[1]:GetName() or "-"))
@@ -2684,6 +2802,8 @@ local function PagingPass()
         bars("row2 stances")
         S.bar1Paging:Set("default")
         bars("bar1 default")
+        pages("bar1 default, before the update")
+        stateTick()
         print("paging bar1 cleared", "page=" .. tostring(H.bar1Paging.attrs.page),
             "b1=" .. tostring(H.bar1Paging.buttons[1].attrs.actionpage))
         S.row2Paging:Set("default")
@@ -2733,21 +2853,12 @@ local function PagingPass()
         bars("grid page9")
         S.gridPaging:Set("default")
         bars("grid default")
-        -- the macro conditional as the game reads it: the first clause whose
-        -- every [condition] holds, or the bare fallback
-        local function pick(conditional, holds)
-            for clause in (conditional .. ";"):gmatch("%s*(.-)%s*;") do
-                local conds, value = clause:match("^(.*%])%s*(%S+)$")
-                if not conds then return clause end
-                local ok = true
-                for c in conds:gmatch("%[(.-)%]") do ok = ok and holds[c] or false end
-                if ok then return value end
-            end
-        end
+        local pick = harnessPick
         local grid = ns.bar7Frame
         local function gridRun(newstate)
-            local env = { self = grid, newstate = newstate, tonumber = tonumber }
-            setfenv(assert(loadstring(grid.attrs["_onstate-page"])), env)()
+            harnessSecure = true
+            setfenv(assert(loadstring(grid.attrs["_onstate-page"])), harnessSnippetEnv(grid, newstate))()
+            harnessSecure = false
             local b1, b10 = grid:GetFrameRef("btn1"), grid:GetFrameRef("btn10")
             return string.format("slots %s-%s", tostring(b1.action), tostring(b10.action))
         end
@@ -2762,6 +2873,42 @@ local function PagingPass()
             local page = pick(driver, case[2])
             print("paging grid " .. case[1], "page=" .. tostring(page), gridRun(page))
         end
+        -- the game's update pages the grid in combat too: stealth
+        stateTick()
+        inCombat = true
+        harnessHolds.stealth = true
+        stateTick()
+        pages("grid, stealth in combat")
+        harnessHolds.stealth = nil
+        stateTick()
+        inCombat = false
+    end
+    taint("after every change")
+    -- /mdlui taint: WoW's own answer for every field and global the click
+    -- reads; here a stub that knows two tainted values and one of ours
+    do
+        local tainted = { [ActionButton1] = { isExtra = "Medaluin", medaluinIcon = "Medaluin" } }
+        ActionButton1.isExtra, ActionButton1.medaluinIcon = false, true
+        function issecurevariable(t, k)
+            if k == nil then
+                if t == "NUM_ACTIONBAR_BUTTONS" then return false, "SomeAddon" end
+                return true
+            end
+            local by = tainted[t] and tainted[t][k]
+            return not by, by
+        end
+        SlashCmdList.MDLUI("taint")
+        -- a blocked click prints it by itself, with the button under the mouse
+        function GetMouseFoci() return { MultiBarBottomLeftButton1 } end
+        for _, f in ipairs(events.ADDON_ACTION_FORBIDDEN or {}) do
+            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "OtherAddon", "UseAction()")
+            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "Medaluin", "UseAction()")
+            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "Medaluin", "UseAction()")
+        end
+        GetMouseFoci = nil
+        issecurevariable = nil
+        ActionButton1.isExtra, ActionButton1.medaluinIcon = nil, nil
+        SlashCmdList.MDLUI("taint")
     end
     -- per profile: the other profile has its own, and coming back brings these
     -- back; row 2 is Custom on both, so only its conditional moves
@@ -2796,6 +2943,10 @@ if lightPass then
         "bar7Slot1=" .. tostring(ns.bar7Buttons[1].action),
         "bar7Slot10=" .. tostring(ns.bar7Buttons[10].action),
         "stateDriver=" .. tostring(ns.bar7Frame.stateDrivers and ns.bar7Frame.stateDrivers.page))
+    print("bar7 buttons", ns.bar7Buttons[1]:GetName(), "parent=" .. tostring(ns.bar7Buttons[1].parent == ns.bar7Frame),
+        "tainted=" .. tostring(ns.bar7Buttons[1].taintedBy), "key G=" .. tostring(bindings.G),
+        "spare11=" .. tostring(_G.MultiBar6Button11 and _G.MultiBar6Button11.parent == ns.hidden),
+        "bar=" .. tostring(_G.MultiBar6 and _G.MultiBar6.parent == ns.hidden))
     out("player.health", ns.units.player.health)
     out("player.power", ns.units.player.power)
     out("target.health", ns.units.target.health)
@@ -2808,8 +2959,8 @@ if lightPass then
     out("MultiBarBottomLeftButton6", _G.MultiBarBottomLeftButton6, "level=" .. _G.MultiBarBottomLeftButton6.level)
     out("MultiBarBottomRightButton1", _G.MultiBarBottomRightButton1, "level=" .. _G.MultiBarBottomRightButton1.level)
     out("MultiBarBottomRightButton6", _G.MultiBarBottomRightButton6, "level=" .. _G.MultiBarBottomRightButton6.level)
-    out("MedaluinBar7Button1", _G.MedaluinBar7Button1, "level=" .. _G.MedaluinBar7Button1.level)
-    out("MedaluinBar7Button10", _G.MedaluinBar7Button10, "level=" .. _G.MedaluinBar7Button10.level)
+    out("grid button 1", ns.bar7Buttons[1], "level=" .. ns.bar7Buttons[1].level)
+    out("grid button 10", ns.bar7Buttons[10], "level=" .. ns.bar7Buttons[10].level)
     out("barLow", ns.barPower)
     out("drawerToggle", ns.drawerToggle)
     -- Clear target out of combat -> exploration mode: square minimap in center bay
@@ -2850,17 +3001,21 @@ if lightPass then
         "bezelShown=" .. tostring(_G.MedaluinMinimapBezel.shown),
         "bar7Alpha=" .. tostring(ns.bar7Frame.alpha))
     out("minimap(combat)", Minimap)
-    -- Page Bar 7 to Bar 8 (slots 85..94)
-    inCombat = false
-    ns.SetBar7Page(8)
-    print("bar7(page 8)", "slot1=" .. tostring(ns.bar7Buttons[1].action),
+    -- The game's update pages Bar 7: cat form (Bar 8, slots 85..94), then
+    -- stealth in combat (Bar 10, slots 109..118); Medaluin's code never does
+    stateTick()
+    harnessHolds["bonusbar:1"] = true
+    stateTick()
+    print("bar7(cat form)", "slot1=" .. tostring(ns.bar7Buttons[1].action),
         "slot10=" .. tostring(ns.bar7Buttons[10].action))
-    -- in combat a protected button's attributes cannot change: the page
-    -- waits for the state driver, and the buttons keep theirs
+    harnessHolds["bonusbar:1"] = nil
+    harnessHolds.stealth = true
     inCombat = true
-    ns.SetBar7Page(9)
-    print("bar7(page 9 asked in combat)", "slot1=" .. tostring(ns.bar7Buttons[1].action),
-        "header page=" .. tostring(ns.bar7Frame.page))
+    stateTick()
+    print("bar7(stealth in combat)", "slot1=" .. tostring(ns.bar7Buttons[1].action),
+        "tainted=" .. tostring(ns.bar7Buttons[1].taintedBy))
+    harnessHolds.stealth = nil
+    stateTick()
     inCombat = false
     fire("PLAYER_REGEN_ENABLED")
     -- Detached vertical party frames

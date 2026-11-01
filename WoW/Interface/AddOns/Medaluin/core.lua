@@ -23,10 +23,13 @@ local handlers, events = {}, CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, ...)
     for _, fn in ipairs(handlers[event]) do fn(event, ...) end
 end)
+-- An event this client does not have (Forever lacks ROLE_POLL_UPDATE and
+-- QUEUE_STATUS_UPDATE) is skipped: RegisterEvent raises, and the raise would
+-- end the calling file's main chunk, losing everything after it.
 function ns.On(event, fn)
     if not handlers[event] then
+        if not pcall(events.RegisterEvent, events, event) then return end
         handlers[event] = {}
-        events:RegisterEvent(event)
     end
     table.insert(handlers[event], fn)
 end
@@ -44,6 +47,25 @@ ns.On("PLAYER_REGEN_ENABLED", function()
     for i = 1, #queued do queued[i]() end
     wipe(queued)
 end)
+
+-- A state driver whose states reach the frame only from the game's secure
+-- update, never from Medaluin's own code. RegisterStateDriver applies the
+-- conditional's state at once, inside the caller, and an addon's execution
+-- is tainted: a snippet run then, setting "actionpage" on Blizzard's action
+-- buttons, runs their OnAttributeChanged tainted, and what that writes on
+-- the button taints every click after it ("Medaluin has been blocked",
+-- UseAction; BugSack, 2026-11-01). So the frame holds while the driver is
+-- registered (its snippet sees ns.HOLD and returns), and its state is left
+-- at "hold", which no conditional gives: SecureStateDriverManager's next
+-- update (within 0.2 s) sets the real state, securely, and the snippet runs
+-- then. No conditional is the state nil, set the same way.
+ns.HOLD = "medaluin-hold"
+function ns.DriveState(frame, state, conditional)
+    frame:SetAttribute(ns.HOLD, true)
+    RegisterStateDriver(frame, state, conditional or "nil")
+    frame:SetAttribute("state-" .. state, "hold")
+    frame:SetAttribute(ns.HOLD, nil)
+end
 
 -- Blizzard frames are parented here and unregistered, never just hidden,
 -- so their own code cannot show them again and taint stays contained.

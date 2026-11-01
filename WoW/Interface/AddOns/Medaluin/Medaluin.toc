@@ -46,3 +46,4 @@ strips\meter.lua
 strips\auras.lua
 inventory\bags.lua
 keybind.lua
+diag.lua
