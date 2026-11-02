@@ -1,0 +1,90 @@
+# Releases, from the version in Medalluin.toc (tools/release.sh). On a push to
+# main whose .toc version has no tag yet:
+#
+#   every version    tags it vX.Y.Z and replaces the "rolling" release with it:
+#                    always the newest build, marked Latest, with a download link
+#                    that never changes (releases/download/rolling/Medalluin.zip)
+#   X.Y.0            also publishes a release of its own, kept for good
+#
+# A push that does not change the version releases nothing. To release:
+# tools/release.sh bump patch|minor|major, commit, push.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# one release at a time, in push order
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# set explicitly, so a run step fails when any command in a pipe does
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # every tag, for the plan and the notes
+
+      - name: Plan
+        id: plan
+        run: tools/release.sh plan | tee -a "$GITHUB_OUTPUT"
+
+      - name: Package and notes
+        if: steps.plan.outputs.release == 'true'
+        run: |
+          tools/release.sh package dist
+          if [ "${{ steps.plan.outputs.kind }}" = sticky ]; then
+            tools/release.sh notes sticky > notes.md
+          else
+            tools/release.sh notes > notes.md
+          fi
+          cat notes.md
+
+      - name: Tag
+        if: steps.plan.outputs.release == 'true'
+        run: |
+          git tag "${{ steps.plan.outputs.tag }}" "$GITHUB_SHA"
+          git push origin "${{ steps.plan.outputs.tag }}"
+
+      - name: Sticky release (minor and major versions)
+        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.kind == 'sticky'
+        run: |
+          gh release create "${{ steps.plan.outputs.tag }}" \
+            "dist/Medalluin-${{ steps.plan.outputs.tag }}.zip" \
+            --title "Medalluin ${{ steps.plan.outputs.tag }}" \
+            --notes-file notes.md \
+            --latest=false
+
+      - name: Rolling release (every version)
+        if: steps.plan.outputs.release == 'true'
+        run: |
+          tag="${{ steps.plan.outputs.tag }}"
+          # the rolling release is made again, not edited, so it sorts as the
+          # newest and takes Latest; its tag moves to this commit with it
+          gh release delete rolling --cleanup-tag --yes || true
+          git push origin :refs/tags/rolling || true
+          cp "dist/Medalluin-$tag.zip" dist/Medalluin.zip
+          {
+            echo "**Rolling release: always the newest Medalluin, now $tag.**"
+            echo "Each minor and major version also has a release of its own below."
+            echo
+            cat notes.md
+          } > rolling.md
+          gh release create rolling dist/Medalluin.zip "dist/Medalluin-$tag.zip" \
+            --target "$GITHUB_SHA" \
+            --title "Medalluin $tag (rolling)" \
+            --notes-file rolling.md \
+            --latest
