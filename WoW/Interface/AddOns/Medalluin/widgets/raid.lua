@@ -16,7 +16,8 @@ local function Height()
     return ROWS * h + (ROWS - 1) * W.gap
 end
 
-local box = ns.WidgetBox("MedalluinRaidWidget", "raidWidgetPoint", { "TOPLEFT", "TOPLEFT", 40, -240 })
+local box = ns.WidgetBox("MedalluinRaidWidget", "raidWidgetPoint", { "TOPLEFT", "TOPLEFT", 40, -240 },
+    function() return ns.InBattleground() and "bgMoverHover" or "raidMoverHover" end)
 ns.raidWidget = box
 
 -- A header's new button, styled from its initial configuration (the
@@ -66,25 +67,30 @@ for g = 1, 8 do
 end
 ns.raidHeaders = headers
 
--- The preview's raid: two groups of five, plain frames (a header shows only
--- real members).
-local PREVIEW = {
+-- The preview's raid: the simulation panel's groups of five (simulate.lua),
+-- plain frames (a header shows only real members), in the Raid set's state.
+local NAMES = {
     { "Nokamii", "MAGE" }, { "Thalric", "PRIEST" }, { "Ahrymx", "PALADIN" }, { "Velis", "ROGUE" },
     { "Brannoc", "HUNTER" }, { "Isolde", "DRUID" }, { "Kerrin", "SHAMAN" }, { "Mardu", "WARLOCK" },
     { "Ysolt", "DEATHKNIGHT" }, { "Orrin", "WARRIOR" },
 }
+local STUBS = {}
+for i = 1, 40 do
+    local who = NAMES[(i - 1) % #NAMES + 1]
+    STUBS[i] = { name = who[1], class = who[2], health = 100 - (i * 13) % 60, maxHealth = 100,
+        power = 70, maxPower = 100, powerType = 0 }
+end
 local previews = {}
 local function Preview(i)
     if previews[i] then return previews[i] end
     local b = ns.WidgetCell(CreateFrame("Frame", nil, box), Size())
+    b:SetFrameLevel(box:GetFrameLevel() + 2)    -- over the skin, as a header's cells are
     ns.DeadLook(b)
-    local who = PREVIEW[i]
     ns.AttachAuras(b, "raid")
     ns.EditableCell(b, "raid")
     ns.ApplyEdits(b)
     b.unit = "raidpreview" .. i
-    b.stub = { name = who[1], class = who[2], health = 100 - (i * 13) % 60, maxHealth = 100,
-        power = 70, maxPower = 100, powerType = 0 }
+    b.stub = STUBS[i]
     b:Hide()
     previews[i] = b
     return b
@@ -127,19 +133,28 @@ local function Update()
     local CELL_W, CELL_H = Size()
     local HEIGHT = Height()
     local preview = ns.db.simParty and not IsInRaid()
-    local groups = preview and { 1, 2 } or Groups()
-    for i = 1, #PREVIEW do
+    local groups = Groups()
+    local n = 0
+    if preview then
+        groups = {}
+        for g = 1, ns.sim.raid.groups do groups[g] = g end
+        n = #groups * ROWS
+    end
+    -- out of range shows only while the raid's range fade is on
+    local fade = ns.RaidRange() ~= 0
+    for i = 1, n do
         local b = Preview(i)
-        if preview then
-            local col, row = math.floor((i - 1) / ROWS) + 1, (i - 1) % ROWS + 1
-            b:ClearAllPoints()
-            b:SetPoint("TOPLEFT", box, "TOPLEFT", ns.WidgetColumnX(col, CELL_W), ns.WidgetRowY(row, CELL_H + W.gap))
-            ns.SizeWidgetCell(b, CELL_W, CELL_H)
-            b:Show()
-            ns.UpdateWidgetCell(b)
-        else
-            b:Hide()
-        end
+        ns.SimApply(b.stub, "raid", i, n)
+        local col, row = math.floor((i - 1) / ROWS) + 1, (i - 1) % ROWS + 1
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", box, "TOPLEFT", ns.WidgetColumnX(col, CELL_W), ns.WidgetRowY(row, CELL_H + W.gap))
+        ns.SizeWidgetCell(b, CELL_W, CELL_H)
+        b:Show()
+        ns.UpdateWidgetCell(b)
+        b:SetAlpha(fade and (b.stub.offline or not b.stub.inRange) and 0.45 or 1)
+    end
+    for i, b in pairs(previews) do
+        if i > n then b:Hide() end
     end
     ns.OutOfCombat(function()
         -- the groups in use in their columns; the rest after them, out of
@@ -165,6 +180,10 @@ local function Update()
     ns.WidgetSkin(box, Titles(groups, preview), CELL_W, HEIGHT)
 end
 ns.OnWidgetUpdate(Update)
+-- the preview's out-of-range cells fade by the range that counts
+for _, key in ipairs({ "raidRange", "bgRange" }) do
+    ns.OnSetting(key, function() if ns.db.simParty then Update() end end)
+end
 
 -- The editor's cell size: every header's buttons, the ones it has and the
 -- ones it will make, out of combat; the box laid again. Only when the size

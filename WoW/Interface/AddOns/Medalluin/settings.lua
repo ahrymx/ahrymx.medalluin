@@ -77,6 +77,9 @@ local DEFAULTS = {
     bgRange = 40, bgGlow = true, bgCC = true,
     bossWidgetMine = true,
     arenaCC = true, arenaMine = true,
+    -- each box's movers (its tabs) only on mouseover (widgets/box.lua)
+    partyWidgetMoverHover = false, raidMoverHover = false, bgMoverHover = false, bossMoverHover = false,
+    arenaMoverHover = false,
     -- what the unit-frame editor (editor.lua) changed on each frame, piece
     -- by piece: false until something is; the console's per profile, the
     -- widgets' shared

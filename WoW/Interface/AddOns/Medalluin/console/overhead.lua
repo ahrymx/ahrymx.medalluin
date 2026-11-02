@@ -264,12 +264,17 @@ function UpdateUnitStatus(b)
     if not b then return end
     local stub = b.stub
     if stub then
+        local health = stub.dead and 0 or stub.health or 100
         b.health:SetMinMaxValues(0, stub.maxHealth or 100)
-        b.health:SetValue(stub.health or 100)
+        b.health:SetValue(health)
         local c = RAID_CLASS_COLORS[stub.class] or FACTION_BAR_COLORS[2]
         if c then b.health:SetStatusBarColor(Muted(c.r, c.g, c.b)) end
         b.name:SetText(stub.name or b.unit)
-        b.value:SetFormattedText("%.0f%%", math.floor((stub.health or 100) / (stub.maxHealth or 100) * 100 + 0.5))
+        if stub.dead then
+            b.value:SetText(DEAD)
+        else
+            b.value:SetFormattedText("%.0f%%", math.floor(health / (stub.maxHealth or 100) * 100 + 0.5))
+        end
         b.power:SetMinMaxValues(0, 100)
         b.power:SetValue(stub.power or 80)
         b.power:SetStatusBarColor(0.2, 0.5, 0.85)
@@ -397,7 +402,9 @@ local function AdoptCommandButtons()
 end
 
 -- ------------------------------------------------------------ layout
--- Bosses show up to the simulation panel's count (simulate.lua; two at first).
+-- Bosses show up to the simulation panel's count (simulate.lua; two at first),
+-- in the Enemies set's state; the pet, focus and target of target each while
+-- the panel's Overhead tab has them, hurt with it.
 local OVERHEAD_STUBS = {
     boss1 = { name = "High Warlord Naj'entus", health = 85, maxHealth = 100, power = 100, class = "WARRIOR", boss = 1 },
     boss2 = { name = "Supremus", health = 92, maxHealth = 100, power = 50, class = "WARRIOR", boss = 2 },
@@ -420,7 +427,12 @@ local function Present(b, key)
     end
     local sim = ns.db and ns.db.simParty
     local stub = sim and OVERHEAD_STUBS[b.unit]
-    if stub and stub.boss and stub.boss > ns.sim.bosses then stub = nil end
+    if stub and stub.boss then
+        local n = ns.sim.enemies.bosses
+        if stub.boss > n then stub = nil else ns.SimApply(stub, "enemies", stub.boss, n) end
+    elseif stub then
+        if ns.sim.overhead[b.unit] then ns.SimApply(stub, "overhead", 1, 1) else stub = nil end
+    end
     if not UnitExists(b.unit) and stub then
         Watch(b, stub)
     else

@@ -13,7 +13,7 @@ local W = ns.WIDGET
 -- A column's cells are its spec's size until the editor sizes them
 -- (ns.CellSize, editor.lua): laid again, out of combat, when that changes.
 local function Column(spec)
-    local box = ns.WidgetBox(spec.name, spec.key, spec.default)
+    local box = ns.WidgetBox(spec.name, spec.key, spec.default, spec.hover)
     local buttons = {}
     for i = 1, 5 do
         local width, height = ns.CellSize(spec.unit)
@@ -59,6 +59,7 @@ local function Column(spec)
             ns.WidgetHolder(box, ns.WidgetSize(1, ns.CellSize(spec.unit), 5 * Step() - W.gap))
             for i, b in ipairs(buttons) do
                 local stub = i <= count and spec.stubs[i] or nil
+                if stub then ns.SimApply(stub, "enemies", i, count) end
                 if stub ~= b.stub then
                     b.stub = stub
                     if stub then
@@ -102,10 +103,11 @@ ns.BossWidgetShown = BossesHere
 
 ns.bossWidget = Column({
     name = "MedalluinBossWidget", key = "bossWidgetPoint", default = { "RIGHT", "RIGHT", -260, 160 },
+    hover = "bossMoverHover",
     unit = "boss", editKey = "editBoss",
     title = function(n) return n > 1 and "Bosses" or "Boss" end,
     on = BossesHere,
-    preview = function() return ns.sim.bosses end,
+    preview = function() return ns.sim.enemies.bosses end,
     -- the overhead's simulated bosses, with the power a cell here draws
     stubs = (function()
         local list = {}
@@ -123,13 +125,16 @@ local ARENA_STUBS = {
     { name = "Arena 1", class = "ROGUE", health = 90, maxHealth = 100, power = 60, maxPower = 100, powerType = 3 },
     { name = "Arena 2", class = "PRIEST", health = 70, maxHealth = 100, power = 80, maxPower = 100, powerType = 0 },
     { name = "Arena 3", class = "WARRIOR", health = 50, maxHealth = 100, power = 30, maxPower = 100, powerType = 1 },
+    { name = "Arena 4", class = "HUNTER", health = 80, maxHealth = 100, power = 90, maxPower = 100, powerType = 2 },
+    { name = "Arena 5", class = "DRUID", health = 35, maxHealth = 100, power = 50, maxPower = 100, powerType = 0 },
 }
 ns.arenaWidget = Column({
     name = "MedalluinArenaWidget", key = "arenaWidgetPoint", default = { "RIGHT", "RIGHT", -260, -120 },
+    hover = "arenaMoverHover",
     unit = "arena", editKey = "editArena",
     title = function() return "Arena" end,
     on = function() return true end,
-    preview = function() return #ARENA_STUBS end,
+    preview = function() return ns.sim.enemies.arena end,
     stubs = ARENA_STUBS,
 })
 

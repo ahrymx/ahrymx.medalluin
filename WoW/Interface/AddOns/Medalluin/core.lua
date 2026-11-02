@@ -110,8 +110,44 @@ end
 -- Secret values (combat-restricted numbers) can be shown by status bars and
 -- font strings, but any arithmetic or comparison on one raises an error.
 -- The simulated frames' situation, set by the simulation panel (simulate.lua);
--- for this session only.
-ns.sim = { bosses = 2 }
+-- for this session only. A set's state or aura that is on shows on at least
+-- one of its frames (ns.SimHas); the party's members are set one by one, on
+-- their stubs (console/units.lua).
+ns.sim = {
+    party = { count = 4, auras = { glow = true, cc = true, buffs = true, boss = true } },
+    raid = { groups = 2, hurt = true, auras = { glow = true, cc = true, boss = true } },
+    enemies = { bosses = 2, arena = 3, hurt = true, auras = { cc = true, mine = true } },
+    overhead = { pet = true, focus = true, targettarget = true, hurt = true },
+}
+
+-- Where in a set a state or aura first falls, so that two of them fall on
+-- different frames while there are frames enough.
+-- (CC and the boss debuff share the centre: they meet only in a set of one.)
+local FIRST = { away = 2, dead = 3, offline = 4, glow = 1, cc = 2, buffs = 3, boss = 4, mine = 1 }
+
+-- Whether frame i of the n a set shows has state (or aura) key: the first
+-- it falls on, and every eighth after it in a big set.
+function ns.SimHas(set, key, i, n)
+    local s = ns.sim[set]
+    local on = s[key]
+    if on == nil and s.auras then on = s.auras[key] end
+    if not on or n < 1 or i > n then return false end
+    local function First(k) return (FIRST[k] - 1) % n + 1 end
+    local first = First(key)
+    -- the boss debuff steps past CC's frame, the centre they share
+    if key == "boss" and n > 1 and first == First("cc") then first = first % n + 1 end
+    return i == first or i > first and (i - first) % 8 == 0
+end
+
+-- A set's states on frame i of n's stub: its health (whole unless the set
+-- is hurt), dead, offline, out of range.
+function ns.SimApply(stub, set, i, n)
+    stub.hurtHealth = stub.hurtHealth or stub.health
+    stub.health = ns.sim[set].hurt and stub.hurtHealth or stub.maxHealth
+    stub.dead = ns.SimHas(set, "dead", i, n) or nil
+    stub.offline = ns.SimHas(set, "offline", i, n) or nil
+    stub.inRange = not ns.SimHas(set, "away", i, n)
+end
 
 function ns.IsSecret(v)
     return issecretvalue ~= nil and issecretvalue(v) or false

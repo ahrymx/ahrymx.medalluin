@@ -104,7 +104,8 @@ end
 local function UpdateHealth(self)
     local stub = self.stub
     if stub then
-        local isDead = stub.dead or (stub.health == 0)
+        -- offline as a real member is: the health it had, greyed, never dead
+        local isDead = not stub.offline and (stub.dead or stub.health == 0)
         if isDead then
             self.health:SetMinMaxValues(0, 1)
             self.health:SetValue(0)
@@ -112,12 +113,15 @@ local function UpdateHealth(self)
         else
             self.health:SetMinMaxValues(0, stub.maxHealth)
             self.health:SetValue(stub.health)
-            local c = RAID_CLASS_COLORS[stub.class]
-            if c then self.health:SetStatusBarColor(Muted(c.r, c.g, c.b)) end
+            local c = not stub.offline and RAID_CLASS_COLORS[stub.class]
+            if c then self.health:SetStatusBarColor(Muted(c.r, c.g, c.b)) else
+                self.health:SetStatusBarColor(unpack(C.dead)) end
         end
         ns.ShowDead(self, isDead)
         if self.value then
-            if isDead then
+            if stub.offline then
+                self.value:SetText(PLAYER_OFFLINE)
+            elseif isDead then
                 self.value:SetText(DEAD)
             else
                 HealthValue(self, stub.health, stub.maxHealth, math.floor(stub.health / stub.maxHealth * 100 + 0.5))
@@ -245,10 +249,15 @@ local STUBS = {
         power = 70, maxPower = 100 },
 }
 
-ns.partyStubs = STUBS     -- the simulation panel (simulate.lua) kills them and moves them out of range
+STUBS.party2.pet = true
+ns.partyStubs = STUBS     -- the simulation panel (simulate.lua) sets each member's health and state
 
+-- a member's simulated pet, shown while its stub has .pet
 local PET_STUBS = {
+    partypet1 = { name = "Shadowfiend", class = "PRIEST", health = 80, maxHealth = 100 },
     partypet2 = { name = "Water Elemental", class = "MAGE", health = 90, maxHealth = 100 },
+    partypet3 = { name = "Spirit Wolf", class = "SHAMAN", health = 70, maxHealth = 100 },
+    partypet4 = { name = "Imp", class = "WARLOCK", health = 100, maxHealth = 100 },
 }
 
 local function AbbreviateName(name)
@@ -313,7 +322,7 @@ local function UpdatePartyPet(pet)
                 pet.value:SetFormattedText("%.0f%%", HealthPercent(unit, cur, max))
             end
         end
-    elseif sim and PET_STUBS[unit] then
+    elseif sim and PET_STUBS[unit] and pet.ownerButton.stub and pet.ownerButton.stub.pet then
         local stub = PET_STUBS[unit]
         pet.stub = stub
         ns.OutOfCombat(function()
@@ -346,7 +355,7 @@ local function UpdatePartyUnit(b)
             RegisterUnitWatch(b)
         end)
         UpdateAll(b)
-    elseif sim then
+    elseif sim and tonumber(unit:match("%d$")) <= ns.sim.party.count then
         b.stub = STUBS[unit]
         ns.OutOfCombat(function()
             if UnregisterUnitWatch then UnregisterUnitWatch(b) end
@@ -829,7 +838,7 @@ local function IsUnitInRange(unit, dist)
     if not dist or dist == 0 then return true end
     if unit == "player" then return true end
     local b = ns.units and ns.units[unit]
-    if b and b.stub then return b.stub.inRange ~= false end
+    if b and b.stub then return b.stub.inRange ~= false and not b.stub.offline end
     if not UnitExists(unit) or not UnitIsConnected(unit) then return false end
 
     if dist == 10 then

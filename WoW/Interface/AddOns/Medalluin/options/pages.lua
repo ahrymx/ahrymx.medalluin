@@ -78,6 +78,10 @@ local function Buffs(key)
     return Check(key, "Player buffs on health",
         "Show a compact row of your own buffs and HoTs on the outer corner of the health bar.")
 end
+local function Movers(key, what)
+    return Check(key, "Movers only on mouseover",
+        "Hide the " .. what .. " widget's tab, the grip that moves it, until the pointer is over the widget.")
+end
 local function Mine(key, who)
     return Check(key, "Your debuffs",
         "Up to three of your own debuffs on " .. who .. ", small icons in the health bar's top right corner.")
@@ -118,8 +122,10 @@ function ns.OptionPages()
                         Group("Preview",
                             Check("simParty", "Simulate party frames",
                                 "Show the console's party frame layer and simulated party members to preview "
-                                .. "party frames while solo. A small panel on the left changes the situation: "
-                                .. "bosses, deaths, range, ready and role checks. The group boxes show too.")),
+                                .. "party frames while solo. The group boxes show too. A small panel on the left sets "
+                                .. "what they show, a tab each for the party, the raid, the enemies and the "
+                                .. "overhead frames: members and their health, deaths, range, pets, auras, "
+                                .. "ready and role checks.")),
                         Group("Key bindings",
                             Button("Bind keys", function()
                                 if ns.CloseOptions then ns.CloseOptions() end
@@ -267,7 +273,7 @@ function ns.OptionPages()
                         Group("Widget (shared by every profile)",
                             Range("partyWidgetRange", "party"), Pets("partyWidgetPets"),
                             Glow("partyWidgetGlow"), CC("partyWidgetCC", "the"), Buffs("partyWidgetBuffs"),
-                            BossDebuffs("partyWidgetBoss")),
+                            BossDebuffs("partyWidgetBoss"), Movers("partyWidgetMoverHover", "Party")),
                         Group("Editor",
                             Editor(function() return ns.PartyWidgetLayout() and "partyWidget" or "party" end,
                                 "Edit the party frames"),
@@ -284,7 +290,7 @@ function ns.OptionPages()
                     intro = "Shared by every profile. The Raid widget, out of battlegrounds; in one, the "
                         .. "Battleground tab's options take over.",
                     groups = {
-                        Group("Raid", Range("raidRange", "raid")),
+                        Group("Raid", Range("raidRange", "raid"), Movers("raidMoverHover", "Raid")),
                         Group("Auras", Glow("raidGlow"), CC("raidCC", "a member's"), BossDebuffs("raidBoss")),
                         Group("Editor", Editor("raid")),
                     },
@@ -293,7 +299,8 @@ function ns.OptionPages()
                     id = "battleground", name = "Battleground",
                     intro = "Shared by every profile. The Raid widget while you are in a battleground.",
                     groups = {
-                        Group("Battleground", Range("bgRange", "battleground team")),
+                        Group("Battleground", Range("bgRange", "battleground team"),
+                            Movers("bgMoverHover", "Raid")),
                         Group("Auras", Glow("bgGlow"), CC("bgCC", "a member's")),
                         Group("Editor", Editor("raid", "Edit the raid frames")),
                     },
@@ -303,7 +310,8 @@ function ns.OptionPages()
                     intro = "Where the boss frames show is Console > Unit Layout > Boss frames.",
                     groups = {
                         Group("Overhead (per profile)", Mine("bossMine", "a boss")),
-                        Group("Widget (shared by every profile)", Mine("bossWidgetMine", "a boss")),
+                        Group("Widget (shared by every profile)", Mine("bossWidgetMine", "a boss"),
+                            Movers("bossMoverHover", "Boss")),
                         Group("Editor", Editor("boss", "Edit the Boss widget")),
                     },
                 },
@@ -311,6 +319,7 @@ function ns.OptionPages()
                     id = "arena", name = "Arena",
                     intro = "Shared by every profile. The Arena widget's enemy frames.",
                     groups = {
+                        Group("Arena", Movers("arenaMoverHover", "Arena")),
                         Group("Auras", CC("arenaCC", "an enemy's"), Mine("arenaMine", "an enemy")),
                         Group("Editor", Editor("arena")),
                     },

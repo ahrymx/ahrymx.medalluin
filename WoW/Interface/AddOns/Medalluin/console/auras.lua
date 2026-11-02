@@ -359,12 +359,26 @@ end
 
 -- The preview's auras, by unit: a debuff to dispel, crowd control, your
 -- buffs, a boss debuff, and how many of your debuffs (an enemy).
-local STUB_AURAS = {
-    party1 = { glow = "Curse" }, party2 = { cc = true }, party3 = { buffs = true }, party4 = { boss = true },
-    raidpreview1 = { glow = "Curse" }, raidpreview2 = { cc = true }, raidpreview4 = { boss = true },
-    boss1 = { mine = 3 }, boss2 = { mine = 1 }, boss3 = { mine = 2 },
-    arena1 = { mine = 3 }, arena2 = { cc = true, mine = 1 }, arena3 = { mine = 2 },
-}
+-- The simulated auras: each the simulation panel has on falls on at least
+-- one frame of its set (ns.SimHas, core.lua). A unit's set, its place in it
+-- and how many the set shows:
+local function SimPlace(unit)
+    local kind, i = (unit or ""):match("^(%a+)(%d+)$")
+    i = tonumber(i)
+    if kind == "party" then return "party", i, ns.sim.party.count end
+    if kind == "raidpreview" then return "raid", i, ns.sim.raid.groups * 5 end
+    if kind == "boss" then return "enemies", i, ns.sim.enemies.bosses end
+    if kind == "arena" then return "enemies", i, ns.sim.enemies.arena end
+end
+
+local MINE = { 3, 1, 2 }    -- how many of your debuffs, enemy by enemy
+local function StubAuras(unit)
+    local set, i, n = SimPlace(unit)
+    if not set then return {} end
+    local function has(key) return ns.SimHas(set, key, i, n) end
+    return { glow = has("glow") and "Curse", cc = has("cc"), buffs = has("buffs"), boss = has("boss"),
+        mine = has("mine") and MINE[(i - 1) % 3 + 1] }
+end
 local MINE_ICONS = { "Spell_Shadow_ShadowWordPain", "Spell_Holy_SearingLight", "Spell_Shadow_AbominationExplosion" }
 
 -- Whether a frame shows one kind of aura: the option its tab gives it. The
@@ -381,7 +395,7 @@ end
 
 -- Applies stub simulation auras when simParty is true
 local function ApplyStubAuras(b)
-    local want = STUB_AURAS[b.unit] or {}
+    local want = StubAuras(b.unit)
     -- Dispel glow stub (a Curse)
     if b.dispelGlow then
         if want.glow and Shows(b, "glow") then
@@ -700,6 +714,7 @@ local function UpdateAllAuras()
     end
     for b in pairs(carriers) do UpdateUnitAuras(b) end
 end
+ns.UpdateAllAuras = UpdateAllAuras   -- the simulation panel's aura toggles (simulate.lua)
 
 -- Initialize widgets on each unit frame
 for unit, b in pairs(ns.units or {}) do

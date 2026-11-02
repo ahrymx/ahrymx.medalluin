@@ -58,6 +58,9 @@ end
 
 local function Tab(box)
     local tab = CreateFrame("Button", nil, box.skin)
+    -- behind the skin: the box's gold edge runs on across the tab's foot, so
+    -- the tab grows out of the box, and the cells over both
+    tab:SetFrameLevel(box:GetFrameLevel())
     tab:SetHeight(TAB_H)
     local l, m, r = tab:CreateTexture(nil, "ARTWORK"), tab:CreateTexture(nil, "ARTWORK"),
         tab:CreateTexture(nil, "ARTWORK")
@@ -104,17 +107,20 @@ local function Tab(box)
 end
 
 -- A box: name, the option keeping where it was dragged, and where it is
--- until then ({ point, relativePoint, x, y } on UIParent).
-function ns.WidgetBox(name, key, default)
+-- until then ({ point, relativePoint, x, y } on UIParent); hover, the option
+-- (or a function giving it) that shows its tabs only on mouseover.
+function ns.WidgetBox(name, key, default, hover)
     local box = CreateFrame("Frame", name, UIParent)
     box:SetFrameStrata("LOW")
     box:SetMovable(true)
     box:SetClampedToScreen(true)
-    box.key, box.default = key, default
+    box.key, box.default, box.hover = key, default, hover
 
+    -- the skin a level over the box, its tabs at the box's, the cells two
+    -- over: tabs, skin, cells, back to front
     local skin = CreateFrame("Frame", nil, box)
     skin:SetPoint("TOPLEFT")
-    skin:SetFrameLevel(box:GetFrameLevel())
+    skin:SetFrameLevel(box:GetFrameLevel() + 1)
     local ink = skin:CreateTexture(nil, "BACKGROUND")
     ink:SetAllPoints()
     ink:SetColorTexture(C.ink[1], C.ink[2], C.ink[3], 0.92)
@@ -165,6 +171,39 @@ function ns.WidgetSkin(box, titles, width, height)
         end
     end
     for i = #titles + 1, #box.tabs do box.tabs[i]:Hide() end
+end
+
+-- Movers only on mouseover (each Unit Frames tab's option): a box's tabs
+-- show while the mouse is over the box or one of them, or while it is being
+-- dragged. A hidden tab is only clear (alpha 0), so it is still there to find.
+local function Hovered(box)
+    if box.moving or box.skin:IsMouseOver() then return true end
+    for _, tab in ipairs(box.tabs) do
+        if tab:IsShown() and tab:IsMouseOver() then return true end
+    end
+    return false
+end
+
+function ns.UpdateWidgetMovers()
+    for _, box in ipairs(widgets) do
+        local key = box.hover
+        if type(key) == "function" then key = key() end
+        local shown = not (key and ns.db[key]) or Hovered(box)
+        for _, tab in ipairs(box.tabs) do tab:SetAlpha(shown and 1 or 0) end
+    end
+end
+
+local movers = CreateFrame("Frame")
+local moversSince = 0
+movers:SetScript("OnUpdate", function(_, elapsed)
+    moversSince = moversSince + elapsed
+    if moversSince < 0.1 then return end
+    moversSince = 0
+    ns.UpdateWidgetMovers()
+end)
+for _, key in ipairs({ "partyWidgetMoverHover", "raidMoverHover", "bgMoverHover", "bossMoverHover",
+    "arenaMoverHover" }) do
+    ns.OnSetting(key, function() ns.UpdateWidgetMovers() end)
 end
 
 -- ------------------------------------------------------------ the cells

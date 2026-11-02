@@ -9,7 +9,8 @@ local W = ns.WIDGET
 -- a cell is 160x40 until the editor sizes it (ns.CellSize, editor.lua)
 local PET_H, PET_GAP = 16, 2
 
-local box = ns.WidgetBox("MedalluinPartyWidget", "partyWidgetPoint", { "LEFT", "LEFT", 40, 120 })
+local box = ns.WidgetBox("MedalluinPartyWidget", "partyWidgetPoint", { "LEFT", "LEFT", 40, 120 },
+    "partyWidgetMoverHover")
 ns.partyWidget = box
 
 function ns.PartyWidgetLayout()

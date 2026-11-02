@@ -3206,6 +3206,51 @@ if args[2] == "widgets" or args[3] == "widgets" then
     tab.scripts.OnDragStop(tab)
     inCombat = false
     state("dragged in combat: stays")
+    -- back to front: the tab, the skin over its foot, the cells
+    local pb = ns.partyWidget
+    print("  levels", "box=" .. pb.level, "tab=" .. tab.level, "skin=" .. pb.skin.level,
+        "cell=" .. ns.units.party1.level, "pet=" .. ns.units.party1.pet.level)
+    -- movers only on mouseover: clear until the pointer is over the box or
+    -- a tab, or the box is being dragged; each box by its own option
+    local function movers(tag)
+        ns.UpdateWidgetMovers()
+        local o = {}
+        for _, w in ipairs({ { "party", pb }, { "raid", ns.raidWidget }, { "boss", ns.bossWidget },
+            { "arena", ns.arenaWidget } }) do
+            table.insert(o, w[1] .. "=" .. tostring(w[2].tabs[1] and w[2].tabs[1].alpha))
+        end
+        print("  movers " .. tag, table.concat(o, " "))
+    end
+    movers("default")
+    S.partyWidgetMoverHover:Set(true)
+    movers("party on mouseover")
+    mouseOver = pb.skin
+    movers("pointer on the box")
+    mouseOver = tab
+    movers("pointer on the tab")
+    mouseOver = false
+    pb.moving = true
+    movers("dragging")
+    pb.moving = nil
+    S.partyWidgetMoverHover:Set(false)
+    movers("party off")
+    -- the raid's: the Raid tab's, and in a battleground the Battleground tab's
+    S.raidMoverHover:Set(true)
+    movers("raid on mouseover")
+    local wasInstance = harnessInstance
+    harnessInstance = "pvp"
+    movers("raid's in a battleground")
+    S.bgMoverHover:Set(true)
+    movers("battleground's on mouseover")
+    harnessInstance = wasInstance
+    S.raidMoverHover:Set(false)
+    S.bgMoverHover:Set(false)
+    S.bossMoverHover:Set(true)
+    movers("boss on mouseover")
+    S.bossMoverHover:Set(false)
+    S.arenaMoverHover:Set(true)
+    movers("arena on mouseover")
+    S.arenaMoverHover:Set(false)
     -- the console's pets option is not the widget's
     S.partyPets:Set(false)
     state("console pets off: the widget keeps them")
@@ -3229,15 +3274,11 @@ if args[2] == "widgets" or args[3] == "widgets" then
         end
         -- and the preview's "In range" row dims with the range that counts
         local function rangeRow()
-            for _, r in ipairs(all) do
-                if r.parent == _G.MedalluinSimPanel and type(r.tip) == "function"
-                    and tostring(r.tip()):match("range%.") then
-                    r.scripts.OnClick(r)
-                    r.scripts.OnClick(r)
-                    return "row alpha=" .. tostring(r.alpha)
-                end
-            end
-            return "row missing"
+            local r = ns.simButtons and ns.simButtons["party.away.2"]
+            if not r then return "row missing" end
+            r.scripts.OnClick(r)
+            r.scripts.OnClick(r)
+            return "row alpha=" .. tostring(r.alpha)
         end
         ns.units.party2.stub.inRange = false
         S.partyRange:Set(0)
@@ -3350,7 +3391,7 @@ if args[2] == "widgets" or args[3] == "widgets" then
     end
     S.bossFrames:Set("vertical")
     state("bosses vertical (two simulated)")
-    ns.sim.bosses = 1
+    ns.sim.enemies.bosses = 1
     ns.UpdateWidgets()
     state("one boss")
     S.bossFrames:Set("both")
@@ -3432,12 +3473,18 @@ if args[2] == "widgets" or args[3] == "widgets" then
     -- held back for it runs now
     fire("PLAYER_REGEN_ENABLED")
     S.simParty:Set(true)
-    ns.sim.bosses = 3
+    ns.sim.enemies.bosses = 3
     S.bossFrames:Set("both")
     fire("GROUP_ROSTER_UPDATE")
     stateTick()
     watchTick()
     cells("preview")
+    for _, f in ipairs(ns.raidWidget.all_ or {}) do
+        if f.stub and f.shown then
+            print("  raid preview cell over the skin", "cell=" .. f.level, "skin=" .. ns.raidWidget.skin.level)
+            break
+        end
+    end
     local m = _G.MedalluinBossWidgetUnit1.mineWidgets
     print("auras mine row", "size=" .. n(m[1].w) .. "x" .. n(m[1].h), "at=" .. at(m[1], _G.MedalluinBossWidgetUnit1)
         .. " " .. at(m[3], _G.MedalluinBossWidgetUnit1), "overhead=" .. n(ns.overheadUnits.boss1.mineWidgets[1].w))
@@ -4949,28 +4996,35 @@ if savedSimParty then
     petBar = false
     page.settings.simParty:Set(true)
 
-    -- 6. The simulation panel: shown while simulating, its buttons in order
-    -- (bosses -, count, +; dead 1-4; in range 1-4; ready, role; end)
+    -- 6. The simulation panel: shown while simulating, a tab per set of
+    -- frames; its buttons by id (ns.simButtons)
     local sp = _G.MedalluinSimPanel
-    local spb = {}
-    for _, c in ipairs(sp.all_) do if c.kind == "Button" then table.insert(spb, c) end end
-    local function press(i) spb[i].scripts.OnClick(spb[i], "LeftButton") end
+    local spb = ns.simButtons
+    local function press(id)
+        assert(spb[id], "no sim button " .. id)
+        spb[id].scripts.OnClick(spb[id], "LeftButton")
+    end
+    -- the tabs, then the buttons the panel shows: those of the tab shown
     local function panelState(tag)
         local out = {}
-        for i, b in ipairs(spb) do
-            table.insert(out, string.format("%s%s%s", b.label.text, b.on.shown and "*" or "",
-                b.alpha == 0.4 and "(off)" or ""))
-            if i == 3 or i == 7 or i == 11 or i == 13 then table.insert(out, "|") end
+        for _, b in ipairs(spb) do
+            local page = b.parent ~= sp and b.parent
+            if not page or page.shown then
+                table.insert(out, string.format("%s=%s%s%s", b.id, b.label.text, b.on.shown and "*" or "",
+                    b.alpha == 0.4 and "(off)" or ""))
+            end
         end
-        print(tag, "shown=" .. tostring(sp.shown), table.concat(out, " "))
+        print(tag, "shown=" .. tostring(sp.shown), "h=" .. tostring(sp.h), table.concat(out, " "))
     end
-    local function bosses()
+    local function overhead(tag)
         local out = {}
-        for i = 1, 5 do
-            local b = ns.overheadUnits["boss" .. i]
-            if b.shown then table.insert(out, tostring(b.name.text)) end
+        for _, u in ipairs({ "pet", "focus", "targettarget", "boss1", "boss2", "boss3", "boss4", "boss5" }) do
+            local b = ns.overheadUnits[u]
+            if b and b.shown then
+                table.insert(out, string.format("%s:%s,hp=%s", u, tostring(b.name.text), tostring(b.health.value)))
+            end
         end
-        return #out .. " " .. table.concat(out, ", ")
+        print(tag, #out .. " " .. table.concat(out, " "))
     end
     local function members(tag)
         local out = {}
@@ -4978,10 +5032,39 @@ if savedSimParty then
             local b = ns.units["party" .. i]
             local st = b.statusWidget
             local s = st.shown and st.icon.coords and string.format("%.2f", st.icon.coords[1]) or "-"
-            table.insert(out, string.format("p%d:hp=%s,dead=%s,a=%.2f,check=%s", i, tostring(b.health.value),
-                tostring(b.dead.shown), b.alpha or 1, s))
+            local pet = b.pet and b.pet.shown and "pet" or "-"
+            table.insert(out, string.format("p%d:%s,hp=%s,value=%s,dead=%s,a=%.2f,check=%s,%s", i,
+                tostring(b.shown), tostring(b.health.value), tostring(b.value.text), tostring(b.dead.shown),
+                b.alpha or 1, s, pet))
         end
         print(tag, table.concat(out, " "))
+    end
+    local function raid(tag)
+        local out = {}
+        for _, f in ipairs(ns.raidWidget.all_ or {}) do
+            if f.stub and f.shown then
+                table.insert(out, string.format("%s:hp=%s,%s%s%s%s%s%sa=%.2f", f.stub.name, tostring(f.health.value),
+                    f.stub.dead and "dead," or "", f.stub.offline and "offline," or "",
+                    f.stub.inRange == false and "away," or "",
+                    f.dispelGlow and f.dispelGlow.shown and "glow," or "",
+                    f.ccWidget and f.ccWidget.shown and "cc," or "",
+                    f.bossDebuff and f.bossDebuff.shown and "boss," or "", f.alpha or 1))
+            end
+        end
+        print(tag, #out .. " " .. table.concat(out, " "))
+    end
+    local function enemies(tag)
+        local out = {}
+        for _, kind in ipairs({ "Boss", "Arena" }) do
+            for i = 1, 5 do
+                local b = _G["Medalluin" .. kind .. "WidgetUnit" .. i]
+                if b and b.shown and b.stub then
+                    table.insert(out, string.format("%s%d:hp=%s%s", kind, i, tostring(b.health.value),
+                        b.stub.dead and ",dead" or ""))
+                end
+            end
+        end
+        print(tag, #out .. " " .. table.concat(out, " "))
     end
     local function wait(seconds)
         for _ = 1, math.floor(seconds / 0.1 + 0.5) do sp.scripts.OnUpdate(sp, 0.1) end
@@ -4989,35 +5072,148 @@ if savedSimParty then
     print("simPanel.box", string.format("w=%s h=%s", tostring(sp.w), tostring(sp.h)),
         "strata=" .. tostring(sp.strata), "point=" .. tostring(sp.points.LEFT and sp.points.LEFT[2]))
     panelState("simPanel")
-    print("simPanel.bosses", bosses())
-    press(3)
-    press(3)
-    press(3)
-    panelState("simPanel.five")
-    print("simPanel.bosses five", bosses())
-    press(2)
-    panelState("simPanel.none")
-    print("simPanel.bosses none", bosses())
-    press(1)
-    press(2)
-    print("simPanel.bosses all again", bosses())
-    for _ = 1, 3 do press(1) end
-    print("simPanel.bosses back to two", bosses())
-    -- deaths and range
-    press(4)
-    press(7)
-    press(9)
-    panelState("simPanel.dead1,4 away2")
+    -- every button inside its page (or the panel's margin), every tab
+    local function fit()
+        local out = {}
+        for _, b in ipairs(spb) do
+            local pt = b.points.TOPLEFT
+            local x = pt and pt[3] or 0
+            local inner = b.parent == sp and sp.w - 12 or b.parent.w
+            local left = b.parent == sp and 12 or 0
+            if x < left or x + b.w > inner + 0.01 then
+                table.insert(out, string.format("%s(%s..%s of %s)", b.id, x, x + b.w, inner))
+            end
+        end
+        return #out == 0 and "all inside" or table.concat(out, " ")
+    end
+    print("simPanel.fit", fit())
     members("simPanel.members")
-    press(4)
-    press(7)
-    press(9)
+    -- the party: one member at a time
+    press("party.dead.1")
+    press("party.away.2")
+    press("party.offline.3")
+    press("party.pet.2")
+    press("party.pet.4")
+    panelState("simPanel.dead1 away2 offline3 pets2,4")
+    members("simPanel.members set")
+    press("party.dead.1")
+    press("party.away.2")
+    press("party.offline.3")
+    press("party.pet.2")
+    press("party.pet.4")
     members("simPanel.members restored")
+    -- health, click by click: 85 is not in the cycle, so 100, then 60, 25, 100
+    for k = 1, 4 do
+        press("party.health.1")
+        members("simPanel.health " .. k)
+    end
     page.settings.partyRange:Set(0)
     panelState("simPanel.range fade off")
     page.settings.partyRange:Set(40)
+    -- two members: the others go, and their columns switch off
+    press("party.count.less")
+    press("party.count.less")
+    panelState("simPanel.two members")
+    members("simPanel.two members")
+    press("party.count")
+    print("simPanel.count none-or-all", spb["party.count"].label.text)
+    press("party.count")
+    press("party.count.more")
+    press("party.count.more")
+    press("party.count.more")
+    members("simPanel.four again")
+    -- the party's auras
+    local function partyAuras(tag)
+        local out = {}
+        for i = 1, 4 do
+            local b = ns.units["party" .. i]
+            local o = {}
+            if b.dispelGlow and b.dispelGlow.shown then table.insert(o, "glow") end
+            if b.ccWidget and b.ccWidget.shown then table.insert(o, "cc") end
+            if b.bossDebuff and b.bossDebuff.shown then table.insert(o, "boss") end
+            local n = 0
+            for _, btn in ipairs(b.buffWidgets or {}) do if btn.shown then n = n + 1 end end
+            if n > 0 then table.insert(o, "buffs=" .. n) end
+            table.insert(out, "p" .. i .. ":" .. (#o > 0 and table.concat(o, ",") or "-"))
+        end
+        print(tag, table.concat(out, " "))
+    end
+    partyAuras("simPanel.party auras")
+    press("party.aura.cc")
+    press("party.aura.buffs")
+    panelState("simPanel.party auras cc,buffs off")
+    partyAuras("simPanel.party auras cc,buffs off")
+    press("party.count.less")
+    press("party.count.less")
+    press("party.aura.cc")
+    partyAuras("simPanel.party auras two members")
+    press("party.aura.cc")
+    press("party.count.more")
+    press("party.count.more")
+    press("party.aura.cc")
+    press("party.aura.buffs")
+
+    -- the raid: whole sets, each toggle on at least one cell
+    press("tab.raid")
+    panelState("simPanel.raid")
+    raid("simPanel.raid cells")
+    press("raid.dead")
+    press("raid.offline")
+    press("raid.away")
+    press("raid.hurt")
+    raid("simPanel.raid dead offline away whole")
+    press("raid.groups.less")
+    raid("simPanel.raid one group")
+    press("raid.groups")
+    raid("simPanel.raid eight groups")
+    press("raid.groups")
+    press("raid.groups.more")
+    page.settings.raidRange:Set(0)
+    page.settings.bgRange:Set(0)
+    panelState("simPanel.raid range fade off")
+    raid("simPanel.raid range fade off")
+    page.settings.raidRange:Set(40)
+    page.settings.bgRange:Set(40)
+    press("raid.dead")
+    press("raid.offline")
+    press("raid.away")
+    press("raid.hurt")
+    raid("simPanel.raid back")
+
+    -- the enemies
+    press("tab.enemies")
+    panelState("simPanel.enemies")
+    enemies("simPanel.enemies")
+    overhead("simPanel.enemies overhead")
+    press("enemies.bosses.more")
+    press("enemies.bosses.more")
+    press("enemies.bosses.more")
+    press("enemies.arena.less")
+    press("enemies.dead")
+    panelState("simPanel.enemies five bosses, two arena, dead")
+    enemies("simPanel.enemies five bosses, two arena, dead")
+    overhead("simPanel.enemies five bosses overhead")
+    press("enemies.bosses")
+    overhead("simPanel.enemies no bosses overhead")
+    press("enemies.bosses")
+    for _ = 1, 3 do press("enemies.bosses.less") end
+    press("enemies.arena.more")
+    press("enemies.dead")
+    enemies("simPanel.enemies back")
+
+    -- the overhead
+    press("tab.overhead")
+    panelState("simPanel.overhead")
+    overhead("simPanel.overhead")
+    press("overhead.focus")
+    press("overhead.hurt")
+    overhead("simPanel.overhead no focus, whole")
+    press("overhead.focus")
+    press("overhead.hurt")
+    press("tab.party")
+
     -- a ready check: all waiting, then one answer each STEP, then cleared
-    press(12)
+    press("party.ready")
     panelState("simPanel.ready")
     members("ready.start")
     wait(1.2)
@@ -5033,7 +5229,7 @@ if savedSimParty then
     -- (no stub), who answers for themselves and is left alone
     local p4stub = ns.units.party4.stub
     ns.units.party4.stub = nil
-    press(13)
+    press("party.role")
     ns.units.party4.stub = p4stub
     panelState("simPanel.role")
     wait(0.6)
@@ -5043,8 +5239,8 @@ if savedSimParty then
     members("role.fight")
     panelState("simPanel.after fight")
     -- a check under way when the simulation ends is cleared with it
-    press(12)
-    press(14)
+    press("party.ready")
+    press("end")
     print("simPanel.ended", "simParty=" .. tostring(ns.db.simParty), "shown=" .. tostring(sp.shown))
     members("ended")
     page.settings.simParty:Set(true)
