@@ -111,5 +111,3 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 - **Pull Requests**: Community contributions, optimizations, and bug fixes are welcome! Please ensure code adheres to standard Lua conventions and passes `luacheck` and the test harness before opening a PR.
 
 ---
-
-*Crafted by ahrymx & AI.*
