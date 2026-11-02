@@ -108,6 +108,12 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 > Features, textures, and capabilities are continuously evolving.
 
 - **Issues & Suggestions**: Feel free to submit an issue on GitHub for bug reports, compatibility edge cases, or feature suggestions.
-- **Pull Requests**: Community contributions, optimizations, and bug fixes are welcome! Please ensure code adheres to standard Lua conventions and passes `luacheck` and the test harness before opening a PR.
+- **Pull Requests**: Community contributions, optimizations, and bug fixes are welcome! Please ensure code adheres to standard Lua conventions and passes `luacheck` and the test harness before opening a PR. By opening one, you agree to the contribution terms in section 4 of the [LICENSE](LICENSE).
 
 ---
+
+## 📜 License
+
+Medalluin is **All Rights Reserved** © 2026 AhryMX. You may install it, play with it, read its code, and change your own copy for personal use. Screenshots, videos, and streams are welcome. You may not reupload, redistribute, fork, retexture, or rebrand it, in whole or in part, without written permission. The only official copies are on [GitHub](https://github.com/ahrymx/ahrymx.medalluin) and [CurseForge](https://www.curseforge.com/wow/addons/medalluin/). See [LICENSE](LICENSE) for the full terms.
+
+The Marcellus SC font is © Brian J. Bonislawsky (Astigmatic) and is included under the [SIL Open Font License 1.1](WoW/Interface/AddOns/Medalluin/media/fonts/OFL.txt). World of Warcraft is a trademark of Blizzard Entertainment, Inc.; Medalluin is not affiliated with or endorsed by Blizzard.

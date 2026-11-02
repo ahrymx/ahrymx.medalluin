@@ -1,0 +1,128 @@
+Medalluin
+Copyright (c) 2026 AhryMX <contact@ahrymx.dev>
+All Rights Reserved.
+
+This license covers everything in the Medalluin project: the source code,
+the artwork, textures and other images, the generators and tools that produce
+them, and the documentation. That includes the project as published on GitHub
+and on CurseForge, in every version (together, "the Work"). The only
+exceptions are the third-party material listed in section 7.
+
+The Work is not open source. Being able to read it does not give you the
+right to reuse it. The only rights you have are the ones granted below; all
+others are reserved by the author.
+
+
+1. WHAT YOU MAY DO
+
+   a. Download the Work from its official sources (section 8), install it,
+      and use it to play World of Warcraft.
+
+   b. Read and study the source code.
+
+   c. Change your own installed copy for your own personal use, for example
+      to adjust a colour, a size or a position. A changed copy must stay on
+      your own computer.
+
+   d. Take screenshots and record videos of the Work in use, and publish
+      them (streams, guides and reviews included), as long as the Work is
+      named as "Medalluin" where that is reasonable to do.
+
+   e. Link to the Work's official pages.
+
+   f. Submit issues and pull requests to the official GitHub repository,
+      under section 4.
+
+
+2. WHAT YOU MAY NOT DO
+
+   Unless the author has given you written permission, you may not:
+
+   a. redistribute, reupload, mirror or share the Work, or any part of it,
+      in any form, changed or unchanged. This includes other addon sites,
+      file hosts, UI packs, compilations and installers. Point people to the
+      official sources instead.
+
+   b. publish or distribute anything based on the Work. This includes forks,
+      ports, retextures, reskins, "edits", and addons that copy its code,
+      its art or its layout.
+
+   c. present the Work, or anything based on it, under a different name or
+      as anyone else's work, or remove or change the author's name,
+      copyright notices or this license.
+
+   d. use the name "Medalluin", its logo or its artwork to name, advertise
+      or identify any other project, or in a way that suggests the author
+      endorses it.
+
+   e. sell the Work, charge for access to it, or bundle it with anything
+      that is sold. This includes putting it behind a paywall, a
+      subscription or a donation reward.
+
+   f. use the Work, or any part of it, to train or fine-tune a
+      machine-learning model, or to build a dataset for one.
+
+
+3. PERMISSION
+
+   To ask for anything section 2 does not allow, write to the author at
+   contact@ahrymx.dev. Permission counts only when it is given in writing,
+   and only to the extent the writing says.
+
+
+4. CONTRIBUTIONS
+
+   By submitting a contribution (code, art, text or anything else) to the
+   official repository, you confirm that it is your own work or that you
+   have the right to submit it. You also grant the author a perpetual,
+   worldwide, irrevocable, royalty-free license to use, change, distribute
+   and relicense your contribution as part of the Work or separately from
+   it, under any terms the author chooses. You keep your own copyright in
+   your contribution. Submitting a contribution does not give you any right
+   to the rest of the Work beyond what this license grants.
+
+
+5. ENDING OF RIGHTS
+
+   If you break this license, every right it gives you ends at once,
+   without notice. Ending your rights does not limit anything else the
+   author can do about the breach.
+
+
+6. NO WARRANTY
+
+   THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+   THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+   IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+   CONNECTION WITH THE WORK OR THE USE OF OR OTHER DEALINGS IN THE WORK.
+
+
+7. THIRD-PARTY MATERIAL
+
+   The following are not the author's and are not covered by sections 1 to
+   5. Each stays under its own terms:
+
+   a. The Marcellus SC typeface
+      (WoW/Interface/AddOns/Medalluin/media/fonts/MarcellusSC-Regular.ttf),
+      Copyright (c) 2012 by Brian J. Bonislawsky DBA Astigmatic (AOETI),
+      with Reserved Font Name "Marcellus", is licensed under the SIL Open
+      Font License, Version 1.1 (https://openfontlicense.org). The full
+      text is in media/fonts/OFL.txt, next to the font.
+
+   b. World of Warcraft, Blizzard Entertainment, and the game's own art and
+      interface, which the Work uses from the game client by reference
+      only, are trademarks or property of Blizzard Entertainment, Inc.
+      Medalluin is not affiliated with or endorsed by Blizzard
+      Entertainment.
+
+
+8. OFFICIAL SOURCES
+
+   The Work is published only by the author, at:
+
+     GitHub:     https://github.com/ahrymx/ahrymx.medalluin
+     CurseForge: https://www.curseforge.com/wow/addons/medalluin/
+
+   Any other copy is unofficial and is not permitted by this license.
