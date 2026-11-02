@@ -34,6 +34,7 @@ end
 
 local function Build(row)
     band = CreateFrame("Frame", nil, console)
+    ns.partyRowBand = band      -- the console's mouseover reaches it (console/fade.lua)
     band:SetFrameLevel(ns.levels.art)
     band:SetPoint("TOP", console, "TOP", 0, row.top)
     band:SetSize(row.width, row.height)

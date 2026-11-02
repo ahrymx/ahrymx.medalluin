@@ -100,6 +100,7 @@ local rowPass = args[3] == "row"
 -- "minimap" (alone: the Medallion; after "light": the Central Console) plays
 -- Console > Minimap: the rule's triggers, the key's pin, the corner's size and place
 local minimapPass = args[2] == "minimap" or args[3] == "minimap"
+local fadePass = args[2] == "fade" or args[3] == "fade"      -- the console's and the overhead's fading
 local actionPage = 1
 local class = argClass or "PALADIN"
 
@@ -179,6 +180,7 @@ function Region:SetAllPoints(rel) moved(); self.all = rel or self.parent end
 function Region:SetSize(w, h) moved(); self.w, self.h = w, h end
 function Region:SetHitRectInsets(l, r, t, b) self.hitInsets = { l, r, t, b } end
 function Region:SetMaskTexture(path) self.mask = path end
+function Region:SetIgnoreParentAlpha(on) self.ignoreParentAlpha = on end
 function Region:SetScale(s) moved(); self.scale = s end
 function Region:GetScale() return self.scale or 1 end
 -- against the screen: every scale up the parents (UIParent's counts as 1)
@@ -610,6 +612,7 @@ harnessBarPage = 1      -- bar 1's page, where a button with no page of its own 
 function CreateFrame(kind, name, parent, template)
     if template == DIVIDER and not modern then error("unknown template " .. template) end
     local f = new(kind, parent, name)
+    f.template = template
     if template == DIVIDER then
         f.template, f.w = template, 12
         for _ = 1, 3 do new("Texture", f) end
@@ -725,6 +728,45 @@ function UnregisterStateDriver(f, state)
 end
 local inCombat = false
 function InCombatLockdown() return inCombat end
+-- A secure wrap: the snippet runs before the frame's own script, with the
+-- frame as self and the header as owner, in the restricted environment's
+-- few functions.
+--
+-- Frames reach the snippet as handles, and in combat a handle to a frame
+-- that is not protected is refused: anchoring a cell to one errors, as the
+-- game's did (2026-11-02: the cell was cleared of its points, then refused,
+-- and vanished). There is no math library: the snippet has its own.
+local function Handle(f)
+    if f == nil then return nil end
+    local h = { frame = f }
+    local protected = type(f.template) == "string" and f.template:match("^Secure") ~= nil
+    local function frameOf(rel)
+        if type(rel) ~= "table" then return rel end
+        if inCombat and not rel.protected then error("Invalid frame handle", 3) end
+        return rel.frame
+    end
+    h.protected = protected
+    for _, m in ipairs({ "IsShown", "GetAttribute", "SetWidth", "ClearAllPoints" }) do
+        h[m] = function(self, ...) return f[m](f, ...) end
+    end
+    function h:GetFrameRef(k) return Handle(f:GetFrameRef(k)) end
+    function h:SetPoint(p, rel, rp, x, y) return f:SetPoint(p, frameOf(rel), rp, x, y) end
+    return h
+end
+function SecureHandlerWrapScript(f, script, header, pre)
+    local old = f.scripts[script]
+    f.scripts[script] = function(self, ...)
+        local env = {
+            self = Handle(self), owner = Handle(header),
+            PlayerInCombat = function() return inCombat end,
+            newtable = function(...) return { ... } end,
+        }
+        -- an error in the snippet is reported, and the frame's own script still runs
+        local ok, err = pcall(setfenv(assert(loadstring(pre)), env))
+        if not ok then print("secure snippet error", err) end
+        if old then return old(self, ...) end
+    end
+end
 -- the player in combat, and their threat situation: nil off every threat
 -- table, 0 to 3 on one (1 is "higher threat than the tank")
 local threatOf = nil
@@ -1535,7 +1577,7 @@ setmetatable(page, {
             function s:Get() return ns.db[key] end
             function s:Default() return ns.OptionBase(key) end
             function s:Set(v)
-                local hit = c.spec.kind == "choice" and c.button or c
+                local hit = c.spec.kind == "choice" and c.button or c.less or c.box or c
                 if not hit:IsEnabled() then print("settings: " .. key .. " set while greyed out") end
                 if c.spec.kind == "check" and ns.db[key] ~= v then
                     c.scripts.OnClick(c)
@@ -1634,7 +1676,7 @@ if barPass then
             local r = resolve(c)
             local choices = {}
             for _, ch in ipairs(c.spec.choices or {}) do table.insert(choices, tostring(ch[1]) .. "=" .. ch[2]) end
-            local hit = c.spec.kind == "choice" and c.button or c
+            local hit = c.spec.kind == "choice" and c.button or c.less or c.box or c
             print("  " .. c.spec.kind, c.spec.label, tostring(c.spec.key), "shows=" .. shows(c),
                 hit:IsEnabled() and "live" or "grey", string.format("at=%d,%d %dx%d", r[1] - top[1], r[2] - top[2],
                     c.w, c.h), c.spec.reload and "reload" or "", table.concat(choices, "; "))
@@ -4750,6 +4792,211 @@ function MinimapPass()
         "default=" .. tostring(MedalluinDB.profiles.default.minimapScale), "window stale=" .. optionsStale())
 end
 
+-- Time enough for every fade under way to end (console/fade.lua).
+function settleFades()
+    for _ = 1, 400 do
+        local moving = false
+        for _, f in ipairs({ ns.consoleFader, ns.overheadFader }) do
+            if f and f:Moving() then
+                moving = true
+                f.driver.scripts.OnUpdate(f.driver, 0.05)
+            end
+        end
+        if not moving then return end
+    end
+end
+
+-- The console's fading (Console > General > Visibility, Opacity) and the
+-- overhead's (Console > Overhead > Opacity): console/fade.lua.
+function FadePass()
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local function set(k, v) page.settings[k]:Set(v) end
+    local con, cf, top, of = ns.console, ns.consoleFader, ns.overhead, ns.overheadFader
+    -- time passing: the watch looks, the faders step, 0.05s at a time
+    local function run(sec)
+        for _ = 1, math.floor(sec / 0.05 + 0.5) do
+            ns.consoleFadeWatch.scripts.OnUpdate(ns.consoleFadeWatch, 0.05)
+            for _, d in ipairs({ cf.driver, of.driver }) do
+                if d.shown then d.scripts.OnUpdate(d, 0.05) end
+            end
+        end
+    end
+    local function say(tag)
+        print("fade console " .. tag, string.format("alpha=%.2f", con:GetAlpha()),
+            "wanted=" .. tostring(ns.ConsoleWanted()))
+    end
+    local health = 100
+    local realHealth, realMax = UnitHealth, UnitHealthMax
+    UnitHealth, UnitHealthMax = function() return health end, function() return 100 end
+    local wasGrouped = grouped
+    inCombat, hasTarget, grouped, mouseOver, cursor = false, false, false, false, nil
+    fire("PLAYER_REGEN_ENABLED")
+    fire("PLAYER_TARGET_CHANGED")
+
+    say("not fading")
+    set("consoleAlpha", 0.5)
+    say("opacity 50%")
+    set("consoleFade", true)
+    say("fading, idle")
+    inCombat = true
+    fire("PLAYER_REGEN_DISABLED")
+    run(0.1)
+    say("combat, 0.1s of a 0.2s fade in")
+    run(0.1)
+    say("combat, 0.2s")
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    run(0.3)
+    say("out of combat, 0.3s of a 0.6s fade out")
+    run(0.3)
+    say("out of combat, 0.6s")
+    set("consoleFadeOut", 0)
+    set("consoleFadeIn", 0)
+
+    -- each tick, and with it unticked
+    local function tick(tag, key, on, off)
+        on()
+        local yes = ns.ConsoleWanted()
+        set(key, false)
+        local no = ns.ConsoleWanted()
+        set(key, ns.OptionBase(key))
+        off()
+        print("fade tick " .. tag, "shows=" .. tostring(yes), "unticked=" .. tostring(no),
+            "after=" .. tostring(ns.ConsoleWanted()))
+    end
+    tick("combat", "consoleShowCombat", function() inCombat = true; fire("PLAYER_REGEN_DISABLED") end,
+        function() inCombat = false; fire("PLAYER_REGEN_ENABLED") end)
+    tick("target", "consoleShowTarget", function() hasTarget = true end, function() hasTarget = false end)
+    tick("hurt", "consoleShowHurt", function() health = 82 end, function() health = 100 end)
+    tick("mouse over the console", "consoleShowMouse", function() mouseOver = con end,
+        function() mouseOver = false end)
+    tick("mouse over the bar", "consoleShowMouse", function() mouseOver = ns.actionBar end,
+        function() mouseOver = false end)
+    if ns.partyRowBand then
+        -- the row hangs under the console while there is a party
+        grouped = true
+        fire("GROUP_ROSTER_UPDATE")
+        set("consoleShowGroup", false)
+        tick("mouse over the party row", "consoleShowMouse", function() mouseOver = ns.partyRowBand end,
+            function() mouseOver = false end)
+        print("fade party row shown=" .. tostring(ns.partyRowBand:IsVisible()))
+        grouped = false
+        fire("GROUP_ROSTER_UPDATE")
+    end
+    grouped = true
+    print("fade tick group, not ticked", "shows=" .. tostring(ns.ConsoleWanted()))
+    set("consoleShowGroup", true)
+    print("fade tick group, ticked", "shows=" .. tostring(ns.ConsoleWanted()))
+    set("consoleShowGroup", false)
+    grouped = false
+    -- a secret health says nothing (only a client with secrets has them)
+    if issecretvalue then
+        health = 82
+        UnitHealth, UnitHealthMax = secret, secret
+        print("fade tick hurt, secret", "shows=" .. tostring(ns.ConsoleWanted()))
+        health = 100
+    end
+    UnitHealth, UnitHealthMax = function() return health end, function() return 100 end
+
+    -- what always wants it whole
+    for _, case in ipairs({
+        { "binding keys", function() ns.keybinding = true end, function() ns.keybinding = nil end },
+        { "a spell on the pointer", function() cursor = "spell" end, function() cursor = nil end },
+        { "Edit Mode", function() EventRegistry:TriggerEvent("EditMode.Enter") end,
+            function() EventRegistry:TriggerEvent("EditMode.Exit") end },
+        { "simulate party", function() set("simParty", true) end, function() set("simParty", false) end },
+    }) do
+        case[2]()
+        run(0.1)
+        local a = con:GetAlpha()
+        case[3]()
+        run(0.1)
+        print("fade forced " .. case[1], string.format("alpha=%.2f after=%.2f", a, con:GetAlpha()))
+    end
+    set("consoleFadedAlpha", 0.3)
+    say("faded opacity 30%")
+
+    -- what keeps its own alpha
+    local strips = {}
+    for side, strip in pairs(ns.strips or {}) do
+        table.insert(strips, tostring(side) .. "=" .. tostring(strip.ignoreParentAlpha))
+    end
+    table.sort(strips)
+    print("fade own alpha", "strips " .. table.concat(strips, " "),
+        "bezel=" .. tostring(ns.minimapBezel and ns.minimapBezel.ignoreParentAlpha),
+        "minimap=" .. tostring(Minimap.ignoreParentAlpha),
+        "corner=" .. tostring(ns.MinimapInCorner and ns.MinimapInCorner()))
+    if ns.MinimapInCorner then
+        hasTarget = true
+        fire("PLAYER_TARGET_CHANGED")
+        print("fade own alpha, minimap in the corner", "minimap=" .. tostring(Minimap.ignoreParentAlpha),
+            "corner=" .. tostring(ns.MinimapInCorner()))
+        hasTarget = false
+        fire("PLAYER_TARGET_CHANGED")
+    end
+    for _, key in ipairs({ "consoleFade", "consoleAlpha", "consoleFadedAlpha", "consoleFadeIn", "consoleFadeOut" }) do
+        set(key, ns.OptionBase(key))
+    end
+    say("back to the profile's")
+
+    -- the overhead: it shows while it holds something, fading in and out
+    local function over(tag)
+        local decks = 0
+        for _, r in ipairs(top.children or {}) do if r.shown then decks = decks + 1 end end
+        print("fade overhead " .. tag, "shown=" .. tostring(top.shown), string.format("alpha=%.2f", top:GetAlpha()),
+            "row=" .. #(ns.overheadRow or {}))
+    end
+    settleFades()
+    over("empty")
+    shapeshiftForms = 2
+    fire("UPDATE_SHAPESHIFT_FORMS")
+    over("stances, at once")
+    run(0.1)
+    over("stances, 0.1s of a 0.2s fade in")
+    run(0.1)
+    over("stances, 0.2s")
+    shapeshiftForms = 0
+    fire("UPDATE_SHAPESHIFT_FORMS")
+    over("emptied, at once")
+    run(0.1)
+    over("emptied, 0.1s of a 0.2s fade out")
+    shapeshiftForms = 2
+    fire("UPDATE_SHAPESHIFT_FORMS")
+    run(0.05)
+    over("back before it went")
+    run(0.15)
+    over("back, settled")
+    shapeshiftForms = 0
+    fire("UPDATE_SHAPESHIFT_FORMS")
+    run(0.25)
+    over("emptied, gone")
+    set("overheadAlpha", 0.4)
+    set("overheadFadeOut", 0)
+    shapeshiftForms = 2
+    fire("UPDATE_SHAPESHIFT_FORMS")
+    run(0.25)
+    over("opacity 40%")
+    shapeshiftForms = 0
+    fire("UPDATE_SHAPESHIFT_FORMS")
+    over("emptied, no fade out")
+    -- back: from nothing, not from where it was when it went
+    shapeshiftForms = 2
+    fire("UPDATE_SHAPESHIFT_FORMS")
+    over("back after going at once")
+    run(0.25)
+    shapeshiftForms = 0
+    fire("UPDATE_SHAPESHIFT_FORMS")
+    for _, key in ipairs({ "overheadAlpha", "overheadFadeIn", "overheadFadeOut" }) do
+        set(key, ns.OptionBase(key))
+    end
+
+    UnitHealth, UnitHealthMax = realHealth, realMax
+    grouped = wasGrouped
+    print("fade window stale=" .. optionsStale())
+end
+
 if lightPass then
     UIParent.fixed = { -648, -904, 1272, 176 }
     local function fire(e, ...)
@@ -4857,6 +5104,7 @@ if lightPass then
     if rowPass then RowPass() end
     if editorPass then EditorPass() end
     if minimapPass then MinimapPass() end
+    if fadePass then FadePass() end
     do return end
 end
 
@@ -5060,7 +5308,8 @@ if savedSimParty then
         "rightMirrored=" .. tostring(decks[1].right.coords[1] > decks[1].right.coords[2]),
         "plateUnderCells=" .. tostring(decks[1].left.parent.level < ns.overheadUnits.boss1.level))
     -- every shown cell inside its deck's floor; the row centred on the line,
-    -- and stretched to the floor less its margins (within the even-total pixel)
+    -- each cell its own width however wide the deck (2026-11-02: stretched to
+    -- the floor, a pet over a full pet bar ran under the ToT beside it)
     local function cellState(tag)
         for slot, d in ipairs(decks) do
             if d.shown and d.kind ~= "tray" then
@@ -5074,12 +5323,11 @@ if savedSimParty then
                         if l < -d.half + h or r > d.half - h or t < d.y or bt > d.y + h - 3 then inside = false end
                     end
                 end
-                local reach = d.half - h - A.margin
                 local w
                 for _, b in pairs(ns.overheadUnits) do if b.shown and b.kind == d.kind then w = b.w end end
                 print(tag, slot .. ":" .. d.kind, "cells=" .. n, "insideFloor=" .. tostring(inside),
                     "centred=" .. tostring(round(lo + hi) == 0), string.format("span=%d..%d", round(lo), round(hi)),
-                    "fills=" .. tostring(round(hi) <= reach and reach - round(hi) <= n), "w=" .. tostring(w))
+                    "ownWidth=" .. tostring(w == A.cell[d.kind]), "w=" .. tostring(w))
             end
         end
     end
@@ -5168,7 +5416,8 @@ if savedSimParty then
     cellState("overhead.noBoss.cells")
     rowState("overhead.noBoss.row")
     -- the pet alone over the full row (the 2026-11-01 screenshot): the row's
-    -- tray is wider than one cell's deck, so the deck grows and the cell stretches
+    -- tray is wider than one cell's deck, so the deck grows; the cell keeps its
+    -- width, centred (2026-11-02: a stretched pet ran under the ToT)
     page.settings.topFocus:Set(false)
     page.settings.topToT:Set(false)
     deckState("overhead.petOnly")
@@ -5180,8 +5429,9 @@ if savedSimParty then
     cellState("overhead.bossPet.cells")
     page.settings.topFocus:Set(true)
     page.settings.topToT:Set(true)
-    -- every stretched width keeps the row's total even (centred on whole pixels)
-    -- and the cells inside the floor, for any deck width a stack can reach
+    -- every deck width a stack can reach keeps the row's total even (centred
+    -- on whole pixels), the cells inside the floor, and each cell its own
+    -- width: a widened deck centres its cells, it does not stretch them
     local odd, over = 0, 0
     for _, kind in ipairs({ "boss", "unit" }) do
         for n = 1, 5 do
@@ -5190,7 +5440,7 @@ if savedSimParty then
                 local cw = ns.OverheadCellWidth(kind, n, w)
                 local total = n * cw + (n - 1) * A.gap
                 if total % 2 == 1 then odd = odd + 1 end
-                if total > w - 2 * A.deck[kind] - 2 * A.margin or cw < A.cell[kind] then over = over + 1 end
+                if total > w - 2 * A.deck[kind] - 2 * A.margin or cw ~= A.cell[kind] then over = over + 1 end
             end
         end
     end
@@ -5226,6 +5476,7 @@ if savedSimParty then
     -- not simulating: nothing to show; then a pet arrives (UNIT_PET for the
     -- player) with its bar, and the row stands alone at the top
     page.settings.simParty:Set(false)
+    settleFades()       -- the emptied overhead fades out before it hides
     print("overhead.solo", "shown=" .. tostring(ovh.shown))
     rowState("overhead.solo.row")
     petBar = true
@@ -5687,7 +5938,7 @@ if bagsPass then
     for _, c in ipairs(ns.optionPages.bags.controls) do
         local spec, choices = c.spec, {}
         for _, o in ipairs(spec.choices or {}) do table.insert(choices, tostring(o[1]) .. "=" .. o[2]) end
-        local hit = spec.kind == "choice" and c.button or c
+        local hit = spec.kind == "choice" and c.button or c.less or c.box or c
         print("bags.page", spec.kind, spec.label, "default=" .. tostring(ns.OptionBase(spec.key)),
             hit:IsEnabled() and "live" or "grey", table.concat(choices, "; "))
     end
@@ -5969,3 +6220,142 @@ if movePass then
     print("move window stale=" .. optionsStale())
 end
 if minimapPass then MinimapPass() end
+if fadePass then FadePass() end
+
+-- A refused aura read (console/auras.lua's Read): inside a secure call the
+-- client errors on an aura it holds secret rather than return a secret. The
+-- frame must not raise, must show what it read, and scans once more after.
+if (args[2] == "auraguard" or args[3] == "auraguard") and C_UnitAuras then
+    local timers = {}
+    C_Timer = { After = function(_, fn) table.insert(timers, fn) end }
+    local function runTimers()
+        local now = timers
+        timers = {}
+        for _, fn in ipairs(now) do fn() end
+    end
+    local refuse = false
+    local saved = C_UnitAuras.GetAuraDataByIndex
+    C_UnitAuras.GetAuraDataByIndex = function(unit, i, filter)
+        if refuse then error("Auras cannot be accessed when secret while tainted by 'Medalluin'") end
+        if unit == "player" and filter == "HELPFUL|PLAYER" and i <= 2 then
+            return { auraInstanceID = 900 + i, icon = 136000 + i, applications = 0, duration = 30,
+                expirationTime = 60 }
+        end
+        return nil
+    end
+    local savedTimed = C_UnitAuras.DoesAuraHaveExpirationTime
+    C_UnitAuras.DoesAuraHaveExpirationTime = function() return true end
+    page.settings.auraBuffs:Set(true)
+    local b = ns.units.player
+    local function state(tag, ok, err)
+        local n = 0
+        for _, btn in ipairs(b.buffWidgets or {}) do if btn.shown then n = n + 1 end end
+        print("auraguard " .. tag, "raised=" .. tostring(not ok) .. (ok and "" or " " .. tostring(err)),
+            "buffs shown=" .. n, "rescans waiting=" .. #timers)
+    end
+    state("readable", pcall(ns.UpdateUnitAuras, b))
+    refuse = true
+    state("refused", pcall(ns.UpdateUnitAuras, b))
+    refuse = false
+    state("the rescan", pcall(runTimers))
+    -- refused again on the rescan: no third try
+    refuse = true
+    pcall(ns.UpdateUnitAuras, b)
+    state("refused twice", pcall(runTimers))
+    refuse = false
+    C_UnitAuras.GetAuraDataByIndex, C_UnitAuras.DoesAuraHaveExpirationTime = saved, savedTimed
+end
+
+-- The unit row in combat (console/overhead.lua's unitRow; the 2026-11-02
+-- screenshot): the pet alone over a full pet bar, then the target's target
+-- turns up mid-fight. The layout waits for combat to end, so the row lays
+-- itself out: no cell over another, none wider than its own width.
+if args[2] == "unitrow" or args[3] == "unitrow" then
+    local function fireAll(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    -- a pass before may leave a layout waiting on combat's end
+    inCombat = false
+    fireAll("PLAYER_REGEN_ENABLED")
+    page.settings.simParty:Set(false)
+    page.settings.bossFrames:Set("vertical")
+    page.settings.topFocus:Set(false)
+    local exists = { pet = true }
+    local realExists = UnitExists
+    function UnitExists(u) return exists[u] or realExists(u) end
+    petBar = true
+    for i = 1, 10 do _G["PetActionButton" .. i].shown = true end
+    local pet, tot = ns.overheadUnits.pet, ns.overheadUnits.targettarget
+    -- in design pixels from the overhead's top centre, wherever the cell is
+    -- anchored (the overhead out of combat, the row's header in it)
+    local function span(b)
+        if not b.points.TOPLEFT then return nil end
+        local r, o = resolve(b), resolve(ns.overhead)
+        local k = scaleOf(ns.overhead)
+        local cx = (o[1] + o[3]) / 2
+        local l, t = (r[1] - cx) / k, (r[2] - o[2]) / k
+        return math.floor(l + 0.5), math.floor(l + 0.5) + b.w, math.floor(t + 0.5)
+    end
+    -- each shown cell's span; overlap: two share pixels; fits: the row stays
+    -- inside the floor of the deck drawn under it
+    local A = ns.overheadArt
+    local function state(tag)
+        -- the unit deck's floor, from the plate Layout drew
+        local floorOf = 0
+        for _, d in ipairs(ns.overheadDecks) do
+            if d.shown and d.kind == "unit" then floorOf = 2 * d.half - 2 * A.deck.unit - 2 * A.margin end
+        end
+        local out, cells = {}, {}
+        for _, b in ipairs({ pet, tot }) do
+            if b.shown then
+                local l, r, y = span(b)
+                if l then table.insert(cells, { l, r }) end
+                table.insert(out, l and string.format("%s=%d..%d(w%d,y%d)", b.unit, l, r, b.w, y)
+                    or b.unit .. "=unplaced")
+            end
+        end
+        local overlap = #cells < #out
+            or (#cells == 2 and cells[1][2] > cells[2][1] and cells[2][2] > cells[1][1])
+        local lo, hi = math.huge, -math.huge
+        for _, c in ipairs(cells) do lo, hi = math.min(lo, c[1]), math.max(hi, c[2]) end
+        local fits = #cells == 0 or hi - lo <= floorOf
+        print("unitrow " .. tag, table.concat(out, " "), "floor=" .. floorOf, "overlap=" .. tostring(overlap),
+            "fits=" .. tostring(fits))
+    end
+    ns.UpdateOverhead()
+    state("pet alone")
+    inCombat = true
+    fireAll("PLAYER_REGEN_DISABLED")
+    exists.targettarget = true
+    watchTick()
+    state("ToT in combat")
+    exists.targettarget = nil
+    watchTick()
+    state("ToT gone in combat")
+    exists.targettarget = true
+    watchTick()
+    inCombat = false
+    fireAll("PLAYER_REGEN_ENABLED")
+    state("combat over")
+    -- out of combat the watch's show lays the whole overhead out at once
+    exists.targettarget = nil
+    watchTick()
+    state("ToT gone")
+    exists.targettarget = true
+    watchTick()
+    state("ToT back")
+    -- under a boss: the row's top is the boss deck's foot, not the overhead's
+    exists.targettarget = nil
+    exists.boss1 = true
+    page.settings.bossFrames:Set("overhead")
+    watchTick()
+    state("under a boss")
+    inCombat = true
+    fireAll("PLAYER_REGEN_DISABLED")
+    exists.targettarget = true
+    watchTick()
+    state("under a boss, ToT in combat")
+    inCombat = false
+    fireAll("PLAYER_REGEN_ENABLED")
+    state("under a boss, combat over")
+end

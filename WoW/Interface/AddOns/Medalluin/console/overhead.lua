@@ -126,12 +126,14 @@ local function DeckWidth(kind, n)
     return n * A.cell[kind] + (n - 1) * A.gap + 2 * A.deck[kind] + 2 * A.margin
 end
 
--- The cells share a deck's floor less its margins; the total is kept even so
--- the row is centred on whole pixels. Never under A.cell: a deck is at least
+-- The cells share a deck's floor less its margins, each at most A.cell wide:
+-- a deck the one under it has widened (a full pet bar under the pet) centres
+-- its cells rather than stretching them. The total is kept even so the row is
+-- centred on whole pixels. Never under A.cell from Layout: a deck is at least
 -- DeckWidth wide.
 local function CellWidth(kind, n, w)
     local floor = w - 2 * A.deck[kind] - 2 * A.margin
-    local cw = math.floor((floor - (n - 1) * A.gap) / n)
+    local cw = math.min(A.cell[kind], math.floor((floor - (n - 1) * A.gap) / n))
     if (n * cw + (n - 1) * A.gap) % 2 == 1 then cw = cw - 1 end
     return cw
 end
@@ -146,6 +148,9 @@ end
 
 -- ------------------------------------------------------------ the cells
 local UpdateUnitStatus
+-- true while Layout runs: the shows and hides it makes are not news to it
+local laying = false
+local UpdateOverhead
 
 local function CreateCell(unit, kind, chip)
     local b = CreateFrame("Button", "MedalluinUnit_" .. unit, overhead, "SecureUnitButtonTemplate")
@@ -239,6 +244,62 @@ local petUnit = CreateCell("pet", "unit", "pet")
 local focusUnit = CreateCell("focus", "unit", "focus")
 local totUnit = CreateCell("targettarget", "unit", "targettarget")
 
+-- The unit row, as its cells come and go. Out of combat a cell the unit
+-- watch shows or hides lays the overhead out again. In combat the layout
+-- waits for it to end (UpdateOverhead), but the watch does not: a target's
+-- target that turns up mid-fight showed where it last stood, over the pet
+-- standing there now. So in combat the row lays itself out, securely: the
+-- cells shown, centred on the deck the last layout drew, each at most its
+-- drawn width, narrower when more show than that deck was drawn for. The
+-- plates stay as they were until combat ends.
+local unitCells = { petUnit, focusUnit, totUnit }
+-- The header is the cells' anchor in combat: a restricted snippet may only
+-- anchor to a protected frame, and the overhead is not one (2026-11-02: the
+-- cells were anchored to it, refused, and vanished). It sits on the
+-- overhead's top centre, where Layout anchors them.
+local unitRow = CreateFrame("Frame", nil, overhead, "SecureHandlerBaseTemplate")
+unitRow:SetSize(1, 1)
+unitRow:SetPoint("TOP", overhead, "TOP")
+unitRow:SetAttribute("cell", A.cell.unit)
+unitRow:SetAttribute("gap", A.gap)
+unitRow:SetAttribute("floor", 0)
+unitRow:SetAttribute("top", A.cellTop)
+ns.overheadUnitRow = unitRow
+-- Restricted code has no math library; everything is worked out before a
+-- cell is touched, and each keeps its point until the new one is set.
+local UNIT_ROW = [=[
+    if not PlayerInCombat() then return end
+    local cells, n = newtable(), 0
+    for i = 1, 3 do
+        local c = owner:GetFrameRef("cell" .. i)
+        if c and c:IsShown() then
+            n = n + 1
+            cells[n] = c
+        end
+    end
+    if n == 0 then return end
+    local cw, gap, floor = owner:GetAttribute("cell"), owner:GetAttribute("gap"), owner:GetAttribute("floor")
+    -- floor: the drawn deck's width less its sides; 0, no deck was drawn
+    if floor > 0 then
+        local fit = (floor - (n - 1) * gap) / n
+        fit = fit - fit % 1
+        if fit < cw then cw = fit end
+    end
+    if (n * cw + (n - 1) * gap) % 2 == 1 then cw = cw - 1 end
+    local left, top = -(n * cw + (n - 1) * gap) / 2, -owner:GetAttribute("top")
+    for i = 1, n do
+        cells[i]:SetWidth(cw)
+        cells[i]:SetPoint("TOPLEFT", owner, "TOP", left + (i - 1) * (cw + gap), top)
+    end
+]=]
+for i, b in ipairs(unitCells) do
+    unitRow:SetFrameRef("cell" .. i, b)
+    SecureHandlerWrapScript(b, "OnShow", unitRow, UNIT_ROW)
+    SecureHandlerWrapScript(b, "OnHide", unitRow, UNIT_ROW)
+    b:HookScript("OnShow", function() if not laying then UpdateOverhead() end end)
+    b:HookScript("OnHide", function() if not laying then UpdateOverhead() end end)
+end
+
 ns.overheadUnits = {
     pet = petUnit,
     focus = focusUnit,
@@ -324,8 +385,6 @@ end
 -- parked, not killed (blizzard.lua): the bars' own events still give the
 -- buttons their icons and show the ones that are in use.
 local stanceButtons, petButtons = {}, {}
-local laying = false
-local UpdateOverhead
 
 -- Each icon edged in gold, as the unit cells are (variant A, chosen
 -- 2026-11-01 from art/console/render/overhead-frames.png): a 1px black edge
@@ -470,6 +529,7 @@ local function CommandRow()
     return row, stances
 end
 
+local finishing = false     -- the pass after a fade out, that clears and hides
 local function Layout()
     if ns.db and ns.db.overhead == false then
         overhead:Hide()
@@ -506,9 +566,29 @@ local function Layout()
         stack[i].w = math.max(stack[i].w, stack[i + 1].w + 2 * A.deck[stack[i].kind] + 2 * A.ledge)
     end
 
+    -- emptied: the plate stays as it was while it fades out (console/fade.lua),
+    -- then this runs again to clear it and hide
+    local show = #stack > 0 or #row > 0
+    local wasShown = overhead:IsShown()
+    if not show and wasShown and not finishing and ns.OverheadFadeOut
+        and ns.OverheadFadeOut(function()
+            finishing = true
+            UpdateOverhead()
+            finishing = false
+        end) then
+        laying = false
+        return
+    end
+
     local y, widest = 0, 0
+    -- where the unit row's cells go in combat (unitRow): no deck, at its top
+    local rowFloor, rowTop = 0, nil
     for slot = 1, #decks do
         local d = stack[slot]
+        if d and d.kind ~= "boss" and not rowTop then
+            rowTop = y + A.cellTop
+            if d.kind == "unit" then rowFloor = d.w - 2 * A.deck.unit - 2 * A.margin end
+        end
         if d then
             decks[slot]:Place(d.kind, y, d.w / 2)
             if d.kind == "tray" then
@@ -538,12 +618,19 @@ local function Layout()
             decks[slot]:Clear()
         end
     end
+    unitRow:SetAttribute("floor", rowFloor)
+    unitRow:SetAttribute("top", rowTop or y + A.cellTop)
     -- bosses past the count, hidden but still watched
     for i = #bosses + 1, 5 do bossUnits[i]:Hide() end
     ns.overheadRow, ns.overheadRowStances = row, stances
 
     overhead:SetSize(math.max(widest, 1), math.max(y, 1))
-    overhead:SetShown(#stack > 0 or #row > 0)
+    overhead:SetShown(show)
+    -- appearing fades in from nothing; a fade out cut short turns back
+    if show and ns.OverheadFadeIn then
+        if not wasShown then ns.OverheadSettle(false) end
+        ns.OverheadFadeIn()
+    end
     laying = false
 end
 

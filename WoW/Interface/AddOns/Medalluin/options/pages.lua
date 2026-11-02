@@ -35,6 +35,19 @@ local function Group(title, ...)
     return { title = title, items = { ... } }
 end
 
+-- An opacity, as a percentage; and a fade's length, in seconds.
+local function Opacity(key, label, tip, needs)
+    return { kind = "slider", key = key, label = label, min = 0, max = 1, step = 0.05, tip = tip, needs = needs,
+        text = function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end }
+end
+local function Seconds(key, label, tip)
+    return { kind = "slider", key = key, label = label, min = 0, max = 2, step = 0.05, tip = tip,
+        text = function(v)
+            if v < 0.025 then return "At once" end
+            return string.format("%.2fs", v)
+        end }
+end
+
 -- Lists of groups, one after another.
 local function Concat(...)
     local out = {}
@@ -213,7 +226,35 @@ function ns.OptionPages()
                                 .. "back to reputation when it stops or you change target.")),
                     }, Placed("console", "Position",
                         "Or open Edit Mode: drag a console anywhere, and click it for its scale. Without Edit "
-                        .. "Mode, /mdlui move. The corner strips keep their own size and place.")),
+                        .. "Mode, /mdlui move. The corner strips keep their own size and place."), {
+                        {
+                            title = "Visibility",
+                            tip = "A faded console still works: its buttons click and its keys press. Binding "
+                                .. "keys, a spell on the pointer, Edit Mode and Simulate party frames bring it back.",
+                            items = {
+                                Check("consoleFade", "Fade when idle",
+                                    "Fade the console while none of what is ticked here is so."),
+                                Opacity("consoleFadedAlpha", "Faded opacity",
+                                    "How much of it shows while it is faded.", "consoleFade"),
+                                { kind = "check", key = "consoleShowCombat", label = "In combat",
+                                    tip = "While you are in combat.", needs = "consoleFade" },
+                                { kind = "check", key = "consoleShowTarget", label = "With a target",
+                                    tip = "While you have a target.", needs = "consoleFade" },
+                                { kind = "check", key = "consoleShowHurt", label = "Health not full",
+                                    tip = "While your health is below its most.", needs = "consoleFade" },
+                                { kind = "check", key = "consoleShowGroup", label = "In a group",
+                                    tip = "While you are in a party or a raid.", needs = "consoleFade" },
+                                { kind = "check", key = "consoleShowMouse", label = "On mouseover",
+                                    tip = "While the pointer is over the console, its bars or its party.",
+                                    needs = "consoleFade" },
+                            },
+                        },
+                        Group("Opacity",
+                            Opacity("consoleAlpha", "Opacity", "How much of the console shows while it is not "
+                                .. "faded. The corner strips and the corner minimap keep their own."),
+                            Seconds("consoleFadeIn", "Fade in", "How long it takes to come back."),
+                            Seconds("consoleFadeOut", "Fade out", "How long it takes to fade.")),
+                    }),
                 },
                 {
                     id = "bar", name = "Action Bars", intro = "Kept per profile.",
@@ -282,7 +323,13 @@ function ns.OptionPages()
                                 true),
                             Check("topStances", "Stance bar",
                                 "Shapeshift forms, stealth, stances, and auras on the bottom tier.", true)),
-                    }, Placed("overhead", "Position")),
+                    }, Placed("overhead", "Position"), {
+                        Group("Opacity",
+                            Opacity("overheadAlpha", "Opacity", "How much of the overhead shows. It shows "
+                                .. "whenever it holds a frame or a bar."),
+                            Seconds("overheadFadeIn", "Fade in", "How long it takes to appear."),
+                            Seconds("overheadFadeOut", "Fade out", "How long it takes to go once it is empty.")),
+                    }),
                 },
                 {
                     id = "minimap", name = "Minimap",

@@ -6,8 +6,9 @@
 #                    that never changes (releases/download/rolling/Medalluin.zip)
 #   X.Y.0            also publishes a release of its own, kept for good
 #
-# A push that does not change the version releases nothing. To release:
-# tools/release.sh bump patch|minor|major, commit, push.
+# A push that does not change the version releases nothing. tools/commit.sh
+# raises the version with each commit (patch for a fix, minor for a feature,
+# major when they have matured); push to release.
 name: Release
 
 on:

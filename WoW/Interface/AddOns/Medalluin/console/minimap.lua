@@ -114,6 +114,9 @@ ns.On("PLAYER_LOGIN", function()
         bt:SetTexCoord(0, mmCfg.topRightSize / mmCfg.texWidth, 0, mmCfg.topRightSize / mmCfg.texHeight)
         bezel:Hide()
         ns.minimapBezel = bezel
+        -- in the corner they are not the console's body, and keep their own
+        -- alpha while it fades (console/fade.lua)
+        if bezel.SetIgnoreParentAlpha then bezel:SetIgnoreParentAlpha(true) end
 
         -- The corner, at the player's size and place (Console > Minimap, or
         -- its Edit Mode mover): in design units, whatever the console's own
@@ -137,6 +140,7 @@ ns.On("PLAYER_LOGIN", function()
             local h = rBottom - rTop
             local corner = ns.MinimapInCorner()
             local inner = Corner()
+            if Minimap.SetIgnoreParentAlpha then Minimap:SetIgnoreParentAlpha(corner) end
             Minimap:ClearAllPoints()
             if corner then
                 Minimap:SetPoint("CENTER", bezel, "CENTER", 0, 0)

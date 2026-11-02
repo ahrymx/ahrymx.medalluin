@@ -36,6 +36,15 @@ local DEFAULTS = {
     minimapAuto = true,
     minimapAutoCombat = true, minimapAutoTarget = true, minimapAutoSkyriding = true,
     minimapScale = 1, minimapX = 0, minimapY = 0,
+    -- fading (console/fade.lua): the console fades while idle, which is what
+    -- is ticked here not being so; its opacity shown and faded, and how long a
+    -- fade takes each way, in seconds. The overhead shows whenever it holds
+    -- anything, so it has only an opacity and its fade times.
+    consoleFade = false,
+    consoleShowCombat = true, consoleShowTarget = true, consoleShowHurt = true,
+    consoleShowGroup = false, consoleShowMouse = true,
+    consoleAlpha = 1, consoleFadedAlpha = 0, consoleFadeIn = 0.2, consoleFadeOut = 0.6,
+    overheadAlpha = 1, overheadFadeIn = 0.2, overheadFadeOut = 0.2,
     deadColor = "ff40424a", -- a dead friend's frame (dead.lua), every frame and profile
     visibility = 1,         -- Bar 1 visibility: see VISIBILITY
     extraVisibility = 1,    -- Extra bar(s) visibility (action bars 2 and 3): see VISIBILITY
@@ -164,6 +173,9 @@ for _, key in ipairs({
     "consoleScale", "consoleX", "consoleY", "overheadScale", "overheadX", "overheadY",
     "minimapAuto", "minimapAutoCombat", "minimapAutoTarget", "minimapAutoSkyriding",
     "minimapScale", "minimapX", "minimapY",
+    "consoleFade", "consoleShowCombat", "consoleShowTarget", "consoleShowHurt", "consoleShowGroup",
+    "consoleShowMouse", "consoleAlpha", "consoleFadedAlpha", "consoleFadeIn", "consoleFadeOut",
+    "overheadAlpha", "overheadFadeIn", "overheadFadeOut",
     "bar1Paging", "bar1PagingCustom", "row2Paging", "row2PagingCustom", "row3Paging", "row3PagingCustom",
     "gridPaging", "gridPagingCustom",
     "partyPets", "partyLayout", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss", "bossMine",

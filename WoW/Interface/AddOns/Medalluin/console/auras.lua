@@ -494,6 +494,21 @@ local function IsTimeless(unit, aura)
     return false
 end
 
+-- One aura by index, or nil past the last. The client can refuse the read
+-- outright: an aura it holds secret is an error to addon code, not a secret
+-- value (C_UnitAuras' RequiresUnitAuraAccess). It does so inside a secure
+-- call such as TargetUnit (a key bound to Target self), whose
+-- PLAYER_TARGET_CHANGED reaches this before the call returns. A refused read
+-- ends its list as if the list had, and is marked: the frame scans again once
+-- the call is over (UpdateUnitAuras).
+local refused = false
+local function Read(unit, i, filter)
+    local ok, aura = pcall(Auras.GetAuraDataByIndex, unit, i, filter)
+    if ok then return aura end
+    refused = true
+    return nil
+end
+
 -- Live aura scanning for active units
 local function ScanUnitAuras(b)
     local unit = b.unit
@@ -504,7 +519,7 @@ local function ScanUnitAuras(b)
     if isAlly and b.dispelGlow and Shows(b, "glow") and Auras and Auras.GetAuraDataByIndex then
         local i = 1
         while true do
-            local aura = Auras.GetAuraDataByIndex(unit, i, "HARMFUL")
+            local aura = Read(unit, i, "HARMFUL")
             if not aura then break end
             local d = aura.dispelName
             if d and playerDispels[d] then
@@ -548,7 +563,7 @@ local function ScanUnitAuras(b)
         if not ccAura and Auras and Auras.GetAuraDataByIndex then
             local i = 1
             while true do
-                local aura = Auras.GetAuraDataByIndex(unit, i, "HARMFUL")
+                local aura = Read(unit, i, "HARMFUL")
                 if not aura then break end
                 if IsCCAura(aura) then
                     ccAura = aura
@@ -584,7 +599,7 @@ local function ScanUnitAuras(b)
             local btnIdx = 1
             local max = ns.RowMax(b, "buffs")
             while btnIdx <= max do
-                local aura = Auras.GetAuraDataByIndex(unit, idx, "HELPFUL|PLAYER")
+                local aura = Read(unit, idx, "HELPFUL|PLAYER")
                 if not aura then break end
                 -- Do not show timeless buffs on the player frame
                 if not (unit == "player" and IsTimeless(unit, aura)) then
@@ -613,7 +628,7 @@ local function ScanUnitAuras(b)
     if b.bossDebuff and Shows(b, "boss") and not ccAura and Auras and Auras.GetAuraDataByIndex then
         local i = 1
         while true do
-            local aura = Auras.GetAuraDataByIndex(unit, i, "HARMFUL")
+            local aura = Read(unit, i, "HARMFUL")
             if not aura then break end
             if not ns.IsSecret(aura.isBossAura) and aura.isBossAura then
                 bossAura = aura
@@ -652,7 +667,7 @@ local function ScanUnitAuras(b)
         if Shows(b, "mine") and Auras and Auras.GetAuraDataByIndex then
             local max = ns.RowMax(b, "mine")
             while n < max do
-                local aura = Auras.GetAuraDataByIndex(unit, n + 1, "HARMFUL|PLAYER")
+                local aura = Read(unit, n + 1, "HARMFUL|PLAYER")
                 if not aura then break end
                 n = n + 1
                 local btn = b.mineWidgets[n]
@@ -682,7 +697,10 @@ local function HideAuras(b)
     if b.mineLaid then b.mineLaid(0) end
 end
 
-local function UpdateUnitAuras(b)
+local UpdateUnitAuras
+-- retry: the scan again after a refused read, which is not tried a third time
+-- (the next aura event scans anyway)
+function UpdateUnitAuras(b, retry)
     if not b then return end
     local unit = b.unit
     if not unit or (not UnitExists(unit) and not b.stub) then
@@ -699,7 +717,11 @@ local function UpdateUnitAuras(b)
     if b.stub and not UnitExists(unit) then
         ApplyStubAuras(b)
     else
+        refused = false
         ScanUnitAuras(b)
+        if refused and not retry and C_Timer and C_Timer.After then
+            C_Timer.After(0, function() UpdateUnitAuras(b, true) end)
+        end
     end
 end
 ns.UpdateUnitAuras = UpdateUnitAuras
