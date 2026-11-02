@@ -20,8 +20,8 @@ Layout architecture:
   4. Action Bars 2 and 3 (`30x30` buttons, `38px` frame height) attached directly below
      the Exp and Rep bars (`42 + 8 + 38 = 88px`, locking flush with the bottom of Bar 7!).
   5. Party frames, on the console (Party layout: Console): a horizontal row hanging under the console
-     (one band, four `156px` slots, `80deg` outer ends; a pet takes `40px` of its
-     owner's slot on the centre-ward side; drafted in gen_party_row.py).
+     (one band, four `156px` slots, `80deg` outer ends; drafted in gen_party_row.py). A pet hangs
+     under its owner in the stone bracket (gen_party_row_pets.py).
 
 Usage:
     python3 art/console/gen_light_console.py          -> render/light-console-*.png
@@ -192,33 +192,23 @@ ROW_H = 32
 ROW_ANGLE = 80
 ROW_RUN = ROW_H / np.tan(np.radians(ROW_ANGLE))     # 5.64: how far an outer end slants in
 ROW_SLOT = CONSOLE_W // 4                           # 156
-ROW_PET = 40                                        # a pet's share of its owner's slot
 ROW_INSET = 2                                       # window edge to gold
 ROW_OUTER = int(np.ceil(ROW_RUN)) + ROW_INSET       # 8: window edge to the band's outer corner
 
 
 def party_row_boxes():
-    """Per member, x signed from the console's centre and y up from its top
-    (negative below), as the grid's slots are: the frame alone, the frame and
-    its pet, and the x of the seam between them."""
+    """Per member, the frame's box: x signed from the console's centre and y
+    up from its top (negative below), as the grid's slots are. A pet hangs
+    under its frame in the stone bracket (gen_pet_bracket.py), off the band."""
     left = -CONSOLE_W // 2
     top, bottom = -(ROW_TOP + ROW_INSET), -(ROW_TOP + ROW_H - ROW_INSET)
-    frames, framesPet, pets, seams = [], [], [], []
+    frames = []
     for i in range(4):
         a, b = left + i * ROW_SLOT, left + (i + 1) * ROW_SLOT
         fl = a + (ROW_OUTER if i == 0 else ROW_INSET)
         fr = b - (ROW_OUTER if i == 3 else ROW_INSET)
         frames.append((fl, fr, top, bottom))
-        if i < 2:       # left half: the pet on the right, toward the centre
-            seam = b - ROW_PET
-            framesPet.append((fl, seam - ROW_INSET, top, bottom))
-            pets.append((seam + ROW_INSET, b - ROW_INSET, top, bottom))
-        else:           # right half: the pet on the left
-            seam = a + ROW_PET
-            framesPet.append((seam + ROW_INSET, fr, top, bottom))
-            pets.append((a + ROW_INSET, seam - ROW_INSET, top, bottom))
-        seams.append(seam)
-    return frames, framesPet, pets, seams
+    return frames
 
 
 def svg_defs():
@@ -454,7 +444,7 @@ def render_party_row():
     Transparent in the windows, where the party buttons and their backing are."""
     w, h, run = CONSOLE_W, ROW_H, ROW_RUN
     band = f"0,0.8 {w},0.8 {w - run:.2f},{h - 0.8} {run:.2f},{h - 0.8}"
-    frames, _, _, _ = party_row_boxes()
+    frames = party_row_boxes()
     holes = "".join(f'<rect x="{l + w // 2}" y="{-t - ROW_TOP}" width="{r - l}" height="{t - b}" fill="#000"/>'
                     for l, r, t, b in frames)
     # rectangles, not lines: a gradient has no box to stretch over on a line
@@ -499,7 +489,7 @@ def export_all():
     ww_tex, wh_tex = to_tga(wing_plate, os.path.join(MEDIA, "bar-wing-light.tga"))
     mw_tex, mh_tex = to_tga(mm_bezel, os.path.join(MEDIA, "minimap-light.tga"))
     rw_tex, rh_tex = to_tga(party_row, os.path.join(MEDIA, "party-row-light.tga"))
-    row_frames, row_frames_pet, row_pets, row_seams = party_row_boxes()
+    row_frames = party_row_boxes()
 
     # Compute exact coordinates relative to console TOP-CENTER (CX = 960, FLUSH_TOP_Y = 904)
     # Bar 1 coordinates: x signed from CX, y height ABOVE FLUSH_TOP_Y (negative below)
@@ -598,13 +588,6 @@ ns.lightProfile = {{
                 frames = {{
                     {fmt_slots(row_frames, 20)}
                 }},
-                framesPet = {{
-                    {fmt_slots(row_frames_pet, 20)}
-                }},
-                pets = {{
-                    {fmt_slots(row_pets, 20)}
-                }},
-                seams = {{ {", ".join(str(x) for x in row_seams)} }},
             }},
         }},
         minimapBleed = 0,

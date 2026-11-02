@@ -161,6 +161,13 @@ local function BoxArt(box)
         { box.focusLeft, box.focusMid, box.focusRight }
 end
 
+-- The backing shows only while the box is typed in: at rest (the Classic
+-- chat style keeps the box) it was an empty bar over the messages' foot.
+local function Lit(box)
+    local on = box.medalluinDressed and box:HasFocus() and true or false
+    for _, t in ipairs(box.medalluin or {}) do t:SetShown(on) end
+end
+
 local function EditBox(frame)
     local box = frame.editBox
     if not box then return end
@@ -177,8 +184,11 @@ local function EditBox(frame)
             t:SetColorTexture(unpack(colour))
             box.medalluin[i] = t
         end
+        box:HookScript("OnEditFocusGained", Lit)
+        box:HookScript("OnEditFocusLost", Lit)
     end
-    for _, t in ipairs(box.medalluin) do t:Show() end
+    box.medalluinDressed = true
+    Lit(box)
     box:ClearAllPoints()
     box:SetPoint("TOPLEFT", edit, "TOPLEFT")
     box:SetPoint("BOTTOMRIGHT", edit, "BOTTOMRIGHT")
@@ -205,7 +215,8 @@ local function Undress(frame)
         local own, focus = BoxArt(box)
         for _, t in ipairs(own) do Back(t, true) end
         for _, t in ipairs(focus) do Back(t) end
-        for _, t in ipairs(box.medalluin or {}) do t:Hide() end
+        box.medalluinDressed = nil
+        Lit(box)
         box:ClearAllPoints()
         box:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", -5, -2)
         if frame.ScrollBar then box:SetPoint("RIGHT", frame.ScrollBar, "RIGHT", 8, 0) end

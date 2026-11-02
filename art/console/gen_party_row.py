@@ -28,7 +28,7 @@ ROW_H = G.ROW_H
 HEALTH_H, SEAM, POWER_H, INSET = 23, 1, 4, G.ROW_INSET
 ROW_W = G.CONSOLE_W                  # 624
 SLOT_W = G.ROW_SLOT                  # 156: a member's share, pet included
-PET_W = G.ROW_PET                    # a pet cell takes this much of its owner's slot
+PET_W = 40                           # a pet cell took this much of its owner's slot (retired: gen_party_row_pets.py)
 RUN = ROW_H / np.tan(np.radians(ANGLE))   # 5.6: how far an outer end slants in
 
 MEMBERS = [

@@ -80,9 +80,11 @@ function ns.LayoutPartyWidget()
             pet.name:SetJustifyH("LEFT")
             pet.value:ClearAllPoints()
             pet.value:SetPoint("RIGHT", pet.text, "RIGHT", -4, 0)
+            -- a cell is a left copy, whichever way its console slot faced
+            ns.LayBuffs(b, -1)
             b.inWidget = true
             -- what the editor changed goes back on (editor.lua)
-            ns.editor.Relaid(b, "name", "role", "value")
+            ns.editor.Relaid(b, "name", "role", "value", "buffs")
             ns.ApplyEdits(b)
         end
     end)

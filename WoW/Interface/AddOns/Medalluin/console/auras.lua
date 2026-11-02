@@ -257,22 +257,31 @@ end
 -- row shows its default (buttons.default) until it does (ns.RowMax).
 local POOL = 10
 
-local function CreateBuffWidgets(health, side, isParty)
-    local buttons = { default = isParty and 3 or 4 }
-    local iconSize = 15
-    local gap = 2
-    local vert = isParty and "TOP" or "BOTTOM"
-    local horiz = side == -1 and "LEFT" or "RIGHT"
-    local point = vert .. horiz
-    local offsetY = isParty and -2 or 2
+local ICON, GAP = 15, 2
 
-    for i = 1, POOL do
+-- The row from its outer corner inward. Again when the party's side changes
+-- (the light row mirrors where the console's slots did not: ns.PartySide).
+local function LayBuffs(health, buttons, side)
+    local point = (buttons.isParty and "TOP" or "BOTTOM") .. (side == -1 and "LEFT" or "RIGHT")
+    local offsetY = buttons.isParty and -2 or 2
+    for i, btn in ipairs(buttons) do
+        local step = (i - 1) * (ICON + GAP)
+        btn:ClearAllPoints()
+        btn:SetPoint(point, health, point, side == -1 and (2 + step) or (-2 - step), offsetY)
+    end
+end
+
+function ns.LayBuffs(b, side)
+    if b.buffWidgets then LayBuffs(b.health, b.buffWidgets, side) end
+end
+
+local function CreateBuffWidgets(health, side, isParty)
+    local buttons = { default = isParty and 3 or 4, isParty = isParty }
+
+    for _ = 1, POOL do
         local btn = CreateFrame("Button", nil, health)
-        btn:SetSize(iconSize, iconSize)
+        btn:SetSize(ICON, ICON)
         btn:SetFrameLevel(ns.levels.text + 1)
-        local step = (i - 1) * (iconSize + gap)
-        local offsetX = side == -1 and (2 + step) or (-2 - step)
-        btn:SetPoint(point, health, point, offsetX, offsetY)
 
         local border = btn:CreateTexture(nil, "BACKGROUND")
         border:SetAllPoints()
@@ -300,6 +309,7 @@ local function CreateBuffWidgets(health, side, isParty)
         btn:Hide()
         table.insert(buttons, btn)
     end
+    LayBuffs(health, buttons, side)
     return buttons
 end
 

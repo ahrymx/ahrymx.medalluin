@@ -250,7 +250,6 @@ ns.partyStubs = STUBS     -- the simulation panel (simulate.lua) kills them and 
 local PET_STUBS = {
     partypet2 = { name = "Water Elemental", class = "MAGE", health = 90, maxHealth = 100 },
 }
-ns.partyPetStubs = PET_STUBS    -- the horizontal row gives a simulated pet its cell (party_row.lua)
 
 local function AbbreviateName(name)
     if not name or name == "" then return "" end
@@ -545,12 +544,13 @@ local petEvents = {
 }
 
 -- A pet's frame has two shapes. With no box it hangs under its owner in a
--- stone bracket (the medallion's party wings). With a box
--- (the horizontal row, party_row.lua) it fills that box: no bracket, the bar
--- edge to edge, its name over its value. The box is from the console's top
--- centre, or from rel's relPoint (the party widget, widgets/party.lua). Out
--- of combat only: it is secure.
-function ns.LayoutPet(pet, box, rel, relPoint)
+-- stone bracket (the medallion's party wings, and the light console's row:
+-- party_row.lua). With a box it fills that box: no bracket, the bar edge
+-- to edge, its name over its value. The box is from rel's relPoint (the
+-- party widget's cell, widgets/party.lua). Hung, it drops from its owner's
+-- foot to the art's edge, to weld there: the medallion's 8 unless drop says.
+-- Out of combat only: it is secure.
+function ns.LayoutPet(pet, box, rel, relPoint, drop)
     local side = pet.side
     local outer = side == 1 and "RIGHT" or "LEFT"
     local inner = side == 1 and "LEFT" or "RIGHT"
@@ -571,8 +571,8 @@ function ns.LayoutPet(pet, box, rel, relPoint)
         return
     end
     pet:SetHeight(18)
-    pet:SetPoint("TOPLEFT", pet.ownerButton, "BOTTOMLEFT", 0, -8)
-    pet:SetPoint("TOPRIGHT", pet.ownerButton, "BOTTOMRIGHT", 0, -8)
+    pet:SetPoint("TOPLEFT", pet.ownerButton, "BOTTOMLEFT", 0, -(drop or 8))
+    pet:SetPoint("TOPRIGHT", pet.ownerButton, "BOTTOMRIGHT", 0, -(drop or 8))
     pet.health:SetPoint("TOPLEFT", pet, "TOPLEFT", 12, -3)
     pet.health:SetPoint("BOTTOMRIGHT", pet, "BOTTOMRIGHT", -12, 3)
     pet.bracket:Show()
@@ -716,11 +716,25 @@ local function ConsoleParty(b)
     b.value:ClearAllPoints()
     b.value:SetPoint(inner, b.text, inner, side * PARTY_VALUE_INSET, 0)
     if b.pet then b.pet.health:SetReverseFill(side == 1) end
+    if ns.LayBuffs then ns.LayBuffs(b, side) end
     -- what the editor changed goes back on (editor.lua)
     if ns.editor then
-        ns.editor.Relaid(b, "name", "role", "value")
+        ns.editor.Relaid(b, "name", "role", "value", "buffs")
         ns.ApplyEdits(b)
     end
+end
+
+-- The way a party button faces on the console, -1 left or 1 right: its
+-- slot's, or in the light profile's row (party_row.lua) its half's, so the
+-- row mirrors across the centre as the console's windows do.
+function ns.PartySide(unit)
+    local party = ns.layout.party
+    local row = party and party.detached and party.row
+    if row then
+        local f = row.frames[tonumber(unit:match("%d$"))]
+        return f[1] + f[2] < 0 and -1 or 1
+    end
+    return ns.slots[unit][2]
 end
 
 function ns.RelayoutUnits()
@@ -748,7 +762,7 @@ function ns.RelayoutUnits()
     -- out of it, they come back to the console
     local widget = ns.PartyWidgetLayout and ns.PartyWidgetLayout()
     if widget then
-        -- the row lets go first: its pet drivers move the buttons (party_row.lua)
+        -- the row's band goes (party_row.lua)
         if ns.LayoutPartyRow then ns.LayoutPartyRow() end
         ns.LayoutPartyWidget()
     elseif ns.ReleasePartyWidget and ns.ReleasePartyWidget() and not pStyle.detached then
@@ -763,6 +777,9 @@ function ns.RelayoutUnits()
         local h = pStyle.row.frames[1][3] - pStyle.row.frames[1][4]
         for i = 1, 4 do
             local b = ns.units["party" .. i]
+            local side = ns.PartySide(b.unit)
+            local outer = side == 1 and "RIGHT" or "LEFT"
+            local inner = side == 1 and "LEFT" or "RIGHT"
             b.power:ClearAllPoints()
             b.health:ClearAllPoints()
             b.power:SetHeight(pStyle.power)
@@ -773,8 +790,8 @@ function ns.RelayoutUnits()
             b.health:SetPoint("LEFT")
             b.health:SetPoint("RIGHT")
             b.health:SetPoint("TOP")
-            b.health:SetReverseFill(false)
-            b.power:SetReverseFill(false)
+            b.health:SetReverseFill(side == 1)
+            b.power:SetReverseFill(side == 1)
             if not b.detachedBg then
                 local bg = b:CreateTexture(nil, "BACKGROUND")
                 bg:SetAllPoints()
@@ -783,19 +800,22 @@ function ns.RelayoutUnits()
             end
             if b.roleFrame then
                 b.roleFrame:ClearAllPoints()
-                b.roleFrame:SetPoint("CENTER", b, "LEFT", 10, 2)
+                b.roleFrame:SetPoint("CENTER", b, outer, -side * 10, 2)
             end
             b.name:ClearAllPoints()
-            b.name:SetPoint("LEFT", b.health, "LEFT", 22, 0)
-            b.name:SetPoint("RIGHT", b.health, "RIGHT", -6, 0)
-            b.name:SetJustifyH("LEFT")
+            b.name:SetPoint(outer, b.health, outer, -side * 22, 0)
+            b.name:SetPoint(inner, b.health, inner, side * 6, 0)
+            b.name:SetJustifyH(outer)
             b.value:ClearAllPoints()
-            b.value:SetPoint("RIGHT", b.health, "RIGHT", -6, 0)
+            b.value:SetPoint(inner, b.health, inner, side * 6, 0)
             if b.pet then
-                b.pet.health:SetReverseFill(false)
+                -- hung under its owner by the row (ns.LayoutPet), facing as it does
+                b.pet.side = side
+                b.pet.health:SetReverseFill(side == 1)
             end
+            if ns.LayBuffs then ns.LayBuffs(b, side) end
             if ns.editor then
-                ns.editor.Relaid(b, "name", "role", "value")
+                ns.editor.Relaid(b, "name", "role", "value", "buffs")
                 ns.ApplyEdits(b)
             end
         end

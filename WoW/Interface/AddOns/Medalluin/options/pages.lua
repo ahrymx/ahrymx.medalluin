@@ -201,8 +201,8 @@ function ns.OptionPages()
                             Choice("partyLayout", "Party layout", {
                                 { "console", "Console", function()
                                     if ns.layout and ns.layout.party and ns.layout.party.row then
-                                        return "A row of four frames under the Central Console. A pet takes part "
-                                            .. "of its owner's frame. While you are in a group the minimap stays in "
+                                        return "A row of four frames under the Central Console, each member's pet "
+                                            .. "hanging under its frame. While you are in a group the minimap stays in "
                                             .. "the top right corner and the centre grid stays out."
                                     end
                                     return "The medallion's party wings, each member's pet hanging under its frame."

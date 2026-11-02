@@ -405,6 +405,21 @@ function Region:HookScript(k, f)
     end
 end
 function Region:GetAlpha() return self.alpha or 1 end
+-- an edit box's focus: one at a time, with its two scripts
+local focused
+function Region:HasFocus() return focused == self end
+function Region:SetFocus()
+    if focused == self then return end
+    local old = focused
+    focused = self
+    if old and old.scripts.OnEditFocusLost then old.scripts.OnEditFocusLost(old) end
+    if self.scripts.OnEditFocusGained then self.scripts.OnEditFocusGained(self) end
+end
+function Region:ClearFocus()
+    if focused ~= self then return end
+    focused = nil
+    if self.scripts.OnEditFocusLost then self.scripts.OnEditFocusLost(self) end
+end
 -- a restricted snippet's self:GetParent():CallMethod(name, ...) (widgets/raid.lua)
 function Region:CallMethod(name, ...) return self[name](self, ...) end
 -- the first of a region's points, as GetPoint() gives it; GetPoint(i) the
@@ -2838,6 +2853,14 @@ if stripsPass then
         FCF_DockFrame(ChatFrame3)
         chatState("chat redocked")
         screen("ChatFrame2EditBox", ChatFrame2.editBox)
+        -- the box's backing: only while it is typed in
+        local function lit(box) return tostring(box.medalluin and box.medalluin[1].shown) end
+        local b1 = ChatFrame1.editBox
+        local rest = lit(b1)
+        b1:SetFocus()
+        local typing = lit(b1)
+        b1:ClearFocus()
+        print("editBox backing", "rest=" .. rest, "typing=" .. typing, "after=" .. lit(b1))
         local temp = FCF_OpenTemporaryWindow()
         print("whisper", art(temp), tab(temp))
         -- the console at a 1080-high UI: Blizzard's pieces need less room
@@ -3840,7 +3863,6 @@ local function RowPass()
     local function fire(e, ...)
         for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
     end
-    local h = _G.MedalluinPartyRow
     local function shown(r) return tostring(r and r.shown) end
     local function console(tag)
         print(tag, "row=" .. tostring(ns.PartyRowShown()), "band=" .. shown(ns.partyRowBand),
@@ -3851,17 +3873,18 @@ local function RowPass()
     local function members(tag)
         for i = 1, 4 do
             local b = ns.units["party" .. i]
-            out(tag .. " party" .. i, b, string.format("state=%s health=%s power=%s",
-                tostring(h.attrs["state-pet" .. i]), tostring(b.health.h),
+            out(tag .. " party" .. i, b, string.format("health=%s power=%s", tostring(b.health.h),
                 tostring(b.power.h)))
-            out(tag .. " partypet" .. i, b.pet, string.format("bracket=%s seam=%s", shown(b.pet.bracket),
-                shown(b.pet.rowSeam)))
+            -- the pet in its bracket under its owner, its name at its outer end
+            local p, rel, rp = b.pet:GetPoint(1)
+            local np = b.pet.name:GetPoint(1)
+            out(tag .. " partypet" .. i, b.pet, string.format("shown=%s bracket=%s under=%s name=%s", shown(b.pet),
+                shown(b.pet.bracket), tostring(rel == b and p .. ">" .. rp), tostring(np)))
             out(tag .. " partypet" .. i .. ".health", b.pet.health)
         end
     end
     print("row option", "saved=" .. tostring(ns.db.partyLayout), "profile=" .. ns.db.consoleProfile,
         "stored=" .. tostring(MedalluinDB.profiles.light.partyLayout))
-    for i = 1, 4 do print("row driver " .. i, tostring(h.stateDrivers and h.stateDrivers["pet" .. i])) end
     hasTarget = false
     inCombat = false
     fire("PLAYER_TARGET_CHANGED")
@@ -3871,21 +3894,30 @@ local function RowPass()
     for i, bg in ipairs(ns.partyRowBackings) do out("row backing " .. i, bg, "shown=" .. shown(bg)) end
     stateTick()
     members("row")
-    -- a pet comes, in combat: the game's update narrows its owner
-    inCombat = true
-    fire("PLAYER_REGEN_DISABLED")
-    harnessHolds["@partypet1,exists"] = true
-    harnessHolds["@partypet4,exists"] = true
-    stateTick()
-    members("row, pets in combat")
-    harnessHolds["@partypet1,exists"] = nil
-    stateTick()
-    out("row, pet 1 gone party1", ns.units.party1, "state=" .. tostring(h.attrs["state-pet1"]))
-    inCombat = false
-    fire("PLAYER_REGEN_ENABLED")
-    -- pets off: no member gives up its slot
+    -- which way each member faces: the row mirrors across its centre, as
+    -- the console's windows do (ns.PartySide)
+    local function faces(tag)
+        local function pt(r)
+            local p, _, rp, x, y = r:GetPoint(1)
+            return string.format("%s>%s,%d,%d", p, rp, x, y)
+        end
+        for i = 1, 4 do
+            local b = ns.units["party" .. i]
+            print(tag .. " faces party" .. i, string.format(
+                "fill=%s,%s,%s name=%s,%s role=%s value=%s buff=%s,%s", tostring(b.health.reverse),
+                tostring(b.power.reverse), tostring(b.pet.health.reverse), tostring(b.name.justifyH), pt(b.name),
+                pt(b.roleFrame), pt(b.value), pt(b.buffWidgets[1]), pt(b.buffWidgets[2])))
+        end
+    end
+    faces("row")
+    -- an edited row (two to a line, its own way) is laid from a snapshot
+    -- of how the button had it: a side change must take a fresh one
+    ns.SetOption("editParty", { buffs = { cols = 2 } })
+    ns.SetOption("editPartyWidget", { buffs = { cols = 2 } })
+    for i = 1, 4 do ns.ApplyEdits(ns.units["party" .. i]) end
+    faces("row, two to a line")
+    -- pets off
     S.partyPets:Set(false)
-    for i = 1, 4 do print("row pets off driver " .. i, tostring(h.stateDrivers["pet" .. i])) end
     stateTick()
     members("row, pets off")
     S.partyPets:Set(true)
@@ -3913,14 +3945,16 @@ local function RowPass()
     S.partyLayout:Set("widget")
     stateTick()
     console("widget")
-    for i = 1, 4 do print("widget driver " .. i, tostring(h.stateDrivers["pet" .. i])) end
     members("widget")
+    faces("widget")
     S.partyLayout:Set("console")
-    -- placed at once, before the game's update brings the pets' states
-    out("console before the update party4", ns.units.party4, "state=" .. tostring(h.attrs["state-pet4"]))
     stateTick()
     console("console again")
     members("console again")
+    faces("console again")
+    ns.SetOption("editParty", false)
+    ns.SetOption("editPartyWidget", false)
+    for i = 1, 4 do ns.ApplyEdits(ns.units["party" .. i]) end
     -- a change asked for in combat waits for it to end
     inCombat = true
     S.partyLayout:Set("widget")
@@ -4164,7 +4198,25 @@ local function EditorPass()
     piece("player back", P, "name")
 
     -- the party's layout: the widget's edits, the console's
+    -- party2's buffs two to a line: its console copy is a right one, its
+    -- cell a left one, so each place must snapshot the row afresh
+    local wasEdits, wasWidgetEdits = ns.db.editParty, ns.db.editPartyWidget
+    local function plus(was)
+        local t = {}
+        for k, v in pairs(type(was) == "table" and was or {}) do t[k] = v end
+        t.buffs = { cols = 2 }
+        return t
+    end
+    ns.SetOption("editParty", plus(wasEdits))
+    ns.SetOption("editPartyWidget", plus(wasWidgetEdits))
+    local function buffs2(tag)
+        local r = ns.units.party2.buffWidgets
+        local p1, _, _, x1 = r[1]:GetPoint(1)
+        local _, _, _, x2 = r[2]:GetPoint(1)
+        print("  party2 buffs " .. tag, p1 .. "," .. x1, "second " .. x2)
+    end
     ns.SetOption("partyLayout", "widget")
+    buffs2("in widget")
     ns.OpenEditor()
     window("layout widget")
     choose("party", "name")
@@ -4176,6 +4228,9 @@ local function EditorPass()
     ns.OpenEditor()
     window("layout console")
     piece("party1 on console", ns.units.party1, "role")
+    buffs2("on console")
+    ns.SetOption("editParty", wasEdits)
+    ns.SetOption("editPartyWidget", wasWidgetEdits)
 
     -- edit mode: the canvas window, beside the editor
     choose("unit", "name")

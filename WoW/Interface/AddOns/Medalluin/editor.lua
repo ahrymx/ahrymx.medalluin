@@ -127,10 +127,11 @@ function E.FrameOf(b)
 end
 
 -- Which way a button's outer end is: -1 left, 1 right. The console's copies
--- by their slot; the light console's party row and every widget cell are
--- left copies.
+-- by their slot (the light console's party row by its half); every widget
+-- cell is a left copy.
 local function Side(b, frame)
-    if frame.id == "unit" or frame.id == "party" and not (ns.layout.party and ns.layout.party.detached) then
+    if frame.id == "party" then return ns.PartySide(b.unit) end
+    if frame.id == "unit" then
         local slot = ns.slots[b.unit]
         return slot and slot[2] or -1
     end
