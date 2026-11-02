@@ -30,6 +30,12 @@ local DEFAULTS = {
     -- units (a 1080-high screen), so a place survives a resolution change
     consoleScale = 1, consoleX = 0, consoleY = 0,
     overheadScale = 1, overheadX = 0, overheadY = 0,
+    -- the light profile's minimap (console/minimap.lua): whether it moves to
+    -- the screen's corner by itself, and on what; and the corner's size and
+    -- place, as the consoles' are (movers.lua)
+    minimapAuto = true,
+    minimapAutoCombat = true, minimapAutoTarget = true, minimapAutoSkyriding = true,
+    minimapScale = 1, minimapX = 0, minimapY = 0,
     deadColor = "ff40424a", -- a dead friend's frame (dead.lua), every frame and profile
     visibility = 1,         -- Bar 1 visibility: see VISIBILITY
     extraVisibility = 1,    -- Extra bar(s) visibility (action bars 2 and 3): see VISIBILITY
@@ -143,9 +149,8 @@ ns.PROFILE_NAMES = {
 -- player's own choices on top. Only a choice that differs from the profile
 -- is saved.
 --
--- What shapes the console (the Action Bar, Unit Layout, Overhead and Cast
--- Bars pages, Paging, under Unit Frames the console's party and the
--- overhead's bosses, and the editor's player, target and console party) is
+-- What shapes the console (every page under Console; under Unit Frames the
+-- console's party and the overhead's bosses; the editor's player, target and console party) is
 -- remembered per profile, in MedalluinDB.profiles[name]:
 -- each profile keeps its own choices, so a switch brings back the ones made
 -- on the profile switched to. Everything else (the group widgets, the chat,
@@ -157,6 +162,8 @@ for _, key in ipairs({
     "actionBar", "rows", "bareIcons", "artColor", "hideEmpty", "visibility", "extraVisibility", "drawer",
     "hotkeySize", "cooldownText", "cooldownTextSize", "cooldownSwipe", "cooldownEdge", "cooldownBling",
     "consoleScale", "consoleX", "consoleY", "overheadScale", "overheadX", "overheadY",
+    "minimapAuto", "minimapAutoCombat", "minimapAutoTarget", "minimapAutoSkyriding",
+    "minimapScale", "minimapX", "minimapY",
     "bar1Paging", "bar1PagingCustom", "row2Paging", "row2PagingCustom", "row3Paging", "row3PagingCustom",
     "gridPaging", "gridPagingCustom",
     "partyPets", "partyLayout", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss", "bossMine",
@@ -412,17 +419,18 @@ local MOVE = { move = true, movers = true, unlock = true }
 
 -- /mdlui <word>: the window on that page.
 local PAGES = {
-    console = "console/profile", profile = "console/profile", profiles = "console/profile",
-    position = "console/position", scale = "console/position", place = "console/position",
-    paging = "console/paging", page = "console/paging", pages = "console/paging",
+    console = "console/general", profile = "console/general", profiles = "console/general",
+    position = "console/general", scale = "console/general", place = "console/general",
+    layout = "console/general", unitlayout = "console/general",
+    cast = "console/general", castbars = "console/general", casting = "console/general",
+    minimap = "console/minimap", map = "console/minimap",
+    paging = "console/bar", page = "console/bar", pages = "console/bar",
     bar = "console/bar", actionbar = "console/bar", bars = "console/bar",
-    layout = "console/layout", unitlayout = "console/layout",
     unit = "units/party", units = "units/party", unitframe = "units/party", unitframes = "units/party",
     uf = "units/party", party = "units/party", raid = "units/raid", bg = "units/battleground",
     battleground = "units/battleground", pvp = "units/battleground", boss = "units/boss", bosses = "units/boss",
     arena = "units/arena",
     overhead = "console/overhead", top = "console/overhead",
-    cast = "console/cast", castbars = "console/cast", casting = "console/cast",
     chat = "chat",
     side = "side", meter = "side", loot = "side", auras = "side",
     bags = "bags", bag = "bags", inventory = "bags",

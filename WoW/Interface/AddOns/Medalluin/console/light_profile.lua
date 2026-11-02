@@ -48,6 +48,7 @@ ns.lightProfile = {
             topRightSize = 188,
             topRightInset = 28,
             texWidth = 256, texHeight = 256,
+            bayMask = "minimap-light-mask",
         },
     },
     barArt = {

@@ -84,10 +84,16 @@ local function Control(parent, spec, width)
         c = UI.Color(parent, spec, width)
     elseif spec.kind == "slider" then
         c = UI.Slider(parent, spec, width)
+    elseif spec.kind == "key" then
+        c = UI.Key(parent, spec, width)
     else
         c = UI.Button(parent, spec.label, math.min(width, 160), 24, spec.click, spec.tip)
     end
-    if spec.key then controls[spec.key] = c end
+    -- a control drawn greyed while another option is off, or while its
+    -- page's own test says no (spec.needs; content.enabled)
+    c.needs = spec.needs
+    -- a key control is found by its binding's name
+    if spec.key or spec.command then controls[spec.key or spec.command] = c end
     return c
 end
 
@@ -99,6 +105,7 @@ local function Build(content, width)
     local f = CreateFrame("Frame", nil, scroll)
     f:SetWidth(width)
     f.controls = {}
+    f.enabled = content.enabled
     local y = -INSET
     if content.intro then
         local intro = UI.Plain(f, 11, C.dim)
@@ -194,8 +201,11 @@ end
 local function Refresh()
     if not window then return end
     for _, f in pairs(built) do
-        local on = not f.master or ns.db[f.master.spec.key] and true or false
-        for _, c in ipairs(f.controls) do c:Refresh(c == f.master or on) end
+        local on = (not f.master or ns.db[f.master.spec.key]) and (not f.enabled or f.enabled())
+            and true or false
+        for _, c in ipairs(f.controls) do
+            c:Refresh(c == f.master or on and (not c.needs or ns.db[c.needs] and true or false))
+        end
     end
     local name = ns.db.consoleProfile
     for _, p in ipairs(ns.PROFILE_NAMES) do

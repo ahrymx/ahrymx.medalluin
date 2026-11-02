@@ -3,7 +3,7 @@
 -- their units (RegisterUnitWatch), so a boss coming mid-fight shows at
 -- once; the box's skin, not protected, lengthens to the last one shown.
 --
--- Boss frames are on the overhead, here, or both (Console > Unit Layout >
+-- Boss frames are on the overhead, here, or both (Console > General >
 -- Boss frames); Blizzard's are retired either way (blizzard.lua).
 -- Blizzard's arena frames give way to the Arena widget.
 local _, ns = ...

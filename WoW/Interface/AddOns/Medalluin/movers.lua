@@ -6,7 +6,8 @@
 --   Edit Mode   while Blizzard's Edit Mode is open, each console wears a
 --               mover: drag it anywhere; click it for its scale and place.
 --               Without a client Edit Mode (Classic Era), /mdlui move.
---   the window  Console > Position: the same values as sliders, and Reset.
+--   the window  the same values as sliders, and Reset: Console > General
+--               (the console), Overhead and Minimap (its corner).
 --
 -- The movers are Medalluin's own frames, shown on Edit Mode's EventRegistry
 -- events. They are never registered with Edit Mode: an addon's frame in its
@@ -39,6 +40,17 @@ local CONSOLES = {
         minY = -REACH_Y, maxY = 200,
         shown = function() return ns.db.overhead ~= false end,
     },
+    {
+        -- the light profile's minimap in the screen's corner (console/minimap.lua);
+        -- its mover shows where the corner is even while the minimap is in the bay
+        id = "minimap", name = "Corner minimap", label = "Size",
+        frame = function() return ns.minimapBezel end,
+        place = function() if ns.PlaceMinimap then ns.PlaceMinimap() end end,
+        minY = -REACH_Y, maxY = 40,
+        shown = function() return ns.MinimapMoves and ns.MinimapMoves() end,
+        -- console/minimap.lua places it on these itself
+        placesItself = true,
+    },
 }
 ns.CONSOLE_MOVERS = CONSOLES
 
@@ -49,7 +61,7 @@ local function Clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 -- The page's sliders, and the popup's: one spec each, shared.
 local function Specs(c)
     return {
-        scale = { kind = "slider", key = Key(c, "Scale"), label = "Scale",
+        scale = { kind = "slider", key = Key(c, "Scale"), label = c.label or "Scale",
             min = SCALE_MIN, max = SCALE_MAX, step = SCALE_STEP,
             text = function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
             tip = "Its size, as a share of the size it is drawn at." },
@@ -72,22 +84,29 @@ ns.ResetConsolePlace = function(id)
     for _, c in ipairs(CONSOLES) do if c.id == id then Reset(c) end end
 end
 
--- Each console's page group (options/pages.lua).
-function ns.ConsolePlaceGroups(Group)
+-- The page groups of the consoles named (options/pages.lua): each one's
+-- sliders and its Reset, with a title of the page's choosing.
+function ns.ConsolePlaceGroups(Group, ids)
     local groups = {}
-    for _, c in ipairs(CONSOLES) do
-        local s = Specs(c)
-        table.insert(groups, Group(c.name, s.scale, s.x, s.y,
-            { kind = "button", label = "Reset " .. c.name:lower(), click = function() Reset(c) end,
-                tip = "Back to where the profile draws it, at its own size." }))
+    for _, id in ipairs(ids) do
+        for _, c in ipairs(CONSOLES) do
+            if c.id == id[1] then
+                local s = Specs(c)
+                table.insert(groups, Group(id[2] or c.name, s.scale, s.x, s.y,
+                    { kind = "button", label = "Reset " .. c.name:lower(), click = function() Reset(c) end,
+                        tip = "Back to where the profile draws it, at its own size." }))
+            end
+        end
     end
     return groups
 end
 
 -- A setting moved: place the console it belongs to.
 for _, c in ipairs(CONSOLES) do
-    for _, field in ipairs({ "Scale", "X", "Y" }) do
-        ns.OnSetting(Key(c, field), c.place)
+    if not c.placesItself then
+        for _, field in ipairs({ "Scale", "X", "Y" }) do
+            ns.OnSetting(Key(c, field), c.place)
+        end
     end
 end
 

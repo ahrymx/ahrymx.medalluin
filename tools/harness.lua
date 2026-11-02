@@ -97,6 +97,9 @@ local pagingPass = args[2] == "paging" or args[3] == "paging"
 -- which the migration turns into the console's own; the light pass alone
 -- is seeded with the retired "vertical", which comes to the same.
 local rowPass = args[3] == "row"
+-- "minimap" (alone: the Medallion; after "light": the Central Console) plays
+-- Console > Minimap: the rule's triggers, the key's pin, the corner's size and place
+local minimapPass = args[2] == "minimap" or args[3] == "minimap"
 local actionPage = 1
 local class = argClass or "PALADIN"
 
@@ -174,6 +177,8 @@ function Region:GetFont()
 end
 function Region:SetAllPoints(rel) moved(); self.all = rel or self.parent end
 function Region:SetSize(w, h) moved(); self.w, self.h = w, h end
+function Region:SetHitRectInsets(l, r, t, b) self.hitInsets = { l, r, t, b } end
+function Region:SetMaskTexture(path) self.mask = path end
 function Region:SetScale(s) moved(); self.scale = s end
 function Region:GetScale() return self.scale or 1 end
 -- against the screen: every scale up the parents (UIParent's counts as 1)
@@ -491,6 +496,22 @@ function EventRegistry:TriggerEvent(event, ...)
     for _, r in ipairs(self.registered[event] or {}) do r[1](r[2], ...) end
 end
 Minimap = new("Frame", UIParent, "Minimap")
+-- the quest, bonus-objective and dig-site rings at the round map's edge
+Minimap.blobRing = {}
+for _, kind in ipairs({ "Quest", "Task", "Arch" }) do
+    for _, what in ipairs({ "Scalar", "Alpha" }) do
+        Minimap["Set" .. kind .. "BlobRing" .. what] = function(self, v) self.blobRing[kind .. what] = v end
+    end
+end
+local function BlobRing()
+    local out = {}
+    for _, kind in ipairs({ "Quest", "Task", "Arch" }) do
+        for _, what in ipairs({ "Scalar", "Alpha" }) do
+            table.insert(out, kind .. what .. "=" .. tostring(Minimap.blobRing[kind .. what]))
+        end
+    end
+    return table.concat(out, " ")
+end
 -- what addons and Blizzard hang on the minimap: three LibDBIcon buttons (one
 -- hidden by its addon), a button of an addon's own, Blizzard's tracking,
 -- and two map pins (one unnamed)
@@ -1453,6 +1474,7 @@ function optionShown(c)
     if k == "choice" then return c.button.value.text end
     if k == "color" then return table.concat(c.swatch.color, ",", 1, 3) end
     if k == "slider" then return c.value.text end
+    if k == "key" then return c.box.text.text end
     return "-"
 end
 function optionShows(key)
@@ -1473,6 +1495,9 @@ function optionsStale()
             want = table.concat({ ns.HexColor(v) }, ",")
         elseif k == "slider" then
             want = c.spec.text and c.spec.text(v) or tostring(v)
+        elseif k == "key" then
+            local keys = ns.BindingKeys(c.spec.command)
+            want = c.box.listening and "Press a key" or #keys == 0 and "Not bound" or ns.KeyText(keys[1])
         end
         if want ~= optionShown(c) then table.insert(stale, key) end
     end
@@ -1481,7 +1506,7 @@ function optionsStale()
 end
 -- The Party layout's list, as this profile shows it: each choice and its tip.
 function partyLayoutMenu(tag)
-    ns.OpenOptions("console/layout")
+    ns.OpenOptions("console/general")
     local layout = ns.optionControls.partyLayout
     layout.button.scripts.OnClick(layout.button)
     for _, row in ipairs(MedalluinOptionsMenu.rows) do
@@ -1617,8 +1642,8 @@ if barPass then
     end
     print("window", "size=" .. win.w .. "x" .. win.h, "strata=" .. tostring(win.strata),
         "esc=" .. tostring(UISpecialFrames[1]), "title=" .. win.title.text)
-    for _, path in ipairs({ "general", "console/profile", "console/bar", "console/paging", "console/layout",
-        "console/overhead", "console/cast", "units/party", "units/raid", "units/battleground", "units/boss",
+    for _, path in ipairs({ "general", "console/general", "console/bar", "console/overhead",
+        "console/minimap", "units/party", "units/raid", "units/battleground", "units/boss",
         "units/arena", "chat", "side", "bags" }) do dump(path) end
     -- a master off greys its page; the footer asks for a reload
     page.settings.bags:Set(false)
@@ -1662,8 +1687,8 @@ if barPass then
     print("scroll side", "at=" .. win.scroll:GetVerticalScroll(), "thumb=" .. tostring(win.thumb.shown))
     win.scroll.scripts.OnMouseWheel(win.scroll, -100)
     print("scroll side bottom", "at=" .. win.scroll:GetVerticalScroll() .. "/" .. win.scroll:GetVerticalScrollRange())
-    ns.OpenOptions("console/paging")
-    print("scroll paging", "at=" .. win.scroll:GetVerticalScroll(), "thumb at=" .. win.thumb.points.TOPRIGHT[4])
+    ns.OpenOptions("console/bar")
+    print("scroll bar", "at=" .. win.scroll:GetVerticalScroll(), "thumb at=" .. win.thumb.points.TOPRIGHT[4])
     -- the Console page comes back on the tab it was left on
     ns.OpenOptions("console/overhead")
     ns.OpenOptions("general")
@@ -3620,8 +3645,8 @@ local function KeybindPass()
     state("in combat")
     say("kb refused", printed[1] or "-")
     -- the window's button closes the window and starts it
-    ns.OpenOptions("general/tools")
-    for _, c in ipairs(ns.optionPages["general/tools"].controls) do
+    ns.OpenOptions("general")
+    for _, c in ipairs(ns.optionPages["general"].controls) do
         if c.spec.label == "Bind keys" then c.scripts.OnClick(c) end
     end
     state("from the page")
@@ -4574,6 +4599,157 @@ local function EditorPass()
     w.scripts.OnHide(w)
 end
 
+-- Console > Minimap (`minimap`, or `light minimap`): see minimapPass
+function MinimapPass()
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local bezel = _G.MedalluinMinimapBezel
+    local function set(k, v) page.settings[k]:Set(v) end
+    -- the square map drops the round map's edge rings; the round one keeps them
+    print("minimap blob rings", ns.layout.minimap and ns.layout.minimap.square and "square" or "round", BlobRing())
+    local function greyed()
+        ns.OpenOptions("console/minimap")
+        local out = {}
+        for _, key in ipairs({ "MEDALLUIN_MINIMAP", "minimapAuto", "minimapAutoCombat", "minimapScale" }) do
+            local c = ns.optionControls[key]
+            -- a slider is greyed through its - and + buttons
+            local hit = c.box or c.less or c
+            table.insert(out, key .. "=" .. (hit:IsEnabled() and "on" or "grey"))
+        end
+        ns.CloseOptions()
+        return table.concat(out, " ")
+    end
+    if not bezel then
+        -- the Medallion: nothing moves, the page says so, the key says so
+        print("minimap medallion", "moves=" .. tostring(ns.MinimapMoves()), "corner=" .. tostring(ns.MinimapInCorner()),
+            "page " .. greyed())
+        print("minimap shape medallion", string.format("map=%.0fx%.0f mask=%s hit insets=%s", Minimap.w, Minimap.h,
+            tostring(Minimap.mask):match("[^\\]+$"), table.concat(Minimap.hitInsets or {}, ",")))
+        ns.ToggleMinimap()
+        print("minimap medallion key", "corner=" .. tostring(ns.MinimapInCorner()), "pin=" .. tostring(ns.MinimapPinned()))
+    else
+        local function where(tag)
+            print("minimap " .. tag, "corner=" .. tostring(Minimap.points.CENTER[1] == bezel),
+                "bezel=" .. tostring(bezel.shown), "grid=" .. tostring(ns.bar7Frame.alpha),
+                "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"), "pin=" .. tostring(ns.MinimapPinned()))
+        end
+        inCombat, hasTarget = false, false
+        fire("PLAYER_REGEN_ENABLED")
+        fire("PLAYER_TARGET_CHANGED")
+        ns.skyridingWatch.scripts.OnAttributeChanged(ns.skyridingWatch, "state-skyriding", "off")
+        where("explore")
+        -- the map is square wherever it shows; its crop is the place's shape
+        local function shape(tag)
+            local i = Minimap.hitInsets or {}
+            local _, _, _, x, y = Minimap:GetPoint()
+            print("minimap shape " .. tag, string.format("map=%.0fx%.0f mask=%s hit insets=%s,%s,%s,%s at=%.0f,%.0f",
+                Minimap.w, Minimap.h, tostring(Minimap.mask):match("[^\\]+$"), tostring(i[1]), tostring(i[2]),
+                tostring(i[3]), tostring(i[4]), x, y))
+        end
+        shape("in the bay")
+        hasTarget = true
+        fire("PLAYER_TARGET_CHANGED")
+        where("target")
+        shape("in the corner")
+        set("minimapAutoTarget", false)
+        where("target, not ticked")
+        set("minimapAutoTarget", true)
+        set("minimapAuto", false)
+        where("target, not automatic")
+        print("minimap page, not automatic", greyed())
+        set("minimapAuto", true)
+        print("minimap page", greyed())
+        inCombat = true
+        fire("PLAYER_REGEN_DISABLED")
+        set("minimapAutoCombat", false)
+        where("combat and target, combat not ticked")
+        set("minimapAutoTarget", false)
+        where("combat and target, neither ticked")
+        set("minimapAutoCombat", true)
+        set("minimapAutoTarget", true)
+        ns.skyridingWatch.scripts.OnAttributeChanged(ns.skyridingWatch, "state-skyriding", "on")
+        inCombat, hasTarget = false, false
+        fire("PLAYER_REGEN_ENABLED")
+        fire("PLAYER_TARGET_CHANGED")
+        where("skyriding")
+        set("minimapAutoSkyriding", false)
+        where("skyriding, not ticked")
+        set("minimapAutoSkyriding", true)
+        ns.skyridingWatch.scripts.OnAttributeChanged(ns.skyridingWatch, "state-skyriding", "off")
+
+        -- the key: pinned in the other place, through every trigger, until pressed again
+        MedalluinToggleMinimap()
+        where("key (from the binding)")
+        hasTarget, inCombat = true, true
+        fire("PLAYER_TARGET_CHANGED")
+        fire("PLAYER_REGEN_DISABLED")
+        where("pinned, combat and target")
+        ns.ToggleMinimap()
+        where("key again")
+        ns.ToggleMinimap()
+        where("key: pinned in the console")
+        inCombat, hasTarget = false, false
+        fire("PLAYER_REGEN_ENABLED")
+        fire("PLAYER_TARGET_CHANGED")
+        where("pinned in the console, out of combat")
+        -- a party row wins over a pin: it needs the bay's foot
+        local realRow = ns.PartyRowShown
+        ns.PartyRowShown = function() return true end
+        ns.UpdateMinimapLocation()
+        where("pinned in the console, party row")
+        ns.PartyRowShown = realRow
+        ns.ToggleMinimap()
+        where("released")
+
+        -- size and place, in the corner; the console's scale leaves them be
+        ns.ToggleMinimap()
+        local function corner(tag)
+            local _, _, rp, x, y = bezel:GetPoint()
+            print("minimap corner " .. tag, string.format("%s %d,%d size=%d onScreen=%.3f map=%.1f mapOnScreen=%.1f",
+                rp, x, y, bezel.w, bezel:GetEffectiveScale(), Minimap.w, Minimap.w * Minimap:GetEffectiveScale()))
+        end
+        corner("drawn")
+        set("minimapScale", 1.5)
+        set("minimapX", -100)
+        set("minimapY", -50)
+        corner("size 150%, 100 left, 50 down")
+        set("consoleScale", 1.2)
+        corner("console at 120%")
+        set("consoleScale", 1)
+        local reset = MedalluinMoverPopup
+        EventRegistry:TriggerEvent("EditMode.Enter")
+        print("minimap mover", "shown=" .. tostring(ns.consoleMovers.minimap and ns.consoleMovers.minimap.shown),
+            "over the corner=" .. tostring(ns.consoleMovers.minimap and ns.consoleMovers.minimap.all == bezel))
+        EventRegistry:TriggerEvent("EditMode.Exit")
+        ns.ResetConsolePlace("minimap")
+        corner("reset")
+        ns.ToggleMinimap()
+
+        -- the page's key control binds the key, and unbinds it
+        ns.OpenOptions("console/minimap")
+        local key = ns.optionControls.MEDALLUIN_MINIMAP
+        local box = key.box
+        box.scripts.OnClick(box, "LeftButton")
+        local listening = box.text.text
+        modsDown.SHIFT = true
+        box.scripts.OnKeyDown(box, "LSHIFT")
+        local afterModifier = box.text.text
+        box.scripts.OnKeyDown(box, "M")
+        modsDown.SHIFT = nil
+        print("minimap key bound", "listening=" .. listening, "after a modifier=" .. afterModifier,
+            "shows=" .. box.text.text, "binding=" .. tostring((GetBindingKey("MEDALLUIN_MINIMAP"))))
+        box.scripts.OnClick(box, "LeftButton")
+        box.scripts.OnKeyDown(box, "ESCAPE")
+        print("minimap key escape", "shows=" .. box.text.text, "binding=" .. tostring((GetBindingKey("MEDALLUIN_MINIMAP"))))
+        box.scripts.OnClick(box, "RightButton")
+        print("minimap key unbound", "shows=" .. box.text.text, "binding=" .. tostring((GetBindingKey("MEDALLUIN_MINIMAP"))))
+        ns.CloseOptions()
+    end
+    print("minimap saved", "light=" .. tostring(MedalluinDB.profiles.light.minimapScale),
+        "default=" .. tostring(MedalluinDB.profiles.default.minimapScale), "window stale=" .. optionsStale())
+end
+
 if lightPass then
     UIParent.fixed = { -648, -904, 1272, 176 }
     local function fire(e, ...)
@@ -4680,6 +4856,7 @@ if lightPass then
     if pagingPass then PagingPass() end
     if rowPass then RowPass() end
     if editorPass then EditorPass() end
+    if minimapPass then MinimapPass() end
     do return end
 end
 
@@ -5791,3 +5968,4 @@ if movePass then
     state("edit mode closed")
     print("move window stale=" .. optionsStale())
 end
+if minimapPass then MinimapPass() end

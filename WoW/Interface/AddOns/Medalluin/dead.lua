@@ -5,7 +5,7 @@
 --   Offline:     [Icon]      over  [Name]   (disconnected, offline-bar)
 -- The player's frame, the console's party, the party widget and the raid
 -- cells have it (ns.DeadLook); a dead enemy keeps its grey bar. One base
--- colour for all of them (General > Appearance). The time counts from when
+-- colour for all of them (General). The time counts from when
 -- Medalluin first saw the death, so a reload starts it again.
 local _, ns = ...
 

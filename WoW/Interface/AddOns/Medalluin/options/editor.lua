@@ -227,9 +227,9 @@ end
 local NOTES = {
     unit = "The player and the target: one layout, mirrored.",
     party = "The console's party; the left and right wings mirrored.",
-    partyWidget = "The party, while Console > Unit Layout > Party layout is Widget.",
+    partyWidget = "The party, while Console > General > Party layout is Widget.",
     raid = "The Raid widget, and in a battleground too.",
-    boss = "The Boss widget, while Console > Unit Layout > Boss frames shows it.",
+    boss = "The Boss widget, while Console > General > Boss frames shows it.",
     arena = "The Arena widget's enemy frames.",
 }
 local function Scope()

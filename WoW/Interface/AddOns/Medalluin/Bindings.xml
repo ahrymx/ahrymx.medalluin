@@ -1,0 +1,7 @@
+<Bindings>
+	<!-- Options > Keybindings > AddOns > Medalluin; Console > Minimap sets it too.
+	     The names are in console/minimap.lua. -->
+	<Binding name="MEDALLUIN_MINIMAP" header="MEDALLUIN" category="ADDONS">
+		MedalluinToggleMinimap()
+	</Binding>
+</Bindings>

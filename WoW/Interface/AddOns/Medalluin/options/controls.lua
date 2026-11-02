@@ -171,6 +171,77 @@ function UI.Check(parent, spec, width)
     return b
 end
 
+-- ------------------------------------------------------------ key
+-- A key binding: the label, and a box with the key bound to the command.
+-- Click the box, then press a key (with any modifiers) to bind it; Esc
+-- while it listens leaves the key as it was; a right-click unbinds.
+-- Bindings only change out of combat. spec.command is the binding's name
+-- (Bindings.xml); keybind.lua does the binding.
+function UI.Key(parent, spec, width)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(width, UI.CHECK_H)
+    f.spec = spec
+    f.label = UI.Plain(f, 12)
+    f.label:SetPoint("LEFT", 0, 0)
+    f.label:SetText(spec.label)
+    local box = CreateFrame("Button", nil, f)
+    box:SetSize(math.min(140, math.floor(width / 2)), UI.CHECK_H)
+    box:SetPoint("RIGHT", 0, 0)
+    box:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    local bg = Fill(box, "BACKGROUND", C.well, 1)
+    bg:SetAllPoints()
+    Outline(box, "BORDER", C.goldDark, 0)
+    box.text = UI.Plain(box, 12)
+    box.text:SetPoint("CENTER", 0, 0)
+    f.box = box
+
+    local function Shown()
+        if box.listening then return "Press a key" end
+        local keys = ns.BindingKeys and ns.BindingKeys(spec.command) or {}
+        if #keys == 0 then return "Not bound" end
+        return ns.KeyText and ns.KeyText(keys[1]) or keys[1]
+    end
+    local function Listen(on)
+        box.listening = on or nil
+        box:EnableKeyboard(on and true or false)
+        f:Refresh(true)
+    end
+    box:SetScript("OnClick", function(_, button)
+        if InCombatLockdown() then return end
+        if button == "RightButton" then
+            Listen(false)
+            if ns.Rebind then ns.Rebind(spec.command) end
+            f:Refresh(true)
+            return
+        end
+        Listen(not box.listening)
+    end)
+    box:SetScript("OnKeyDown", function(self, key)
+        if self.SetPropagateKeyboardInput then self:SetPropagateKeyboardInput(false) end
+        if key == "ESCAPE" then Listen(false) return end
+        local chord = ns.KeyChord and ns.KeyChord(key)
+        if not chord then return end        -- a modifier alone: keep listening
+        if ns.Rebind and not InCombatLockdown() then ns.Rebind(spec.command, chord) end
+        Listen(false)
+    end)
+    box:SetScript("OnHide", function() if box.listening then Listen(false) end end)
+    box:SetScript("OnEnter", function(self)
+        UI.Tip(self, spec.label, (spec.tip and spec.tip .. "\n\n" or "")
+            .. "Click, then press a key. Right-click unbinds it.")
+    end)
+    box:SetScript("OnLeave", Untip)
+    function f:Refresh(enabled)
+        box:SetEnabled(enabled)
+        box.text:SetText(Shown())
+        local c = box.listening and C.goldBright or enabled and C.text or C.dim
+        box.text:SetTextColor(c[1], c[2], c[3])
+        local l = enabled and C.text or C.dim
+        self.label:SetTextColor(l[1], l[2], l[3])
+        self:SetAlpha(enabled and 1 or 0.55)
+    end
+    return f
+end
+
 -- ------------------------------------------------------------ the list
 -- One list for every dropdown, over everything; a click anywhere off it
 -- closes it.

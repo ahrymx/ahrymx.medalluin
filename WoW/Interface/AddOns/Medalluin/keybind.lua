@@ -101,6 +101,8 @@ local function Rebind(command, key)
     if key then SetBinding(key, command) end
     Save()
 end
+-- for the settings window's key controls (options/controls.lua)
+ns.BindingKeys, ns.KeyChord, ns.Rebind, ns.KeyText = Keys, Chord, Rebind, KeyText
 
 -- ------------------------------------------------------------ the binder
 -- One frame over the button under the pointer: it takes the keys, the mouse

@@ -1,4 +1,4 @@
--- The light profile's party row (Console > Unit Layout > Party layout: Console): one
+-- The light profile's party row (Console > General > Party layout: Console): one
 -- band hanging under the console, cut into four fixed slots, one per member.
 -- A member's pet hangs under its frame in the default console's stone
 -- bracket (ns.LayoutPet), so a pet never moves its owner and the slots are

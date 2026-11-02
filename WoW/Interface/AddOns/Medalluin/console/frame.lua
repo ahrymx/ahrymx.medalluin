@@ -123,11 +123,17 @@ threat:SetScript("OnEvent", UpdateTint)
 -- In the "light" profile, party frames are detached (a row under the
 -- console: party_row.lua), and the console plate swaps between
 -- its exploration (minimap bay) and combat/target (2x5 Bar 7 bay) textures;
--- skyriding and a shown party row count as active (console/minimap.lua).
+-- the bay is the grid's while the minimap is in the corner (console/minimap.lua).
 UpdateGroup = function()
     if ns.art.exploreFile then
-        local row = ns.PartyRowShown and ns.PartyRowShown()
-        local active = fighting or (UnitExists and UnitExists("target")) or ns.skyriding or row
+        -- the bay shows what is in it: the minimap's one rule (console/minimap.lua)
+        local active
+        if ns.MinimapInCorner then
+            active = ns.MinimapInCorner()
+        else
+            local row = ns.PartyRowShown and ns.PartyRowShown()
+            active = fighting or (UnitExists and UnitExists("target")) or ns.skyriding or row
+        end
         local file = ns.media .. (active and ns.art.combatFile or ns.art.exploreFile)
         tex:SetTexture(file)
         tint:SetTexture(ns.media .. ns.art.tintFile)

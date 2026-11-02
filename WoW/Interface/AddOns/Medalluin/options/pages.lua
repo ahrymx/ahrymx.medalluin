@@ -35,6 +35,22 @@ local function Group(title, ...)
     return { title = title, items = { ... } }
 end
 
+-- Lists of groups, one after another.
+local function Concat(...)
+    local out = {}
+    for _, list in ipairs({ ... }) do
+        for _, g in ipairs(list) do table.insert(out, g) end
+    end
+    return out
+end
+
+-- A console's place and size (movers.lua), as one group; a tip under its title.
+local function Placed(id, title, tip)
+    local groups = ns.ConsolePlaceGroups(Group, { { id, title } })
+    if groups[1] then groups[1].tip = tip end
+    return groups
+end
+
 -- Bar 1's choices, and the extra bars'
 local function Visibility(it, them)
     local V = ns.VISIBILITY
@@ -111,7 +127,7 @@ function ns.OptionPages()
     local paging = {}
     for _, pb in ipairs(ns.PAGING_BARS or {}) do
         table.insert(paging, {
-            title = pb.name,
+            title = "Paging: " .. pb.name,
             tip = pb.grid and "The light profile's 2x5 grid in the centre bay."
                 or pb.base and ("Shown with Rows at " .. pb.name:match("%d") .. " or more.")
                 or "Action bar 1, in the bar's frame.",
@@ -127,71 +143,84 @@ function ns.OptionPages()
 
     return {
         {
-            id = "general", name = "General",
-            tabs = {
-                {
-                    id = "tools", name = "Tools", intro = "Shared by every profile.",
-                    groups = {
-                        Group("Preview",
-                            Check("simParty", "Simulate party frames",
-                                "Show the console's party frame layer and simulated party members to preview "
-                                .. "party frames while solo. The group boxes show too. A small panel on the left sets "
-                                .. "what they show, a tab each for the party, the raid, the enemies and the "
-                                .. "overhead frames: members and their health, deaths, range, pets, auras, "
-                                .. "ready and role checks.")),
-                        Group("Key bindings",
-                            Button("Bind keys", function()
-                                if ns.CloseOptions then ns.CloseOptions() end
-                                ns.KeybindMode(true)
-                            end, "Closes this window. Point at an action button and press a key to bind it; Esc "
-                                .. "over a button removes its keys. Also /mdlui kb. The action bars' keys are kept "
-                                .. "per profile.")),
-                    },
-                },
-                {
-                    id = "appearance", name = "Appearance",
-                    intro = "Shared by every profile, and by every unit frame.",
-                    groups = {
-                        Group("Dead and offline",
-                            Color("deadColor", "Dead frame colour",
-                                "A dead or offline friend's frame: the player's, the party's (console or widget) "
-                                .. "and the raid's. It shows the status icon, time or disconnection, and their name.")),
-                    },
-                },
+            id = "general", name = "General", intro = "Shared by every profile.",
+            groups = {
+                Group("Preview",
+                    Check("simParty", "Simulate party frames",
+                        "Show the console's party frame layer and simulated party members to preview "
+                        .. "party frames while solo. The group boxes show too. A small panel on the left sets "
+                        .. "what they show, a tab each for the party, the raid, the enemies and the "
+                        .. "overhead frames: members and their health, deaths, range, pets, auras, "
+                        .. "ready and role checks.")),
+                Group("Key bindings",
+                    Button("Bind keys", function()
+                        if ns.CloseOptions then ns.CloseOptions() end
+                        ns.KeybindMode(true)
+                    end, "Closes this window. Point at an action button and press a key to bind it; Esc "
+                        .. "over a button removes its keys. Also /mdlui kb. The action bars' keys are kept "
+                        .. "per profile.")),
+                Group("Dead and offline",
+                    Color("deadColor", "Dead frame colour",
+                        "A dead or offline friend's frame: the player's, the party's (console or widget) "
+                        .. "and the raid's. It shows the status icon, time or disconnection, and their name.")),
             },
         },
         {
             id = "console", name = "Console",
             tabs = {
                 {
-                    id = "profile", name = "Profile",
-                    intro = "Each profile remembers its own Action Bar, Paging, Unit Layout, Overhead and Cast Bars "
-                        .. "options, the console's party and the overhead's bosses under Unit Frames, its skills on "
-                        .. "the bars and their keys. The widgets, Chat, Side panel and Bags are shared.",
-                    groups = {
+                    id = "general", name = "General",
+                    intro = "Each profile remembers everything under Console, the console's party and the "
+                        .. "overhead's bosses under Unit Frames, its skills on the bars and their keys. The "
+                        .. "widgets, Chat, Side panel and Bags are shared. What the frames show is under Unit Frames.",
+                    groups = Concat({
                         Group("Profile",
                             Choice("consoleProfile", "Console profile", ns.PROFILE_NAMES,
                                 "The console the pages under Console start from. Switching brings back the options, "
                                 .. "skills and keys you chose on that profile.", true),
                             Button("Reset profile", function() StaticPopup_Show("MEDALLUIN_RESET_PROFILE") end,
-                                "This profile's Action Bar, Unit Layout, Overhead and Cast Bars options, and its "
-                                .. "console party and overhead bosses under Unit Frames, back to its own. The widgets, "
-                                .. "Chat, Side panel and Bags are left as they are.")),
-                    },
+                                "This profile's options under Console, and its console party and overhead bosses under "
+                                .. "Unit Frames, back to its own. The widgets, Chat, Side panel and Bags are left as "
+                                .. "they are.")),
+                        Group("Where the frames sit",
+                            Choice("partyLayout", "Party layout", {
+                                { "console", "Console", function()
+                                    if ns.layout and ns.layout.party and ns.layout.party.row then
+                                        return "A row of four frames under the Central Console, each member's pet "
+                                            .. "hanging under its frame. While you are in a group the minimap stays in "
+                                            .. "the top right corner and the centre grid stays out."
+                                    end
+                                    return "The medallion's party wings, each member's pet hanging under its frame."
+                                end },
+                                { "widget", "Widget", "A box of party frames, under a Party tab, that you can drag "
+                                    .. "anywhere: hold the tab to move it. In a raid it gives way to the raid "
+                                    .. "frames." },
+                            }, "Where the party frames sit."),
+                            Choice("bossFrames", "Boss frames", {
+                                { "overhead", "Overhead", "On the overhead's top tier, dividing into 1, 2 or 3 "
+                                    .. "columns." },
+                                { "vertical", "Vertical", "A column under a Boss tab that you can drag anywhere: "
+                                    .. "hold the tab to move it." },
+                                { "both", "Both", "On the overhead and in the column." },
+                            }, "Where the encounter's boss frames show. Raid and arena frames are boxes too: hold a "
+                                .. "box's tab to move it. Simulate party frames shows them all.")),
+                        Group("Cast bars",
+                            Check("xpCast", "Player casts on the experience bar",
+                                "The experience bar under your portrait becomes your cast bar while you cast, and "
+                                .. "goes back to experience when you stop."),
+                            Check("repCast", "Target casts on the reputation bar",
+                                "The reputation bar under your target becomes its cast bar while it casts, and goes "
+                                .. "back to reputation when it stops or you change target.")),
+                    }, Placed("console", "Position",
+                        "Or open Edit Mode: drag a console anywhere, and click it for its scale. Without Edit "
+                        .. "Mode, /mdlui move. The corner strips keep their own size and place.")),
                 },
                 {
-                    id = "position", name = "Position",
-                    intro = "Kept per profile. Or open Edit Mode: drag a console anywhere, and click it for "
-                        .. "its scale. Without Edit Mode, /mdlui move. The corner strips keep their own size "
-                        .. "and place.",
-                    groups = ns.ConsolePlaceGroups(Group),
-                },
-                {
-                    id = "bar", name = "Action Bar", intro = "Kept per profile.",
+                    id = "bar", name = "Action Bars", intro = "Kept per profile.",
                     master = Check("actionBar", "Action bar",
                         "Medalluin's bar on top of the console, holding action bar 1. Untick it to keep Blizzard's "
                         .. "bars or use another action-bar addon.", true),
-                    groups = {
+                    groups = Concat({
                         Group("Look",
                             Choice("rows", "Rows", {
                                 { 1, "1 row", "Action bar 1." },
@@ -235,43 +264,14 @@ function ns.OptionPages()
                                 { ns.DRAWER.UP, "Open up", "One column, up from the bar's left end." },
                             }, "The addons' minimap buttons gather in a drawer behind the box on the bar's left "
                                 .. "end. This is the way it opens.")),
-                    },
-                },
-                { id = "paging", name = "Paging", intro = "Kept per profile.", groups = paging },
-                {
-                    id = "layout", name = "Unit Layout",
-                    intro = "Kept per profile. What the frames show is under Unit Frames.",
-                    groups = {
-                        Group("Where the frames sit",
-                            Choice("partyLayout", "Party layout", {
-                                { "console", "Console", function()
-                                    if ns.layout and ns.layout.party and ns.layout.party.row then
-                                        return "A row of four frames under the Central Console, each member's pet "
-                                            .. "hanging under its frame. While you are in a group the minimap stays in "
-                                            .. "the top right corner and the centre grid stays out."
-                                    end
-                                    return "The medallion's party wings, each member's pet hanging under its frame."
-                                end },
-                                { "widget", "Widget", "A box of party frames, under a Party tab, that you can drag "
-                                    .. "anywhere: hold the tab to move it. In a raid it gives way to the raid "
-                                    .. "frames." },
-                            }, "Where the party frames sit."),
-                            Choice("bossFrames", "Boss frames", {
-                                { "overhead", "Overhead", "On the overhead's top tier, dividing into 1, 2 or 3 "
-                                    .. "columns." },
-                                { "vertical", "Vertical", "A column under a Boss tab that you can drag anywhere: "
-                                    .. "hold the tab to move it." },
-                                { "both", "Both", "On the overhead and in the column." },
-                            }, "Where the encounter's boss frames show. Raid and arena frames are boxes too: hold a "
-                                .. "box's tab to move it. Simulate party frames shows them all.")),
-                    },
+                    }, paging),
                 },
                 {
                     id = "overhead", name = "Overhead", intro = "Kept per profile.",
                     master = Check("overhead", "Overhead console",
                         "Top-of-screen cascading trapezoid structure for boss frames, pet, focus, target of target, "
                         .. "and action bars.", true),
-                    groups = {
+                    groups = Concat({
                         Group("Frames",
                             Check("topPet", "Player pet frame", "Player pet unit frame on the middle tier."),
                             Check("topFocus", "Focus frame", "Focus target unit frame on the middle tier."),
@@ -282,19 +282,35 @@ function ns.OptionPages()
                                 true),
                             Check("topStances", "Stance bar",
                                 "Shapeshift forms, stealth, stances, and auras on the bottom tier.", true)),
-                    },
+                    }, Placed("overhead", "Position")),
                 },
                 {
-                    id = "cast", name = "Cast Bars", intro = "Kept per profile.",
-                    groups = {
-                        Group("Casts",
-                            Check("xpCast", "Player casts on the experience bar",
-                                "The experience bar under your portrait becomes your cast bar while you cast, and "
-                                .. "goes back to experience when you stop."),
-                            Check("repCast", "Target casts on the reputation bar",
-                                "The reputation bar under your target becomes its cast bar while it casts, and goes "
-                                .. "back to reputation when it stops or you change target.")),
-                    },
+                    id = "minimap", name = "Minimap",
+                    intro = "Kept per profile. The Central Console's minimap sits in the console's bay, or in the "
+                        .. "screen's corner while the 2x5 grid takes the bay. The Medallion's stays in its ring.",
+                    enabled = function() return ns.MinimapMoves and ns.MinimapMoves() end,
+                    groups = Concat({
+                        Group("Switching",
+                            { kind = "key", label = "Minimap key", command = "MEDALLUIN_MINIMAP",
+                                tip = "Moves the minimap to its other place and keeps it there. Press it again "
+                                    .. "and the automatic moves decide once more. Also under Options > "
+                                    .. "Keybindings > AddOns." }),
+                        {
+                            title = "Moving by itself",
+                            tip = "A party row under the console always takes the corner: it needs the bay's foot.",
+                            items = {
+                                Check("minimapAuto", "Move automatically",
+                                    "Into the corner on what is ticked here, and back into the console after."),
+                                { kind = "check", key = "minimapAutoCombat", label = "In combat",
+                                    tip = "While you are in combat.", needs = "minimapAuto" },
+                                { kind = "check", key = "minimapAutoTarget", label = "With a target",
+                                    tip = "While you have a target.", needs = "minimapAuto" },
+                                { kind = "check", key = "minimapAutoSkyriding", label = "While skyriding",
+                                    tip = "While you skyride: the grid shows the skyriding skills.",
+                                    needs = "minimapAuto" },
+                            },
+                        },
+                    }, Placed("minimap", "In the corner")),
                 },
             },
         },
@@ -303,7 +319,7 @@ function ns.OptionPages()
             tabs = {
                 {
                     id = "party", name = "Party",
-                    intro = "The party frames use the group their Party layout puts them in (Console > Unit Layout). "
+                    intro = "The party frames use the group their Party layout puts them in (Console > General). "
                         .. "The Console group is on the player and target frames too.",
                     groups = {
                         Group("Console (per profile)",
@@ -346,7 +362,7 @@ function ns.OptionPages()
                 },
                 {
                     id = "boss", name = "Boss",
-                    intro = "Where the boss frames show is Console > Unit Layout > Boss frames.",
+                    intro = "Where the boss frames show is Console > General > Boss frames.",
                     groups = {
                         Group("Overhead (per profile)", Mine("bossMine", "a boss")),
                         Group("Widget (shared by every profile)", Mine("bossWidgetMine", "a boss"),

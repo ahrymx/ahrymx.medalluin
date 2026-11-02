@@ -26,6 +26,7 @@ Layout architecture:
 Usage:
     python3 art/console/gen_light_console.py          -> render/light-console-*.png
     python3 art/console/gen_light_console.py export   -> media/*.tga, console/light_profile.lua
+    python3 art/console/gen_light_console.py export mask -> media/minimap-light-mask.tga alone
 """
 import os
 import subprocess
@@ -438,6 +439,32 @@ def render_minimap_bezel():
     return img
 
 
+# The bay's minimap window (light_profile.lua's ring): the minimap is drawn
+# square, as wide as the bay, and this mask keeps the bay's height of it.
+MM_BAY_W = 2 * (BAY_HALF - 2)                       # 204
+MM_BAY_H = MINIMAP_H - 4                            # 152
+MM_MASK = 256
+
+
+def render_minimap_mask():
+    """The bay minimap's mask: opaque across, over the middle MM_BAY_H / MM_BAY_W
+    of its height; the band's edge rows are as opaque as the share of them it
+    covers, so the cut does not step as the mask is stretched to the map."""
+    band = MM_MASK * MM_BAY_H / MM_BAY_W            # 190.75 rows
+    top = (MM_MASK - band) / 2
+    alpha = np.zeros((MM_MASK, MM_MASK), dtype=np.uint8)
+    for row in range(MM_MASK):
+        cover = max(0.0, min(row + 1, top + band) - max(row, top))
+        alpha[row, :] = round(255 * cover)
+    img = Image.new("RGBA", (MM_MASK, MM_MASK), (255, 255, 255, 0))
+    img.putalpha(Image.fromarray(alpha, "L"))
+    return img
+
+
+def export_minimap_mask():
+    to_tga(render_minimap_mask(), os.path.join(MEDIA, "minimap-light-mask.tga"))
+
+
 def render_party_row():
     """The horizontal party row's band: gold edge and slot seams, and ink over
     everything the windows leave (the slants' slivers, the seams' margins).
@@ -489,6 +516,7 @@ def export_all():
     ww_tex, wh_tex = to_tga(wing_plate, os.path.join(MEDIA, "bar-wing-light.tga"))
     mw_tex, mh_tex = to_tga(mm_bezel, os.path.join(MEDIA, "minimap-light.tga"))
     rw_tex, rh_tex = to_tga(party_row, os.path.join(MEDIA, "party-row-light.tga"))
+    export_minimap_mask()
     row_frames = party_row_boxes()
 
     # Compute exact coordinates relative to console TOP-CENTER (CX = 960, FLUSH_TOP_Y = 904)
@@ -597,6 +625,7 @@ ns.lightProfile = {{
             topRightSize = {TR_MINIMAP_SIZE},
             topRightInset = 28,
             texWidth = {mw_tex}, texHeight = {mh_tex},
+            bayMask = "minimap-light-mask",
         }},
     }},
     barArt = {{
@@ -948,6 +977,9 @@ def composite_mockup(mode="combat", bar1_hidden=False):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
+    if len(sys.argv) > 2 and sys.argv[1:3] == ["export", "mask"]:
+        export_minimap_mask()
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "export":
         export_all()
         return

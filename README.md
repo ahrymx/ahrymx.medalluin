@@ -93,7 +93,7 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 | Command | Description |
 |:---|:---|
 | `/mdlui` or `/mui` or `/medalluin` | Opens the Medalluin settings window |
-| `/mdlui bar` | Opens settings directly to the Action Bar tab |
+| `/mdlui bar` | Opens settings directly to the Action Bars tab |
 | `/mdlui party` / `raid` / `boss` | Opens settings directly to unit frame pages |
 | `/mdlui kb` | Enters quick keybinding mode (hover button and press key) |
 | `/mdlui edit` | Launches the interactive unit frame layout editor |
