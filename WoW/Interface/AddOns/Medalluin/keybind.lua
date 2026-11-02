@@ -238,6 +238,7 @@ function Stop()
     if banner then banner:Hide() end
     for btn in pairs(marks) do Mark(btn, false) end
     GameTooltip:Hide()
+    if ns.UpdateAllExtraButtons then ns.UpdateAllExtraButtons() end
 end
 
 local function Start()
@@ -247,6 +248,7 @@ local function Start()
         return
     end
     ns.keybinding = true
+    if ns.UpdateAllExtraButtons then ns.UpdateAllExtraButtons() end
     for _, btn in ipairs(Targets()) do
         if not hooked[btn] then
             hooked[btn] = true

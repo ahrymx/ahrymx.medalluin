@@ -105,7 +105,8 @@ local function UpdateHealth(self)
     local stub = self.stub
     if stub then
         -- offline as a real member is: the health it had, greyed, never dead
-        local isDead = not stub.offline and (stub.dead or stub.health == 0)
+        local isOffline = stub.offline
+        local isDead = not isOffline and (stub.dead or stub.health == 0)
         if isDead then
             self.health:SetMinMaxValues(0, 1)
             self.health:SetValue(0)
@@ -113,13 +114,13 @@ local function UpdateHealth(self)
         else
             self.health:SetMinMaxValues(0, stub.maxHealth)
             self.health:SetValue(stub.health)
-            local c = not stub.offline and RAID_CLASS_COLORS[stub.class]
+            local c = not isOffline and RAID_CLASS_COLORS[stub.class]
             if c then self.health:SetStatusBarColor(Muted(c.r, c.g, c.b)) else
                 self.health:SetStatusBarColor(unpack(C.dead)) end
         end
-        ns.ShowDead(self, isDead)
+        ns.ShowDead(self, isOffline and "offline" or (isDead and "dead"))
         if self.value then
-            if stub.offline then
+            if isOffline then
                 self.value:SetText(PLAYER_OFFLINE)
             elseif isDead then
                 self.value:SetText(DEAD)
@@ -130,8 +131,9 @@ local function UpdateHealth(self)
         return
     end
     local unit = self.unit
+    local isOffline = not UnitIsConnected(unit)
     local isDead = UnitIsDeadOrGhost(unit)
-    ns.ShowDead(self, isDead and UnitIsConnected(unit))
+    ns.ShowDead(self, isOffline and "offline" or (isDead and "dead"))
     local max = UnitHealthMax(unit)
     local cur = UnitHealth(unit)
     if not ns.IsSecret(max) and max <= 0 then max = 1 end
@@ -139,7 +141,7 @@ local function UpdateHealth(self)
     self.health:SetValue(cur)
     self.health:SetStatusBarColor(HealthColor(unit))
     if not self.value then return end
-    if not UnitIsConnected(unit) then
+    if isOffline then
         self.value:SetText(PLAYER_OFFLINE)
     elseif isDead then
         self.value:SetText(DEAD)

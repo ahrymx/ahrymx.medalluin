@@ -279,7 +279,7 @@ function ns.BuildBar(rows)
     ns.extraBarFade = MakeFade(extra, "extraVisibility", function()
         if extra:IsMouseOver() or (row3 and row3:IsMouseOver()) then return true end
         for _, btn in ipairs(ns.extraButtons or {}) do
-            if btn:IsMouseOver() then return true end
+            if (not ns.db.hideEmpty or btn:GetAlpha() > 0) and btn:IsMouseOver() then return true end
         end
         return false
     end)

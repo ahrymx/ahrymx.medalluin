@@ -23,6 +23,34 @@ local extraButtons = {}
 ns.actionButtons = buttons
 ns.extraButtons = extraButtons
 
+-- Extra bar buttons: empty slots (no action placed, and no grid active)
+-- hide completely along with their keybind text. Action Bar 1 and the
+-- light console profile center grid (bar7) stay visible when empty.
+local gridShown = false
+
+local function ButtonShowsGrid()
+    if gridShown or ns.keybinding then return true end
+    local GetCursorInfo = _G.GetCursorInfo
+    if GetCursorInfo and GetCursorInfo() ~= nil then return true end
+    return false
+end
+
+local function ButtonHasAction(btn)
+    if btn.HasAction then
+        local has = btn:HasAction()
+        if has ~= nil then return has and true or false end
+    end
+    local action = btn.action
+    if not action then
+        if btn.CalculateAction then
+            action = btn:CalculateAction()
+        elseif _G.ActionButton_CalculateAction then
+            action = _G.ActionButton_CalculateAction(btn)
+        end
+    end
+    return (action and ns.HasAction(action)) and true or false
+end
+
 local function Part(btn, key, suffix)
     return btn[key] or _G[btn:GetName() .. (suffix or key)]
 end
@@ -103,6 +131,13 @@ end
 local function UpdateHotkey(btn)
     local hotkey = btn.medalluinHotkey or Part(btn, "HotKey")
     if not hotkey then return end
+    if ns.db.hideEmpty and btn.medalluinExtra and not (ButtonHasAction(btn) or ButtonShowsGrid()) then
+        hotkey.medalluinSetting = true
+        hotkey:SetText("")
+        hotkey.medalluinSetting = false
+        hotkey:Hide()
+        return
+    end
     local text = hotkey:GetText()
     local range = _G.RANGE_INDICATOR
     if not text or text == "" or (range and text == range) or text == "•" or text == "●" then
@@ -132,6 +167,49 @@ local function UpdateHotkey(btn)
         hotkey:Hide()
     end
 end
+
+local function UpdateExtraButton(btn)
+    if not btn or not btn.medalluinExtra or btn.medalluinUpdating then return end
+    btn.medalluinUpdating = true
+    local show = not ns.db.hideEmpty or ButtonHasAction(btn) or ButtonShowsGrid()
+    local alpha = show and 1 or 0
+    if btn:GetAlpha() ~= alpha then
+        btn.medalluinSettingAlpha = true
+        btn:SetAlpha(alpha)
+        btn.medalluinSettingAlpha = false
+    end
+    local hotkey = btn.medalluinHotkey or Part(btn, "HotKey")
+    if not show then
+        if hotkey then
+            hotkey.medalluinSetting = true
+            hotkey:SetText("")
+            hotkey.medalluinSetting = false
+            hotkey:Hide()
+        end
+    else
+        if ns.db.bareIcons then
+            UpdateHotkey(btn)
+        else
+            if hotkey and hotkey:GetText() and hotkey:GetText() ~= ""
+                and hotkey:GetText() ~= _G.RANGE_INDICATOR then
+                hotkey:Show()
+            else
+                UpdateHotkey(btn)
+            end
+        end
+    end
+    btn.medalluinUpdating = false
+end
+
+local function UpdateAllExtraButtons(slot)
+    for _, btn in ipairs(extraButtons) do
+        local a = btn.action or (btn.CalculateAction and btn:CalculateAction())
+        if not slot or slot == 0 or a == slot then
+            UpdateExtraButton(btn)
+        end
+    end
+end
+ns.UpdateAllExtraButtons = UpdateAllExtraButtons
 
 local function Style(btn)
     local icon = Part(btn, "icon", "Icon")
@@ -217,7 +295,41 @@ local function Adopt(btn, slot, parent, isExtra)
     ns.PlaceOnBar(btn, slot)
     if ns.db.bareIcons then Style(btn) end
     table.insert(buttons, btn)
-    if isExtra then table.insert(extraButtons, btn) end
+    if isExtra then
+        table.insert(extraButtons, btn)
+        btn.medalluinExtra = true
+        for _, method in ipairs({ "Update", "UpdateAction", "SetShowGrid", "SetAlpha" }) do
+            if btn[method] then
+                if method == "SetAlpha" then
+                    hooksecurefunc(btn, "SetAlpha", function(self, a)
+                        if self.medalluinExtra and not self.medalluinSettingAlpha then
+                            local s = not ns.db.hideEmpty or ButtonHasAction(self) or ButtonShowsGrid()
+                            local target = s and 1 or 0
+                            if a ~= target then
+                                self.medalluinSettingAlpha = true
+                                self:SetAlpha(target)
+                                self.medalluinSettingAlpha = false
+                            end
+                        end
+                    end)
+                else
+                    hooksecurefunc(btn, method, UpdateExtraButton)
+                end
+            end
+        end
+        local hotkey = Part(btn, "HotKey")
+        if hotkey then
+            hooksecurefunc(hotkey, "Show", function(self)
+                if self.medalluinSetting then return end
+                if ns.db.hideEmpty and btn.medalluinExtra and not (ButtonHasAction(btn) or ButtonShowsGrid()) then
+                    self.medalluinSetting = true
+                    self:Hide()
+                    self.medalluinSetting = false
+                end
+            end)
+        end
+        UpdateExtraButton(btn)
+    end
 end
 
 -- Blizzard hides countdown numbers unless the player's interface option
@@ -225,6 +337,24 @@ end
 if ActionButton_UpdateCooldownNumberHidden then
     hooksecurefunc("ActionButton_UpdateCooldownNumberHidden", function(btn)
         if btn.medalluinNative then btn.cooldown:SetHideCountdownNumbers(false) end
+    end)
+end
+
+if _G.ActionButton_Update then
+    hooksecurefunc("ActionButton_Update", function(btn)
+        if btn and btn.medalluinExtra then UpdateExtraButton(btn) end
+    end)
+end
+
+if _G.ActionButton_ShowGrid then
+    hooksecurefunc("ActionButton_ShowGrid", function(btn)
+        if btn and btn.medalluinExtra then UpdateExtraButton(btn) end
+    end)
+end
+
+if _G.ActionButton_HideGrid then
+    hooksecurefunc("ActionButton_HideGrid", function(btn)
+        if btn and btn.medalluinExtra then UpdateExtraButton(btn) end
     end)
 end
 
@@ -236,11 +366,51 @@ if _G.ActionButton_UpdateHotkeys then
     end)
 end
 
-ns.On("UPDATE_BINDINGS", function()
-    if not ns.db.bareIcons then return end
-    for _, btn in ipairs(buttons) do
-        UpdateHotkey(btn)
+ns.On("ACTIONBAR_SHOWGRID", function()
+    gridShown = true
+    UpdateAllExtraButtons()
+end)
+
+ns.On("ACTIONBAR_HIDEGRID", function()
+    gridShown = (_G.GetCursorInfo and _G.GetCursorInfo() ~= nil) or false
+    UpdateAllExtraButtons()
+end)
+
+ns.On("CURSOR_CHANGED", function()
+    local hasCursor = (_G.GetCursorInfo and _G.GetCursorInfo() ~= nil) or false
+    if hasCursor ~= gridShown then
+        gridShown = hasCursor
+        UpdateAllExtraButtons()
     end
+end)
+
+ns.On("ACTIONBAR_SLOT_CHANGED", function(slot)
+    UpdateAllExtraButtons(slot)
+end)
+
+ns.On("ACTIONBAR_PAGE_CHANGED", function()
+    UpdateAllExtraButtons()
+end)
+
+ns.On("UPDATE_BONUS_ACTIONBAR", function()
+    UpdateAllExtraButtons()
+end)
+
+ns.On("PLAYER_ENTERING_WORLD", function()
+    UpdateAllExtraButtons()
+end)
+
+ns.On("UPDATE_BINDINGS", function()
+    if ns.db.bareIcons then
+        for _, btn in ipairs(buttons) do
+            UpdateHotkey(btn)
+        end
+    end
+    UpdateAllExtraButtons()
+end)
+
+ns.OnSetting("hideEmpty", function()
+    UpdateAllExtraButtons()
 end)
 
 local ticker = CreateFrame("Frame")
@@ -309,8 +479,9 @@ end
 
 local function Update(btn, now)
     local action, timer = btn.action, btn.medalluinTimer
+    if btn.medalluinExtra then UpdateExtraButton(btn) end
     if not action or not ns.HasAction(action) then
-        timer:SetText("")
+        if timer then timer:SetText("") end
         return
     end
     Tint(btn, action)

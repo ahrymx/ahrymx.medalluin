@@ -139,11 +139,10 @@ function ns.OptionPages()
                     id = "appearance", name = "Appearance",
                     intro = "Shared by every profile, and by every unit frame.",
                     groups = {
-                        Group("Dead",
+                        Group("Dead and offline",
                             Color("deadColor", "Dead frame colour",
-                                "A dead friend's frame: the player's, the party's (console or widget) and the "
-                                .. "raid's. It shows the resurrect wings, how long they have been dead, and "
-                                .. "their name.")),
+                                "A dead or offline friend's frame: the player's, the party's (console or widget) "
+                                .. "and the raid's. It shows the status icon, time or disconnection, and their name.")),
                     },
                 },
             },
@@ -183,7 +182,9 @@ function ns.OptionPages()
                             Color("artColor", "Art colour", "Tints the bar's stone frame. White leaves it as drawn."),
                             Check("bareIcons", "Bare icons",
                                 "Square icons with a thin black edge, the cooldown time on the icon and range as a "
-                                .. "red tint, instead of Blizzard's button art.", true)),
+                                .. "red tint, instead of Blizzard's button art.", true),
+                            Check("hideEmpty", "Hide empty buttons",
+                                "Hides empty buttons and their keybind text on extra bars (action bars 2 and 3).")),
                         Group("Fading",
                             Choice("visibility", "Bar 1 visibility", Visibility("it comes", "it"),
                                 "A faded bar still works: its buttons and key bindings stay live."),

@@ -515,6 +515,9 @@ local function ActionButton(name, parent, action)
         b[part] = new("FontString", b, name .. part)
     end
     b.cooldown = new("Cooldown", b, name .. "Cooldown")
+    b.showgrid = 1
+    function b:GetShowGrid() return self.showgrid and self.showgrid > 0 end
+    function b:HasAction() return HasAction and HasAction(self.action) or false end
     return b
 end
 -- Classic-era micro buttons (no Guild or LFG) and the bag buttons.
@@ -3903,6 +3906,44 @@ local function PagingPass()
     bars("back")
     SlashCmdList.MDLUI("paging")
     print("/mdlui paging opens", tostring(page.opened))
+
+    -- extra bar empty buttons hide properly, while Bar 1 empty buttons stay visible
+    local bExtra = _G.MultiBarBottomLeftButton1
+    local bMain = _G.ActionButton1
+    local actionSlot = bExtra.action
+    local oldHasAction = HasAction
+    bExtra.HotKey:SetText("s-1")
+    bExtra.HotKey:Show()
+    print("extraButton.withAction", "extraAlpha=" .. tostring(bExtra:GetAlpha()),
+        "extraHotkey=" .. tostring(bExtra.HotKey and bExtra.HotKey.shown),
+        "mainAlpha=" .. tostring(bMain:GetAlpha()))
+    HasAction = function(a) return a ~= actionSlot end
+    ns.HasAction = HasAction
+    ns.UpdateAllExtraButtons()
+    print("extraButton.empty", "extraAlpha=" .. tostring(bExtra:GetAlpha()),
+        "extraHotkey=" .. tostring(bExtra.HotKey and bExtra.HotKey.shown),
+        "mainAlpha=" .. tostring(bMain:GetAlpha()))
+    -- simulate Blizzard trying to reset alpha to 1 or show hotkey while empty
+    bExtra:SetAlpha(1)
+    bExtra.HotKey:Show()
+    print("extraButton.blizzOverridePrevented", "extraAlpha=" .. tostring(bExtra:GetAlpha()),
+        "extraHotkey=" .. tostring(bExtra.HotKey and bExtra.HotKey.shown))
+    fire("ACTIONBAR_SHOWGRID")
+    print("extraButton.showgrid", "extraAlpha=" .. tostring(bExtra:GetAlpha()))
+    fire("ACTIONBAR_HIDEGRID")
+    print("extraButton.hidegrid", "extraAlpha=" .. tostring(bExtra:GetAlpha()),
+        "extraHotkey=" .. tostring(bExtra.HotKey and bExtra.HotKey.shown))
+    -- toggle hideEmpty setting
+    ns.SetOption("hideEmpty", false)
+    print("extraButton.hideEmpty=false", "extraAlpha=" .. tostring(bExtra:GetAlpha()),
+        "extraHotkey=" .. tostring(bExtra.HotKey and bExtra.HotKey.shown))
+    ns.SetOption("hideEmpty", true)
+    print("extraButton.hideEmpty=true", "extraAlpha=" .. tostring(bExtra:GetAlpha()),
+        "extraHotkey=" .. tostring(bExtra.HotKey and bExtra.HotKey.shown))
+    HasAction = oldHasAction
+    ns.HasAction = oldHasAction
+    ns.UpdateAllExtraButtons()
+    print("extraButton.restored", "extraAlpha=" .. tostring(bExtra:GetAlpha()))
 end
 
 local function RowPass()
@@ -4716,9 +4757,14 @@ if savedSimParty then
     p1.scripts.OnEvent(p1, "UNIT_NAME_UPDATE")
     p1.stub.dead = false
     p1.scripts.OnEvent(p1, "UNIT_HEALTH")
+    p1.stub.offline = true
+    p1.scripts.OnEvent(p1, "UNIT_HEALTH")
+    dead("party1.dead offline")
+    p1.stub.offline = false
+    p1.scripts.OnEvent(p1, "UNIT_HEALTH")
     now = now - 3675
     ns.SetOption("deadColor", "ff40424a")
-    -- a real unit: dead by the game, not while offline; a button handed to
+    -- a real unit: dead by the game, or offline; a button handed to
     -- another (alive) unit leaves the first one's time running
     local pb, rDead, rOn, rGuid = ns.units.player, UnitIsDeadOrGhost, UnitIsConnected, UnitGUID
     local guid, gone, off = "Player-A", true, false
@@ -4727,7 +4773,8 @@ if savedSimParty then
     UnitGUID = function() return guid end
     local function real(tag)
         pb.scripts.OnEvent(pb, "UNIT_HEALTH")
-        print(tag, "shown=" .. tostring(pb.dead.shown), "timer=" .. tostring(pb.dead.timer.text))
+        print(tag, "shown=" .. tostring(pb.dead.shown), "state=" .. tostring(pb.dead.state),
+            "timer=" .. tostring(pb.dead.timer.shown and pb.dead.timer.text or "-"))
     end
     real("player.dead real")
     now = now + 30

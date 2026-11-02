@@ -16,6 +16,7 @@ local DEFAULTS = {
     rows = 1,               -- 2 and 3 stack action bars 2 and 3 above it
     bareIcons = false,      -- WeakAuras-style icons instead of Blizzard's button art
     artColor = "ffffffff",  -- AARRGGBB, as the colour swatch stores it; white leaves the art as drawn
+    hideEmpty = true,       -- hide empty buttons on extra bars (action bars 2 and 3)
     deadColor = "ff40424a", -- a dead friend's frame (dead.lua), every frame and profile
     visibility = 1,         -- Bar 1 visibility: see VISIBILITY
     extraVisibility = 1,    -- Extra bar(s) visibility (action bars 2 and 3): see VISIBILITY
@@ -140,7 +141,7 @@ ns.PROFILE_NAMES = {
 -- Reset profile clears the current profile's choices and nothing else.
 local PER_PROFILE = {}
 for _, key in ipairs({
-    "actionBar", "rows", "bareIcons", "artColor", "visibility", "extraVisibility", "drawer",
+    "actionBar", "rows", "bareIcons", "artColor", "hideEmpty", "visibility", "extraVisibility", "drawer",
     "bar1Paging", "bar1PagingCustom", "row2Paging", "row2PagingCustom", "row3Paging", "row3PagingCustom",
     "gridPaging", "gridPagingCustom",
     "partyPets", "partyLayout", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss", "bossMine",
