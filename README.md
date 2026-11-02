@@ -14,21 +14,21 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 
 ## 📸 Showcase
 
-### Full Interface in Action
+### Full Screen Interface
 ![Full Interface](showcase/2026-11-02_07-51-37.png)
 
-### Central Console & Action Bars
+### Overhead Console
 ![Central Console & Action Bars](showcase/2026-11-02_07-53-58.png)
 
-### All-In-One Bags (Inspired by Baganator)
+### Classic Console
 ![Bags Window](showcase/2026-11-02_07-53-41.png)
 
-### Unit Frames & Group Displays
-| Console Unit Frames | Party & Group Widgets |
+### Chat & Resource Panels
+| Chat | Resource Panels |
 |:---:|:---:|
 | ![Console Unit Frames](showcase/2026-11-02_06-49-20.png) | ![Party & Group Widgets](showcase/2026-11-02_06-49-23.png) |
 
-### Action Bar Customization
+### Alternative Console Profile
 ![Action Bars](showcase/2026-11-02_06-49-14.png)
 
 ---
