@@ -1,4 +1,4 @@
--- Load Medaluin outside the game against a stubbed WoW API and print every
+-- Load Medalluin outside the game against a stubbed WoW API and print every
 -- named region's resolved rectangle, in art pixels from the console's
 -- top-left. tools/preview.py draws them over the art.
 --
@@ -49,7 +49,7 @@
 -- bag, and Blizzard's re-skinning methods. Lua's own arithmetic, comparison
 -- and concatenation on a secret raise, as in the game; a truth test cannot
 -- be trapped here.
-local ADDON = "WoW/Interface/AddOns/Medaluin/"
+local ADDON = "WoW/Interface/AddOns/Medalluin/"
 local args, modern = {}, false
 local argClass
 for _, a in ipairs(arg) do
@@ -617,7 +617,7 @@ function harnessPick(conditional, holds)
         if ok then return value end
     end
 end
--- Taint: Medaluin's code is insecure; only the game's own update (stateTick)
+-- Taint: Medalluin's code is insecure; only the game's own update (stateTick)
 -- runs secure. An attribute set on an action button outside it runs the
 -- button's OnAttributeChanged tainted, and its clicks are blocked after that
 -- (UseAction, BugSack 2026-11-01): the button keeps the attribute's name.
@@ -729,7 +729,7 @@ function GetTime() return now end
 bindings, bindingSaves = {}, {}
 for i = 1, 12 do bindings[tostring(i)] = "ACTIONBUTTON" .. i end
 -- a key bound to the centre grid's old buttons, before it took Action bar 7's
-bindings.G = "CLICK MedaluinBar7Button3:LeftButton"
+bindings.G = "CLICK MedalluinBar7Button3:LeftButton"
 function GetBindingKey(action)
     local keys = {}
     for k, c in pairs(bindings) do if c == action then table.insert(keys, k) end end
@@ -1180,9 +1180,9 @@ if modern then
     }
 end
 
--- Options > AddOns: Medaluin's page is a canvas (options/info.lua); a proxy
--- setting, if Medaluin ever built one again, is counted. The settings
--- themselves are Medaluin's own window (options/), reached through
+-- Options > AddOns: Medalluin's page is a canvas (options/info.lua); a proxy
+-- setting, if Medalluin ever built one again, is counted. The settings
+-- themselves are Medalluin's own window (options/), reached through
 -- page.settings[key], which works the window's control for that option the
 -- way a click does; page.opened is the window's page while it is shown.
 local page = { proxies = 0 }
@@ -1244,7 +1244,7 @@ function HideUIPanel(f) f.shown = false end
 StaticPopupDialogs = {}
 SlashCmdList = {}
 function ReloadUI() end
-MedaluinDB = profilesPass and args[3] == "saved" and { consoleProfile = "light",
+MedalluinDB = profilesPass and args[3] == "saved" and { consoleProfile = "light",
         profiles = { default = { drawer = 2, topBoss = true }, light = { rows = 2, topBoss = false, partyRange = 30,
             partyWidgetPoint = { "TOPLEFT", "TOPLEFT", 50, -60 } } },
         global = { lootMoney = false } }
@@ -1389,13 +1389,13 @@ end
 
 -- ------------------------------------------------------------ load + fire
 local ns = {}
-for line in io.lines(ADDON .. "Medaluin.toc") do
+for line in io.lines(ADDON .. "Medalluin.toc") do
     if line:match("%.lua$") then
         local chunk = assert(loadfile(ADDON .. line:gsub("\\", "/")))
-        chunk("Medaluin", ns)
+        chunk("Medalluin", ns)
     end
 end
-for _, f in ipairs(events.ADDON_LOADED or {}) do f.scripts.OnEvent(f, "ADDON_LOADED", "Medaluin") end
+for _, f in ipairs(events.ADDON_LOADED or {}) do f.scripts.OnEvent(f, "ADDON_LOADED", "Medalluin") end
 for _, e in ipairs({ "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD" }) do
     for _, f in ipairs(events[e] or {}) do
         local h = f.scripts.OnEvent
@@ -1448,7 +1448,7 @@ function partyLayoutMenu(tag)
     ns.OpenOptions("console/layout")
     local layout = ns.optionControls.partyLayout
     layout.button.scripts.OnClick(layout.button)
-    for _, row in ipairs(MedaluinOptionsMenu.rows) do
+    for _, row in ipairs(MedalluinOptionsMenu.rows) do
         if row.shown then
             print("party layout menu " .. tag, (row.mark.shown and "*" or "") .. row.text.text, row.tip)
         end
@@ -1458,7 +1458,7 @@ function partyLayoutMenu(tag)
 end
 
 local function menuRow(value)
-    for _, row in ipairs(MedaluinOptionsMenu and MedaluinOptionsMenu.rows or {}) do
+    for _, row in ipairs(MedalluinOptionsMenu and MedalluinOptionsMenu.rows or {}) do
         if row.shown and row.value == value then return row end
     end
 end
@@ -1524,7 +1524,7 @@ if barPass then
             r[4] + 916, extra or ""))
     end
     print("page", page.name, page.registered and "registered" or "-", "proxy settings=" .. page.proxies)
-    -- Options > AddOns > Medaluin: its words in order, and its one button
+    -- Options > AddOns > Medalluin: its words in order, and its one button
     local function texts(f, out)
         for _, r in ipairs(f.all_ or {}) do
             if r.kind == "FontString" and r.text then table.insert(out, r.text) end
@@ -1542,7 +1542,7 @@ if barPass then
     end
     -- the window: each page, its tree row and tabs, its controls in order
     -- (where each sits on the page, what it shows, whether it can be changed)
-    local win = MedaluinOptions
+    local win = MedalluinOptions
     local shows = optionShown
     local function lit(list, on)
         local o = {}
@@ -1594,7 +1594,7 @@ if barPass then
     ns.OpenOptions("units/party")
     local range = ns.optionControls.partyRange
     range.button.scripts.OnClick(range.button)
-    local menu = MedaluinOptionsMenu
+    local menu = MedalluinOptionsMenu
     local rows = {}
     for _, row in ipairs(menu.rows) do
         if row.shown then table.insert(rows, (row.mark.shown and "*" or "") .. row.text.text) end
@@ -1641,15 +1641,22 @@ if barPass then
     print("dragged", "optionsPoint=" .. table.concat(ns.db.optionsPoint, ","))
     win.closeX.scripts.OnClick(win.closeX)
     print("closed", "opened=" .. tostring(page.opened))
-    SlashCmdList.MEDALUIN()
-    print("/medaluin opens", tostring(page.opened))
+    SlashCmdList.MEDALLUIN()
+    print("/medalluin opens", tostring(page.opened))
+    -- /medalluin and /mui are one command; /mdlui is its own, to the same place
+    local slashes = {}
+    for k, v in pairs(_G) do
+        if type(k) == "string" and k:match("^SLASH_") then slashes[#slashes + 1] = k .. "=" .. tostring(v) end
+    end
+    table.sort(slashes)
+    print("slash commands", table.concat(slashes, " "), "same=" .. tostring(SlashCmdList.MEDALLUIN == SlashCmdList.MDLUI))
     SlashCmdList.MDLUI("console")
     print("/mdlui console opens", tostring(page.opened))
     SlashCmdList.MDLUI()
     print("/mdlui opens", tostring(page.opened))
     SlashCmdList.MDLUI("unit")
     print("/mdlui unit opens", tostring(page.opened))
-    -- Medaluin's minimap button: in the drawer, or on the minimap without one
+    -- Medalluin's minimap button: in the drawer, or on the minimap without one
     do
         local mb = ns.minimapButton
         local where = mb.parent == ns.drawer and "drawer" or mb.parent == Minimap and "minimap" or tostring(mb.parent)
@@ -1680,7 +1687,7 @@ if barPass then
     end
     if not ns.actionBar then
         print("tray none")
-        -- no bar, no cast bar of Medaluin's: Blizzard's stays
+        -- no bar, no cast bar of Medalluin's: Blizzard's stays
         for _, k in ipairs({ "CastingBarFrame", "PlayerCastingBarFrame" }) do
             if _G[k] then print(k .. ".parent", _G[k].parent == ns.hidden and "hidden" or "kept") end
         end
@@ -1941,7 +1948,7 @@ if barPass then
                 n = n + 1
                 if i == 1 or i == 12 then
                     screen(b.name, b, "level=" .. b.level .. " scale=" .. b:GetScale()
-                        .. " styled=" .. tostring(b.medaluinIcon ~= nil))
+                        .. " styled=" .. tostring(b.medalluinIcon ~= nil))
                     if b.HotKey then
                         print(b.name .. ".hotkey", tostring(b.HotKey.text), tostring(b.HotKey.shown))
                     end
@@ -2050,7 +2057,7 @@ if sidePass then
     end
     local side = ns.side
     if not side.panel then
-        print("side none", "panel=" .. tostring(_G.MedaluinSide ~= nil))
+        print("side none", "panel=" .. tostring(_G.MedalluinSide ~= nil))
         return
     end
     local function fire(e, ...)
@@ -2684,7 +2691,7 @@ if stripsPass then
     table.sort(micro, function(a, b) return (resolve(a)[1] or 1e9) < (resolve(b)[1] or 1e9) end)
     for _, f in ipairs(micro) do
         if f.shown and resolve(f)[1] then
-            local m, hl = f.medaluin, f:GetHighlightTexture()
+            local m, hl = f.medalluin, f:GetHighlightTexture()
             screen(f.name, f, string.format("parent=%s glyph=%s hl.alpha=%s lit=%s", tostring(f.parent.name),
                 m and m.tex.texture and m.tex.texture:match("[^\\]+$") or "-",
                 hl and hl.vertex and tostring(hl.vertex[4]) or "-", tostring(lit(f))))
@@ -2697,13 +2704,13 @@ if stripsPass then
     -- queue eye: in group finder, the eye appears over the character medallion, hiding the portrait
     QueueStatusButton:Show()
     print("queue eye queued", "shown=" .. tostring(QueueStatusButton.shown),
-        "portrait=" .. tostring(CharacterMicroButton.medaluin.tex.shown),
+        "portrait=" .. tostring(CharacterMicroButton.medalluin.tex.shown),
         "level=" .. tostring(QueueStatusButton.level),
         "over=" .. tostring(QueueStatusButton.level > CharacterMicroButton.level))
     screen("queueEye", QueueStatusButton)
     QueueStatusButton:Hide()
     print("queue eye unqueued", "shown=" .. tostring(QueueStatusButton.shown),
-        "portrait=" .. tostring(CharacterMicroButton.medaluin.tex.shown))
+        "portrait=" .. tostring(CharacterMicroButton.medalluin.tex.shown))
     -- the leave-vehicle seat: Blizzard's button over the backpack's well
     -- while a vehicle can be left, wearing our round art through Blizzard's
     -- own passes (Edit Mode placing it, Update's square highlight)
@@ -2759,7 +2766,7 @@ if stripsPass then
         local b = _G[n]
         if b then table.insert(left, n:gsub("Character", ""):gsub("Slot", "") .. "@" .. tostring(b.parent and b.parent.name)) end
     end
-    print("bags", "drawer=" .. tostring(_G.MedaluinBagDrawer ~= nil), table.concat(left, " "))
+    print("bags", "drawer=" .. tostring(_G.MedalluinBagDrawer ~= nil), table.concat(left, " "))
     for _, f in ipairs(all) do
         if f.kind == "FontString" and f.parent and f.parent.parent == ns.strips[1] and f.text then
             screen("stat", f.parent, string.format("%q", f.text))
@@ -2785,7 +2792,7 @@ if stripsPass then
         for _, k in ipairs(TAB_ART) do
             if t[k].shown then table.insert(lit, k) end
         end
-        local m = t.medaluin
+        local m = t.medalluin
         return "blizzard=" .. (#lit > 0 and table.concat(lit, ",") or "none") .. " selected="
             .. tostring(m and m.selected[1].shown)
     end
@@ -2894,11 +2901,11 @@ if profilesPass then
             "bare=" .. tostring(ns.db.bareIcons), "drawer=" .. tostring(ns.db.drawer),
             "lootMoney=" .. tostring(ns.db.lootMoney), "sideTab=" .. tostring(ns.db.sideTab),
             "rowsDefault=" .. tostring(S.rows:Default()), "page.rows=" .. tostring(S.rows:Get()))
-        print("  default", list(MedaluinDB.profiles.default))
-        print("  light", list(MedaluinDB.profiles.light))
-        print("  global", list(MedaluinDB.global))
-        print("  top", "rows=" .. tostring(rawget(MedaluinDB, "rows")), "bareIcons=" .. tostring(rawget(MedaluinDB,
-            "bareIcons")), "retired=" .. tostring(MedaluinDB.retired))
+        print("  default", list(MedalluinDB.profiles.default))
+        print("  light", list(MedalluinDB.profiles.light))
+        print("  global", list(MedalluinDB.global))
+        print("  top", "rows=" .. tostring(rawget(MedalluinDB, "rows")), "bareIcons=" .. tostring(rawget(MedalluinDB,
+            "bareIcons")), "retired=" .. tostring(MedalluinDB.retired))
         print("  window stale", optionsStale(), "heard", table.concat(heard, " "))
         heard = {}
     end
@@ -2915,7 +2922,7 @@ if profilesPass then
     state("back to light")
     S.rows:Set(3)
     state("rows 3 = the profile's")
-    StaticPopupDialogs.MEDALUIN_RESET_PROFILE.OnAccept()
+    StaticPopupDialogs.MEDALLUIN_RESET_PROFILE.OnAccept()
     state("light reset")
     S.consoleProfile:Set("default")
     state("default again")
@@ -2926,11 +2933,11 @@ if profilesPass then
         -- "migrated"): with the party's saved in it and the raid's back to
         -- the default (so not saved), the raid's stays the default at the
         -- next login
-        print("  widgets shared", "once=" .. tostring(rawget(MedaluinDB, "widgetsShared")),
-            "profile=" .. MedaluinDB.consoleProfile)
-        MedaluinDB.profiles[MedaluinDB.consoleProfile].partyRange, MedaluinDB.global.raidRange = 30, nil
-        for _, f in ipairs(events.ADDON_LOADED or {}) do f.scripts.OnEvent(f, "ADDON_LOADED", "Medaluin") end
-        print("  widgets shared, next login", "raid=" .. tostring(MedaluinDB.global.raidRange))
+        print("  widgets shared", "once=" .. tostring(rawget(MedalluinDB, "widgetsShared")),
+            "profile=" .. MedalluinDB.consoleProfile)
+        MedalluinDB.profiles[MedalluinDB.consoleProfile].partyRange, MedalluinDB.global.raidRange = 30, nil
+        for _, f in ipairs(events.ADDON_LOADED or {}) do f.scripts.OnEvent(f, "ADDON_LOADED", "Medalluin") end
+        print("  widgets shared, next login", "raid=" .. tostring(MedalluinDB.global.raidRange))
     end
 end
 -- ------------------------------------------------------------ skills per profile
@@ -2951,7 +2958,7 @@ if args[2] == "skills" then
         return table.concat(o, " ")
     end
     local function saved(profile, spec)
-        local t = MedaluinCharDB.layouts[profile] and MedaluinCharDB.layouts[profile][spec or "1"]
+        local t = MedalluinCharDB.layouts[profile] and MedalluinCharDB.layouts[profile][spec or "1"]
         if not t then return "none" end
         local o = {}
         for slot = 1, 180 do
@@ -3021,7 +3028,7 @@ if args[2] == "skills" then
     actionSlots[4] = { "spell", 122 }
     S.consoleProfile:Set("light")
     state("slot 4 used on default: the hearthstone gone from it")
-    StaticPopupDialogs.MEDALUIN_RESET_PROFILE.OnAccept()
+    StaticPopupDialogs.MEDALLUIN_RESET_PROFILE.OnAccept()
     state("light reset: the bars stay")
     fire("PLAYER_LOGOUT")
     state("logout")
@@ -3029,7 +3036,7 @@ if args[2] == "skills" then
     S.consoleProfile:Set("default")
     state("other spec: its first switch")
     print("  saved on spec 2", "light", saved("light", "2"), "default", saved("default", "2"))
-    print("  key sets", "character", keySets(MedaluinCharDB), "account", keySets(MedaluinDB))
+    print("  key sets", "character", keySets(MedalluinCharDB), "account", keySets(MedalluinDB))
     -- account bindings: kept account-wide, and put back at login, where
     -- another character left the other profile's
     bindingSet = 1
@@ -3037,8 +3044,8 @@ if args[2] == "skills" then
     state("account bindings: the first switch keeps the keys")
     SetBinding("E", "ACTIONBUTTON1")
     S.consoleProfile:Set("default")
-    print("  key sets", "character", keySets(MedaluinCharDB), "account", keySets(MedaluinDB))
-    MedaluinDB.keys.default.ACTIONBUTTON2 = { "Z" }   -- another character's default
+    print("  key sets", "character", keySets(MedalluinCharDB), "account", keySets(MedalluinDB))
+    MedalluinDB.keys.default.ACTIONBUTTON2 = { "Z" }   -- another character's default
     fire("PLAYER_LOGIN")
     state("login: the account's default keys")
 end
@@ -3168,8 +3175,8 @@ if args[2] == "widgets" or args[3] == "widgets" then
     local tab = ns.partyWidget.tabs[1]
     tab.scripts.OnDragStart(tab)
     tab.scripts.OnDragStop(tab)
-    print("  dragged", "saved=" .. table.concat(MedaluinDB.global.partyWidgetPoint or {}, ","),
-        "in a profile=" .. tostring(MedaluinDB.profiles[ns.db.consoleProfile].partyWidgetPoint))
+    print("  dragged", "saved=" .. table.concat(MedalluinDB.global.partyWidgetPoint or {}, ","),
+        "in a profile=" .. tostring(MedalluinDB.profiles[ns.db.consoleProfile].partyWidgetPoint))
     inCombat = true
     harnessDropAt = { "TOPLEFT", "TOPLEFT", 10, -10 }
     tab.scripts.OnDragStart(tab)
@@ -3200,7 +3207,7 @@ if args[2] == "widgets" or args[3] == "widgets" then
         -- and the preview's "In range" row dims with the range that counts
         local function rangeRow()
             for _, r in ipairs(all) do
-                if r.parent == _G.MedaluinSimPanel and type(r.tip) == "function"
+                if r.parent == _G.MedalluinSimPanel and type(r.tip) == "function"
                     and tostring(r.tip()):match("range%.") then
                     r.scripts.OnClick(r)
                     r.scripts.OnClick(r)
@@ -3286,7 +3293,7 @@ if args[2] == "widgets" or args[3] == "widgets" then
     if C_UnitAuras then
         held.raid1 = { HARMFUL = { { id = 905, icon = "sheep", spellId = 118, isHarmful = true } } }
         fire("UNIT_AURA", "raid1")
-        local b = _G.MedaluinRaidGroup1UnitButton1
+        local b = _G.MedalluinRaidGroup1UnitButton1
         print("raid1 sheeped", "cc=" .. tostring(b.ccWidget.shown and b.ccWidget.icon.texture))
         held.raid1 = nil
         fire("UNIT_AURA", "raid1")
@@ -3304,6 +3311,20 @@ if args[2] == "widgets" or args[3] == "widgets" then
         if f.stub and f.shown then table.insert(p, f.stub.name .. "@" .. at(f, ns.raidWidget)) end
     end
     print("  raid preview", table.concat(p, " | "))
+    -- a dead raid member wears the dead look; an enemy's cell has none
+    for _, f in ipairs(ns.raidWidget.all_ or {}) do
+        if f.stub and f.shown then
+            f.stub.dead = true
+            ns.UpdateWidgetCell(f)
+            print("  raid dead", f.stub.name, "shown=" .. tostring(f.dead and f.dead.shown),
+                "name=" .. tostring(f.dead and f.dead.name.text), "texts=" .. tostring(f.text.alpha or 1),
+                "wings=" .. tostring(f.dead and f.dead.wings.w), "boss cell=" .. tostring(_G.MedalluinBossWidgetUnit1.dead))
+            f.stub.dead = nil
+            ns.UpdateWidgetCell(f)
+            print("  raid alive", f.stub.name, "shown=" .. tostring(f.dead and f.dead.shown))
+            break
+        end
+    end
     S.bossFrames:Set("vertical")
     state("bosses vertical (two simulated)")
     ns.sim.bosses = 1
@@ -3363,7 +3384,7 @@ if args[2] == "widgets" or args[3] == "widgets" then
         end
         print("auras " .. tag, "raid", table.concat(o, " | "), "range=" .. tostring(ns.RaidRange()))
         o = {}
-        for i = 1, 3 do table.insert(o, i .. ":" .. auras(_G["MedaluinBossWidgetUnit" .. i])) end
+        for i = 1, 3 do table.insert(o, i .. ":" .. auras(_G["MedalluinBossWidgetUnit" .. i])) end
         print("auras " .. tag, "boss widget", table.concat(o, " | "))
         o = {}
         for i = 1, 3 do
@@ -3374,7 +3395,7 @@ if args[2] == "widgets" or args[3] == "widgets" then
         end
         print("auras " .. tag, "overhead", table.concat(o, " | "))
         o = {}
-        for i = 1, 3 do table.insert(o, i .. ":" .. auras(_G["MedaluinArenaWidgetUnit" .. i])) end
+        for i = 1, 3 do table.insert(o, i .. ":" .. auras(_G["MedalluinArenaWidgetUnit" .. i])) end
         print("auras " .. tag, "arena", table.concat(o, " | "))
     end
     -- the party's frames answer to the console's options or the widget's,
@@ -3394,9 +3415,9 @@ if args[2] == "widgets" or args[3] == "widgets" then
     stateTick()
     watchTick()
     cells("preview")
-    local m = _G.MedaluinBossWidgetUnit1.mineWidgets
-    print("auras mine row", "size=" .. n(m[1].w) .. "x" .. n(m[1].h), "at=" .. at(m[1], _G.MedaluinBossWidgetUnit1)
-        .. " " .. at(m[3], _G.MedaluinBossWidgetUnit1), "overhead=" .. n(ns.overheadUnits.boss1.mineWidgets[1].w))
+    local m = _G.MedalluinBossWidgetUnit1.mineWidgets
+    print("auras mine row", "size=" .. n(m[1].w) .. "x" .. n(m[1].h), "at=" .. at(m[1], _G.MedalluinBossWidgetUnit1)
+        .. " " .. at(m[3], _G.MedalluinBossWidgetUnit1), "overhead=" .. n(ns.overheadUnits.boss1.mineWidgets[1].w))
     for _, key in ipairs({ "bossMine", "bossWidgetMine", "arenaCC", "arenaMine", "raidGlow", "raidCC", "raidBoss" }) do
         S[key]:Set(false)
         cells(key .. " off")
@@ -3478,8 +3499,8 @@ local function KeybindPass()
                 if t.kind == "Texture" and t.layer == "OVERLAY" and t.sub == 7 and t.shown then marked = marked + 1 end
             end
         end
-        say("kb " .. tag, "on=" .. tostring(ns.keybinding), "banner=" .. tostring(_G.MedaluinKeybindBanner
-            and _G.MedaluinKeybindBanner.shown), "binder=" .. tostring(binder.shown)
+        say("kb " .. tag, "on=" .. tostring(ns.keybinding), "banner=" .. tostring(_G.MedalluinKeybindBanner
+            and _G.MedalluinKeybindBanner.shown), "binder=" .. tostring(binder.shown)
             .. (binder.shown and binder.target and ("@" .. binder.target:GetName()) or ""),
             "keyboard=" .. tostring(binder.keyboard), "marked=" .. marked, "saves=" .. #bindingSaves)
     end
@@ -3508,8 +3529,8 @@ local function KeybindPass()
     state("in combat")
     say("kb refused", printed[1] or "-")
     -- the window's button closes the window and starts it
-    ns.OpenOptions("general")
-    for _, c in ipairs(ns.optionPages.general.controls) do
+    ns.OpenOptions("general/tools")
+    for _, c in ipairs(ns.optionPages["general/tools"].controls) do
         if c.spec.label == "Bind keys" then c.scripts.OnClick(c) end
     end
     state("from the page")
@@ -3567,7 +3588,7 @@ local function KeybindPass()
     if b7 then
         hover(b7); key("V")
         fire("UPDATE_BINDINGS")
-        local hk = b7.medaluinHotkey or b7.HotKey
+        local hk = b7.medalluinHotkey or b7.HotKey
         say("kb grid", "keys=" .. keysOf(ns.BindingCommand(b7)),
             "buttonType=" .. tostring(b7.buttonType), "bare=" .. tostring(ns.db.bareIcons),
             "hotkey=" .. tostring(hk and hk.text))
@@ -3575,7 +3596,7 @@ local function KeybindPass()
     binder.scripts.OnLeave(binder)
     state("left")
     -- the banner: Esc ends it, other keys go on to the game
-    local banner = _G.MedaluinKeybindBanner
+    local banner = _G.MedalluinKeybindBanner
     banner.scripts.OnKeyDown(banner, "W")
     say("kb banner W", "propagated=" .. tostring(banner.propagate))
     banner.scripts.OnKeyDown(banner, "ESCAPE")
@@ -3635,7 +3656,7 @@ local function PagingPass()
         return string.format("page=%s b1=%s b12=%s", tostring(h.attrs.page), tostring(b1.attrs.actionpage),
             tostring(b12.attrs.actionpage))
     end
-    -- which buttons Medaluin's own code set an attribute on (each a blocked
+    -- which buttons Medalluin's own code set an attribute on (each a blocked
     -- click), by row
     local function taint(tag)
         local line = {}
@@ -3659,7 +3680,7 @@ local function PagingPass()
         if ns.bar7Buttons then table.insert(line, "grid slot1=" .. tostring(ns.bar7Buttons[1].action)) end
         print("paging pages " .. tag, table.concat(line, " | "))
     end
-    -- after login: paged by the game's first update, none by Medaluin
+    -- after login: paged by the game's first update, none by Medalluin
     pages("after login")
     taint("at login")
     print("paging headers", "bar1 buttons=" .. (H.bar1Paging and #H.bar1Paging.buttons or 0),
@@ -3695,7 +3716,7 @@ local function PagingPass()
     print("paging custom, empty", "popups=" .. table.concat(shown, ","),
         "editor starts=" .. ns.PagingStart("row3Paging"))
     bars("custom, empty")
-    local dialog = StaticPopupDialogs.MEDALUIN_PAGING
+    local dialog = StaticPopupDialogs.MEDALLUIN_PAGING
     local box = { text = "" }
     function box:SetText(t) self.text = t end
     function box:GetText() return self.text end
@@ -3768,13 +3789,13 @@ local function PagingPass()
     -- /mdlui taint: WoW's own answer for every field and global the click
     -- reads; here a stub that knows two tainted values and one of ours
     do
-        -- a machinery table with one field Medaluin wrote, and a global it did
+        -- a machinery table with one field Medalluin wrote, and a global it did
         local spareGlobal = NUM_ACTIONBAR_BUTTONS
         NUM_ACTIONBAR_BUTTONS = 12
         HarnessCVarRegistry = { cache = 1, clean = 2 }
-        local tainted = { [ActionButton1] = { isExtra = "Medaluin", medaluinIcon = "Medaluin" },
-            [HarnessCVarRegistry] = { cache = "Medaluin" } }
-        ActionButton1.isExtra, ActionButton1.medaluinIcon = false, true
+        local tainted = { [ActionButton1] = { isExtra = "Medalluin", medalluinIcon = "Medalluin" },
+            [HarnessCVarRegistry] = { cache = "Medalluin" } }
+        ActionButton1.isExtra, ActionButton1.medalluinIcon = false, true
         function issecurevariable(t, k)
             if k == nil then
                 if t == "NUM_ACTIONBAR_BUTTONS" then return false, "SomeAddon" end
@@ -3788,13 +3809,13 @@ local function PagingPass()
         function GetMouseFoci() return { MultiBarBottomLeftButton1 } end
         for _, f in ipairs(events.ADDON_ACTION_FORBIDDEN or {}) do
             f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "OtherAddon", "UseAction()")
-            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "Medaluin", "UseAction()")
-            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "Medaluin", "UseAction()")
+            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "Medalluin", "UseAction()")
+            f.scripts.OnEvent(f, "ADDON_ACTION_FORBIDDEN", "Medalluin", "UseAction()")
         end
         GetMouseFoci = nil
         issecurevariable = nil
         HarnessCVarRegistry, NUM_ACTIONBAR_BUTTONS = nil, spareGlobal
-        ActionButton1.isExtra, ActionButton1.medaluinIcon = nil, nil
+        ActionButton1.isExtra, ActionButton1.medalluinIcon = nil, nil
         SlashCmdList.MDLUI("debug")
     end
     -- per profile: the other profile has its own, and coming back brings these
@@ -3819,12 +3840,12 @@ local function RowPass()
     local function fire(e, ...)
         for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
     end
-    local h = _G.MedaluinPartyRow
+    local h = _G.MedalluinPartyRow
     local function shown(r) return tostring(r and r.shown) end
     local function console(tag)
         print(tag, "row=" .. tostring(ns.PartyRowShown()), "band=" .. shown(ns.partyRowBand),
             "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"),
-            "minimapRelocated=" .. tostring(Minimap.points.CENTER[1] == _G.MedaluinMinimapBezel),
+            "minimapRelocated=" .. tostring(Minimap.points.CENTER[1] == _G.MedalluinMinimapBezel),
             "bar7Alpha=" .. tostring(ns.bar7Frame.alpha))
     end
     local function members(tag)
@@ -3839,7 +3860,7 @@ local function RowPass()
         end
     end
     print("row option", "saved=" .. tostring(ns.db.partyLayout), "profile=" .. ns.db.consoleProfile,
-        "stored=" .. tostring(MedaluinDB.profiles.light.partyLayout))
+        "stored=" .. tostring(MedalluinDB.profiles.light.partyLayout))
     for i = 1, 4 do print("row driver " .. i, tostring(h.stateDrivers and h.stateDrivers["pet" .. i])) end
     hasTarget = false
     inCombat = false
@@ -3974,7 +3995,7 @@ local function EditorPass()
         return #a .. " pieces, " .. diff .. " moved"
     end
     local function stored(key)
-        local p = MedaluinDB.profiles and MedaluinDB.profiles[ns.db.consoleProfile]
+        local p = MedalluinDB.profiles and MedalluinDB.profiles[ns.db.consoleProfile]
         local function s(t)
             if type(t) ~= "table" then return tostring(t) end
             local k = {}
@@ -3987,7 +4008,7 @@ local function EditorPass()
             table.sort(k)
             return table.concat(k, " ")
         end
-        return "profile=" .. s(p and p[key]) .. " global=" .. s(MedaluinDB.global and MedaluinDB.global[key])
+        return "profile=" .. s(p and p[key]) .. " global=" .. s(MedalluinDB.global and MedalluinDB.global[key])
     end
     local P, T = ns.units.player, ns.units.target
 
@@ -4001,7 +4022,7 @@ local function EditorPass()
     -- the window: its tabs, the pieces of the chosen frame
     ns.BuildEditor()
     ns.OpenEditor("unit")
-    local w = MedaluinEditor
+    local w = MedalluinEditor
     local function window(tag)
         local t, r = {}, {}
         for _, b in ipairs(w.tabs) do t[#t + 1] = b.text.text end
@@ -4055,11 +4076,11 @@ local function EditorPass()
     print("  stored", stored("editParty"))
 
     -- Shown: a faded piece, and an aura's option
-    choose("party", "rez")
+    choose("party", "status")
     set("shown", false)
-    piece("party1 rez hidden", ns.units.party1, "rez")
+    piece("party1 status hidden", ns.units.party1, "status")
     set("shown", true)
-    piece("party1 rez shown", ns.units.party1, "rez")
+    piece("party1 status shown", ns.units.party1, "status")
     choose("party", "cc")
     local key = E.byId.party.shows.cc
     print("  cc shown", tostring(get("shown")), key .. "=" .. tostring(ns.db[key]))
@@ -4159,7 +4180,7 @@ local function EditorPass()
     -- edit mode: the canvas window, beside the editor
     choose("unit", "name")
     w.editMode.scripts.OnClick(w.editMode)
-    local cv = MedaluinEditCanvas
+    local cv = MedalluinEditCanvas
     local function canvas(tag)
         local rows = {}
         for _, row in ipairs(cv.tree.rows) do
@@ -4288,6 +4309,66 @@ local function EditorPass()
     cv.scripts.OnHide(cv)
     ns.SetOption("editCanvasPoint", false)
 
+    -- a row: its own way and length, then Grow, Columns and Most icons;
+    -- the rest of its icons hang from the first
+    local function row(tag, b, id)
+        local got = E.PIECES[id].get(b)
+        local o, shown = {}, 0
+        for k, r in ipairs(got) do
+            if k > 1 and k <= 5 then o[#o + 1] = k .. ":" .. (pts(b, r):gsub("^CENTER>.-%.CENTER,", "")) end
+            if r.shown then shown = shown + 1 end
+        end
+        print("  " .. tag, id, "max=" .. ns.RowMax(b, id), "shown=" .. shown, "first=" .. pts(b, got[1]),
+            table.concat(o, " "))
+    end
+    local function labels()
+        local o = {}
+        for _, c in ipairs(w.controls.grow.spec.choices) do o[#o + 1] = c[1] .. "=" .. c[2] end
+        return table.concat(o, ",")
+    end
+    choose("unit", "buffs")
+    print("editor row unit", "grow=" .. tostring(get("grow")), "cols=" .. tostring(get("cols")),
+        "max=" .. tostring(get("max")), labels())
+    row("player own", P, "buffs")
+    row("target own", T, "buffs")
+    set("max", 6)
+    set("grow", "up")
+    set("cols", 2)
+    row("player up, 2 columns", P, "buffs")
+    row("target up, 2 columns", T, "buffs")
+    set("grow", "inner")
+    set("size", 20)
+    row("player inward, 2, size 20", P, "buffs")
+    row("target inward, 2, size 20", T, "buffs")
+    set("grow", "outer")
+    row("target outward, 2", T, "buffs")
+    set("cols", 10)
+    print("  one line", stored("editUnit"))
+    set("max", 2)
+    row("player most 2", P, "buffs")
+    row("target most 2", T, "buffs")
+    ns.ShowEditCanvas(true)
+    local copies = {}
+    for _, p in ipairs(cv.proxies) do
+        if p.shown and p.pieces.buffs then
+            local k = 0
+            for _, r in ipairs(p.pieces.buffs) do if r.shown then k = k + 1 end end
+            copies[#copies + 1] = k
+        end
+    end
+    print("  canvas row copies", table.concat(copies, ","))
+    ns.ShowEditCanvas(false)
+    local boss = E.byId.boss.buttons()[1]
+    choose("boss", "mine")
+    print("editor row boss", "grow=" .. tostring(get("grow")), "max=" .. tostring(get("max")), labels())
+    row("boss own", boss, "mine")
+    set("grow", "down")
+    set("max", 5)
+    row("boss down", boss, "mine")
+    set("grow", "outer")
+    set("cols", 2)
+    row("boss left, 2", boss, "mine")
+
     -- reset
     choose("unit", "name")
     w.controls.reset.scripts.OnClick(w.controls.reset)
@@ -4341,8 +4422,8 @@ if lightPass then
         "bar=" .. tostring(ns.barArt.file), "rows=" .. ns.db.rows)
     -- Initially hasTarget is true, so combat/target mode is active
     print("initial(targeted)", "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"),
-        "minimapRelocated=" .. tostring(Minimap.points.CENTER[1] == _G.MedaluinMinimapBezel),
-        "bezelShown=" .. tostring(_G.MedaluinMinimapBezel.shown),
+        "minimapRelocated=" .. tostring(Minimap.points.CENTER[1] == _G.MedalluinMinimapBezel),
+        "bezelShown=" .. tostring(_G.MedalluinMinimapBezel.shown),
         "bar7Alpha=" .. tostring(ns.bar7Frame.alpha),
         "bar7Buttons=" .. #ns.bar7Buttons,
         "bar7Slot1=" .. tostring(ns.bar7Buttons[1].action),
@@ -4373,7 +4454,7 @@ if lightPass then
     fire("PLAYER_TARGET_CHANGED")
     print("explore(no target, no combat)", "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"),
         "minimapInConsole=" .. tostring(Minimap.points.CENTER[1] == ns.console),
-        "bezelShown=" .. tostring(_G.MedaluinMinimapBezel.shown),
+        "bezelShown=" .. tostring(_G.MedalluinMinimapBezel.shown),
         "bar7Alpha=" .. tostring(ns.bar7Frame.alpha))
     out("minimap(explore)", Minimap)
     -- Skyriding out of combat, no target: the grid comes out to fly on page
@@ -4383,8 +4464,8 @@ if lightPass then
         flight.scripts.OnAttributeChanged(flight, "state-skyriding", value)
         print("skyriding " .. tag, "driver=" .. tostring(flight.stateDrivers and flight.stateDrivers.skyriding),
             "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"),
-            "minimapRelocated=" .. tostring(Minimap.points.CENTER[1] == _G.MedaluinMinimapBezel),
-            "bezelShown=" .. tostring(_G.MedaluinMinimapBezel.shown),
+            "minimapRelocated=" .. tostring(Minimap.points.CENTER[1] == _G.MedalluinMinimapBezel),
+            "bezelShown=" .. tostring(_G.MedalluinMinimapBezel.shown),
             "bar7Alpha=" .. tostring(ns.bar7Frame.alpha))
     end
     sky("mounted", "on")
@@ -4402,12 +4483,12 @@ if lightPass then
     inCombat = true
     fire("PLAYER_REGEN_DISABLED")
     print("combat(no target)", "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"),
-        "minimapRelocated=" .. tostring(Minimap.points.CENTER[1] == _G.MedaluinMinimapBezel),
-        "bezelShown=" .. tostring(_G.MedaluinMinimapBezel.shown),
+        "minimapRelocated=" .. tostring(Minimap.points.CENTER[1] == _G.MedalluinMinimapBezel),
+        "bezelShown=" .. tostring(_G.MedalluinMinimapBezel.shown),
         "bar7Alpha=" .. tostring(ns.bar7Frame.alpha))
     out("minimap(combat)", Minimap)
     -- The game's update pages Bar 7: cat form (Bar 8, slots 85..94), then
-    -- stealth in combat (Bar 10, slots 109..118); Medaluin's code never does
+    -- stealth in combat (Bar 10, slots 109..118); Medalluin's code never does
     stateTick()
     harnessHolds["bonusbar:1"] = true
     stateTick()
@@ -4477,6 +4558,15 @@ if savedSimParty then
     local bCount = 0
     for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then bCount = bCount + 1 end end
     print("party3.buffs", bCount)
+    -- the editor's Most icons caps the row; the boss cells' row the same way
+    ns.SetOption("editParty", { buffs = { max = 1 } })
+    bCount = 0
+    for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then bCount = bCount + 1 end end
+    print("party3.buffs most 1", bCount, "pool=" .. #p3.buffWidgets)
+    ns.SetOption("editParty", false)
+    bCount = 0
+    for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then bCount = bCount + 1 end end
+    print("party3.buffs back", bCount)
     local p4 = ns.units.party4
     print("party4.boss", tostring(p4.bossDebuff and p4.bossDebuff.shown),
         tostring(p4.bossDebuff and p4.bossDebuff.timer and p4.bossDebuff.timer.text))
@@ -4487,14 +4577,72 @@ if savedSimParty then
         "point=" .. tostring(p1.roleFrame.points.CENTER and p1.roleFrame.points.CENTER[2]))
     print("party3.role", tostring(p3.roleFrame and p3.roleFrame.shown), "TANK")
 
-    -- 2. Dead unit resurrect icon
-    print("party1.rez alive", tostring(p1.rezIcon and p1.rezIcon.shown))
+    -- 2. Dead: the look over the whole button, the wings, the time, the
+    -- name; the button's own texts give way. The target has no look.
+    local d = p1.dead
+    local function dead(tag)
+        local c = d.fill.color
+        print(tag, "shown=" .. tostring(d.shown), "texts=" .. tostring(p1.text.alpha or 1),
+            "name=" .. tostring(d.name.text), "timer=" .. tostring(d.timer.text),
+            "wings=" .. tostring(d.wings.texture) .. "@" .. tostring(d.wings.w),
+            "fill=" .. string.format("%.2f,%.2f,%.2f", c[1], c[2], c[3]),
+            "over bars=" .. tostring((d.level or 0) > math.max(p1.health.level or 0, p1.power.level or 0)),
+            "whole=" .. tostring(d.all == p1))
+    end
+    dead("party1.dead alive")
     p1.stub.dead = true
     p1.scripts.OnEvent(p1, "UNIT_HEALTH")
-    print("party1.rez dead", tostring(p1.rezIcon and p1.rezIcon.shown),
-        "aboveName=" .. tostring(p1.rezIcon.points.BOTTOM and p1.rezIcon.points.BOTTOM[1] == p1.name))
+    dead("party1.dead dead")
+    now = now + 75
+    ns.deadClock.scripts.OnUpdate(ns.deadClock, 1)
+    dead("party1.dead 75s")
+    now = now + 3600
+    ns.deadClock.scripts.OnUpdate(ns.deadClock, 1)
+    dead("party1.dead 1h")
+    ns.SetOption("deadColor", "ff804020")
+    dead("party1.dead recoloured")
     p1.stub.dead = false
     p1.scripts.OnEvent(p1, "UNIT_HEALTH")
+    dead("party1.dead revived")
+    p1.stub.dead = true
+    p1.scripts.OnEvent(p1, "UNIT_HEALTH")
+    dead("party1.dead again")
+    p1.stub.name = "Party 1b"
+    p1.scripts.OnEvent(p1, "UNIT_NAME_UPDATE")
+    dead("party1.dead renamed")
+    p1.stub.name = "Party 1"
+    p1.scripts.OnEvent(p1, "UNIT_NAME_UPDATE")
+    p1.stub.dead = false
+    p1.scripts.OnEvent(p1, "UNIT_HEALTH")
+    now = now - 3675
+    ns.SetOption("deadColor", "ff40424a")
+    -- a real unit: dead by the game, not while offline; a button handed to
+    -- another (alive) unit leaves the first one's time running
+    local pb, rDead, rOn, rGuid = ns.units.player, UnitIsDeadOrGhost, UnitIsConnected, UnitGUID
+    local guid, gone, off = "Player-A", true, false
+    UnitIsDeadOrGhost = function(u) return u == "player" and gone end
+    UnitIsConnected = function() return not off end
+    UnitGUID = function() return guid end
+    local function real(tag)
+        pb.scripts.OnEvent(pb, "UNIT_HEALTH")
+        print(tag, "shown=" .. tostring(pb.dead.shown), "timer=" .. tostring(pb.dead.timer.text))
+    end
+    real("player.dead real")
+    now = now + 30
+    guid, gone = "Player-B", false
+    real("player.dead handed on")
+    guid, gone = "Player-A", true
+    real("player.dead handed back")
+    off = true
+    real("player.dead offline")
+    now = now - 30
+    UnitIsDeadOrGhost, UnitIsConnected, UnitGUID = rDead, rOn, rGuid
+    pb.scripts.OnEvent(pb, "UNIT_HEALTH")
+    print("target.dead", tostring(ns.units.target.dead), "player.dead", tostring(ns.units.player.dead ~= nil),
+        "clock idle", tostring((function()
+            ns.deadClock.scripts.OnUpdate(ns.deadClock, 1)
+            return not ns.deadClock.shown
+        end)()))
 
     -- 3. Range fade
     print("party3.range in", tostring(p3.alpha or 1))
@@ -4652,7 +4800,7 @@ if savedSimParty then
                 or string.format("solid=%.3f,%.3f,%.3f", gold.color[1], gold.color[2], gold.color[3]),
             "black=" .. tostring(black and black.all == btn and black.color[1] == 0 and black.color[4] == 1),
             "every icon=" .. tostring((function()
-                for _, b in ipairs(ns.overheadRow) do if not b.medaluinFrame then return false end end
+                for _, b in ipairs(ns.overheadRow) do if not b.medalluinFrame then return false end end
                 return true
             end)()))
     end
@@ -4748,7 +4896,7 @@ if savedSimParty then
 
     -- 6. The simulation panel: shown while simulating, its buttons in order
     -- (bosses -, count, +; dead 1-4; in range 1-4; ready, role; end)
-    local sp = _G.MedaluinSimPanel
+    local sp = _G.MedalluinSimPanel
     local spb = {}
     for _, c in ipairs(sp.all_) do if c.kind == "Button" then table.insert(spb, c) end end
     local function press(i) spb[i].scripts.OnClick(spb[i], "LeftButton") end
@@ -4775,8 +4923,8 @@ if savedSimParty then
             local b = ns.units["party" .. i]
             local st = b.statusWidget
             local s = st.shown and st.icon.coords and string.format("%.2f", st.icon.coords[1]) or "-"
-            table.insert(out, string.format("p%d:hp=%s,rez=%s,a=%.2f,check=%s", i, tostring(b.health.value),
-                tostring(b.rezIcon.shown), b.alpha or 1, s))
+            table.insert(out, string.format("p%d:hp=%s,dead=%s,a=%.2f,check=%s", i, tostring(b.health.value),
+                tostring(b.dead.shown), b.alpha or 1, s))
         end
         print(tag, table.concat(out, " "))
     end
@@ -4852,7 +5000,7 @@ if bagsPass then
     local function fire(e, ...)
         for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
     end
-    local w = _G.MedaluinBags
+    local w = _G.MedalluinBags
     print("bags", "window=" .. tostring(w ~= nil), "combined=" .. tostring(ContainerFrameCombinedBags ~= nil),
         "setting=" .. tostring(ns.db.bags))
     if not w then return end
@@ -4862,10 +5010,10 @@ if bagsPass then
         local p = b.points.TOPLEFT
         return string.format("%d,%d", p[3] / 41, -p[4])
     end
-    local function slot(bag, i) return _G["MedaluinBagsItem" .. bag .. "_" .. i] end
+    local function slot(bag, i) return _G["MedalluinBagsItem" .. bag .. "_" .. i] end
     local function grid(tag)
         print(tag, "shown=" .. tostring(w.shown), string.format("size=%dx%d", w.w, w.h),
-            "body=" .. string.format("%dx%d", w.parent and _G.MedaluinBagsBag0.parent.w or 0, _G.MedaluinBagsBag0.parent.h))
+            "body=" .. string.format("%dx%d", w.parent and _G.MedalluinBagsBag0.parent.w or 0, _G.MedalluinBagsBag0.parent.h))
         for _, bag in ipairs({ 0, 1, 2, 3, 4, 5 }) do
             local first, last, n, items = nil, nil, 0, {}
             for i = 1, 20 do
@@ -4888,11 +5036,11 @@ if bagsPass then
                 end
             end
             print("  bag" .. bag, "slots=" .. n, "first=" .. tostring(first), "last=" .. tostring(last),
-                "id=" .. tostring(_G["MedaluinBagsBag" .. bag] and _G["MedaluinBagsBag" .. bag]:GetID()),
+                "id=" .. tostring(_G["MedalluinBagsBag" .. bag] and _G["MedalluinBagsBag" .. bag]:GetID()),
                 table.concat(items, "; "))
         end
         local heads = {}
-        for _, r in ipairs(_G.MedaluinBagsBag0.parent.all_) do
+        for _, r in ipairs(_G.MedalluinBagsBag0.parent.all_) do
             if r.kind == "FontString" and r.shown and r.text then
                 table.insert(heads, r.text .. "@" .. -r.points.TOPLEFT[4])
             end
@@ -4922,7 +5070,7 @@ if bagsPass then
 
     -- 1. at login: Blizzard's frames out of sight, the window closed
     blizz("bags.login")
-    print("bags.strata", w.strata, "parent=" .. tostring(w.parent == UIParent), "search=" .. tostring(_G.MedaluinBagsSearch ~= nil))
+    print("bags.strata", w.strata, "parent=" .. tostring(w.parent == UIParent), "search=" .. tostring(_G.MedalluinBagsSearch ~= nil))
 
     -- 2. Blizzard opens the bags (the B key): the window follows
     W.reads = 0
@@ -4952,7 +5100,7 @@ if bagsPass then
     W.items["3:2"].isLocked = true
     fire("ITEM_LOCK_CHANGED", 3, 2)
     w.scripts.OnUpdate(w, 0.02)
-    print("bags.lock", "3:2 desaturated=" .. tostring(_G.MedaluinBagsItem3_2.desat))
+    print("bags.lock", "3:2 desaturated=" .. tostring(_G.MedalluinBagsItem3_2.desat))
     W.items["3:2"].isLocked = false
 
     -- 5. the groups
@@ -4972,7 +5120,7 @@ if bagsPass then
     end
 
     -- 6. the search, the client's: what does not match is dimmed
-    local box = _G.MedaluinBagsSearch
+    local box = _G.MedalluinBagsSearch
     box.text = "potion"
     box.scripts.OnTextChanged(box)
     fire("INVENTORY_SEARCH_UPDATE")
@@ -5057,14 +5205,14 @@ if bagsPass then
     OpenAllBags()
     local rule, closeTop = w.rule, nil
     print("bags.rule", "y=" .. -rule.points.TOPLEFT[4], "inset=" .. rule.points.TOPLEFT[3] .. "," .. rule.points.TOPRIGHT[3],
-        "h=" .. rule.h, "slots from=" .. -_G.MedaluinBagsBag0.parent.points.TOPLEFT[4])
+        "h=" .. rule.h, "slots from=" .. -_G.MedalluinBagsBag0.parent.points.TOPLEFT[4])
 
     -- 16. the drawer: Bags opens it above the window, growing to the right
     local title = w.title
     title.scripts.OnEnter(title)
     print("bags.title tip", tostring(GameTooltip.text))
     title.scripts.OnClick(title)
-    local d = _G.MedaluinBagsDrawer
+    local d = _G.MedalluinBagsDrawer
     local function drawerState(tag)
         local order = {}
         for _, n in ipairs({ "CharacterBag0Slot", "CharacterBag1Slot", "CharacterBag2Slot", "CharacterBag3Slot",
@@ -5082,8 +5230,8 @@ if bagsPass then
     drawerState("bags.drawer growing")
     d.scripts.OnUpdate(d, 0.5)
     drawerState("bags.drawer grown")
-    print("bags.drawer styled", "edge=" .. tostring(CharacterBag0Slot.medaluin ~= nil),
-        "ring styled=" .. tostring(KeyRingButton.medaluin ~= nil))
+    print("bags.drawer styled", "edge=" .. tostring(CharacterBag0Slot.medalluin ~= nil),
+        "ring styled=" .. tostring(KeyRingButton.medalluin ~= nil))
     -- Blizzard re-sets the ring's art for its own button: fitted again
     KeyRingButton:GetNormalTexture():ClearAllPoints()
     KeyRingButton:UpdateTextures()
@@ -5111,7 +5259,7 @@ if bagsPass then
     -- 17. the corner: six dots; held, the window keeps its top-left and the
     -- columns follow the pointer
     OpenAllBags()
-    local g = _G.MedaluinBagsGrip
+    local g = _G.MedalluinBagsGrip
     local dots = {}
     for _, t in ipairs(g.dots) do table.insert(dots, t.points.BOTTOMRIGHT[3] .. "," .. t.points.BOTTOMRIGHT[4]) end
     for _, r in ipairs(w.all_) do

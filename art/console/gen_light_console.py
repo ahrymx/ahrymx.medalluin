@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Procedural art generator and exporter for Medaluin's lightweight console profile.
+"""Procedural art generator and exporter for Medalluin's lightweight console profile.
 
 Layout architecture:
   1. Action Bar 1 on TOP (`30x30` buttons, slightly smaller than the 2x5 center grid):
@@ -38,7 +38,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 OUT = os.path.join(HERE, "render")
 BASE = os.path.join(HERE, "base-screen.png")
 TOOLKIT = os.path.join(ROOT, "art", "bars", "toolkit.png")
-ADDON = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medaluin")
+ADDON = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medalluin")
 MEDIA = os.path.join(ADDON, "media")
 LUA_OUT = os.path.join(ADDON, "console", "light_profile.lua")
 FONT_FILE = os.path.join(MEDIA, "fonts", "MarcellusSC-Regular.ttf")
@@ -87,7 +87,7 @@ def rsvg(svg_text, png_path):
 
 
 def make_toolkit_icon(size=24):
-    """Recolour art/bars/toolkit.png into Medaluin's navy and gold."""
+    """Recolour art/bars/toolkit.png into Medalluin's navy and gold."""
     if not os.path.exists(TOOLKIT):
         return Image.new("RGBA", (size, size), (40, 48, 68, 255))
     src = np.asarray(Image.open(TOOLKIT).convert("RGBA")).astype(float)

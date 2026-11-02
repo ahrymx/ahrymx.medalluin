@@ -2,14 +2,14 @@
 """Generate crisp UI icons for party frames:
 1. ready-status.tga (128x32): checkmark (ready), cross (not ready), dash (undecided)
 2. role-icons.tga (128x32): tank (shield), healer (cross), damager (sword)
-3. rez-icon.tga (32x32): golden resurrect icon
+(The resurrect icon is gen_wings.py's dead-wings.tga.)
 """
 import os
 import math
 from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MEDIA = os.path.join(HERE, "..", "..", "WoW", "Interface", "AddOns", "Medaluin", "media")
+MEDIA = os.path.join(HERE, "..", "..", "WoW", "Interface", "AddOns", "Medalluin", "media")
 RENDER = os.path.join(HERE, "render")
 
 os.makedirs(MEDIA, exist_ok=True)
@@ -164,66 +164,6 @@ def gen_role_icons():
     print("Generated role-icons.tga")
 
 
-def gen_rez_icon():
-    tex_w, tex_h = 32, 32
-    bw, bh = tex_w * SS, tex_h * SS
-    img = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-
-    cx, cy = bw // 2, bh // 2
-
-    # Golden angel / resurrection symbol
-    # Halo at top
-    halo_y = cy - int(9.0 * SS)
-    halo_rx = int(4.5 * SS)
-    halo_ry = int(1.8 * SS)
-    d.ellipse([cx - halo_rx, halo_y - halo_ry, cx + halo_rx, halo_y + halo_ry], outline=(255, 225, 100, 255), width=int(1.3 * SS))
-
-    # Head / spirit orb
-    head_y = cy - int(5.5 * SS)
-    head_r = int(2.8 * SS)
-    d.ellipse([cx - head_r, head_y - head_r, cx + head_r, head_y + head_r], fill=(255, 245, 180, 255), outline=(180, 140, 40, 255), width=int(0.8 * SS))
-
-    # Wings spreading upward & outward
-    wing_l = [
-        (cx - int(2.0 * SS), cy - int(3.0 * SS)),
-        (cx - int(10.5 * SS), cy - int(8.0 * SS)),
-        (cx - int(12.0 * SS), cy - int(2.0 * SS)),
-        (cx - int(7.0 * SS), cy + int(3.0 * SS)),
-        (cx - int(2.0 * SS), cy + int(1.0 * SS)),
-    ]
-    wing_r = [
-        (cx + int(2.0 * SS), cy - int(3.0 * SS)),
-        (cx + int(10.5 * SS), cy - int(8.0 * SS)),
-        (cx + int(12.0 * SS), cy - int(2.0 * SS)),
-        (cx + int(7.0 * SS), cy + int(3.0 * SS)),
-        (cx + int(2.0 * SS), cy + int(1.0 * SS)),
-    ]
-    # Dark backing for contrast
-    d.polygon(wing_l, fill=(240, 200, 80, 255), outline=(80, 60, 20, 200))
-    d.polygon(wing_r, fill=(240, 200, 80, 255), outline=(80, 60, 20, 200))
-
-    # Spirit body tapering down
-    body = [
-        (cx - int(2.2 * SS), cy - int(3.0 * SS)),
-        (cx + int(2.2 * SS), cy - int(3.0 * SS)),
-        (cx + int(1.2 * SS), cy + int(8.5 * SS)),
-        (cx, cy + int(11.0 * SS)),
-        (cx - int(1.2 * SS), cy + int(8.5 * SS)),
-    ]
-    d.polygon(body, fill=(255, 240, 160, 255), outline=(180, 140, 40, 255))
-
-    # Inner wing highlights
-    d.line([(cx - int(2.5 * SS), cy - int(2.0 * SS)), (cx - int(9.5 * SS), cy - int(6.5 * SS))], fill=(255, 250, 210, 255), width=int(1.1 * SS))
-    d.line([(cx + int(2.5 * SS), cy - int(2.0 * SS)), (cx + int(9.5 * SS), cy - int(6.5 * SS))], fill=(255, 250, 210, 255), width=int(1.1 * SS))
-
-    res = img.resize((tex_w, tex_h), Image.Resampling.LANCZOS)
-    res.save(os.path.join(MEDIA, "rez-icon.tga"))
-    res.save(os.path.join(RENDER, "rez-icon.png"))
-    print("Generated rez-icon.tga")
-
-
 if __name__ == "__main__":
     gen_ready_status()
     gen_role_icons()
-    gen_rez_icon()

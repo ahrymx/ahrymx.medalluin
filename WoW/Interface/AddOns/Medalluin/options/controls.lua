@@ -1,0 +1,442 @@
+-- The settings window's controls, in the console's ink and gold
+-- (art/settings/gen_settings.py, draft B): a checkbox, a dropdown and the
+-- list it opens, a colour swatch and a button. Each option control reads
+-- ns.db and writes through ns.SetOption, so the modules hear about the
+-- change the way they always have; Refresh(enabled) redraws one from ns.db.
+--
+-- Nothing here is Blizzard's settings machinery or its dropdown menu: the
+-- window's frames are Medalluin's own, so they can taint nothing the game's
+-- secure code reads.
+local _, ns = ...
+
+local C = {
+    gold = { 0.769, 0.647, 0.341 },
+    goldDark = { 0.541, 0.439, 0.204 },
+    goldBright = { 0.878, 0.722, 0.290 },
+    ink = ns.colors.ink,
+    panel = { 0.102, 0.094, 0.082 },
+    well = { 0.047, 0.047, 0.047 },
+    selected = { 0.204, 0.165, 0.086 },
+    hover = { 0.271, 0.220, 0.114 },
+    red = { 0.471, 0.094, 0.078 },
+    redHover = { 0.580, 0.125, 0.098 },
+    text = ns.colors.text,
+    dim = ns.colors.dim,
+}
+local MEDIA = ns.media .. "options\\"
+
+local UI = { colors = C }
+ns.OptionsUI = UI
+
+local function Fill(parent, layer, color, sub)
+    local t = parent:CreateTexture(nil, layer, nil, sub)
+    t:SetColorTexture(color[1], color[2], color[3], 1)
+    return t
+end
+UI.Fill = Fill
+
+-- A one-pixel line round a frame, inset.
+local function Outline(parent, layer, color, inset, sub)
+    local t = {}
+    for i = 1, 4 do t[i] = Fill(parent, layer, color, sub) end
+    t[1]:SetPoint("TOPLEFT", inset, -inset)
+    t[1]:SetPoint("TOPRIGHT", -inset, -inset)
+    t[1]:SetHeight(1)
+    t[2]:SetPoint("BOTTOMLEFT", inset, inset)
+    t[2]:SetPoint("BOTTOMRIGHT", -inset, inset)
+    t[2]:SetHeight(1)
+    t[3]:SetPoint("TOPLEFT", inset, -inset)
+    t[3]:SetPoint("BOTTOMLEFT", inset, inset)
+    t[3]:SetWidth(1)
+    t[4]:SetPoint("TOPRIGHT", -inset, -inset)
+    t[4]:SetPoint("BOTTOMRIGHT", -inset, inset)
+    t[4]:SetWidth(1)
+    return t
+end
+UI.Outline = Outline
+
+-- The suite's frame: a fill, a gold edge (two pixels, or one), a dark line
+-- inside it.
+function UI.Skin(frame, color, edge)
+    edge = edge or 2
+    local bg = Fill(frame, "BACKGROUND", color, 1)
+    bg:SetAllPoints()
+    for i = 0, edge - 1 do Outline(frame, "BORDER", C.gold, i, 1) end
+    Outline(frame, "BORDER", C.goldDark, edge, 2)
+    return bg
+end
+
+-- A heading's face (the console's serif) or the plain one, for reading.
+function UI.Serif(parent, size, color)
+    local fs = ns.Text(parent, size)
+    if color then fs:SetTextColor(color[1], color[2], color[3]) end
+    return fs
+end
+function UI.Plain(parent, size, color)
+    local fs = ns.PlainText(parent, size)
+    if color then fs:SetTextColor(color[1], color[2], color[3]) end
+    return fs
+end
+
+-- The game's tooltip: the title in gold, then the text, wrapped.
+function UI.Tip(owner, title, text)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    GameTooltip:SetText(title, C.goldBright[1], C.goldBright[2], C.goldBright[3])
+    if text then GameTooltip:AddLine(text, 1, 1, 1, true) end
+    GameTooltip:Show()
+end
+local function Untip() if GameTooltip then GameTooltip:Hide() end end
+
+-- An option's value, and a change to it: ns.db and ns.SetOption, unless the
+-- spec reads and writes its own (the unit-frame editor's, whose values sit
+-- inside one option per frame: options/editor.lua).
+local function Get(spec)
+    if spec.get then return spec.get() end
+    return ns.db[spec.key]
+end
+local function Set(spec, value)
+    if spec.set then spec.set(value) else ns.SetOption(spec.key, value) end
+end
+UI.Get, UI.Set = Get, Set
+
+local function Tipped(frame, title, text)
+    frame:SetScript("OnEnter", function(self) UI.Tip(self, title, text) end)
+    frame:SetScript("OnLeave", Untip)
+end
+
+-- ------------------------------------------------------------ button
+-- A gold-edged button; red for the window's Close.
+function UI.Button(parent, label, width, height, click, tip, red)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(width, height)
+    local bg = Fill(b, "BACKGROUND", red and C.red or C.selected, 1)
+    bg:SetAllPoints()
+    Outline(b, "BORDER", C.gold, 0)
+    b.text = UI.Serif(b, 12, C.goldBright)
+    b.text:SetPoint("CENTER", 0, 0)
+    b.text:SetText(label)
+    local rest, lit = red and C.red or C.selected, red and C.redHover or C.hover
+    b:SetScript("OnClick", function() click() end)
+    b:SetScript("OnEnter", function(self)
+        bg:SetColorTexture(lit[1], lit[2], lit[3], 1)
+        if tip then UI.Tip(self, label, tip) end
+    end)
+    b:SetScript("OnLeave", function()
+        bg:SetColorTexture(rest[1], rest[2], rest[3], 1)
+        Untip()
+    end)
+    function b:Refresh(enabled)
+        self:SetEnabled(enabled)
+        local c = enabled and C.goldBright or C.dim
+        self.text:SetTextColor(c[1], c[2], c[3])
+        self:SetAlpha(enabled and 1 or 0.5)
+    end
+    b.spec = { kind = "button", label = label }
+    return b
+end
+
+-- ------------------------------------------------------------ checkbox
+local CHECK = 16
+UI.CHECK_H = 22
+
+function UI.Check(parent, spec, width)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(width, UI.CHECK_H)
+    b.spec = spec
+    local box = Fill(b, "BACKGROUND", C.goldDark, 1)
+    box:SetSize(CHECK, CHECK)
+    box:SetPoint("LEFT", 0, 0)
+    local well = Fill(b, "BACKGROUND", C.well, 2)
+    well:SetPoint("TOPLEFT", box, "TOPLEFT", 1, -1)
+    well:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -1, 1)
+    b.tick = b:CreateTexture(nil, "ARTWORK")
+    b.tick:SetTexture(MEDIA .. "check")
+    b.tick:SetSize(CHECK + 4, CHECK + 4)
+    b.tick:SetPoint("CENTER", box, "CENTER", 1, 1)
+    b.label = UI.Plain(b, 12)
+    b.label:SetPoint("LEFT", box, "RIGHT", 7, 0)
+    b.label:SetPoint("RIGHT", 0, 0)
+    b.label:SetJustifyH("LEFT")
+    b.label:SetText(spec.label)
+    b:SetScript("OnClick", function() Set(spec, not Get(spec)) end)
+    Tipped(b, spec.label, spec.tip)
+    function b:Refresh(enabled)
+        self:SetEnabled(enabled)
+        self.tick:SetShown(Get(spec) and true or false)
+        local c = enabled and C.text or C.dim
+        self.label:SetTextColor(c[1], c[2], c[3])
+        self:SetAlpha(enabled and 1 or 0.55)
+    end
+    return b
+end
+
+-- ------------------------------------------------------------ the list
+-- One list for every dropdown, over everything; a click anywhere off it
+-- closes it.
+local menu, catcher
+local ROW_H = 20
+
+local function Menu()
+    if menu then return menu end
+    catcher = CreateFrame("Button", nil, UIParent)
+    catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+    catcher:SetAllPoints(UIParent)
+    catcher:RegisterForClicks("AnyUp")
+    catcher:SetScript("OnClick", function() UI.CloseMenu() end)
+    catcher:Hide()
+    menu = CreateFrame("Frame", "MedalluinOptionsMenu", UIParent)
+    menu:SetFrameStrata("FULLSCREEN_DIALOG")
+    menu:SetFrameLevel(catcher:GetFrameLevel() + 10)
+    menu:SetClampedToScreen(true)
+    menu:EnableMouse(true)
+    UI.Skin(menu, C.well, 1)
+    menu.rows = {}
+    menu:Hide()
+    return menu
+end
+
+local function Row(i)
+    local row = menu.rows[i]
+    if row then return row end
+    row = CreateFrame("Button", nil, menu)
+    row:SetHeight(ROW_H)
+    row:SetPoint("TOPLEFT", 3, -3 - (i - 1) * ROW_H)
+    row:SetPoint("TOPRIGHT", -3, -3 - (i - 1) * ROW_H)
+    row.lit = Fill(row, "BACKGROUND", C.hover, 1)
+    row.lit:SetAllPoints()
+    row.lit:Hide()
+    row.mark = row:CreateTexture(nil, "ARTWORK")
+    row.mark:SetTexture(MEDIA .. "check")
+    row.mark:SetSize(14, 14)
+    row.mark:SetPoint("LEFT", 4, 0)
+    row.text = UI.Plain(row, 12)
+    row.text:SetPoint("LEFT", 22, 0)
+    row.text:SetPoint("RIGHT", -6, 0)
+    row.text:SetJustifyH("LEFT")
+    row:SetScript("OnEnter", function(self)
+        self.lit:Show()
+        if self.tip then UI.Tip(self, self.label, self.tip) end
+    end)
+    row:SetScript("OnLeave", function(self)
+        self.lit:Hide()
+        Untip()
+    end)
+    row:SetScript("OnClick", function(self)
+        local spec, value = menu.spec, self.value
+        UI.CloseMenu()
+        Set(spec, value)
+    end)
+    menu.rows[i] = row
+    return row
+end
+
+function UI.CloseMenu()
+    if menu then
+        menu:Hide()
+        menu.owner = nil
+        catcher:Hide()
+    end
+end
+
+-- The list of a dropdown's choices under it; again on the same dropdown
+-- closes it.
+function UI.OpenMenu(owner, spec)
+    Menu()
+    if menu.owner == owner and menu:IsShown() then
+        UI.CloseMenu()
+        return
+    end
+    menu.owner, menu.spec = owner, spec
+    local width = owner:GetWidth()
+    for i, choice in ipairs(spec.choices) do
+        local row = Row(i)
+        -- a tip may be a function: what the choice does can depend on the profile
+        local tip = choice[3]
+        if type(tip) == "function" then tip = tip() end
+        row.value, row.label, row.tip = choice[1], choice[2], tip
+        row.text:SetText(choice[2])
+        local on = Get(spec) == choice[1]
+        row.mark:SetShown(on)
+        local c = on and C.goldBright or C.text
+        row.text:SetTextColor(c[1], c[2], c[3])
+        width = math.max(width, math.ceil(row.text:GetStringWidth()) + 40)
+        row:Show()
+    end
+    for i = #spec.choices + 1, #menu.rows do menu.rows[i]:Hide() end
+    menu:SetSize(width, #spec.choices * ROW_H + 6)
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -2)
+    catcher:Show()
+    menu:Show()
+end
+
+-- ------------------------------------------------------------ dropdown
+UI.CHOICE_H = 40
+
+local function ChoiceLabel(spec)
+    local value = Get(spec)
+    for _, choice in ipairs(spec.choices) do
+        if choice[1] == value then return choice[2] end
+    end
+    return tostring(value)
+end
+
+function UI.Choice(parent, spec, width)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(width, UI.CHOICE_H)
+    f.spec = spec
+    f.label = UI.Serif(f, 11, C.goldBright)
+    f.label:SetPoint("TOPLEFT", 0, 0)
+    f.label:SetText(spec.label)
+    local b = CreateFrame("Button", nil, f)
+    b:SetPoint("BOTTOMLEFT", 0, 0)
+    b:SetPoint("BOTTOMRIGHT", 0, 0)
+    b:SetHeight(22)
+    local bg = Fill(b, "BACKGROUND", C.well, 1)
+    bg:SetAllPoints()
+    Outline(b, "BORDER", C.goldDark, 0)
+    b.value = UI.Plain(b, 12)
+    b.value:SetPoint("LEFT", 8, 0)
+    b.value:SetPoint("RIGHT", -24, 0)
+    b.value:SetJustifyH("LEFT")
+    b.arrow = b:CreateTexture(nil, "ARTWORK")
+    b.arrow:SetTexture(MEDIA .. "arrow")
+    b.arrow:SetSize(16, 16)
+    b.arrow:SetPoint("RIGHT", -5, 0)
+    b:SetScript("OnClick", function(self) UI.OpenMenu(self, spec) end)
+    Tipped(b, spec.label, spec.tip)
+    f.button = b
+    function f:Refresh(enabled)
+        b:SetEnabled(enabled)
+        b.value:SetText(ChoiceLabel(spec))
+        local c = enabled and C.text or C.dim
+        b.value:SetTextColor(c[1], c[2], c[3])
+        self:SetAlpha(enabled and 1 or 0.55)
+        if not enabled and menu and menu.owner == b then UI.CloseMenu() end
+    end
+    return f
+end
+
+-- ------------------------------------------------------------ colour
+-- A swatch opening the game's colour picker; the option is "ffRRGGBB".
+local function Hex(r, g, b)
+    return ("ff%02x%02x%02x"):format(math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5),
+        math.floor(b * 255 + 0.5))
+end
+UI.Hex = Hex
+
+-- The picker's own setup call (10.2.5 and Forever's client); writing its
+-- fields, the older way, would leave them Medalluin's.
+local function Pick(key)
+    local picker = ColorPickerFrame
+    if not (picker and picker.SetupColorPickerAndShow) then return end
+    local before = ns.db[key]
+    local r, g, b = ns.HexColor(before)
+    local function Changed()
+        local nr, ng, nb = picker:GetColorRGB()
+        ns.SetOption(key, Hex(nr, ng, nb))
+    end
+    local function Cancel() ns.SetOption(key, before) end
+    picker:SetupColorPickerAndShow({ r = r, g = g, b = b, hasOpacity = false,
+        swatchFunc = Changed, cancelFunc = Cancel })
+end
+
+function UI.Color(parent, spec, width)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(width, UI.CHECK_H)
+    b.spec = spec
+    local edge = Fill(b, "BACKGROUND", C.gold, 1)
+    edge:SetSize(CHECK, CHECK)
+    edge:SetPoint("LEFT", 0, 0)
+    b.swatch = Fill(b, "ARTWORK", { 1, 1, 1 })
+    b.swatch:SetPoint("TOPLEFT", edge, "TOPLEFT", 1, -1)
+    b.swatch:SetPoint("BOTTOMRIGHT", edge, "BOTTOMRIGHT", -1, 1)
+    b.label = UI.Plain(b, 12)
+    b.label:SetPoint("LEFT", edge, "RIGHT", 7, 0)
+    b.label:SetText(spec.label)
+    b:SetScript("OnClick", function() Pick(spec.key) end)
+    Tipped(b, spec.label, spec.tip)
+    function b:Refresh(enabled)
+        self:SetEnabled(enabled)
+        local r, g, bl = ns.HexColor(ns.db[spec.key])
+        self.swatch:SetColorTexture(r, g, bl, 1)
+        local c = enabled and C.text or C.dim
+        self.label:SetTextColor(c[1], c[2], c[3])
+        self:SetAlpha(enabled and 1 or 0.55)
+    end
+    return b
+end
+
+-- ------------------------------------------------------------ slider
+-- A number between spec.min and spec.max, by spec.step: the label and the
+-- value over a track, a thumb to drag along it, and a step either way at
+-- its ends. spec.text, when there is one, says the value ("No limit").
+UI.SLIDER_H = 40
+
+function UI.Slider(parent, spec, width)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(width, UI.SLIDER_H)
+    f.spec = spec
+    f.label = UI.Serif(f, 11, C.goldBright)
+    f.label:SetPoint("TOPLEFT", 0, 0)
+    f.label:SetText(spec.label)
+    f.value = UI.Plain(f, 11)
+    f.value:SetPoint("TOPRIGHT", 0, 0)
+    local step = spec.step or 1
+    local function Clamp(v)
+        v = math.floor(v / step + 0.5) * step
+        return math.max(spec.min, math.min(spec.max, v))
+    end
+    local function Nudge(by)
+        Set(spec, Clamp((Get(spec) or spec.min) + by))
+    end
+    f.less = UI.Button(f, "-", 18, 18, function() Nudge(-step) end)
+    f.less:SetPoint("BOTTOMLEFT", 0, 0)
+    f.more = UI.Button(f, "+", 18, 18, function() Nudge(step) end)
+    f.more:SetPoint("BOTTOMRIGHT", 0, 0)
+    local track = CreateFrame("Button", nil, f)
+    track:SetPoint("BOTTOMLEFT", f.less, "BOTTOMRIGHT", 8, 0)
+    track:SetPoint("BOTTOMRIGHT", f.more, "BOTTOMLEFT", -8, 0)
+    track:SetHeight(18)
+    local rail = Fill(track, "BACKGROUND", C.well, 1)
+    rail:SetPoint("LEFT", 0, 0)
+    rail:SetPoint("RIGHT", 0, 0)
+    rail:SetHeight(5)
+    Outline(track, "BORDER", C.goldDark, 0)
+    f.thumb = Fill(track, "ARTWORK", C.gold)
+    f.thumb:SetSize(8, 14)
+    f.track = track
+    -- where the pointer is on the track, as a value
+    local function AtCursor()
+        local x = GetCursorPosition() / track:GetEffectiveScale()
+        local left, w = track:GetLeft() or 0, track:GetWidth()
+        if w <= 0 then return Get(spec) end
+        return Clamp(spec.min + (x - left) / w * (spec.max - spec.min))
+    end
+    track:SetScript("OnMouseDown", function(self)
+        self.dragging = true
+        Set(spec, AtCursor())
+    end)
+    track:SetScript("OnMouseUp", function(self) self.dragging = nil end)
+    track:SetScript("OnUpdate", function(self)
+        if not self.dragging then return end
+        local v = AtCursor()
+        if v ~= Get(spec) then Set(spec, v) end
+    end)
+    Tipped(track, spec.label, spec.tip)
+    function f:Refresh(enabled)
+        local v = Get(spec) or spec.min
+        self.value:SetText(spec.text and spec.text(v) or tostring(v))
+        local at = (v - spec.min) / (spec.max - spec.min)
+        self.thumb:ClearAllPoints()
+        self.thumb:SetPoint("CENTER", track, "LEFT", math.max(0, math.min(1, at)) * track:GetWidth(), 0)
+        track:EnableMouse(enabled)
+        self.less:Refresh(enabled)
+        self.more:Refresh(enabled)
+        local c = enabled and C.text or C.dim
+        self.value:SetTextColor(c[1], c[2], c[3])
+        self:SetAlpha(enabled and 1 or 0.55)
+    end
+    return f
+end

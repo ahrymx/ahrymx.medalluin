@@ -28,4 +28,4 @@ WoW/Screenshots/
 # for reference (DynamicCam, FrameAnchorUIBuilder, WeakTextures, ...) stay
 # out of the repo. Add each new suite member to this whitelist.
 WoW/Interface/AddOns/*
-!WoW/Interface/AddOns/Medaluin/
+!WoW/Interface/AddOns/Medalluin/

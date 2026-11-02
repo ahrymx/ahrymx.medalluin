@@ -26,7 +26,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "render")
-FONTS = os.path.join(HERE, "..", "..", "WoW", "Interface", "AddOns", "Medaluin", "media", "fonts")
+FONTS = os.path.join(HERE, "..", "..", "WoW", "Interface", "AddOns", "Medalluin", "media", "fonts")
 SERIF = os.path.join(FONTS, "MarcellusSC-Regular.ttf")
 SANS = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 

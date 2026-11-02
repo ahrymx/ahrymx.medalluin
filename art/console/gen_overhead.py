@@ -51,7 +51,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 OUT = os.path.join(HERE, "render")
 BASE = os.path.join(HERE, "base-screen.png")
-ADDON = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medaluin")
+ADDON = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medalluin")
 MEDIA = os.path.join(ADDON, "media", "overhead")
 LUA = os.path.join(ADDON, "console", "overhead_art.lua")
 

@@ -4,7 +4,7 @@ tabs, Loot and Meter (mockup only; nothing is exported yet).
 
 The user's calls (2026-11-01): the two sides "pretty much identical"; the loot
 log is the group's loot including personal, and is not a second chat log; the
-meter is Medaluin's own, a view over the client's C_DamageMeter, and every
+meter is Medalluin's own, a view over the client's C_DamageMeter, and every
 part of it can be switched off.
 
 Mirrored: the panel spans the same strip positions as the chat, its button
@@ -41,7 +41,7 @@ import gen_strips as S  # noqa: E402
 W, H = S.W, S.H
 GOLD, GOLD_D, INK, TEXT = S.GOLD, S.GOLD_D, S.INK, S.TEXT
 DIM = "#b3a88c"
-FONT = os.path.join(S.ROOT, "WoW", "Interface", "AddOns", "Medaluin", "media", "fonts", "MarcellusSC-Regular.ttf")
+FONT = os.path.join(S.ROOT, "WoW", "Interface", "AddOns", "Medalluin", "media", "fonts", "MarcellusSC-Regular.ttf")
 
 # the panel, in screen pixels: the chat's numbers, mirrored
 TOP = H - S.STRIP_H - S.CHAT_H
@@ -523,20 +523,6 @@ def auras_sheet():
     print(path, sheet.size)
 
 
-def g_medallion(cx, cy):      # Medaluin's own minimap button: a medal, its star
-    star = []
-    for i in range(8):            # four long points, four short, alternating
-        import math
-        r = 8.5 if i % 2 == 0 else 2.6
-        t = math.pi / 4 * i - math.pi / 2
-        star.append(f"{cx + r * math.cos(t):.2f},{cy + r * math.sin(t):.2f}")
-    return (f'<circle cx="{cx}" cy="{cy}" r="14.5" fill="url(#navy)" stroke="url(#gold)" stroke-width="2"/>'
-            f'<circle cx="{cx}" cy="{cy}" r="11.2" fill="none" stroke="{GOLD_D}" stroke-width="0.9"/>'
-            f'<polygon points="{" ".join(star)}" fill="url(#gold)" stroke="#2a1e08" stroke-width="0.5" '
-            f'stroke-linejoin="round"/>'
-            f'<circle cx="{cx}" cy="{cy}" r="1.3" fill="{INK}"/>')
-
-
 def parts():
     out = os.path.join(S.ROOT, "assets", "strips")
     c = 16
@@ -555,12 +541,16 @@ def parts():
         "side-filter": g_filter(c, c),
         "side-quality": white,
         "side-timeless": g_timeless(c, c),
-        "minimap-button": g_medallion(c, c),
     }
     for name, inner in pieces.items():
         doc = S.svg(inner).replace(f'width="{W}" height="{H}"', 'width="32" height="32"')
         subprocess.run(["rsvg-convert", "-o", os.path.join(out, name + ".png")], input=doc.encode(), check=True)
-    print(out, len(pieces), "side parts")
+    # Medalluin's own minimap button: the medal of assets/medalluin-icon.svg
+    # (its letters want the Cinzel fonts installed), at twice the button's
+    # 32 pixels so a UI scale over 1 stays sharp
+    subprocess.run(["rsvg-convert", "-w", "64", "-h", "64", "-o", os.path.join(out, "minimap-button.png"),
+                    os.path.join(S.ROOT, "assets", "medalluin-icon.svg")], check=True)
+    print(out, len(pieces) + 1, "side parts")
 
 
 if __name__ == "__main__":

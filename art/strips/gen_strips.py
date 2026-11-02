@@ -395,7 +395,7 @@ def chat_preview():
     layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
     layer.paste(panel, (CHAT_LEFT, top))
     parts = os.path.join(ROOT, "assets", "strips")
-    font = ImageFont.truetype(os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medaluin", "media", "fonts",
+    font = ImageFont.truetype(os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medalluin", "media", "fonts",
                                            "MarcellusSC-Regular.ttf"), 11)
     x = CHAT_LEFT + CHAT_PAD + CHAT_COLUMN + 5 - 2 + 2      # Background's left, plus the tab's own 2
     for i, label in enumerate(("General", "Log", "Trade")):
@@ -436,7 +436,7 @@ def chat_preview():
 def main():
     from PIL import ImageDraw, ImageFont
     os.makedirs(OUT, exist_ok=True)
-    font = ImageFont.truetype(os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medaluin", "media", "fonts",
+    font = ImageFont.truetype(os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medalluin", "media", "fonts",
                                            "MarcellusSC-Regular.ttf"), 22)
     rows = []
     for kind in ("A", "B"):

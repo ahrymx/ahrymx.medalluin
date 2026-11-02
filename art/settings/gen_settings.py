@@ -1,4 +1,4 @@
-r"""Draft: Medaluin's own settings window, after the user's
+r"""Draft: Medalluin's own settings window, after the user's
 2026-11-01_23-50-36.png (Grid2's window: a tree down the left, the page's
 options in framed groups laid out in columns), in the console's ink and gold.
 
@@ -8,7 +8,7 @@ Two readings of the way round, both on the Unit Frames page:
   B  the tree for the top pages, the Console's pages as tabs over the body
      (Grid2 has both: the tree and tabs)
 
-And the Interface > AddOns > Medaluin page it leaves behind: what Medaluin
+And the Interface > AddOns > Medalluin page it leaves behind: what Medalluin
 is, the slash commands, and one button that opens the window.
 """
 import os
@@ -18,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "render")
-FONTS = os.path.join(HERE, "..", "..", "WoW", "Interface", "AddOns", "Medaluin", "media", "fonts")
+FONTS = os.path.join(HERE, "..", "..", "WoW", "Interface", "AddOns", "Medalluin", "media", "fonts")
 SERIF = os.path.join(FONTS, "MarcellusSC-Regular.ttf")
 SANS = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
@@ -138,7 +138,7 @@ def tooltip(dr, x, y):
 def variant_a():
     img = Image.new("RGB", (W, H))
     dr = ImageDraw.Draw(img)
-    window(dr, "Medaluin")
+    window(dr, "Medalluin")
     tree(dr, [(0, "General"), (0, "Console"), (1, "Action Bar"), (1, "Paging"), (1, "Unit Frames"),
               (1, "Overhead"), (1, "Cast Bars"), (0, "Chat"), (0, "Side panel"), (0, "Bags")], "Unit Frames")
     x0, x1 = 24 + TREE_W + 14, W - 26
@@ -153,7 +153,7 @@ def variant_a():
 def variant_b():
     img = Image.new("RGB", (W, H))
     dr = ImageDraw.Draw(img)
-    window(dr, "Medaluin")
+    window(dr, "Medalluin")
     tree(dr, [(0, "General"), (0, "Console"), (0, "Chat"), (0, "Side panel"), (0, "Bags")], "Console")
     x0, x1 = 24 + TREE_W + 14, W - 26
     tabs = ["Profile", "Action Bar", "Paging", "Unit Frames", "Overhead", "Cast Bars"]
@@ -175,7 +175,7 @@ def info_page():
     w, h = 640, 420
     img = Image.new("RGB", (w, h), (24, 24, 24))
     dr = ImageDraw.Draw(img)
-    dr.text((20, 22), "Medaluin", font=f(26), fill=GOLD_B, anchor="lm")
+    dr.text((20, 22), "Medalluin", font=f(26), fill=GOLD_B, anchor="lm")
     dr.text((20, 50), "Version 1.x  ·  by ahrymx", font=f(12, False), fill=DIM, anchor="lm")
     dr.line([20, 70, w - 20, 70], fill=GOLD_D)
     body = ["A console UI: the action bar, unit frames, overhead, chat,",
@@ -183,7 +183,7 @@ def info_page():
             "Its options have a window of their own."]
     for i, t in enumerate(body):
         dr.text((20, 92 + i * 20), t, font=f(13, False), fill=TEXT, anchor="lm")
-    button(dr, [20, 186, 240, 218], "Open Medaluin settings")
+    button(dr, [20, 186, 240, 218], "Open Medalluin settings")
     dr.text((20, 252), "Slash commands", font=f(14), fill=GOLD_B, anchor="lm")
     cmds = [("/mdlui", "open the settings window"), ("/mdlui unit, bar, bags...", "open it on that page"),
             ("/mdlui kb", "bind keys"), ("/mdlui taint", "what blocked a click")]
@@ -193,7 +193,7 @@ def info_page():
     return img
 
 
-MEDIA = os.path.join(HERE, "..", "..", "WoW", "Interface", "AddOns", "Medaluin", "media", "options")
+MEDIA = os.path.join(HERE, "..", "..", "WoW", "Interface", "AddOns", "Medalluin", "media", "options")
 
 
 def icon(draw):
@@ -227,7 +227,7 @@ def main():
         x = 10 + i * (W + 10)
         dr.text((x, 20), label, font=f(16), fill=TEXT, anchor="lm")
         sheet.paste(img, (x, 40))
-    dr.text((10, H + 60), "Interface > AddOns > Medaluin (both)", font=f(16), fill=TEXT, anchor="lm")
+    dr.text((10, H + 60), "Interface > AddOns > Medalluin (both)", font=f(16), fill=TEXT, anchor="lm")
     sheet.paste(info, (10, H + 80))
     path = os.path.join(OUT, "settings-draft.png")
     sheet.save(path)

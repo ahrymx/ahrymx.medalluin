@@ -3,7 +3,7 @@
 Melded onto the bottom edge of the console under each party member,
 with a pill-shaped cutout window in the trapezoid stone surface.
 
-    python3 art/console/gen_pet_bracket.py -> WoW/Interface/AddOns/Medaluin/media/pet-bracket.tga
+    python3 art/console/gen_pet_bracket.py -> WoW/Interface/AddOns/Medalluin/media/pet-bracket.tga
 """
 import os
 import subprocess
@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-ADDON = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medaluin")
+ADDON = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medalluin")
 MEDIA = os.path.join(ADDON, "media")
 OUT_TGA = os.path.join(MEDIA, "pet-bracket.tga")
 OUT_PNG = os.path.join(HERE, "render", "pet-bracket.png")

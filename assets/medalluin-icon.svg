@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="100%" height="100%">
+  <defs>
+    <!-- Heavy WoW Armor Gold Gradient -->
+    <linearGradient id="wowGoldBevel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFEAA6" />
+      <stop offset="22%" stop-color="#DEAA38" />
+      <stop offset="50%" stop-color="#7B4C0A" />
+      <stop offset="78%" stop-color="#FCE082" />
+      <stop offset="100%" stop-color="#462703" />
+    </linearGradient>
+
+    <!-- Deep Warm Gold Rim -->
+    <linearGradient id="wowGoldDark" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#2D1702" />
+      <stop offset="50%" stop-color="#80500B" />
+      <stop offset="100%" stop-color="#E5BA4E" />
+    </linearGradient>
+
+    <!-- Stormwind / Grand Marshal Royal Blue Centerplate -->
+    <radialGradient id="allianceBluePlate" cx="45%" cy="38%" r="65%">
+      <stop offset="0%" stop-color="#23467D" />
+      <stop offset="45%" stop-color="#142647" />
+      <stop offset="85%" stop-color="#0B1324" />
+      <stop offset="100%" stop-color="#050811" />
+    </radialGradient>
+
+    <!-- Core Arcane / Azerite Gem Glow -->
+    <radialGradient id="arcaneGem" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#A5F3FC" />
+      <stop offset="25%" stop-color="#38BDF8" />
+      <stop offset="65%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#082F49" />
+    </radialGradient>
+
+    <!-- Deep Chiseled Carving Gradient for Letters -->
+    <linearGradient id="engraveFill" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#020617" />
+      <stop offset="60%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </linearGradient>
+
+    <!-- Heavy Drop Shadow -->
+    <filter id="wowShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#000000" flood-opacity="0.75" />
+    </filter>
+
+    <!-- Arcane Gem Glow Filter -->
+    <filter id="cyanGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.5" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Reusable Rivet / Stud Element -->
+    <g id="rivet">
+      <circle cx="0" cy="0" r="3.2" fill="#2A1604" />
+      <circle cx="0" cy="0" r="2.4" fill="url(#wowGoldBevel)" />
+      <circle cx="-0.6" cy="-0.6" r="0.8" fill="#FFF2BD" opacity="0.9" />
+    </g>
+
+    <!-- Reusable Decorative Wing Spike -->
+    <path id="rimSpike" d="M -6 0 L 0 -13 L 6 0 L 3 4 L -3 4 Z" fill="url(#wowGoldBevel)" />
+  </defs>
+
+  <!-- Base Crest Shadow -->
+  <g filter="url(#wowShadow)">
+    <!-- 8-Pointed Armored Backplate Silhouette -->
+    <path d="M 120 10 
+         L 142 34 L 175 22 L 182 56 L 216 68 L 204 102 L 230 120 
+         L 204 138 L 216 172 L 182 184 L 175 218 L 142 206 L 120 230 
+         L 98 206 L 65 218 L 58 184 L 24 172 L 36 138 L 10 120 
+         L 36 102 L 24 68 L 58 56 L 65 22 L 98 34 Z" fill="#1C0E02" />
+    <path d="M 120 14 
+         L 139 36 L 170 26 L 177 57 L 208 69 L 197 100 L 221 120 
+         L 197 140 L 208 171 L 177 183 L 170 214 L 139 204 L 120 226 
+         L 101 204 L 70 214 L 63 183 L 32 171 L 43 140 L 19 120 
+         L 43 100 L 32 69 L 63 57 L 70 26 L 101 36 Z" fill="url(#wowGoldDark)" />
+
+    <!-- Heavy Outer Round Ring -->
+    <circle cx="120" cy="120" r="82" fill="url(#wowGoldBevel)" />
+    <circle cx="120" cy="120" r="76" fill="#2E1702" />
+    <circle cx="120" cy="120" r="73" fill="url(#wowGoldDark)" />
+
+    <!-- Royal Alliance Blue / Azeroth Iron Disk -->
+    <circle cx="120" cy="120" r="66" fill="url(#allianceBluePlate)" />
+
+    <!-- Inset Runic Pattern Ring -->
+    <circle cx="120" cy="120" r="63" fill="none" stroke="#38BDF8" stroke-width="1.2" stroke-dasharray="8 4 2 4" opacity="0.35" filter="url(#cyanGlow)" />
+    <circle cx="120" cy="120" r="58" fill="none" stroke="#DCA233" stroke-width="1.8" opacity="0.65" />
+  </g>
+
+  <!-- Ornamental Runic Corner Brackets (Gothic Fantasy Flairs) -->
+  <g stroke="url(#wowGoldBevel)" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <!-- North Bracket -->
+    <path d="M 104 59 L 120 70 L 136 59" />
+    <!-- South Bracket -->
+    <path d="M 104 181 L 120 170 L 136 181" />
+    <!-- West Accent -->
+    <path d="M 59 104 L 70 120 L 59 136" />
+    <!-- East Accent -->
+    <path d="M 181 104 L 170 120 L 181 136" />
+  </g>
+
+  <!-- Industrial Warcraft Rivets Border -->
+  <use href="#rivet" x="120" y="48" />
+  <use href="#rivet" x="171" y="69" />
+  <use href="#rivet" x="192" y="120" />
+  <use href="#rivet" x="171" y="171" />
+  <use href="#rivet" x="120" y="192" />
+  <use href="#rivet" x="69" y="171" />
+  <use href="#rivet" x="48" y="120" />
+  <use href="#rivet" x="69" y="69" />
+
+  <!-- ENGRAVED "UI" - WOW High Fantasy Serifs -->
+  <g>
+    <!-- Deep Carve Shadow & Inner Abyss -->
+    <text x="120" y="142" font-family="&#39;Cinzel Decorative&#39;, &#39;Cinzel&#39;, &#39;Palatino&#39;, &#39;Georgia&#39;, serif" font-size="64" font-weight="900" letter-spacing="5" text-anchor="middle" fill="#030712" stroke="#020617" stroke-width="5">
+      UI
+    </text>
+
+    <!-- Beveled Golden Trench Glow Inside the Engraving -->
+    <text x="120" y="143" font-family="&#39;Cinzel Decorative&#39;, &#39;Cinzel&#39;, &#39;Palatino&#39;, &#39;Georgia&#39;, serif" font-size="64" font-weight="900" letter-spacing="5" text-anchor="middle" fill="none" stroke="#FCE89B" stroke-width="2" opacity="0.8">
+      UI
+    </text>
+
+    <!-- Inset Stone/Rune Carved Body -->
+    <text x="120" y="141" font-family="&#39;Cinzel Decorative&#39;, &#39;Cinzel&#39;, &#39;Palatino&#39;, &#39;Georgia&#39;, serif" font-size="64" font-weight="900" letter-spacing="5" text-anchor="middle" fill="url(#engraveFill)">
+      UI
+    </text>
+
+    <!-- Arcane Inner Inscription Glow -->
+    <text x="120" y="141" font-family="&#39;Cinzel Decorative&#39;, &#39;Cinzel&#39;, &#39;Palatino&#39;, &#39;Georgia&#39;, serif" font-size="64" font-weight="900" letter-spacing="5" text-anchor="middle" fill="none" stroke="#38BDF8" stroke-width="0.8" opacity="0.6" filter="url(#cyanGlow)">
+      UI
+    </text>
+  </g>
+
+  <!-- Embedded Azerite / Arcane Gemstones (Top & Bottom Crest Anchors) -->
+  <g filter="url(#cyanGlow)">
+    <!-- Top Gem -->
+    <polygon points="120,62 126,69 120,76 114,69" fill="url(#arcaneGem)" stroke="#E0F2FE" stroke-width="0.75" />
+    <circle cx="119" cy="67" r="1.2" fill="#FFFFFF" opacity="0.9" />
+
+    <!-- Bottom Gem -->
+    <polygon points="120,164 126,171 120,178 114,171" fill="url(#arcaneGem)" stroke="#E0F2FE" stroke-width="0.75" />
+    <circle cx="119" cy="169" r="1.2" fill="#FFFFFF" opacity="0.9" />
+  </g>
+</svg>

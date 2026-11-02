@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MEDIA = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medaluin", "media")
+MEDIA = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medalluin", "media")
 FONT = os.path.join(MEDIA, "fonts", "MarcellusSC-Regular.ttf")
 INK = (18, 17, 16, 255)
 COLOURS = {"health": {"player": (196, 110, 147), "target": (163, 61, 45), "party1": (196, 110, 147),

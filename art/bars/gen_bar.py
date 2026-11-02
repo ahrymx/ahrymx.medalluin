@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Action bar 1's frame, Medaluin's own art, drawn here from shapes: pure
+"""Action bar 1's frame, Medalluin's own art, drawn here from shapes: pure
 geometry, no gryphons (after the user's sketch):
 
        /                                \

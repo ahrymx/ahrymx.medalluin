@@ -18,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "render")
-FONT = os.path.join(HERE, "..", "..", "WoW", "Interface", "AddOns", "Medaluin", "media", "fonts",
+FONT = os.path.join(HERE, "..", "..", "WoW", "Interface", "AddOns", "Medalluin", "media", "fonts",
                     "MarcellusSC-Regular.ttf")
 
 INK = (18, 17, 16)
@@ -119,7 +119,7 @@ def sheet(style):
 # word, the mirrored end. Its bottom TAB_OVER rows lie over the box's gold
 # edge, so the tab opens into the box (widgets/box.lua reads TAB_*).
 TAB_W, TAB_H, TAB_END, TAB_OVER = 64, 20, 8, 2
-MEDIA = os.path.join(HERE, "..", "..", "WoW", "Interface", "AddOns", "Medaluin", "media", "widgets")
+MEDIA = os.path.join(HERE, "..", "..", "WoW", "Interface", "AddOns", "Medalluin", "media", "widgets")
 
 
 def tab_svg():

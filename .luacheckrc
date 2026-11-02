@@ -25,7 +25,7 @@ read_globals = {
     "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer",
     -- API
     "CreateFrame", "InCombatLockdown", "RegisterUnitWatch", "UnregisterUnitWatch", "RegisterStateDriver", "UnregisterStateDriver", "IsInGroup", "UnitAffectingCombat", "UnitThreatSituation",
-    "UnitExists", "GetNumShapeshiftForms", "PetHasActionBar", "UnitName", "UnitClass", "UnitIsPlayer", "UnitIsConnected", "UnitIsDeadOrGhost", "UnitIsFriend", "UnitIsUnit",
+    "UnitExists", "GetNumShapeshiftForms", "PetHasActionBar", "UnitName", "UnitClass", "UnitIsPlayer", "UnitIsConnected", "UnitIsDeadOrGhost", "UnitGUID", "UnitIsFriend", "UnitIsUnit",
     "UnitIsTapDenied", "UnitReaction", "UnitHealth", "UnitHealthMax", "UnitPower", "UnitPowerMax",
     "UnitPowerType", "UnitLevel", "UnitXP", "UnitXPMax", "GetXPExhaustion", "GetMaxPlayerLevel",
     "GetWatchedFactionInfo", "C_Reputation", "BreakUpLargeNumbers", "GameTooltip_Hide",
@@ -82,5 +82,5 @@ read_globals = {
     "GetActiveTalentGroup", "Enum",
 }
 -- the saved variables, the slash command and the reset popup's key
-globals = { "_G", "MedaluinDB", "MedaluinCharDB", "SLASH_MEDALUIN1", "SLASH_MEDALUIN2", "SLASH_MDLUI1", "SlashCmdList",
+globals = { "_G", "MedalluinDB", "MedalluinCharDB", "SLASH_MEDALLUIN1", "SLASH_MEDALLUIN2", "SLASH_MDLUI1", "SlashCmdList",
     "StaticPopupDialogs" }

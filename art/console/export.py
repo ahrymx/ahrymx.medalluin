@@ -43,7 +43,7 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-ADDON = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medaluin")
+ADDON = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medalluin")
 MEDIA = os.path.join(ADDON, "media")
 CENTRE_X = 960                      # the screen's centre line in the mockups
 
