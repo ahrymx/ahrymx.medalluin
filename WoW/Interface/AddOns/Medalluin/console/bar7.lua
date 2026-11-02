@@ -62,6 +62,7 @@ ns.On("PLAYER_LOGIN", function()
             ns.PlaceOnBar(btn, slot)
             if ns.StyleButton then ns.StyleButton(btn) end
             if ns.actionButtons then table.insert(ns.actionButtons, btn) end
+            if ns.ApplyButtonLook then ns.ApplyButtonLook(btn) end
             btns[i] = btn
         end
         if spare then

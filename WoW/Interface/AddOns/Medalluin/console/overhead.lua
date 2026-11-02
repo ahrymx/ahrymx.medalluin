@@ -53,12 +53,20 @@ local LEVELS = {
     text = base + 8,
 }
 
+-- As the console's (console/frame.lua): its share of the screen, times the
+-- player's Scale, moved by their offset in design units (movers.lua).
 local function Rescale()
     ns.OutOfCombat(function()
         local dh = ns.layout and ns.layout.designHeight or 1080
-        overhead:SetScale(UIParent:GetHeight() / dh)
+        local k = tonumber(ns.db.overheadScale) or 1
+        if k <= 0 then k = 1 end
+        overhead:SetScale(UIParent:GetHeight() / dh * k)
+        overhead:ClearAllPoints()
+        overhead:SetPoint("TOP", UIParent, "TOP", (tonumber(ns.db.overheadX) or 0) / k,
+            (tonumber(ns.db.overheadY) or 0) / k)
     end)
 end
+ns.PlaceOverhead = Rescale
 Rescale()
 ns.On("UI_SCALE_CHANGED", Rescale)
 ns.On("DISPLAY_SIZE_CHANGED", Rescale)

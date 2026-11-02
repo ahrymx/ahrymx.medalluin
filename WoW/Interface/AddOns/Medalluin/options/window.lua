@@ -82,6 +82,8 @@ local function Control(parent, spec, width)
         c = UI.Choice(parent, spec, width)
     elseif spec.kind == "color" then
         c = UI.Color(parent, spec, width)
+    elseif spec.kind == "slider" then
+        c = UI.Slider(parent, spec, width)
     else
         c = UI.Button(parent, spec.label, math.min(width, 160), 24, spec.click, spec.tip)
     end

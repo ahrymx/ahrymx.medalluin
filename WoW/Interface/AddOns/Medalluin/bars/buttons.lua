@@ -128,6 +128,12 @@ local function ButtonBindingName(btn)
         or btn.buttonType and (btn.buttonType .. (btn:GetID() or ""))
 end
 
+-- Keybind text at size 0 is hidden, on the buttons the bar's options look
+-- after (ApplyLook); the overhead's, which share Style, keep theirs.
+local function HotkeyAlpha(btn)
+    return (btn.medalluinLook and (tonumber(ns.db.hotkeySize) or 1) <= 0) and 0 or 1
+end
+
 local function UpdateHotkey(btn)
     local hotkey = btn.medalluinHotkey or Part(btn, "HotKey")
     if not hotkey then return end
@@ -157,7 +163,7 @@ local function UpdateHotkey(btn)
         hotkey:SetText(formatted)
         hotkey.medalluinSetting = false
         hotkey:SetTextColor(unpack(ns.colors.text))
-        hotkey:SetAlpha(1)
+        hotkey:SetAlpha(HotkeyAlpha(btn))
         hotkey:Show()
     else
         -- guarded like the set above: the SetText hook would call us again, forever
@@ -287,6 +293,81 @@ local function Style(btn)
 end
 ns.StyleButton = Style
 
+-- ------------------------------------------------------------ the look
+-- The Action Bar page's Text and Cooldowns options, on the bar's buttons
+-- (bars 1-3 and the light profile's grid), bare icons or Blizzard's art.
+-- A size scales what the button drew on its own, read off it the first time,
+-- so 1 leaves Blizzard's art and Style's sizes as they were.
+local function Scale(region, base, scale)
+    if base[1] then region:SetFont(base[1], math.max(1, math.floor(base[2] * scale + 0.5)), base[3]) end
+end
+
+local function ApplyCooldown(btn)
+    local cd = Part(btn, "cooldown", "Cooldown")
+    if not cd then return end
+    if cd.SetDrawSwipe then cd:SetDrawSwipe(ns.db.cooldownSwipe and true or false) end
+    if cd.SetDrawEdge then cd:SetDrawEdge(ns.db.cooldownEdge and true or false) end
+    -- on, the flash is left to Blizzard, which turns it off on a faded bar
+    if cd.SetDrawBling and not ns.db.cooldownBling then cd:SetDrawBling(false) end
+    -- the ticker's buttons draw their own number and keep the cooldown's hidden
+    local ticker = btn.medalluinTimer and not btn.medalluinNative
+    if cd.SetHideCountdownNumbers and not ticker then
+        local mode = ns.db.cooldownText
+        if mode == "show" or mode == "hide" then
+            cd:SetHideCountdownNumbers(mode == "hide")
+            btn.medalluinForcedNumbers = true
+        elseif btn.medalluinNative then
+            cd:SetHideCountdownNumbers(false)          -- bare icons show them
+        elseif btn.medalluinForcedNumbers then
+            -- back to the game's Show cooldown numbers option
+            btn.medalluinForcedNumbers = nil
+            cd:SetHideCountdownNumbers(not (GetCVarBool and GetCVarBool("countdownForCooldowns")))
+        end
+    end
+    local fs = cd.GetCountdownFontString and cd:GetCountdownFontString()
+    if fs then
+        btn.medalluinCountdownFont = btn.medalluinCountdownFont or { fs:GetFont() }
+        Scale(fs, btn.medalluinCountdownFont, tonumber(ns.db.cooldownTextSize) or 1)
+    end
+end
+
+local function ApplyLook(btn)
+    -- a client without the global (below) redraws through the button's own method
+    if not btn.medalluinLook and not _G.ActionButton_UpdateCooldown and btn.UpdateCooldown then
+        hooksecurefunc(btn, "UpdateCooldown", ApplyCooldown)
+    end
+    btn.medalluinLook = true
+    local hotkey = btn.medalluinHotkey or Part(btn, "HotKey")
+    if hotkey then
+        btn.medalluinHotkeyFont = btn.medalluinHotkeyFont or { hotkey:GetFont() }
+        local size = tonumber(ns.db.hotkeySize) or 1
+        if size > 0 then Scale(hotkey, btn.medalluinHotkeyFont, size) end
+        hotkey:SetAlpha(HotkeyAlpha(btn))
+    end
+    ApplyCooldown(btn)
+end
+ns.ApplyButtonLook = ApplyLook
+
+-- Blizzard redraws a cooldown (and sets its edge and flash) each time one
+-- starts: the options go back on after it.
+if _G.ActionButton_UpdateCooldown then
+    hooksecurefunc("ActionButton_UpdateCooldown", function(btn)
+        if btn and btn.medalluinLook then ApplyCooldown(btn) end
+    end)
+end
+
+for _, key in ipairs({ "hotkeySize", "cooldownText", "cooldownTextSize", "cooldownSwipe", "cooldownEdge" }) do
+    ns.OnSetting(key, function()
+        for _, btn in ipairs(buttons) do ApplyLook(btn) end
+    end)
+end
+ns.OnSetting("cooldownBling", function(on)
+    for _, btn in ipairs(buttons) do
+        local cd = Part(btn, "cooldown", "Cooldown")
+        if cd and cd.SetDrawBling then cd:SetDrawBling(on and true or false) end
+    end
+end)
+
 local function Adopt(btn, slot, parent, isExtra)
     parent = parent or ns.actionBar
     btn:SetParent(parent)
@@ -330,13 +411,19 @@ local function Adopt(btn, slot, parent, isExtra)
         end
         UpdateExtraButton(btn)
     end
+    ApplyLook(btn)
 end
 
 -- Blizzard hides countdown numbers unless the player's interface option
--- asks for them; bare icons always show them.
+-- asks for them; bare icons always show them, and the Cooldown numbers
+-- option can say either way on any of the bar's buttons.
 if ActionButton_UpdateCooldownNumberHidden then
     hooksecurefunc("ActionButton_UpdateCooldownNumberHidden", function(btn)
-        if btn.medalluinNative then btn.cooldown:SetHideCountdownNumbers(false) end
+        if btn.medalluinLook then
+            ApplyCooldown(btn)
+        elseif btn.medalluinNative then
+            btn.cooldown:SetHideCountdownNumbers(false)
+        end
     end)
 end
 
@@ -486,10 +573,11 @@ local function Update(btn, now)
     end
     Tint(btn, action)
     if btn.medalluinNative then return end
-    local left = Remaining(action, now)
+    local left = ns.db.cooldownText ~= "hide" and Remaining(action, now)
     local text = left and Clock(left) or ""
     if text ~= timer:GetText() then
-        timer:SetFont(ns.font, #text > 2 and 13 or 16, "OUTLINE")
+        local scale = btn.medalluinLook and tonumber(ns.db.cooldownTextSize) or 1
+        timer:SetFont(ns.font, math.floor((#text > 2 and 13 or 16) * scale + 0.5), "OUTLINE")
         timer:SetText(text)
     end
 end

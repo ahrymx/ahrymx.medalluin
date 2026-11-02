@@ -64,3 +64,4 @@ options\window.lua
 options\editor.lua
 options\canvas.lua
 options\info.lua
+movers.lua

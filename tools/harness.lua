@@ -77,6 +77,8 @@ local lightPass = args[2] == "light"
 -- each profile's own choices coming back with it, and Reset profile.
 -- "profiles saved" loads one already layered, as every later login does.
 local profilesPass = args[2] == "profiles"
+local movePass = args[2] == "move"      -- moving and scaling the consoles (movers.lua)
+local lookPass = args[2] == "look"      -- the Action Bar page's Text and Cooldowns options
 -- "keybind" (alone, or after "light") plays the hover binding mode
 -- (keybind.lua): /mdlui kb and the page's button, binding through the
 -- binder, the chords, the keys it skips, a key moved off another button,
@@ -296,6 +298,10 @@ function Region:GetStatusBarTexture()
     return self.fill
 end
 function Region:SetHideCountdownNumbers(h) self.hideNumbers = h end
+-- a cooldown's sweep, its edge and its end flash (the Action Bar's Cooldowns options)
+function Region:SetDrawSwipe(on) self.drawSwipe = on end
+function Region:SetDrawEdge(on) self.drawEdge = on end
+function Region:SetDrawBling(on) self.drawBling = on end
 function Region:GetCountdownFontString()
     if not modern then return end
     self.countdown = self.countdown or new("FontString", self)
@@ -475,6 +481,15 @@ function Region:GetJustifyH() return self.justifyH or "CENTER" end
 UIParent = new("Frame", nil, "UIParent")
 UIParent.isScreen = true
 function UIParent:GetHeight() return 768 end
+-- Edit Mode tells addons it opened and closed through EventRegistry (movers.lua)
+EventRegistry = { registered = {} }
+function EventRegistry:RegisterCallback(event, fn, owner)
+    self.registered[event] = self.registered[event] or {}
+    table.insert(self.registered[event], { fn, owner })
+end
+function EventRegistry:TriggerEvent(event, ...)
+    for _, r in ipairs(self.registered[event] or {}) do r[1](r[2], ...) end
+end
 Minimap = new("Frame", UIParent, "Minimap")
 -- what addons and Blizzard hang on the minimap: three LibDBIcon buttons (one
 -- hidden by its addon), a button of an addon's own, Blizzard's tracking,
@@ -1437,6 +1452,7 @@ function optionShown(c)
     if k == "check" then return tostring(c.tick.shown) end
     if k == "choice" then return c.button.value.text end
     if k == "color" then return table.concat(c.swatch.color, ",", 1, 3) end
+    if k == "slider" then return c.value.text end
     return "-"
 end
 function optionShows(key)
@@ -1455,6 +1471,8 @@ function optionsStale()
             for _, ch in ipairs(c.spec.choices) do if ch[1] == v then want = ch[2] end end
         elseif k == "color" then
             want = table.concat({ ns.HexColor(v) }, ",")
+        elseif k == "slider" then
+            want = c.spec.text and c.spec.text(v) or tostring(v)
         end
         if want ~= optionShown(c) then table.insert(stale, key) end
     end
@@ -5662,3 +5680,114 @@ inCombat, threatOf = false, nil
 if keybindPass then KeybindPass() end
 if pagingPass then PagingPass() end
 if editorPass then EditorPass() end
+
+-- `look [bare] [modern]`: the Action Bar page's Text and Cooldowns options
+-- on the first and last of the bar's buttons: at login, changed on the page,
+-- keybind text hidden, and put back, where every line matches "login" again.
+-- The overhead's buttons are not the bar's and keep their own.
+if lookPass then
+    local function show(tag)
+        local function one(b)
+            local hk = b.medalluinHotkey or b.HotKey or _G[b:GetName() .. "HotKey"]
+            local cd = b.cooldown or _G[b:GetName() .. "Cooldown"]
+            local fs = cd.GetCountdownFontString and cd:GetCountdownFontString()
+            return string.format("%s keys=%s/alpha %s sweep=%s edge=%s flash=%s hideNumbers=%s numberSize=%s",
+                b:GetName(), tostring((select(2, hk:GetFont()))), tostring(hk:GetAlpha()), tostring(cd.drawSwipe),
+                tostring(cd.drawEdge), tostring(cd.drawBling), tostring(cd.hideNumbers),
+                tostring(fs and (select(2, fs:GetFont()))))
+        end
+        print("look " .. tag, one(ns.actionButtons[1]))
+        print("look " .. tag, one(ns.actionButtons[#ns.actionButtons]))
+    end
+    local function set(values)
+        for _, kv in ipairs(values) do page.settings[kv[1]]:Set(kv[2]) end
+    end
+    show("login")
+    set({ { "hotkeySize", 1.5 }, { "cooldownTextSize", 1.25 }, { "cooldownSwipe", false },
+        { "cooldownEdge", true }, { "cooldownBling", false }, { "cooldownText", "hide" } })
+    show("changed")
+    set({ { "hotkeySize", 0 } })
+    show("hidden keys")
+    local other = ns.db.consoleProfile == "light" and "default" or "light"
+    print("look saved", "here=" .. tostring(MedalluinDB.profiles[ns.db.consoleProfile].hotkeySize),
+        other .. "=" .. tostring(MedalluinDB.profiles[other].hotkeySize))
+    set({ { "hotkeySize", 1 }, { "cooldownTextSize", 1 }, { "cooldownSwipe", true },
+        { "cooldownEdge", false }, { "cooldownBling", true }, { "cooldownText", "auto" } })
+    show("back")
+    print("look window stale=" .. optionsStale())
+end
+
+-- `move [light]`: the consoles' place and scale. The page's sliders, the
+-- strips keeping their own size, the profile switch, Edit Mode's movers (a
+-- drag, a click and its popup), and a change in combat waiting for it to end.
+if movePass then
+    local console, overhead = ns.console, ns.overhead
+    local function where(f)
+        local p = f.points[f.order[#f.order]] or f.points.BOTTOM or f.points.TOP
+        local _, _, rp, x, y = f:GetPoint()
+        return string.format("%s %.1f,%.1f scale=%.3f", tostring(rp), x or 0, y or 0, f:GetScale())
+    end
+    local function state(tag)
+        print("move " .. tag, "console " .. where(console), "overhead " .. where(overhead),
+            string.format("strip=%.3f stripOnScreen=%.3f", ns.strips[-1]:GetScale(), ns.strips[-1]:GetEffectiveScale()),
+            "movers=" .. tostring(ns.consoleMovers.console and ns.consoleMovers.console:IsShown()) .. ","
+                .. tostring(ns.consoleMovers.overhead and ns.consoleMovers.overhead:IsShown()),
+            "popup=" .. tostring(MedalluinMoverPopup and MedalluinMoverPopup:IsShown() and MedalluinMoverPopup.title.text))
+    end
+    state("drawn")
+    page.settings.consoleScale:Set(1.2)
+    page.settings.consoleX:Set(120)
+    page.settings.consoleY:Set(40)
+    page.settings.overheadScale:Set(0.8)
+    page.settings.overheadY:Set(-30)
+    state("page")
+    local other = ns.db.consoleProfile == "light" and "default" or "light"
+    local here = ns.db.consoleProfile
+    page.settings.consoleProfile:Set(other)
+    state("other profile")
+    page.settings.consoleProfile:Set(here)
+    state("back")
+    print("move saved", "here=" .. tostring(MedalluinDB.profiles[here].consoleScale) .. ","
+        .. tostring(MedalluinDB.profiles[here].consoleX), other .. "=" .. tostring(MedalluinDB.profiles[other].consoleScale))
+
+    EventRegistry:TriggerEvent("EditMode.Enter")
+    state("edit mode")
+    -- a drag: 60 design units right and 20 down, in screen pixels (UIParent's
+    -- 768 high against the design's 1080)
+    local px = 768 / 1080
+    local realCursor = GetCursorPosition
+    local cx, cy = 500, 300
+    function GetCursorPosition() return cx, cy end
+    local m = ns.consoleMovers.console
+    m.scripts.OnMouseDown(m, "LeftButton")
+    cx, cy = 500 + 60 * px, 300 - 20 * px
+    m.scripts.OnUpdate(m)
+    state("dragging")
+    m.scripts.OnMouseUp(m, "LeftButton")
+    state("dropped")
+    print("move dropped saved", "x=" .. tostring(ns.db.consoleX), "y=" .. tostring(ns.db.consoleY))
+    -- a click: no move, so the popup, with this console's sliders
+    local o = ns.consoleMovers.overhead
+    o.scripts.OnMouseDown(o, "LeftButton")
+    o.scripts.OnUpdate(o)
+    o.scripts.OnMouseUp(o, "LeftButton")
+    state("clicked overhead")
+    GetCursorPosition = realCursor
+    local shown = {}
+    for _, ctl in ipairs(MedalluinMoverPopup.controls) do
+        table.insert(shown, ctl.spec.key .. "=" .. ctl.value.text)
+    end
+    print("move popup", table.concat(shown, " "))
+    MedalluinMoverPopup.reset.scripts.OnClick(MedalluinMoverPopup.reset)
+    state("popup reset")
+
+    inCombat = true
+    page.settings.consoleScale:Set(0.9)
+    state("set in combat")
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    state("combat over")
+    EventRegistry:TriggerEvent("EditMode.Exit")
+    state("edit mode closed")
+    print("move window stale=" .. optionsStale())
+end

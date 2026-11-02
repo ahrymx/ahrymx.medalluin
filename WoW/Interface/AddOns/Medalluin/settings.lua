@@ -17,6 +17,19 @@ local DEFAULTS = {
     bareIcons = false,      -- WeakAuras-style icons instead of Blizzard's button art
     artColor = "ffffffff",  -- AARRGGBB, as the colour swatch stores it; white leaves the art as drawn
     hideEmpty = true,       -- hide empty buttons on extra bars (action bars 2 and 3)
+    -- the bar's buttons' text and cooldowns (bars/buttons.lua); a size is a
+    -- scale of what the button draws on its own, so 1 leaves it as it was
+    hotkeySize = 1,         -- keybind text; 0 hides it
+    cooldownText = "auto",  -- cooldown numbers: "auto" (bare icons show them, Blizzard's art asks the game), "show", "hide"
+    cooldownTextSize = 1,   -- cooldown numbers
+    cooldownSwipe = true,   -- the dark sweep over a cooling-down icon
+    cooldownEdge = false,   -- the bright line on the sweep's edge
+    cooldownBling = true,   -- the flash when a cooldown ends
+    -- where each console sits and how big (movers.lua): a scale of the size it
+    -- is drawn at, and an offset from where it is drawn, in the console's own
+    -- units (a 1080-high screen), so a place survives a resolution change
+    consoleScale = 1, consoleX = 0, consoleY = 0,
+    overheadScale = 1, overheadX = 0, overheadY = 0,
     deadColor = "ff40424a", -- a dead friend's frame (dead.lua), every frame and profile
     visibility = 1,         -- Bar 1 visibility: see VISIBILITY
     extraVisibility = 1,    -- Extra bar(s) visibility (action bars 2 and 3): see VISIBILITY
@@ -142,6 +155,8 @@ ns.PROFILE_NAMES = {
 local PER_PROFILE = {}
 for _, key in ipairs({
     "actionBar", "rows", "bareIcons", "artColor", "hideEmpty", "visibility", "extraVisibility", "drawer",
+    "hotkeySize", "cooldownText", "cooldownTextSize", "cooldownSwipe", "cooldownEdge", "cooldownBling",
+    "consoleScale", "consoleX", "consoleY", "overheadScale", "overheadX", "overheadY",
     "bar1Paging", "bar1PagingCustom", "row2Paging", "row2PagingCustom", "row3Paging", "row3PagingCustom",
     "gridPaging", "gridPagingCustom",
     "partyPets", "partyLayout", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss", "bossMine",
@@ -393,10 +408,12 @@ SLASH_MDLUI1 = "/mdlui"
 
 local KEYBIND = { kb = true, keybind = true, keybinds = true, bind = true, binds = true }
 local EDITOR = { edit = true, editor = true, frames = true }
+local MOVE = { move = true, movers = true, unlock = true }
 
 -- /mdlui <word>: the window on that page.
 local PAGES = {
     console = "console/profile", profile = "console/profile", profiles = "console/profile",
+    position = "console/position", scale = "console/position", place = "console/position",
     paging = "console/paging", page = "console/paging", pages = "console/paging",
     bar = "console/bar", actionbar = "console/bar", bars = "console/bar",
     layout = "console/layout", unitlayout = "console/layout",
@@ -423,6 +440,11 @@ local function OpenSettings(arg)
     end
     if EDITOR[arg] then
         if ns.OpenEditor then ns.OpenEditor() end
+        return
+    end
+    -- the consoles' movers, as Edit Mode shows them (movers.lua); again hides them
+    if MOVE[arg] then
+        if ns.ShowConsoleMovers then ns.ShowConsoleMovers(not ns.ConsoleMoversShown()) end
         return
     end
     if ns.OpenOptions then ns.OpenOptions(PAGES[arg]) end

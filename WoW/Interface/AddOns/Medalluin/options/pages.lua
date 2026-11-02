@@ -46,6 +46,19 @@ local function Visibility(it, them)
     }
 end
 
+-- A text size, as a scale of what the button draws on its own; first, a
+-- choice before them (Hidden).
+local function TextSizes(first)
+    local sizes = {
+        { 0.8, "Small" },
+        { 1, "Normal", "As the button draws it." },
+        { 1.25, "Large" },
+        { 1.5, "Larger" },
+    }
+    if first then table.insert(sizes, 1, first) end
+    return sizes
+end
+
 -- How far a group's frames reach before they fade.
 local function Range(key, who)
     return Choice(key, "Fade out of range", {
@@ -167,6 +180,13 @@ function ns.OptionPages()
                     },
                 },
                 {
+                    id = "position", name = "Position",
+                    intro = "Kept per profile. Or open Edit Mode: drag a console anywhere, and click it for "
+                        .. "its scale. Without Edit Mode, /mdlui move. The corner strips keep their own size "
+                        .. "and place.",
+                    groups = ns.ConsolePlaceGroups(Group),
+                },
+                {
                     id = "bar", name = "Action Bar", intro = "Kept per profile.",
                     master = Check("actionBar", "Action bar",
                         "Medalluin's bar on top of the console, holding action bar 1. Untick it to keep Blizzard's "
@@ -185,6 +205,24 @@ function ns.OptionPages()
                                 .. "red tint, instead of Blizzard's button art.", true),
                             Check("hideEmpty", "Hide empty buttons",
                                 "Hides empty buttons and their keybind text on extra bars (action bars 2 and 3).")),
+                        Group("Text",
+                            Choice("hotkeySize", "Keybind text size", TextSizes({ 0, "Hidden", "No keybind text." }),
+                                "The key bound to each button, at its top right.")),
+                        Group("Cooldowns",
+                            Choice("cooldownText", "Cooldown numbers", {
+                                { "auto", "Default", "Bare icons show them; Blizzard's art follows the game's "
+                                    .. "Show cooldown numbers option (Options > Action Bars)." },
+                                { "show", "Always", "On every button, bare icons or Blizzard's art." },
+                                { "hide", "Never", "The sweep alone says how long is left." },
+                            }, "The time left, on the icon. The global cooldown never shows one on bare icons."),
+                            Choice("cooldownTextSize", "Cooldown number size", TextSizes(),
+                                "The time left on a cooling-down button."),
+                            Check("cooldownSwipe", "Sweep",
+                                "The dark sweep that winds round a cooling-down icon."),
+                            Check("cooldownEdge", "Sweep edge",
+                                "A bright line along the sweep's leading edge."),
+                            Check("cooldownBling", "Flash when ready",
+                                "The flash a button gives as its cooldown ends.")),
                         Group("Fading",
                             Choice("visibility", "Bar 1 visibility", Visibility("it comes", "it"),
                                 "A faded bar still works: its buttons and key bindings stay live."),

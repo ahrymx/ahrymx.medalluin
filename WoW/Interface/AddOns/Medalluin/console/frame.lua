@@ -18,13 +18,25 @@ ns.console = console
 local base = console:GetFrameLevel()
 ns.levels = { bars = base + 2, art = base + 10, text = base + 12 }
 
--- Keep the art the same share of the screen at any resolution or UI scale.
--- The console holds secure buttons, so its scale only changes out of combat.
+-- Keep the art the same share of the screen at any resolution or UI scale,
+-- times the player's Scale, moved by their offset (movers.lua). An offset is
+-- in design units; SetPoint's are the console's own, so it is divided by the
+-- player's scale. The corner strips are the console's children but keep
+-- their own size: they undo the player's scale, and are set first, so the
+-- chat's SetScale hook (strips/chat.lua) measures them already undone.
+-- The console holds secure buttons, so it only moves out of combat.
 local function Rescale()
     ns.OutOfCombat(function()
-        console:SetScale(UIParent:GetHeight() / ns.layout.designHeight)
+        local k = tonumber(ns.db.consoleScale) or 1
+        if k <= 0 then k = 1 end
+        for _, strip in pairs(ns.strips or {}) do strip:SetScale(1 / k) end
+        console:SetScale(UIParent:GetHeight() / ns.layout.designHeight * k)
+        console:ClearAllPoints()
+        console:SetPoint("BOTTOM", UIParent, "BOTTOM", (tonumber(ns.db.consoleX) or 0) / k,
+            ns.art.bottomGap + (tonumber(ns.db.consoleY) or 0) / k)
     end)
 end
+ns.PlaceConsole = Rescale
 Rescale()
 ns.On("UI_SCALE_CHANGED", Rescale)
 ns.On("DISPLAY_SIZE_CHANGED", Rescale)
@@ -161,8 +173,7 @@ function ns.ApplyLightProfile()
 
     art = ns.art
     console:SetSize(art.width, art.height)
-    console:ClearAllPoints()
-    console:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, art.bottomGap)
+    Rescale()
     tex:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
     tint:SetTexCoord(0, art.width / art.texWidth, 0, art.height / art.texHeight)
 
