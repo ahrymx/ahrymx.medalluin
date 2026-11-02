@@ -73,6 +73,8 @@ read_globals = {
     "TIMEMANAGER_TOOLTIP_REALMTIME", "OKAY", "CANCEL", "StaticPopup_Show",
     -- Lua extras WoW provides
     "wipe", "format", "unpack", "CopyTable",
+    -- the raid (widgets/raid.lua)
+    "IsInRaid", "ColorPickerFrame", "GetAddOnMetadata", "UISpecialFrames", "IsInInstance", "GetNumGroupMembers", "GetRaidRosterInfo",
     -- the action slots (bars/skills.lua)
     "GetActionInfo", "GetActionText", "GetMacroInfo", "GetMacroIndexByName", "PickupMacro", "PickupAction",
     "PlaceAction", "ClearCursor", "GetCursorInfo", "PickupSpell", "PickupItem", "C_Item", "C_MountJournal",

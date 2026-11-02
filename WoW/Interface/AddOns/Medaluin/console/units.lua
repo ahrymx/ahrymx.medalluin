@@ -85,6 +85,22 @@ local CHECK_COORDS = {
     waiting = { 64 / 128, 96 / 128, 0, 1 },
 }
 
+-- The health value as the editor's format has it (editor.lua): the percent,
+-- the current health, both, or what is missing. Where the game keeps the
+-- numbers secret, the missing health cannot be worked out: the percent.
+local function HealthValue(self, cur, max, pct)
+    local format = ns.EditFormat and ns.EditFormat(self, "value")
+    if format == "current" then
+        self.value:SetText(FormatPower(cur))
+    elseif format == "both" then
+        self.value:SetFormattedText("%s | %.0f%%", FormatPower(cur), pct)
+    elseif format == "deficit" and not ns.IsSecret(cur) and not ns.IsSecret(max) then
+        self.value:SetText(cur < max and "-" .. FormatPower(max - cur) or "")
+    else
+        self.value:SetFormattedText("%.0f%%", pct)
+    end
+end
+
 local function UpdateHealth(self)
     local stub = self.stub
     if stub then
@@ -104,7 +120,7 @@ local function UpdateHealth(self)
             if isDead then
                 self.value:SetText(DEAD)
             else
-                self.value:SetFormattedText("%.0f%%", math.floor(stub.health / stub.maxHealth * 100 + 0.5))
+                HealthValue(self, stub.health, stub.maxHealth, math.floor(stub.health / stub.maxHealth * 100 + 0.5))
             end
         end
         return
@@ -127,7 +143,22 @@ local function UpdateHealth(self)
     elseif isDead then
         self.value:SetText(DEAD)
     else
-        self.value:SetFormattedText("%.0f%%", HealthPercent(unit, cur, max))
+        HealthValue(self, cur, max, HealthPercent(unit, cur, max))
+    end
+end
+
+-- The power value as the editor's format has it: current and percent (as
+-- it always was), the current alone, or the percent alone. pct may be nil
+-- where the game keeps it secret and has no curve to read it through.
+local function PowerValue(self, cur, pct)
+    local format = ns.EditFormat and ns.EditFormat(self, "powerValue")
+    -- no percent (the game keeps the numbers secret): the value, whole
+    if format == "current" or pct == nil then
+        self.powerValue:SetText(cur)
+    elseif format == "percent" then
+        self.powerValue:SetFormattedText("%.0f%%", pct)
+    else
+        self.powerValue:SetFormattedText("%s | %.0f%%", cur, pct)
     end
 end
 
@@ -140,8 +171,7 @@ local function UpdatePower(self)
         local c = PowerBarColor[stub.powerType] or PowerBarColor.MANA
         if c then self.power:SetStatusBarColor(Muted(c.r, c.g, c.b)) end
         if self.powerValue then
-            self.powerValue:SetFormattedText("%s | %d%%", FormatPower(stub.power),
-                math.floor(stub.power / stub.maxPower * 100 + 0.5))
+            PowerValue(self, FormatPower(stub.power), math.floor(stub.power / stub.maxPower * 100 + 0.5))
         end
         return
     end
@@ -161,24 +191,23 @@ local function UpdatePower(self)
         return
     end
     if ns.IsSecret(cur) or ns.IsSecret(max) then
-        local pct = PowerPercent(unit, cur, max)
-        if pct then
-            self.powerValue:SetFormattedText("%s | %.0f%%", cur, pct)
-        else
-            self.powerValue:SetText(cur)
-        end
+        PowerValue(self, cur, PowerPercent(unit, cur, max))
     else
-        self.powerValue:SetFormattedText("%s | %d%%", FormatPower(cur), PowerPercent(unit, cur, max))
+        PowerValue(self, FormatPower(cur), PowerPercent(unit, cur, max))
     end
 end
 
+-- The name, as the editor's format has it: whole or with initials, and cut
+-- to the longest it may be. A secret name still displays, as it is.
 local function UpdateName(self)
-    if self.stub then
-        self.name:SetText(self.stub.name)
-        return
+    local name = self.stub and self.stub.name or ns.Or(UnitName(self.unit), "")
+    local format, len = nil, nil
+    if ns.EditFormat then format, len = ns.EditFormat(self, "name") end
+    if not ns.IsSecret(name) then
+        if format == "short" then name = ns.AbbreviateName(name) end
+        if ns.CutName then name = ns.CutName(name, len) end
     end
-    -- a secret name still displays
-    self.name:SetText(ns.Or(UnitName(self.unit), ""))
+    self.name:SetText(name)
 end
 
 local function UpdateRole(self)
@@ -204,6 +233,8 @@ local function UpdateAll(self)
     UpdatePower(self)
     UpdateRole(self)
 end
+-- the group widgets' cells draw the same way (widgets/)
+ns.UpdateUnitButton = UpdateAll
 
 local STUBS = {
     party1 = { name = "Party 1", class = "PRIEST", role = "HEALER", powerType = 0, health = 85, maxHealth = 100,
@@ -232,6 +263,7 @@ local function AbbreviateName(name)
     end
     return name
 end
+ns.AbbreviateName = AbbreviateName
 
 local function PetHealthColor(pet)
     local unit = pet.unit
@@ -252,7 +284,7 @@ end
 
 local function UpdatePartyPet(pet)
     if not pet then return end
-    if ns.db and ns.db.partyPets == false then
+    if ns.db and ns.PartyOption("partyPets") == false then
         pet.stub = nil
         ns.OutOfCombat(function()
             if UnregisterUnitWatch then UnregisterUnitWatch(pet) end
@@ -354,6 +386,7 @@ local unitEvents = {
     PLAYER_ROLES_ASSIGNED = UpdateRole,
     ROLE_CHANGED_INFORM = UpdateRole,
 }
+ns.unitEvents = unitEvents
 
 local function Bar(parent, side)
     local bar = CreateFrame("StatusBar", nil, parent)
@@ -361,6 +394,9 @@ local function Bar(parent, side)
     bar:SetReverseFill(side == 1)
     return bar
 end
+
+-- the party's health value from its window's inner end, short of the cut
+local PARTY_VALUE_INSET = 24
 
 local function Spawn(unit)
     local window, side = unpack(ns.slots[unit])
@@ -412,6 +448,7 @@ local function Spawn(unit)
     local text = CreateFrame("Frame", nil, b)
     text:SetAllPoints(b.health)
     text:SetFrameLevel(ns.levels.text)
+    b.text = text
     local outer = side == 1 and "RIGHT" or "LEFT"
     local inner = side == 1 and "LEFT" or "RIGHT"
     b.name = ns.Text(text, style.nameSize)
@@ -434,6 +471,14 @@ local function Spawn(unit)
     else
         b.name:SetPoint(inner, text, inner, side * style.textInset, 0)
         b.name:SetJustifyH(outer)
+
+        -- The health value, faded until the editor shows it (editor.lua):
+        -- the party's windows are short, and the name fills them
+        b.value = ns.Text(text, style.nameSize - 2)
+        b.value:SetTextColor(unpack(C.dim))
+        b.value:SetPoint(inner, text, inner, side * PARTY_VALUE_INSET, 0)
+        b.value:SetWordWrap(false)
+        b.value:SetAlpha(0)
 
         -- Resurrect icon above the name
         local rez = text:CreateTexture(nil, "OVERLAY")
@@ -509,10 +554,12 @@ local petEvents = {
 }
 
 -- A pet's frame has two shapes. With no box it hangs under its owner in a
--- stone bracket (the medallion's party wings, the vertical stack). With a box
+-- stone bracket (the medallion's party wings). With a box
 -- (the horizontal row, party_row.lua) it fills that box: no bracket, the bar
--- edge to edge, its name over its value. Out of combat only: it is secure.
-function ns.LayoutPet(pet, box)
+-- edge to edge, its name over its value. The box is from the console's top
+-- centre, or from rel's relPoint (the party widget, widgets/party.lua). Out
+-- of combat only: it is secure.
+function ns.LayoutPet(pet, box, rel, relPoint)
     local side = pet.side
     local outer = side == 1 and "RIGHT" or "LEFT"
     local inner = side == 1 and "LEFT" or "RIGHT"
@@ -521,8 +568,8 @@ function ns.LayoutPet(pet, box)
     pet.name:ClearAllPoints()
     pet.value:ClearAllPoints()
     if box then
-        pet:SetPoint("TOPLEFT", console, "TOP", box[1], box[3])
-        pet:SetPoint("BOTTOMRIGHT", console, "TOP", box[2], box[4])
+        pet:SetPoint("TOPLEFT", rel or console, relPoint or "TOP", box[1], box[3])
+        pet:SetPoint("BOTTOMRIGHT", rel or console, relPoint or "TOP", box[2], box[4])
         pet.health:SetAllPoints(pet)
         pet.bracket:Hide()
         pet.name:SetPoint("TOPLEFT", pet.text, "TOPLEFT", 2, -3)
@@ -644,6 +691,47 @@ for i = 1, 4 do
     ns.partyPets[petUnit] = pet
 end
 
+-- A party button back in its console window, as Spawn made it: after the
+-- party widget had it (widgets/party.lua).
+local function ConsoleParty(b)
+    local window, side = unpack(ns.slots[b.unit])
+    local style = L.party
+    ns.PlaceOn(b, console, window, side)
+    local h = b:GetHeight()
+    b.power:ClearAllPoints()
+    b.health:ClearAllPoints()
+    b.power:SetHeight(style.power)
+    b.power:SetPoint("LEFT")
+    b.power:SetPoint("RIGHT")
+    b.power:SetPoint("BOTTOM")
+    b.health:SetHeight(h - style.power - style.seam)
+    b.health:SetPoint("LEFT")
+    b.health:SetPoint("RIGHT")
+    b.health:SetPoint("TOP")
+    b.health:SetReverseFill(side == 1)
+    b.power:SetReverseFill(side == 1)
+    local outer = side == 1 and "RIGHT" or "LEFT"
+    local inner = side == 1 and "LEFT" or "RIGHT"
+    b.name:ClearAllPoints()
+    b.name:SetPoint(outer, b.text, outer, -side * style.textInset, 0)
+    b.name:SetPoint(inner, b.text, inner, side * style.textInset, 0)
+    b.name:SetJustifyH(outer)
+    b.roleFrame:ClearAllPoints()
+    if side == -1 then
+        b.roleFrame:SetPoint("CENTER", b, "BOTTOMLEFT", 8, 0)
+    else
+        b.roleFrame:SetPoint("CENTER", b, "BOTTOMRIGHT", -8, 0)
+    end
+    b.value:ClearAllPoints()
+    b.value:SetPoint(inner, b.text, inner, side * PARTY_VALUE_INSET, 0)
+    if b.pet then b.pet.health:SetReverseFill(side == 1) end
+    -- what the editor changed goes back on (editor.lua)
+    if ns.editor then
+        ns.editor.Relaid(b, "name", "role", "value")
+        ns.ApplyEdits(b)
+    end
+end
+
 function ns.RelayoutUnits()
     L = ns.layout
     local uStyle, pStyle = L.unit, L.party
@@ -665,20 +753,25 @@ function ns.RelayoutUnits()
         b.health:SetPoint(healthEdge)
         b.power:SetPoint(powerEdge)
     end
-    if pStyle.detached then
-        -- the vertical stack, or the horizontal row (party_row.lua), which
-        -- places the buttons itself
-        local row = ns.PartyRowLayout and ns.PartyRowLayout()
-        local h = row and (pStyle.row.frames[1][3] - pStyle.row.frames[1][4]) or (pStyle.height - 4)
+    -- the party widget places the party buttons itself (widgets/party.lua);
+    -- out of it, they come back to the console
+    local widget = ns.PartyWidgetLayout and ns.PartyWidgetLayout()
+    if widget then
+        -- the row lets go first: its pet drivers move the buttons (party_row.lua)
+        if ns.LayoutPartyRow then ns.LayoutPartyRow() end
+        ns.LayoutPartyWidget()
+    elseif ns.ReleasePartyWidget and ns.ReleasePartyWidget() and not pStyle.detached then
         for i = 1, 4 do
             local b = ns.units["party" .. i]
-            if not row then
-                local step = pStyle.height + pStyle.gap + 18
-                local py = pStyle.y - (i - 1) * step
-                b:ClearAllPoints()
-                b:SetPoint("TOPLEFT", UIParent, "TOPLEFT", pStyle.x + 2, py - 2)
-                b:SetSize(pStyle.width - 4, pStyle.height - 4)
-            end
+            ConsoleParty(b)
+            ns.LayoutPet(b.pet)
+        end
+    end
+    if pStyle.detached and not widget then
+        -- the horizontal row (party_row.lua), which places the buttons itself
+        local h = pStyle.row.frames[1][3] - pStyle.row.frames[1][4]
+        for i = 1, 4 do
+            local b = ns.units["party" .. i]
             b.power:ClearAllPoints()
             b.health:ClearAllPoints()
             b.power:SetHeight(pStyle.power)
@@ -696,18 +789,7 @@ function ns.RelayoutUnits()
                 bg:SetAllPoints()
                 bg:SetColorTexture(unpack(C.ink))
                 b.detachedBg = bg
-                local bf = CreateFrame("Frame", nil, b)
-                bf:SetPoint("TOPLEFT", b, "TOPLEFT", -2, 2)
-                bf:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 2, -2)
-                bf:SetFrameLevel(ns.levels.art)
-                local bt = bf:CreateTexture(nil, "ARTWORK")
-                bt:SetAllPoints()
-                bt:SetTexture(ns.media .. "party-light")
-                bt:SetTexCoord(0, pStyle.width / pStyle.texWidth, 0, pStyle.height / pStyle.texHeight)
-                b.detachedBezel = bt
             end
-            -- the row's band is the frame there
-            b.detachedBezel:SetShown(not row)
             if b.roleFrame then
                 b.roleFrame:ClearAllPoints()
                 b.roleFrame:SetPoint("CENTER", b, "LEFT", 10, 2)
@@ -716,8 +798,14 @@ function ns.RelayoutUnits()
             b.name:SetPoint("LEFT", b.health, "LEFT", 22, 0)
             b.name:SetPoint("RIGHT", b.health, "RIGHT", -6, 0)
             b.name:SetJustifyH("LEFT")
+            b.value:ClearAllPoints()
+            b.value:SetPoint("RIGHT", b.health, "RIGHT", -6, 0)
             if b.pet then
                 b.pet.health:SetReverseFill(false)
+            end
+            if ns.editor then
+                ns.editor.Relaid(b, "name", "role", "value")
+                ns.ApplyEdits(b)
             end
         end
         if ns.LayoutPartyRow then ns.LayoutPartyRow() end
@@ -754,8 +842,10 @@ local function IsUnitInRange(unit, dist)
     return true
 end
 
+ns.UnitInRange = IsUnitInRange
+
 local function UpdatePartyRange()
-    local dist = ns.db and ns.db.partyRange
+    local dist = ns.db and ns.PartyOption("partyRange")
     for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
         local pb = ns.units[u]
         if pb and pb:IsShown() then
@@ -809,6 +899,14 @@ end)
 ns.OnSetting("simParty", UpdatePartyFrames)
 ns.OnSetting("partyPets", UpdatePartyFrames)
 ns.OnSetting("partyRange", UpdatePartyRange)
+-- the Party widget's own (settings.lua: ns.PartyOption), and the layout
+-- choosing between them
+ns.OnSetting("partyWidgetPets", UpdatePartyFrames)
+ns.OnSetting("partyWidgetRange", UpdatePartyRange)
+ns.OnSetting("partyLayout", function()
+    UpdatePartyFrames()
+    UpdatePartyRange()
+end)
 
 -- Ready check & role check: hides buffs/debuffs and shows status in the middle
 local function SetCheckStatus(b, status)

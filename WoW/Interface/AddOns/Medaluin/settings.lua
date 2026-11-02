@@ -1,5 +1,6 @@
--- The addon's settings: saved per account in MedaluinDB, shown as a page in
--- the game's Options > AddOns, opened by /medaluin. Every option starts from
+-- The addon's settings: saved per account in MedaluinDB, shown in
+-- Medaluin's own window (options/), opened by /medaluin; the game's
+-- Options > AddOns > Medaluin is a page about it with a way in. Every option starts from
 -- the chosen console profile, and only the player's own choices are saved,
 -- on top of it: the console's per profile, the rest shared (see PROFILES below).
 --
@@ -39,14 +40,22 @@ local DEFAULTS = {
     bagsColumns = 10,       -- slots across the window (not on the page: the window's corner sets it, 8 to 24)
     bagsItemLevel = true,   -- item levels on weapons and armour
     bagsPoint = false,      -- where the window was dragged to: { point, relativePoint, x, y } (not on the page)
+    optionsPoint = false,   -- where the settings window was dragged to, the same way (options/window.lua)
+    editorPoint = false,    -- and the unit-frame editor's (options/editor.lua)
+    editCanvasPoint = false, -- and its edit-mode canvas (options/canvas.lua)
     xpCast = false,         -- the player's casts over the experience bar
     repCast = false,        -- the target's casts over the reputation bar
     simParty = false,       -- simulate party frames and show the group art layer
     partyPets = true,       -- show pet frames directly below party members with pets
-    partyLayout = "vertical", -- light profile: "vertical" stack on the left, or a "horizontal" row under the console
+    partyLayout = "console", -- "console": on the console, the medallion's wings or the light profile's row
+                             -- under it (console/party_row.lua); "widget": a box dragged anywhere
+                             -- (widgets/party.lua)
     partyRange = 40,        -- distance in yards to fade out-of-range party frames (0 = off)
     overhead = true,        -- top-of-screen cascading trapezoid structure
-    topBoss = true,         -- boss frames on the top tier
+    bossFrames = "overhead", -- boss frames on the overhead's top tier, in the "vertical" Boss widget, or "both"
+    -- where each group widget was dragged to: { point, relativePoint, x, y } (widgets/; not on the
+    -- page), shared by every profile
+    partyWidgetPoint = false, raidWidgetPoint = false, bossWidgetPoint = false, arenaWidgetPoint = false,
     topPet = true,          -- player pet unit frame on the middle tier
     topFocus = true,        -- focus unit frame on the middle tier
     topToT = true,          -- target of target frame on the middle tier
@@ -56,6 +65,22 @@ local DEFAULTS = {
     auraCC = true,          -- large center icon for crowd control
     auraBuffs = true,       -- row of player-cast buffs on outer health corner
     auraBoss = true,        -- boss debuffs on inner health corner
+    bossMine = true,        -- your debuffs on the overhead's bosses
+    -- The widgets' (Unit Frames' Widget groups and the Raid, Battleground and
+    -- Arena tabs; console/auras.lua), shared by every profile: the Party
+    -- widget's own range, pets and auras (ns.PartyOption), the raid's out of
+    -- battlegrounds and in one, the Boss widget's and the arena's
+    partyWidgetRange = 40, partyWidgetPets = true, partyWidgetGlow = true, partyWidgetCC = true,
+    partyWidgetBuffs = true, partyWidgetBoss = true,
+    raidRange = 40, raidGlow = true, raidCC = true, raidBoss = true,
+    bgRange = 40, bgGlow = true, bgCC = true,
+    bossWidgetMine = true,
+    arenaCC = true, arenaMine = true,
+    -- what the unit-frame editor (editor.lua) changed on each frame, piece
+    -- by piece: false until something is; the console's per profile, the
+    -- widgets' shared
+    editUnit = false, editParty = false,
+    editPartyWidget = false, editRaid = false, editBoss = false, editArena = false,
     blizzardAuras = false,  -- Blizzard's own buff and debuff rows, top right (blizzard.lua)
     consoleProfile = "default", -- "default": medallion console; "light": central console with square minimap & bar 7
     -- which page each bar shows (bars/paging.lua): "default", "stances", "page1".."page10" or
@@ -93,30 +118,45 @@ local PROFILES = {
 ns.PROFILE_NAMES = {
     { "default", "Medallion (default)", "The classic round medallion console with integrated party wings." },
     { "light", "Central Console (light)", "Flush-top player/target wings, dynamic square minimap / 2x5 Bar 7 bay, "
-        .. "split Action Bars 2 & 3, and party frames in a vertical stack or a row under the console." },
+        .. "split Action Bars 2 & 3, and party frames in a row under the console." },
 }
 
 -- The options are layered: DEFAULTS, then the chosen profile, then the
 -- player's own choices on top. Only a choice that differs from the profile
 -- is saved.
 --
--- What shapes the console (the Action Bar, Unit Frames, Overhead and Cast
--- Bars pages, and Paging) is remembered per profile, in
--- MedaluinDB.profiles[name]: each profile keeps its own choices, so a switch
--- brings back the ones made on the profile switched to. Everything else (the
--- chat, the side panel, the bags, where windows were left, the party preview)
--- has nothing to do with the console and is one set, MedaluinDB.global.
+-- What shapes the console (the Action Bar, Unit Layout, Overhead and Cast
+-- Bars pages, Paging, under Unit Frames the console's party and the
+-- overhead's bosses, and the editor's player, target and console party) is
+-- remembered per profile, in MedaluinDB.profiles[name]:
+-- each profile keeps its own choices, so a switch brings back the ones made
+-- on the profile switched to. Everything else (the group widgets, the chat,
+-- the side panel, the bags, where windows were left, the party preview) has
+-- nothing to do with the console and is one set, MedaluinDB.global.
 -- Reset profile clears the current profile's choices and nothing else.
 local PER_PROFILE = {}
 for _, key in ipairs({
     "actionBar", "rows", "bareIcons", "artColor", "visibility", "extraVisibility", "drawer",
     "bar1Paging", "bar1PagingCustom", "row2Paging", "row2PagingCustom", "row3Paging", "row3PagingCustom",
     "gridPaging", "gridPagingCustom",
-    "partyPets", "partyLayout", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss",
-    "overhead", "topBoss", "topPet", "topFocus", "topToT", "topPetBar", "topStances",
+    "partyPets", "partyLayout", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss", "bossMine",
+    "editUnit", "editParty",
+    "overhead", "bossFrames", "topPet", "topFocus", "topToT", "topPetBar", "topStances",
     "xpCast", "repCast",
 }) do PER_PROFILE[key] = true end
 ns.PER_PROFILE = PER_PROFILE
+
+-- The party's options: the console's (per profile, shaped and placed by
+-- it), or, while the Party layout is the widget, the widget's own (shared).
+-- The player's and target's frames keep the console's.
+local PARTY_WIDGET = {
+    partyRange = "partyWidgetRange", partyPets = "partyWidgetPets", auraGlow = "partyWidgetGlow",
+    auraCC = "partyWidgetCC", auraBuffs = "partyWidgetBuffs", auraBoss = "partyWidgetBoss",
+}
+function ns.PartyKey(key)
+    return ns.db.partyLayout == "widget" and PARTY_WIDGET[key] or key
+end
+function ns.PartyOption(key) return ns.db[ns.PartyKey(key)] end
 
 local function Profile()
     return MedaluinDB and PROFILES[MedaluinDB.consoleProfile] and MedaluinDB.consoleProfile or "default"
@@ -158,32 +198,37 @@ local layered = setmetatable({}, {
 })
 
 -- ns.OnSetting(key, fn): fn(value) whenever the player changes that option.
-local watchers = {}
+-- ns.OnAnySetting(fn): fn(key, value) after any option changes (the
+-- settings window, to show it).
+local watchers, anyWatchers = {}, {}
 function ns.OnSetting(key, fn)
     watchers[key] = watchers[key] or {}
     table.insert(watchers[key], fn)
 end
+function ns.OnAnySetting(fn)
+    table.insert(anyWatchers, fn)
+end
 local function Changed(key, value)
     ns.db[key] = value
     for _, fn in ipairs(watchers[key] or {}) do fn(value) end
+    for _, fn in ipairs(anyWatchers) do fn(key, value) end
 end
 
--- ns.SetOption(key, value): an option changed from Medaluin's own controls
--- (the side panel's column buttons), through the page's setting when there
--- is one, so the page shows the new value.
-local registered = {}
+-- What an option is when the player has not chosen one (the window's tips).
+ns.OptionBase = Base
+
+local SwitchProfile
+
+-- ns.SetOption(key, value): an option changed, by the settings window or by
+-- Medaluin's own controls (the side panel's column buttons). Choosing the
+-- profile switches to it.
 function ns.SetOption(key, value)
-    local s = registered[key]
-    if s then
-        s:SetValue(value)
-    else
-        Changed(key, value)
-    end
+    if key == "consoleProfile" then SwitchProfile(value) end
+    Changed(key, value)
 end
 
--- Run change(), which moves layers under the options, then tell the page and
--- the modules about every option whose value it moved. A page setting is told
--- through NotifyUpdate, which redraws its control and calls back into Changed.
+-- Run change(), which moves layers under the options, then tell the modules
+-- (and the window) about every option whose value it moved.
 local function Relayer(change)
     local before = {}
     for key in pairs(DEFAULTS) do before[key] = ns.db[key] end
@@ -191,15 +236,13 @@ local function Relayer(change)
     for key in pairs(DEFAULTS) do
         local now = ns.db[key]
         -- the profile's own setting reports itself, as any setting does
-        if now ~= before[key] and key ~= "consoleProfile" then
-            if registered[key] then registered[key]:NotifyUpdate() else Changed(key, now) end
-        end
+        if now ~= before[key] and key ~= "consoleProfile" then Changed(key, now) end
     end
 end
 
 -- Switching profile brings back that profile's own choices; the global
 -- options stay as they are.
-local function SwitchProfile(profile)
+function SwitchProfile(profile)
     if not PROFILES[profile] or profile == Profile() then return end
     -- and its own skills on the bars (bars/skills.lua), and keys on them
     -- (keybind.lua)
@@ -223,12 +266,48 @@ local function Migrate()
     db.global = db.global or {}
     db.profiles = db.profiles or {}
     for name in pairs(PROFILES) do db.profiles[name] = db.profiles[name] or {} end
+    -- the overhead's Boss frames checkbox became Boss frames: Overhead,
+    -- Vertical or Both; turned off, the bosses were not on the overhead
+    local stores = { db }
+    for name in pairs(PROFILES) do table.insert(stores, db.profiles[name]) end
+    -- the party layout was Vertical (the medallion's wings, the light
+    -- profile's stack on the left), Horizontal (the light profile's row) or
+    -- Widget; the stack is gone, and both others are now the console's own
+    for _, store in ipairs(stores) do
+        if store.partyLayout == "vertical" or store.partyLayout == "horizontal" then store.partyLayout = nil end
+    end
+    for _, store in ipairs(stores) do
+        if store.topBoss == false and store.bossFrames == nil then store.bossFrames = "vertical" end
+        store.topBoss = nil
+    end
     for key in pairs(DEFAULTS) do
         local v = db[key]
         if key ~= "consoleProfile" and v ~= nil then
             if v ~= Base(key) then Store(key)[key] = v end
             db[key] = nil
         end
+    end
+    -- The widgets became shared by every profile, the console's party staying
+    -- per profile. A widget's place, kept per profile until then, comes from
+    -- the profile in use; the widgets' own options start from what the party
+    -- (and Your debuffs, the boss's) had there, which was theirs until then.
+    -- Once: an option set back to its default is not saved, and must not be
+    -- copied again.
+    if not db.widgetsShared then
+        local here = db.profiles[Profile()]
+        for _, key in ipairs({ "partyWidgetPoint", "raidWidgetPoint", "bossWidgetPoint", "arenaWidgetPoint" }) do
+            if db.global[key] == nil then db.global[key] = here[key] end
+            for name in pairs(PROFILES) do db.profiles[name][key] = nil end
+        end
+        local from = {
+            partyWidgetRange = "partyRange", partyWidgetPets = "partyPets", partyWidgetGlow = "auraGlow",
+            partyWidgetCC = "auraCC", partyWidgetBuffs = "auraBuffs", partyWidgetBoss = "auraBoss",
+            raidRange = "partyRange", bgRange = "partyRange", bossWidgetMine = "bossMine",
+        }
+        for key, src in pairs(from) do
+            if db.global[key] == nil then db.global[key] = here[src] end
+        end
+        db.widgetsShared = true
     end
 end
 
@@ -237,331 +316,6 @@ function ns.HexColor(hex)
     local r, g, b = tostring(hex):match("^%x%x(%x%x)(%x%x)(%x%x)$")
     if not r then return 1, 1, 1 end
     return tonumber(r, 16) / 255, tonumber(g, 16) / 255, tonumber(b, 16) / 255
-end
-
-local RELOAD = " Takes effect after a reload."
-
-local function Page()
-    if not (Settings and Settings.RegisterVerticalLayoutCategory) then return end
-    local category = Settings.RegisterVerticalLayoutCategory("Medaluin")
-
-    local function Subcategory(parent, name)
-        if Settings.RegisterVerticalLayoutSubcategory then
-            local sub = Settings.RegisterVerticalLayoutSubcategory(parent, name)
-            Settings.RegisterAddOnCategory(sub)
-            return sub
-        end
-        return parent
-    end
-
-    -- The tree on the left is the way round: the console's pages sit under
-    -- Console, which holds the profile they are remembered by; the pages
-    -- every profile shares sit beside it.
-    local subConsole = Subcategory(category, "Console")
-    local subBar = Subcategory(subConsole, "Action Bar")
-    local subPaging = Subcategory(subConsole, "Paging")
-    local subUnit = Subcategory(subConsole, "Unit Frames")
-    local subOverhead = Subcategory(subConsole, "Overhead")
-    local subCast = Subcategory(subConsole, "Cast Bars")
-    local subChat = Subcategory(category, "Chat")
-    local subSide = Subcategory(category, "Side panel")
-    local subBags = Subcategory(category, "Bags")
-
-    -- A proxy, not an add-on setting: an add-on setting reads and writes one
-    -- flat table and fills it with its default, which would make every option
-    -- a choice.
-    --
-    -- Its default is a value, the profile's at login, never a function:
-    -- ProxySettingMixin:Init calls a function default to check its type
-    -- before it writes the setting's variable, so the setting was built in
-    -- Medaluin's code. Settings.GetSetting compares every setting's variable,
-    -- and a click asks it for lockActionBars (ActionButton OnClick) just
-    -- before the secure click, so every click on an action button was blocked
-    -- (UseAction; keys, which skip OnClick, worked). /mdlui taint, 2026-11-01.
-    -- The page's Defaults button so means the login profile's defaults until
-    -- a reload; Reset profile is always the profile's own.
-    local function Setting(cat, key, kind, name)
-        local get, set = function() return ns.db[key] end, function(value) ns.db[key] = value end
-        if key == "consoleProfile" then set = SwitchProfile end
-        local s = Settings.RegisterProxySetting(cat, "Medaluin_" .. key, kind, name, Base(key), get, set)
-        s:SetValueChangedCallback(function(_, value) Changed(key, value) end)
-        registered[key] = s
-        return s
-    end
-    local function Choices(list)
-        return function()
-            local c = Settings.CreateControlTextContainer()
-            for _, choice in ipairs(list) do c:Add(choice[1], choice[2], choice[3]) end
-            return c:GetData()
-        end
-    end
-    local V, B, N, S = ns.VISIBILITY, Settings.VarType.Boolean, Settings.VarType.Number, Settings.VarType.String
-
-    -- Rows that are not settings (headings, buttons) go straight into a
-    -- page's layout, in order with the settings around them.
-    local function Add(cat, initializer)
-        local layout = SettingsPanel and SettingsPanel.GetLayout and SettingsPanel:GetLayout(cat)
-        if layout and layout.AddInitializer then layout:AddInitializer(initializer) end
-    end
-    local function Header(cat, name, tooltip)
-        if CreateSettingsListSectionHeaderInitializer then
-            Add(cat, CreateSettingsListSectionHeaderInitializer(name, tooltip))
-        end
-    end
-    local function Button(cat, text, click, tooltip)
-        if CreateSettingsButtonInitializer then
-            Add(cat, CreateSettingsButtonInitializer("", text, click, tooltip, true))
-        end
-    end
-    local function Reload(cat)
-        Button(cat, "Reload UI", ReloadUI, "Reload the interface so a changed option takes effect.")
-    end
-    -- Each list's controls hang off a page's master checkbox. A heading is
-    -- not one of them: it would be indented like a setting.
-    local function Under(parent, predicate, ...)
-        for _, list in ipairs({ ... }) do
-            for _, child in ipairs(list) do child:SetParentInitializer(parent, predicate) end
-        end
-    end
-
-    -- Root page: what belongs to no console.
-    Header(category, "Preview", "Tools for seeing Medaluin's frames without a group. Shared by every profile.")
-    Settings.CreateCheckbox(category, Setting(category, "simParty", B, "Simulate party frames"),
-        "Show the console's party frame layer and simulated party members to preview party frames while solo. "
-            .. "A small panel on the left changes the situation: bosses, deaths, range, ready and role checks.")
-    Header(category, "Key bindings", "Shared by every profile: they are the game's own bindings.")
-    Button(category, "Bind keys", function()
-        if SettingsPanel and SettingsPanel:IsShown() and HideUIPanel then HideUIPanel(SettingsPanel) end
-        ns.KeybindMode(true)
-    end, "Closes this window. Point at an action button and press a key to bind it; Esc over a button "
-        .. "removes its keys. Also /mdlui kb.")
-    Reload(category)
-
-    -- Console page: the profile the pages under it are remembered by.
-    Header(subConsole, "Profile", "Each profile remembers its own Action Bar, Unit Frames, Overhead and Cast Bars "
-        .. "options. Chat, Side panel and Bags are shared by every profile.")
-    Settings.CreateDropdown(subConsole, Setting(subConsole, "consoleProfile", S, "Console profile"),
-        Choices(ns.PROFILE_NAMES), "The console the pages under Console start from. Switching brings back "
-        .. "the options you chose on that profile." .. RELOAD)
-    Button(subConsole, "Reset profile", function() StaticPopup_Show("MEDALUIN_RESET_PROFILE") end,
-        "This profile's Action Bar, Unit Frames, Overhead and Cast Bars options back to its own. "
-        .. "Chat, Side panel and Bags are left as they are.")
-    Reload(subConsole)
-
-    -- Action Bar subcategory
-    local bar = Settings.CreateCheckbox(subBar, Setting(subBar, "actionBar", B, "Action bar"),
-        "Medaluin's bar on top of the console, holding action bar 1. Untick it to keep Blizzard's bars or "
-        .. "use another action-bar addon." .. RELOAD)
-    local function BarOn() return ns.db.actionBar end
-    Header(subBar, "Look")
-    local look = {
-        Settings.CreateDropdown(subBar, Setting(subBar, "rows", N, "Rows"), Choices({
-            { 1, "1 row", "Action bar 1." },
-            { 2, "2 rows", "Action bar 2 stacked above action bar 1." },
-            { 3, "3 rows", "Action bars 2 and 3 stacked above action bar 1." },
-        }), "Stack Blizzard's bottom bars (action bars 2 and 3) above Medaluin's bar frame instead of "
-            .. "leaving them where Edit Mode puts them." .. RELOAD),
-        Settings.CreateCheckbox(subBar, Setting(subBar, "bareIcons", B, "Bare icons"),
-            "Square icons with a thin black edge, the cooldown time on the icon and range as a red tint, "
-            .. "instead of Blizzard's button art." .. RELOAD),
-        Settings.CreateColorSwatch(subBar, Setting(subBar, "artColor", S, "Art colour"),
-            "Tints the bar's stone frame. White leaves it as drawn."),
-    }
-    Header(subBar, "Fading", "A faded bar still works: its buttons and key bindings stay live.")
-    local fading = {
-        Settings.CreateDropdown(subBar, Setting(subBar, "visibility", N, "Bar 1 visibility"), Choices({
-            { V.ALWAYS, "Always" },
-            { V.COMBAT, "In combat", "Faded out of combat; it comes back while you drag a spell onto it." },
-            { V.MOUSEOVER, "On mouseover", "Faded until the pointer is over it, or a spell is being dragged." },
-            { V.COMBAT_OR_MOUSEOVER, "In combat or on mouseover" },
-        }), "A faded bar still works: its buttons and key bindings stay live."),
-        Settings.CreateDropdown(subBar, Setting(subBar, "extraVisibility", N, "Extra bar(s) visibility"), Choices({
-            { V.ALWAYS, "Always" },
-            { V.COMBAT, "In combat", "Faded out of combat; they come back while you drag a spell onto them." },
-            { V.MOUSEOVER, "On mouseover", "Faded until the pointer is over them, or a spell is being dragged." },
-            { V.COMBAT_OR_MOUSEOVER, "In combat or on mouseover" },
-        }), "Manages the visibility of action bars 2 and 3. Faded bars still work: their buttons and key "
-            .. "bindings stay live."),
-    }
-    Header(subBar, "Minimap buttons")
-    local drawer = {
-        Settings.CreateDropdown(subBar, Setting(subBar, "drawer", N, "Drawer opens"), Choices({
-            { ns.DRAWER.LEFT, "Open left", "One row, out to the left of the bar." },
-            { ns.DRAWER.UP, "Open up", "One column, up from the bar's left end." },
-        }), "The addons' minimap buttons gather in a drawer behind the box on the bar's left end. "
-            .. "This is the way it opens."),
-    }
-    Under(bar, BarOn, look, fading, drawer)
-
-    -- Paging subcategory: a preset per bar, or Custom with a conditional
-    -- edited in a popup (the page has no text box)
-    for _, pb in ipairs(ns.PAGING_BARS or {}) do
-        Header(subPaging, pb.name, pb.grid and "The light profile's 2x5 grid in the centre bay."
-            or pb.base and ("Shown with Rows at " .. pb.name:match("%d") .. " or more.")
-            or "Action bar 1, in the bar's frame.")
-        Settings.CreateDropdown(subPaging, Setting(subPaging, pb.key, S, "Pages"), Choices(ns.PagingChoices(pb)),
-            "Which action page the bar shows. A page is 12 slots: page n holds slots (n-1)x12+1 to nx12.")
-        Button(subPaging, "Edit conditional", function() ns.EditPaging(pb) end,
-            "A macro conditional naming the page, e.g. [mod:shift] 2; [stealth] 7; 1. \"possess\" is the "
-            .. "bar the game puts up for a vehicle, an override or a possessed unit. Saving it picks Custom.")
-    end
-
-    -- Unit Frames subcategory
-    Header(subUnit, "Party")
-    Settings.CreateDropdown(subUnit, Setting(subUnit, "partyLayout", S, "Party layout"), Choices({
-        { "vertical", "Vertical", "A stack of party frames on the left of the screen." },
-        { "horizontal", "Horizontal", "A row of four frames under the console. A pet takes part of its "
-            .. "owner's frame. While you are in a group the minimap stays in the top right corner and the "
-            .. "centre grid stays out." },
-    }), "Where the party frames sit. Central Console (light) profile only: the medallion console has its own "
-        .. "party wings.")
-    Settings.CreateCheckbox(subUnit, Setting(subUnit, "partyPets", B, "Show party pets"),
-        "Show pet unit frames directly below party members who have active pets.")
-    Settings.CreateDropdown(subUnit, Setting(subUnit, "partyRange", N, "Fade out of range"), Choices({
-        { 40, "40 yards", "Standard spell and healing range." },
-        { 30, "30 yards", "Mid-range distance." },
-        { 20, "20 yards", "Short distance." },
-        { 10, "10 yards", "Melee and interaction distance." },
-        { 0, "Disabled", "Never fade party frames based on distance." },
-    }), "Fade party unit frames when members move beyond the chosen distance.")
-    Header(subUnit, "Auras")
-    Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraGlow", B, "Dispel glow on frame borders"),
-        "Glow the frame's stone border in the debuff's color (purple for Curse, green for Poison, etc.) "
-        .. "when an ally has a debuff you can dispel.")
-    Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraCC", B, "Crowd control center icon"),
-        "Display a large icon in the middle of the frame with a radial timer sweep when a unit is affected by CC.")
-    Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraBuffs", B, "Player buffs on health"),
-        "Show a compact row of your own buffs and HoTs on the outer corner of the health bar.")
-    Settings.CreateCheckbox(subUnit, Setting(subUnit, "auraBoss", B, "Boss debuffs"),
-        "Show critical boss debuffs on the inner corner of the health bar, away from the power bar.")
-    Settings.CreateCheckbox(subUnit, Setting(subUnit, "blizzardAuras", B, "Blizzard's buff and debuff rows"),
-        "Show Blizzard's own rows of buffs and debuffs at the top right of the screen. Off, Medaluin's "
-        .. "auras stand in for them: the column over the portrait and the side panel's Auras tab.")
-
-    -- Overhead subcategory
-    local ovh = Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "overhead", B, "Overhead console"),
-        "Top-of-screen cascading trapezoid structure for boss frames, pet, focus, target of target, and action bars."
-        .. RELOAD)
-    local function OverheadOn() return ns.db.overhead end
-    Header(subOverhead, "Frames")
-    local overheadFrames = {
-        Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topBoss", B, "Boss frames"),
-            "Encounter boss frames on the top tier, dynamically dividing into 1, 2, or 3 columns."),
-        Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topPet", B, "Player pet frame"),
-            "Player pet unit frame on the middle tier."),
-        Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topFocus", B, "Focus frame"),
-            "Focus target unit frame on the middle tier."),
-        Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topToT", B, "Target of target frame"),
-            "Target's target unit frame on the middle tier."),
-    }
-    Header(subOverhead, "Bars")
-    local overheadBars = {
-        Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topPetBar", B, "Pet action bar"),
-            "Pet command and ability buttons on the bottom tier." .. RELOAD),
-        Settings.CreateCheckbox(subOverhead, Setting(subOverhead, "topStances", B, "Stance bar"),
-            "Shapeshift forms, stealth, stances, and auras on the bottom tier." .. RELOAD),
-    }
-    Under(ovh, OverheadOn, overheadFrames, overheadBars)
-
-    -- Cast Bars subcategory
-    Settings.CreateCheckbox(subCast, Setting(subCast, "xpCast", B, "Player casts on the experience bar"),
-        "The experience bar under your portrait becomes your cast bar while you cast, and goes back to "
-        .. "experience when you stop.")
-    Settings.CreateCheckbox(subCast, Setting(subCast, "repCast", B, "Target casts on the reputation bar"),
-        "The reputation bar under your target becomes its cast bar while it casts, and goes back to "
-        .. "reputation when it stops or you change target.")
-
-    -- Chat subcategory
-    Settings.CreateCheckbox(subChat, Setting(subChat, "chat", B, "Chat panel"),
-        "Blizzard's chat in a panel on top of the micro menu, with the chat buttons in a column at its "
-        .. "left. Untick it to keep the chat where Edit Mode puts it, or to use a chat addon." .. RELOAD)
-
-    -- Side panel subcategory
-    local side = Settings.CreateCheckbox(subSide, Setting(subSide, "side", B, "Side panel"),
-        "The chat panel's mirror on the right strip, over the stats, with an Auras tab, a Meter tab and a Loot tab. "
-        .. "Untick it to keep the right corner clear, or to use a meter addon." .. RELOAD)
-    local function SideOn() return ns.db.side end
-    local metrics = {}
-    for _, m in ipairs(ns.METER_METRICS) do table.insert(metrics, { m[1], m[2] }) end
-    local qualities = {}
-    for _, q in ipairs(ns.LOOT_QUALITIES) do table.insert(qualities, { q[1], q[2] }) end
-    local M = ns.METER_SESSION
-    Header(subSide, "Auras")
-    local sideAuras = {
-        Settings.CreateCheckbox(subSide, Setting(subSide, "sideAuras", B, "Auras tab"),
-            "Your buffs and debuffs, each with the time it has left, the longest first."),
-        Settings.CreateDropdown(subSide, Setting(subSide, "aurasColumns", N, "Aura lists"), Choices({
-            { 2, "Two", "Buffs and debuffs side by side." },
-            { 1, "One", "Buffs and debuffs in one list. In combat the game keeps the times to itself, so "
-                .. "there the list shows the debuffs first, then the buffs." },
-        }), "The column button with the bars on it switches this too."),
-        Settings.CreateCheckbox(subSide, Setting(subSide, "aurasTimeless", B, "Auras that never run out"),
-            "List forms, aspects, mounts and the like too, at the top. They are over the portrait already. "
-            .. "The infinity button switches this too."),
-    }
-    Header(subSide, "Meter")
-    local sideMeter = {
-        Settings.CreateCheckbox(subSide, Setting(subSide, "sideMeter", B, "Meter tab"),
-            "Damage, healing and more for each member of your group, from the game's own combat meter."),
-        Settings.CreateDropdown(subSide, Setting(subSide, "meterColumns", N, "Meter lists"), Choices({
-            { 1, "One", "One list across the panel." },
-            { 2, "Two", "Two lists side by side, each showing its own thing: damage and healing, say." },
-        }), "The column button with the bars on it switches this too."),
-        Settings.CreateDropdown(subSide, Setting(subSide, "meterLeft", S, "First list shows"), Choices(metrics),
-            "Clicking a list's heading steps through these too; a right click steps back."),
-        Settings.CreateDropdown(subSide, Setting(subSide, "meterRight", S, "Second list shows"), Choices(metrics),
-            "Shown when the meter has two lists."),
-        Settings.CreateDropdown(subSide, Setting(subSide, "meterSession", N, "Fight"), Choices({
-            { M.CURRENT, "Current", "The fight you are in, or the last one." },
-            { M.OVERALL, "Overall", "Every fight since the meter was last reset." },
-        }), "The clock button switches this too."),
-        Settings.CreateCheckbox(subSide, Setting(subSide, "meterRate", B, "Per second"),
-            "Damage and healing as amounts per second instead of totals. The /s button switches this too."),
-    }
-    Header(subSide, "Loot")
-    local sideLoot = {
-        Settings.CreateCheckbox(subSide, Setting(subSide, "sideLoot", B, "Loot tab"),
-            "What your group looted, boss by boss, with who won each roll. Not the chat's loot lines: "
-            .. "the chat keeps those."),
-        Settings.CreateDropdown(subSide, Setting(subSide, "lootWho", N, "Whose loot"), Choices({
-            { ns.LOOT_WHO.GROUP, "The group's", "Everything the group looted, yours included." },
-            { ns.LOOT_WHO.MINE, "Mine", "Only what you looted or won." },
-        }), "The funnel button switches this too."),
-        Settings.CreateDropdown(subSide, Setting(subSide, "lootQuality", N, "Least quality"), Choices(qualities),
-            "Items below this quality are left out. The diamond button steps through these too."),
-        Settings.CreateCheckbox(subSide, Setting(subSide, "lootMoney", B, "Money and currencies"),
-            "Your share of looted money on each heading, and the currencies you loot as lines."),
-    }
-    Under(side, SideOn, sideAuras, sideMeter, sideLoot)
-
-    -- Bags subcategory
-    local bags = Settings.CreateCheckbox(subBags, Setting(subBags, "bags", B, "Bags window"),
-        "Your backpack, bags and reagent bag in one window, with a search, the game's sort and the items in "
-        .. "groups if you like. The bank stays the game's. Untick it to keep the game's bags, or to use a "
-        .. "bag addon." .. RELOAD)
-    local function BagsOn() return ns.db.bags end
-    local bagsChildren = {
-        Settings.CreateDropdown(subBags, Setting(subBags, "bagsView", S, "Show"), Choices({
-            { "grid", "Every slot", "Every slot, bag by bag, the reagent bag on rows of its own." },
-            { "groups", "Groups", "The items in groups: new, equipment, consumables, quest items, trade goods, "
-                .. "other and junk, with one slot for the free ones." },
-        }), "The window's Groups and Grid button switches this too."),
-        Settings.CreateCheckbox(subBags, Setting(subBags, "bagsItemLevel", B, "Item levels"),
-            "The item level in the corner of each weapon and piece of armour, in its quality's colour."),
-    }
-    Under(bags, BagsOn, bagsChildren)
-
-    Reload(subBar)
-    Reload(subOverhead)
-    Reload(subChat)
-    Reload(subSide)
-    Reload(subBags)
-
-    Settings.RegisterAddOnCategory(category)
-    ns.settingsCategory = category
-    ns.settingsSubcategories = { console = subConsole, bar = subBar, paging = subPaging, unit = subUnit,
-        overhead = subOverhead,
-        cast = subCast, chat = subChat, side = subSide, bags = subBags }
 end
 
 -- Only a key is added: assigning StaticPopupDialogs itself would taint it.
@@ -626,7 +380,6 @@ ns.On("ADDON_LOADED", function(_, name)
     if ns.db.consoleProfile == "light" and ns.ApplyLightProfile then
         ns.ApplyLightProfile()
     end
-    Page()
 end)
 
 SLASH_MEDALUIN1 = "/medaluin"
@@ -634,6 +387,24 @@ SLASH_MEDALUIN2 = "/mdlui"
 SLASH_MDLUI1 = "/mdlui"
 
 local KEYBIND = { kb = true, keybind = true, keybinds = true, bind = true, binds = true }
+local EDITOR = { edit = true, editor = true, frames = true }
+
+-- /mdlui <word>: the window on that page.
+local PAGES = {
+    console = "console/profile", profile = "console/profile", profiles = "console/profile",
+    paging = "console/paging", page = "console/paging", pages = "console/paging",
+    bar = "console/bar", actionbar = "console/bar", bars = "console/bar",
+    layout = "console/layout", unitlayout = "console/layout",
+    unit = "units/party", units = "units/party", unitframe = "units/party", unitframes = "units/party",
+    uf = "units/party", party = "units/party", raid = "units/raid", bg = "units/battleground",
+    battleground = "units/battleground", pvp = "units/battleground", boss = "units/boss", bosses = "units/boss",
+    arena = "units/arena",
+    overhead = "console/overhead", top = "console/overhead",
+    cast = "console/cast", castbars = "console/cast", casting = "console/cast",
+    chat = "chat",
+    side = "side", meter = "side", loot = "side", auras = "side",
+    bags = "bags", bag = "bags", inventory = "bags",
+}
 
 local function OpenSettings(arg)
     arg = tostring(arg or ""):lower():match("^%s*(%S+)")
@@ -645,29 +416,11 @@ local function OpenSettings(arg)
         if ns.KeybindMode then ns.KeybindMode() end
         return
     end
-    if not ns.settingsCategory then return end
-    local target = ns.settingsCategory
-    if arg == "console" or arg == "profile" or arg == "profiles" then
-        target = ns.settingsSubcategories and ns.settingsSubcategories.console or target
-    elseif arg == "paging" or arg == "page" or arg == "pages" then
-        target = ns.settingsSubcategories and ns.settingsSubcategories.paging or target
-    elseif arg == "bar" or arg == "actionbar" or arg == "bars" then
-        target = ns.settingsSubcategories and ns.settingsSubcategories.bar or target
-    elseif arg == "unit" or arg == "units" or arg == "unitframe" or arg == "unitframes"
-        or arg == "uf" or arg == "party" then
-        target = ns.settingsSubcategories and ns.settingsSubcategories.unit or target
-    elseif arg == "overhead" or arg == "top" or arg == "boss" then
-        target = ns.settingsSubcategories and ns.settingsSubcategories.overhead or target
-    elseif arg == "cast" or arg == "castbars" or arg == "casting" then
-        target = ns.settingsSubcategories and ns.settingsSubcategories.cast or target
-    elseif arg == "chat" then
-        target = ns.settingsSubcategories and ns.settingsSubcategories.chat or target
-    elseif arg == "meter" or arg == "loot" or arg == "auras" or arg == "side" then
-        target = ns.settingsSubcategories and ns.settingsSubcategories.side or target
-    elseif arg == "bags" or arg == "bag" or arg == "inventory" then
-        target = ns.settingsSubcategories and ns.settingsSubcategories.bags or target
+    if EDITOR[arg] then
+        if ns.OpenEditor then ns.OpenEditor() end
+        return
     end
-    Settings.OpenToCategory(target:GetID())
+    if ns.OpenOptions then ns.OpenOptions(PAGES[arg]) end
 end
 
 SlashCmdList.MEDALUIN = OpenSettings

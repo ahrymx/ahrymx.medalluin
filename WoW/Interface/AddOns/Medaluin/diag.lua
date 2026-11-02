@@ -124,9 +124,9 @@ local function CombatPage()
     for _, variable in ipairs(COMBAT) do table.insert(list, Built(variable)) end
     Say("combat page: " .. table.concat(list, " "))
     local loaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("Blizzard_CombatText")
-    Say(string.format("fct=%s classicWorldText=%s combatTextLoaded=%s %s %s",
+    Say(string.format("fct=%s classicWorldText=%s combatTextLoaded=%s %s",
         tostring(CVar("enableFloatingCombatText")), tostring(CVar("classicStyleWorldText")),
-        tostring(loaded), Built("lockActionBars"), Built("Medaluin_consoleProfile")))
+        tostring(loaded), Built("lockActionBars")))
 end
 
 -- Anything Blizzard's own code could have read on the way: every tainted

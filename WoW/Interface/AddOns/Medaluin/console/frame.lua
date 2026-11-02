@@ -108,8 +108,8 @@ threat:SetScript("OnEvent", UpdateTint)
 
 -- The group art adds the party row. Textures are not protected, so this
 -- can swap in combat too; the party buttons themselves follow their units.
--- In the "light" profile, party frames are detached (a vertical stack, or a
--- row under the console: party_row.lua), and the console plate swaps between
+-- In the "light" profile, party frames are detached (a row under the
+-- console: party_row.lua), and the console plate swaps between
 -- its exploration (minimap bay) and combat/target (2x5 Bar 7 bay) textures;
 -- skyriding and a shown party row count as active (console/minimap.lua).
 UpdateGroup = function()
@@ -123,7 +123,9 @@ UpdateGroup = function()
         if ns.ShowPartyRow then ns.ShowPartyRow() end
         return
     end
-    local grouped = IsInGroup() or (ns.db and ns.db.simParty)
+    -- the party in its widget leaves the wings empty (widgets/party.lua)
+    local grouped = (IsInGroup() or (ns.db and ns.db.simParty))
+        and not (ns.PartyWidgetLayout and ns.PartyWidgetLayout())
     local file = ns.media .. (grouped and "console-group" or "console-solo")
     tex:SetTexture(file)
     tint:SetTexture(file .. "-tint")

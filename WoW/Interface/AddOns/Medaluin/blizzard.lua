@@ -9,16 +9,17 @@ ns.On("PLAYER_LOGIN", function()
         ns.Kill(_G["PartyMemberFrame" .. i])
     end
     ns.Kill(CompactPartyFrame)
+    -- boss frames: the overhead's, the Boss widget's (widgets/enemies.lua), or both
+    if ns.db.bossFrames ~= "overhead" or ns.db.overhead ~= false then
+        for i = 1, 5 do
+            ns.Kill(_G["Boss" .. i .. "TargetFrame"])
+        end
+    end
 
     if ns.db and ns.db.overhead ~= false then
         if ns.db.topPet ~= false then ns.Kill(PetFrame) end
         if ns.db.topFocus ~= false then ns.Kill(FocusFrame) end
         if ns.db.topToT ~= false then ns.Kill(TargetFrameToT) end
-        if ns.db.topBoss ~= false then
-            for i = 1, 5 do
-                ns.Kill(_G["Boss" .. i .. "TargetFrame"])
-            end
-        end
         -- parked, not killed: their events give the adopted buttons their icons
         if ns.db.topStances ~= false then
             ns.Park(StanceBar)

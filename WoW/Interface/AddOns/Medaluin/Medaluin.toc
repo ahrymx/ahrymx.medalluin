@@ -25,6 +25,12 @@ console\minimap_button.lua
 console\overhead_art.lua
 console\overhead.lua
 console\simulate.lua
+editor.lua
+
+widgets\box.lua
+widgets\party.lua
+widgets\raid.lua
+widgets\enemies.lua
 
 bars\windows.lua
 bars\bar.lua
@@ -50,3 +56,10 @@ strips\auras.lua
 inventory\bags.lua
 keybind.lua
 diag.lua
+
+options\controls.lua
+options\pages.lua
+options\window.lua
+options\editor.lua
+options\canvas.lua
+options\info.lua

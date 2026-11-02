@@ -78,6 +78,7 @@ end
 local function Redraw()
     ns.UpdatePartyFrames()
     ns.UpdateOverhead()
+    if ns.UpdateWidgets then ns.UpdateWidgets() end
 end
 
 local function Tip(b)
@@ -197,7 +198,7 @@ local function Build()
         function(s) s.inRange = s.inRange == false end,
         function(name, near) return name .. (near and " is in range. Click to move them away."
             or " is out of range. Click to bring them near.") end,
-        function() return ns.db.partyRange ~= 0 end)
+        function() return ns.PartyOption("partyRange") ~= 0 end)
 
     y = y - ROW
     Button(PAD, y, (W - PAD * 2 - 4) / 2, { label = "Ready check",
@@ -233,7 +234,9 @@ end
 
 ns.On("PLAYER_LOGIN", Shown)
 ns.OnSetting("simParty", Shown)
-ns.OnSetting("partyRange", function() if panel then Paint() end end)
+for _, key in ipairs({ "partyRange", "partyWidgetRange", "partyLayout" }) do
+    ns.OnSetting(key, function() if panel then Paint() end end)
+end
 -- a real fight clears a check, as a real check is cleared
 ns.On("PLAYER_REGEN_DISABLED", function()
     EndCheck()

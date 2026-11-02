@@ -215,7 +215,17 @@ end
 
 local bossUnits = {}
 for i = 1, 5 do
-    bossUnits[i] = CreateCell("boss" .. i, "boss", "boss")
+    local b = CreateCell("boss" .. i, "boss", "boss")
+    -- your debuffs at the health's right end (Unit Frames > Boss; auras.lua),
+    -- four pixels short of its height
+    ns.AttachAuras(b, "overhead", A.deck.boss - A.cellTop - A.cellBottom - 2 - A.power - 1 - 4)
+    ns.RegisterUnitEvent(b, "UNIT_AURA", b.unit)
+    -- the unit watch shows it in combat, with no word to the layout
+    b:HookScript("OnShow", ns.UpdateUnitAuras)
+    b:SetScript("OnEvent", function(self, event)
+        if event == "UNIT_AURA" then ns.UpdateUnitAuras(self) else UpdateUnitStatus(self) end
+    end)
+    bossUnits[i] = b
 end
 local petUnit = CreateCell("pet", "unit", "pet")
 local focusUnit = CreateCell("focus", "unit", "focus")
@@ -399,6 +409,9 @@ local OVERHEAD_STUBS = {
     targettarget = { name = "Main Tank", health = 88, maxHealth = 100, power = 40, class = "WARRIOR" },
 }
 
+ns.bossStubs = { OVERHEAD_STUBS.boss1, OVERHEAD_STUBS.boss2, OVERHEAD_STUBS.boss3, OVERHEAD_STUBS.boss4,
+    OVERHEAD_STUBS.boss5 }      -- the Boss widget's preview (widgets/enemies.lua)
+
 -- Which cells show: a real unit, or a stub while simulating.
 local function Present(b, key)
     if ns.db and ns.db[key] == false then
@@ -444,9 +457,13 @@ local function Layout()
     end
     laying = true
 
+    -- bosses here, or in the Boss widget only (widgets/enemies.lua)
     local bosses = {}
+    local onTop = ns.db.bossFrames ~= "vertical"
     for i = 1, 5 do
-        if Present(bossUnits[i], "topBoss") then
+        if not onTop then
+            Retire(bossUnits[i])
+        elseif Present(bossUnits[i], "bossFrames") then
             table.insert(bosses, bossUnits[i])
         end
     end
@@ -545,7 +562,7 @@ ns.On("UPDATE_SHAPESHIFT_FORMS", UpdateOverhead)
 ns.On("PET_BAR_UPDATE", UpdateOverhead)
 
 ns.OnSetting("overhead", UpdateOverhead)
-ns.OnSetting("topBoss", UpdateOverhead)
+ns.OnSetting("bossFrames", UpdateOverhead)
 ns.OnSetting("topPet", UpdateOverhead)
 ns.OnSetting("topFocus", UpdateOverhead)
 ns.OnSetting("topToT", UpdateOverhead)

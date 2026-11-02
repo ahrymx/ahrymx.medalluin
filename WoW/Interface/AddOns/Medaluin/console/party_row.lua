@@ -1,4 +1,4 @@
--- The light profile's horizontal party row (Unit Frames > Party layout): one
+-- The light profile's party row (Console > Unit Layout > Party layout: Console): one
 -- band hanging under the console, cut into four fixed slots, one per member.
 -- A member with a pet gives up part of its slot to the pet, on the slot's
 -- centre-ward side, so the slots never move and only that frame narrows.
@@ -28,7 +28,7 @@ end
 
 -- The option: the row's places, whether or not there is a group to show.
 function ns.PartyRowLayout()
-    return Row() and ns.db and ns.db.partyLayout == "horizontal" and true or false
+    return Row() and ns.db and ns.db.partyLayout ~= "widget" and true or false
 end
 
 -- The row is up: its layout, and a group (or the preview) in it. The minimap
@@ -112,8 +112,8 @@ function ns.ShowPartyRow()
     for _, bg in ipairs(backings) do bg:SetShown(shown) end
 end
 
--- Called from ns.RelayoutUnits (units.lua): the row's places, or the stack's
--- pets back under their owners.
+-- Called from ns.RelayoutUnits (units.lua): the row's places, or, with the
+-- party in its widget, the pets let go of the row's boxes.
 function ns.LayoutPartyRow()
     local row = Row()
     if not row then return end
