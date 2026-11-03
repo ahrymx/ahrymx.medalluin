@@ -222,6 +222,7 @@ local function CreateCell(unit, kind, chip)
     b:SetScript("OnEvent", function(self) UpdateUnitStatus(self) end)
 
     RegisterUnitWatch(b)
+    b.watching = true
     b:Hide()
     return b
 end
@@ -292,12 +293,27 @@ local UNIT_ROW = [=[
         cells[i]:SetPoint("TOPLEFT", owner, "TOP", left + (i - 1) * (cw + gap), top)
     end
 ]=]
+-- The watch shows and hides a cell from inside its walk over every watched
+-- frame, so the layout a cell asks for runs on the next frame, never inside
+-- that walk (2026-11-03: run there, it disconnected the client). Asks within
+-- one frame make one layout. A frame of its own: it updates while the
+-- overhead, or the whole interface (Alt+Z), is hidden.
+local soon = CreateFrame("Frame")
+soon:Hide()
+soon:SetScript("OnUpdate", function(self)
+    self:Hide()
+    UpdateOverhead()
+end)
+ns.overheadSoon = soon
+local function LayoutSoon()
+    if not laying then soon:Show() end
+end
 for i, b in ipairs(unitCells) do
     unitRow:SetFrameRef("cell" .. i, b)
     SecureHandlerWrapScript(b, "OnShow", unitRow, UNIT_ROW)
     SecureHandlerWrapScript(b, "OnHide", unitRow, UNIT_ROW)
-    b:HookScript("OnShow", function() if not laying then UpdateOverhead() end end)
-    b:HookScript("OnHide", function() if not laying then UpdateOverhead() end end)
+    b:HookScript("OnShow", LayoutSoon)
+    b:HookScript("OnHide", LayoutSoon)
 end
 
 ns.overheadUnits = {
@@ -314,18 +330,24 @@ ns.overheadUnits = {
 -- A watched button is shown and hidden by its unit's existence, every frame:
 -- a simulated (stubbed) unit does not exist, so the watch must let go of it,
 -- and a switched-off frame must not come back with its unit.
+--
+-- The watch is registered or let go only when that CHANGES (2026-11-03: the
+-- pet's return disconnected the client). Re-registering on every layout
+-- rewrote the watch manager's list of frames, and a layout run from a cell's
+-- OnShow ran inside the manager's walk over that very list.
+local function SetWatched(b, on)
+    if b.watching == on then return end
+    b.watching = on
+    if on then RegisterUnitWatch(b) else UnregisterUnitWatch(b) end
+end
 local function Watch(b, stub)
     b.stub = stub
-    if stub then
-        UnregisterUnitWatch(b)
-    else
-        RegisterUnitWatch(b)
-    end
+    SetWatched(b, not stub)
 end
 
 local function Retire(b)
     b.stub = nil
-    UnregisterUnitWatch(b)
+    SetWatched(b, false)
     b:Hide()
 end
 
@@ -636,18 +658,46 @@ end
 
 -- The cells and icons are secure buttons, so they are laid out out of combat
 -- only; in combat a unit watch still shows and hides each cell where it stands.
+--
+-- A runaway guard (2026-11-03: the pet's return after landing, with the pet
+-- frame and the pet bar both on, disconnected the client every time). A loop
+-- that freezes the client within one frame is on the stack, so it shows as
+-- the layout asked for again from inside itself; Layout's own shows and hides
+-- never ask (laying), so one level is all a real change needs. Deeper asks
+-- are dropped, and the first of the session is reported with its stack.
 local pending = false
+local depth, reported = 0, false
+local MAX_DEPTH = 2
+local function Runaway()
+    if depth < MAX_DEPTH then return false end
+    if not reported then
+        reported = true
+        local report = geterrorhandler and geterrorhandler() or print
+        report("Medalluin: the overhead's layout asked for itself " .. MAX_DEPTH
+            .. " deep and was stopped; please send this report.\n" .. (debugstack and debugstack(2) or ""))
+    end
+    return true
+end
+-- An error in the layout goes to the game's handler with its stack, and the
+-- depth comes back down whatever happens.
+local function Guarded()
+    depth = depth + 1
+    local ok = xpcall(Layout, geterrorhandler and geterrorhandler() or function(e) print("Lua error", e) end)
+    depth = depth - 1
+    if not ok then laying = false end
+end
 function UpdateOverhead()
+    if Runaway() then return end
     if pending then return end
     if InCombatLockdown() then
         pending = true
         ns.OutOfCombat(function()
             pending = false
-            Layout()
+            Guarded()
         end)
         return
     end
-    Layout()
+    Guarded()
 end
 ns.UpdateOverhead = UpdateOverhead
 

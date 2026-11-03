@@ -775,21 +775,50 @@ function UnitThreatSituation(u) if u == "player" then return threatOf end end
 -- The game's unit watch runs every frame, not once: a watched button whose
 -- unit does not exist is hidden again however it was shown. watchTick() is
 -- that frame; a stub does not make a unit exist.
+--
+-- The manager walks its list of watched frames and shows or hides each from
+-- inside the walk. Registering or letting go of a watch from inside it
+-- (a layout run from a cell's OnShow) changes the list mid-walk; in game
+-- that froze the client into a disconnect (2026-11-03), so here it raises.
 local watchedFrames = {}
+local watchWalking = false
+harnessWatchCalls = 0      -- RegisterUnitWatch and UnregisterUnitWatch, counted
+local function watchListChanged(what)
+    harnessWatchCalls = harnessWatchCalls + 1
+    if watchWalking then error(what .. " inside the unit watch's walk over its frames", 3) end
+end
+function harnessWatchWalking() return watchWalking end
 function RegisterUnitWatch(f)
+    watchListChanged("RegisterUnitWatch")
     f.watched = true
     watchedFrames[f] = true
     if f.unit and not UnitExists(f.unit) and not f.stub then f:Hide() end
 end
-function UnregisterUnitWatch(f) f.watched = false end
+function UnregisterUnitWatch(f)
+    watchListChanged("UnregisterUnitWatch")
+    f.watched = false
+    watchedFrames[f] = nil
+end
 -- the player's stances and pet bar: none unless a pass says so
 local shapeshiftForms, petBar = 0, false
 function GetNumShapeshiftForms() return shapeshiftForms end
 function PetHasActionBar() return petBar end
 local function watchTick()
-    for f in pairs(watchedFrames) do
-        if f.watched and f.unit then f:SetShown(UnitExists(f.unit) and true or false) end
-    end
+    watchWalking = true
+    local ok, err = pcall(function()
+        for f in pairs(watchedFrames) do
+            if f.watched and f.unit then f:SetShown(UnitExists(f.unit) and true or false) end
+        end
+    end)
+    watchWalking = false
+    if not ok then print("unit watch error", err) end
+end
+-- The next frame: the unit watch, then what was asked to run on it (the
+-- overhead's layout a cell asked for: console/overhead.lua's soon).
+function harnessNextFrame()
+    watchTick()
+    local soon = harnessNS and harnessNS.overheadSoon
+    if soon and soon.shown and soon.scripts.OnUpdate then soon.scripts.OnUpdate(soon, 0) end
 end
 function IsInGroup() return grouped end
 -- a raid: none, unless the widgets pass makes one (widgets/raid.lua)
@@ -1485,6 +1514,7 @@ end
 
 -- ------------------------------------------------------------ load + fire
 local ns = {}
+harnessNS = ns     -- for the helpers above it (harnessNextFrame)
 for line in io.lines(ADDON .. "Medalluin.toc") do
     if line:match("%.lua$") then
         local chunk = assert(loadfile(ADDON .. line:gsub("\\", "/")))
@@ -6327,35 +6357,94 @@ if args[2] == "unitrow" or args[3] == "unitrow" then
     inCombat = true
     fireAll("PLAYER_REGEN_DISABLED")
     exists.targettarget = true
-    watchTick()
+    harnessNextFrame()
     state("ToT in combat")
     exists.targettarget = nil
-    watchTick()
+    harnessNextFrame()
     state("ToT gone in combat")
     exists.targettarget = true
-    watchTick()
+    harnessNextFrame()
     inCombat = false
     fireAll("PLAYER_REGEN_ENABLED")
     state("combat over")
     -- out of combat the watch's show lays the whole overhead out at once
     exists.targettarget = nil
-    watchTick()
+    harnessNextFrame()
     state("ToT gone")
     exists.targettarget = true
-    watchTick()
+    harnessNextFrame()
     state("ToT back")
     -- under a boss: the row's top is the boss deck's foot, not the overhead's
     exists.targettarget = nil
     exists.boss1 = true
     page.settings.bossFrames:Set("overhead")
-    watchTick()
+    harnessNextFrame()
     state("under a boss")
     inCombat = true
     fireAll("PLAYER_REGEN_DISABLED")
     exists.targettarget = true
-    watchTick()
+    harnessNextFrame()
     state("under a boss, ToT in combat")
     inCombat = false
     fireAll("PLAYER_REGEN_ENABLED")
     state("under a boss, combat over")
+
+    -- Test 3 of the 2026-11-03 disconnect: the pet frame and the pet bar both
+    -- on, the pet dismissed on mounting and back on landing. The watch shows
+    -- the pet from inside its walk; nothing may touch its list there.
+    page.settings.bossFrames:Set("vertical")
+    exists.targettarget, exists.boss1 = nil, nil
+    harnessNextFrame()
+    -- layouts run inside the watch's walk, and watches touched by a layout
+    -- that changes nothing: both none
+    local ovh, inWalk = ns.overhead, 0
+    local realSize = ovh.SetSize
+    ovh.SetSize = function(self, ...)
+        if harnessWatchWalking() then inWalk = inWalk + 1 end
+        return realSize(self, ...)
+    end
+    harnessWatchCalls = 0
+    ns.UpdateOverhead()
+    print("unitrow churn", "watch calls on a layout that changes nothing=" .. harnessWatchCalls)
+    exists.pet = nil
+    petBar = false
+    for i = 1, 10 do _G["PetActionButton" .. i]:Hide() end
+    fireAll("UNIT_PET", "player")
+    harnessNextFrame()
+    settleFades()
+    state("mounted")
+    exists.pet = true
+    petBar = true
+    harnessNextFrame()          -- the watch sees the pet before any event
+    for i = 1, 10 do _G["PetActionButton" .. i]:Show() end
+    fireAll("UNIT_PET", "player")
+    fireAll("PET_BAR_UPDATE")
+    harnessNextFrame()
+    state("landed")
+    harnessNextFrame()
+    print("unitrow landed, frames", "layouts inside the walk=" .. inWalk,
+        "layout still asked=" .. tostring(ns.overheadSoon.shown))
+    ovh.SetSize = realSize
+    page.settings.bossFrames:Set("overhead")
+
+    -- A layout that asks for itself from inside (the 2026-11-03 disconnect's
+    -- shape: a loop on the stack froze the client). Here the fade in asks
+    -- again; the guard stops the second level, reports once, and the
+    -- overhead is still laid out.
+    local fadeIn = ns.OverheadFadeIn
+    local asked = 0
+    ns.OverheadFadeIn = function(...)
+        asked = asked + 1
+        if asked > 500 then error("runaway: the guard did not stop it") end
+        ns.UpdateOverhead()
+        return fadeIn(...)
+    end
+    local ok, err = pcall(ns.UpdateOverhead)
+    print("unitrow runaway", "raised=" .. tostring(not ok) .. (ok and "" or " " .. tostring(err)), "asked=" .. asked)
+    asked = 0
+    pcall(ns.UpdateOverhead)
+    print("unitrow runaway again", "asked=" .. asked .. " (reported once)")
+    ns.OverheadFadeIn = fadeIn
+    ns.UpdateOverhead()
+    state("after the runaway")
 end
