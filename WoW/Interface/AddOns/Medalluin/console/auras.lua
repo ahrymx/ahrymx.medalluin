@@ -478,9 +478,9 @@ end
 
 local function IsTimeless(unit, aura)
     if not aura then return false end
-    if Auras and Auras.DoesAuraHaveExpirationTime then
-        local timed = Auras.DoesAuraHaveExpirationTime(unit, aura.auraInstanceID)
-        if not ns.IsSecret(timed) and timed ~= nil then
+    if Auras and Auras.DoesAuraHaveExpirationTime and not ns.IsSecret(aura.auraInstanceID) then
+        local ok, timed = pcall(Auras.DoesAuraHaveExpirationTime, unit, aura.auraInstanceID)
+        if ok and not ns.IsSecret(timed) and timed ~= nil then
             return not timed
         end
     end

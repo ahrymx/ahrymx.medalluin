@@ -23,8 +23,9 @@ local buttons = {}
 -- true for a timeless buff, false for a timed one, nil if the client will not say
 local function Timeless(aura)
     local timed
-    if Auras.DoesAuraHaveExpirationTime then
-        timed = Auras.DoesAuraHaveExpirationTime("player", aura.auraInstanceID)
+    if Auras.DoesAuraHaveExpirationTime and not ns.IsSecret(aura.auraInstanceID) then
+        local ok, res = pcall(Auras.DoesAuraHaveExpirationTime, "player", aura.auraInstanceID)
+        if ok then timed = res end
     else
         timed = aura.expirationTime
         if not ns.IsSecret(timed) then timed = timed ~= nil and timed > 0 end
@@ -119,8 +120,11 @@ local function Scan()
     unsorted = false
     local i = 1
     while true do
-        local aura = Auras.GetAuraDataByIndex("player", i, "HELPFUL")
-        if not aura then break end
+        local ok, aura = pcall(Auras.GetAuraDataByIndex, "player", i, "HELPFUL")
+        if not ok or not aura then
+            if not ok then unsorted = true end
+            break
+        end
         Add(aura)
         i = i + 1
     end
@@ -128,15 +132,20 @@ local function Scan()
 end
 
 local function Changed(info)
-    if not info or info.isFullUpdate then return Scan() end
-    for _, aura in ipairs(info.addedAuras or {}) do Add(aura) end
-    for _, id in ipairs(info.updatedAuraInstanceIDs or {}) do
+    if not info or ns.IsSecret(info) or ns.IsSecret(info.isFullUpdate) or info.isFullUpdate then
+        return Scan()
+    end
+    local added = not ns.IsSecret(info.addedAuras) and info.addedAuras
+    for _, aura in ipairs(added or {}) do Add(aura) end
+    local updated = not ns.IsSecret(info.updatedAuraInstanceIDs) and info.updatedAuraInstanceIDs
+    for _, id in ipairs(updated or {}) do
         if known[id] then
-            local aura = Auras.GetAuraDataByAuraInstanceID("player", id)
-            if aura then known[id].count = Count(aura) end
+            local ok, aura = pcall(Auras.GetAuraDataByAuraInstanceID, "player", id)
+            if ok and aura then known[id].count = Count(aura) end
         end
     end
-    for _, id in ipairs(info.removedAuraInstanceIDs or {}) do known[id] = nil end
+    local removed = not ns.IsSecret(info.removedAuraInstanceIDs) and info.removedAuraInstanceIDs
+    for _, id in ipairs(removed or {}) do known[id] = nil end
     Layout()
 end
 

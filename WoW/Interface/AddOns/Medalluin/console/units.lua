@@ -845,21 +845,40 @@ local function IsUnitInRange(unit, dist)
 
     if dist == 10 then
         if CheckInteractDistance then
-            return CheckInteractDistance(unit, 3) or CheckInteractDistance(unit, 2)
+            local ok, r = pcall(CheckInteractDistance, unit, 3)
+            if ok and ns.IsSecret(r) then return true end
+            if ok and r then return true end
+            ok, r = pcall(CheckInteractDistance, unit, 2)
+            if ok and ns.IsSecret(r) then return true end
+            if ok and r then return true end
+            return false
         end
     elseif dist == 20 or dist == 30 then
         if CheckInteractDistance then
-            return CheckInteractDistance(unit, 1) or CheckInteractDistance(unit, 4)
+            local ok, r = pcall(CheckInteractDistance, unit, 1)
+            if ok and ns.IsSecret(r) then return true end
+            if ok and r then return true end
+            ok, r = pcall(CheckInteractDistance, unit, 4)
+            if ok and ns.IsSecret(r) then return true end
+            if ok and r then return true end
+            return false
         end
     end
 
     if UnitInRange then
-        local inRange, checkedRange = UnitInRange(unit)
-        if checkedRange then return inRange end
+        local ok, inRange, checkedRange = pcall(UnitInRange, unit)
+        if ok then
+            if ns.IsSecret(checkedRange) or ns.IsSecret(inRange) then return true end
+            if checkedRange then return inRange and true or false end
+        end
     end
 
     if UnitIsVisible then
-        return UnitIsVisible(unit)
+        local ok, vis = pcall(UnitIsVisible, unit)
+        if ok then
+            if ns.IsSecret(vis) then return true end
+            return vis and true or false
+        end
     end
     return true
 end
@@ -872,7 +891,7 @@ local function UpdatePartyRange()
         local pb = ns.units[u]
         if pb and pb:IsShown() then
             local inRange = (dist == 0) or IsUnitInRange(u, dist)
-            local targetAlpha = inRange and 1.0 or 0.45
+            local targetAlpha = (inRange == true or ns.IsSecret(inRange)) and 1.0 or 0.45
             if pb:GetAlpha() ~= targetAlpha then
                 pb:SetAlpha(targetAlpha)
             end

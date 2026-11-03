@@ -62,7 +62,8 @@ local function RunsOut(aura)
     local id = aura.auraInstanceID
     local timed
     if Auras.DoesAuraHaveExpirationTime and not ns.IsSecret(id) then
-        timed = Auras.DoesAuraHaveExpirationTime("player", id)
+        local ok, res = pcall(Auras.DoesAuraHaveExpirationTime, "player", id)
+        if ok then timed = res end
     else
         timed = aura.expirationTime
         if not ns.IsSecret(timed) and timed ~= nil then timed = timed > 0 end
@@ -74,12 +75,14 @@ end
 -- The player's buffs or debuffs, the longest first as the client sorts them.
 local function Fetch(filter)
     if Auras.GetUnitAuras and SORT and DIRECTION then
-        return Auras.GetUnitAuras("player", filter, nil, SORT.ExpirationOnly, DIRECTION.Reverse) or {}
+        local ok, res = pcall(Auras.GetUnitAuras, "player", filter, nil, SORT.ExpirationOnly, DIRECTION.Reverse)
+        if ok and res then return res end
+        if not ok then return {} end
     end
     local out, i = {}, 1
     while true do
-        local aura = Auras.GetAuraDataByIndex("player", i, filter)
-        if not aura then break end
+        local ok, aura = pcall(Auras.GetAuraDataByIndex, "player", i, filter)
+        if not ok or not aura then break end
         out[i] = aura
         i = i + 1
     end
@@ -109,7 +112,9 @@ local function Later(a, b)
     local at, bt = a.timed == false, b.timed == false
     if at ~= bt then return at end
     if a.ends ~= b.ends then return (a.ends or 0) > (b.ends or 0) end
-    return (a.aura.auraInstanceID or 0) < (b.aura.auraInstanceID or 0)
+    local ida = not ns.IsSecret(a.aura.auraInstanceID) and a.aura.auraInstanceID or 0
+    local idb = not ns.IsSecret(b.aura.auraInstanceID) and b.aura.auraInstanceID or 0
+    return ida < idb
 end
 
 -- Leave out the timeless ones unless they are wanted; sort when every time
@@ -256,7 +261,8 @@ end
 local function Count(aura)
     local id = aura.auraInstanceID
     if Auras.GetAuraApplicationDisplayCount and not ns.IsSecret(id) then
-        return Auras.GetAuraApplicationDisplayCount("player", id, 2)
+        local ok, count = pcall(Auras.GetAuraApplicationDisplayCount, "player", id, 2)
+        if ok and count then return count end
     end
     local n = aura.applications
     if ns.IsSecret(n) then return n end
@@ -284,7 +290,10 @@ local function Bar(r, e)
     end
     r.duration, r.clientBar = nil, false
     local id = aura.auraInstanceID
-    if Auras.GetAuraDuration and not ns.IsSecret(id) then r.duration = Auras.GetAuraDuration("player", id) end
+    if Auras.GetAuraDuration and not ns.IsSecret(id) then
+        local ok, dur = pcall(Auras.GetAuraDuration, "player", id)
+        if ok and dur then r.duration = dur end
+    end
     if r.duration and r.SetTimerDuration and TIMER then
         r:SetTimerDuration(r.duration, INTERPOLATION and INTERPOLATION.Immediate or 0, TIMER.RemainingTime)
         r.clientBar = true

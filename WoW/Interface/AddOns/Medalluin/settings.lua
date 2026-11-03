@@ -20,7 +20,8 @@ local DEFAULTS = {
     -- the bar's buttons' text and cooldowns (bars/buttons.lua); a size is a
     -- scale of what the button draws on its own, so 1 leaves it as it was
     hotkeySize = 1,         -- keybind text; 0 hides it
-    cooldownText = "auto",  -- cooldown numbers: "auto" (bare icons show them, Blizzard's art asks the game), "show", "hide"
+    -- cooldown numbers: "auto" (bare icons show them, Blizzard's art asks the game), "show", "hide"
+    cooldownText = "auto",
     cooldownTextSize = 1,   -- cooldown numbers
     cooldownSwipe = true,   -- the dark sweep over a cooling-down icon
     cooldownEdge = false,   -- the bright line on the sweep's edge

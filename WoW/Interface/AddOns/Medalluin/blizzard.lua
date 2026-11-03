@@ -16,6 +16,18 @@ ns.On("PLAYER_LOGIN", function()
         end
     end
 
+    -- Animating newly learned spells onto the action bar taints the animation
+    -- tracker, which triggers a protected SetFrameStrata call on action bars.
+    if IconIntroTracker then
+        ns.Kill(IconIntroTracker)
+        if IconIntroTracker.iconList then
+            for _, icon in ipairs(IconIntroTracker.iconList) do
+                if icon.icon and icon.icon.flyin then icon.icon.flyin:Stop() end
+                icon:Hide()
+            end
+        end
+    end
+
     if ns.db and ns.db.overhead ~= false then
         if ns.db.topPet ~= false then ns.Kill(PetFrame) end
         if ns.db.topFocus ~= false then ns.Kill(FocusFrame) end
