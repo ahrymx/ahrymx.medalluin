@@ -1,10 +1,14 @@
 # Releases, from the version in Medalluin.toc (tools/release.sh). On a push to
-# main whose .toc version has no tag yet:
+# main whose .toc version has no tag yet, it tags it vX.Y.Z (every tag is kept
+# for good) and:
 #
-#   every version    tags it vX.Y.Z and replaces the "rolling" release with it:
-#                    always the newest build, marked Latest, with a download link
-#                    that never changes (releases/download/rolling/Medalluin.zip)
-#   X.Y.0            also publishes a release of its own, kept for good
+#   rolling     replaces the "rolling" release with it: always the newest build,
+#               marked Latest, with a download link that never changes
+#               (releases/download/rolling/Medalluin.zip)
+#   its line    moves the release of its minor line (0.2, 1.0) onto it: one
+#               release per line, holding the line's newest patch; the first
+#               version of the next minor or major starts a line of its own,
+#               and the one before stays frozen at its last patch
 #
 # A push that does not change the version releases nothing. tools/commit.sh
 # raises the version with each commit (patch for a fix, minor for a feature,
@@ -47,12 +51,9 @@ jobs:
         if: steps.plan.outputs.release == 'true'
         run: |
           tools/release.sh package dist
-          if [ "${{ steps.plan.outputs.kind }}" = sticky ]; then
-            tools/release.sh notes sticky > notes.md
-          else
-            tools/release.sh notes > notes.md
-          fi
-          cat notes.md
+          tools/release.sh notes > notes.md
+          tools/release.sh notes line > line.md
+          cat notes.md line.md
 
       - name: Tag
         if: steps.plan.outputs.release == 'true'
@@ -60,14 +61,20 @@ jobs:
           git tag "${{ steps.plan.outputs.tag }}" "$GITHUB_SHA"
           git push origin "${{ steps.plan.outputs.tag }}"
 
-      - name: Sticky release (minor and major versions)
-        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.kind == 'sticky'
+      - name: Line release (the minor line's newest patch)
+        if: steps.plan.outputs.release == 'true'
         run: |
-          gh release create "${{ steps.plan.outputs.tag }}" \
-            "dist/Medalluin-${{ steps.plan.outputs.tag }}.zip" \
-            --title "Medalluin ${{ steps.plan.outputs.tag }}" \
-            --notes-file notes.md \
+          tag="${{ steps.plan.outputs.tag }}"
+          line="${{ steps.plan.outputs.line }}"
+          # made on this version first, so a failure leaves the old one standing
+          gh release create "$tag" "dist/Medalluin-$tag.zip" \
+            --title "Medalluin $line ($tag)" \
+            --notes-file line.md \
             --latest=false
+          # then off the line's older patches; their tags stay
+          old=$(gh release list --limit 200 --json tagName --jq '.[].tagName' \
+            | grep -E "^v${line//./\\.}\.[0-9]+$" | grep -vxF "$tag" || true)
+          for t in $old; do gh release delete "$t" --yes; done
 
       - name: Rolling release (every version)
         if: steps.plan.outputs.release == 'true'

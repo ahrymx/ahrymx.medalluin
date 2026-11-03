@@ -74,6 +74,10 @@ patch() {
     fi
 }
 
+# the releases GitHub tagged, tagged here too, from this clone's own pushes
+# (release.sh tags): the last release and the minors below read the tags
+"$REL" tags --quiet || true
+
 CHANGES=$(changes)
 [[ -n $CHANGES ]] || die "nothing to commit$($all || echo ' (nothing staged; -a takes the working tree)')"
 PATCH=$(patch)
@@ -153,8 +157,8 @@ last=$("$REL" last)
 if [[ $level == patch || $level == minor ]] && [[ -n $last ]]; then
     major=${last%%.*}
     # the tags, and the minor pushed to main if its tag is not here yet
-    sticky=$("$REL" last sticky)
-    minors=$( { git tag --list "v$major.*.0"; [[ $sticky == "$major".* ]] && echo "v$sticky"; } \
+    newestMinor=$("$REL" last minor)
+    minors=$( { git tag --list "v$major.*.0"; [[ $newestMinor == "$major".* ]] && echo "v$newestMinor"; } \
         | grep -vE "^v$major\.0\.0$" | sort -uV | tr '\n' ' ' || true)
     since="since v$major.0.0"
     git rev-parse -q --verify "refs/tags/v$major.0.0" >/dev/null || since="in $major.x"

@@ -11,20 +11,26 @@
 #                                             not add up); before any release, the
 #                                             .toc as it is. Writes nothing.
 #   tools/release.sh set X.Y.Z                write the .toc's version
-#   tools/release.sh last [sticky|major]      the newest released version (x.y.0, x.0.0):
+#   tools/release.sh last [minor|major]       the newest released version (x.y.0, x.0.0):
 #                                             a tag, or the .toc pushed to origin/main
+#   tools/release.sh tags [--quiet]           tag, here, the releases GitHub tagged:
+#                                             read from this clone's pushes, no fetch
+#   tools/release.sh hook [--remove]          run "tags" after every push to main
+#                                             (.git/hooks/reference-transaction)
 #   tools/release.sh plan                     what a release of the current .toc
 #                                             would be, as KEY=value lines
 #                                             (.github/workflows/release.yml reads them)
 #   tools/release.sh package <dir>            the addon zipped into <dir>
-#   tools/release.sh notes [sticky]           the commits since the last version tag;
-#                                             sticky: since the last x.y.0, so a minor
-#                                             or major lists everything its patches did
+#   tools/release.sh notes [line]             the commits since the last version tag;
+#                                             line: since the previous line's last
+#                                             version, so the line's release lists
+#                                             everything its x.y.0 and patches did
 #
-# Two kinds of release (release.yml):
+# Two kinds of release (release.yml); every version keeps its tag for good:
 #   rolling   every version: one release, tag "rolling", replaced each time,
 #             so it is always the newest build and its download link never changes
-#   sticky    x.y.0 (a minor or major version): a release of its own, kept for good
+#   line      one per minor line (0.2, 1.0), on its newest patch's tag: each
+#             patch moves it there, and the next minor or major freezes it
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -41,12 +47,17 @@ version() {
 }
 
 # The newest version tag in the repository, without its v; empty when none.
-# "sticky": the newest x.y.0 only; "major": the newest x.0.0.
+# "minor": the newest x.y.0 only; "major": the newest x.0.0.
+# "merged": only tags on origin/main's history, so a tag made here and not
+# pushed is not taken for a release (the commit side, without CI's checkout).
 last_tag() {
-    local minor='[0-9]*' patch='[0-9]*'
-    [[ ${1:-} == sticky ]] && patch=0
+    local minor='[0-9]*' patch='[0-9]*' scope=()
+    [[ ${1:-} == minor ]] && patch=0
     [[ ${1:-} == major ]] && minor=0 && patch=0
-    git -C "$ROOT" tag --list 'v*' | sed -n "s/^v\([0-9]*\.$minor\.$patch\)\$/\1/p" | sort -V | tail -n 1
+    if [[ ${2:-} == merged ]] && git -C "$ROOT" rev-parse -q --verify refs/remotes/origin/main >/dev/null; then
+        scope=(--merged refs/remotes/origin/main)
+    fi
+    git -C "$ROOT" tag --list "${scope[@]}" 'v*' | sed -n "s/^v\([0-9]*\.$minor\.$patch\)\$/\1/p" | sort -V | tail -n 1
 }
 
 # The newest released version as this clone can know it: the newest tag, or
@@ -57,9 +68,9 @@ last_tag() {
 # released, so plan and notes read the tags.
 last_released() {
     local tag pushed minor='[0-9]*' patch='[0-9]*'
-    [[ ${1:-} == sticky ]] && patch=0
+    [[ ${1:-} == minor ]] && patch=0
     [[ ${1:-} == major ]] && minor=0 && patch=0
-    tag=$(last_tag "${1:-}")
+    tag=$(last_tag "${1:-}" merged)
     pushed=$(git -C "$ROOT" show "refs/remotes/origin/main:$ADDON/Medalluin.toc" 2>/dev/null \
         | sed -n 's/^## Version:[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -n 1 \
         | sed -n "s/^\([0-9]*\.$minor\.$patch\)\$/\1/p" || true)
@@ -111,7 +122,7 @@ cmd_set() {
 }
 
 cmd_plan() {
-    local v last kind release=true
+    local v last release=true
     v=$(version)
     last=$(last_tag)
     if git -C "$ROOT" rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
@@ -119,10 +130,9 @@ cmd_plan() {
     elif [[ -n $last ]] && ! newer "$v" "$last"; then
         die "the .toc's version $v is not newer than the last release, v$last"
     fi
-    if [[ ${v##*.} == 0 ]]; then kind=sticky; else kind=rolling; fi
     echo "version=$v"
     echo "tag=v$v"
-    echo "kind=$kind"
+    echo "line=${v%.*}"
     echo "release=$release"
     echo "previous=${last:+v$last}"
 }
@@ -145,8 +155,17 @@ cmd_package() {
 }
 
 cmd_notes() {
-    local last range
-    last=$(last_tag "${1:-}")
+    local last range v
+    if [[ ${1:-} == line ]]; then
+        # the newest tag of any earlier line: the release covers the whole line
+        v=$(version)
+        last=$(git -C "$ROOT" tag --list 'v*' | sed -n 's/^v\([0-9]*\.[0-9]*\.[0-9]*\)$/\1/p' | sort -V \
+            | awk -v line="${v%.*}" -F. '$1 "." $2 != line' | while read -r t; do
+                newer "$v" "$t" && echo "$t"
+            done | tail -n 1)
+    else
+        last=$(last_tag)
+    fi
     if [[ -n $last ]]; then range="v$last..HEAD"; else range=HEAD; fi
     if [[ -z $last ]]; then echo "The first release."; echo; fi
     echo "## Changes"
@@ -154,7 +173,63 @@ cmd_notes() {
     git -C "$ROOT" log --no-merges --format='- %s' $range
 }
 
+# The release tags GitHub holds, made here from this clone's own record of
+# its pushes (the reflog of origin/main): release.yml tags the first pushed
+# head that carries a version with no tag yet, once the workflow is in the
+# commit. Lightweight, at the same commits, so a later fetch finds them equal.
+# A tag already here is never moved; one at another commit is reported.
+cmd_tags() {
+    local quiet=false sha v tag at
+    [[ ${1:-} == --quiet ]] && quiet=true
+    git -C "$ROOT" rev-parse -q --verify refs/remotes/origin/main >/dev/null || return 0
+    local -A seen=()
+    # oldest first
+    while read -r sha; do
+        git -C "$ROOT" cat-file -e "$sha:.github/workflows/release.yml" 2>/dev/null || continue
+        v=$(git -C "$ROOT" show "$sha:$ADDON/Medalluin.toc" 2>/dev/null \
+            | sed -n 's/^## Version:[[:space:]]*\([0-9]*\.[0-9]*\.[0-9]*\)[[:space:]]*$/\1/p' | head -n 1)
+        [[ -n $v && -z ${seen[$v]:-} ]] || continue
+        seen[$v]=1
+        tag=v$v
+        if at=$(git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag^{commit}"); then
+            [[ $at == "$sha" ]] || echo "release.sh: $tag is at ${at:0:7} here, but was pushed at ${sha:0:7}: left as it is" >&2
+            continue
+        fi
+        git -C "$ROOT" tag "$tag" "$sha"
+        $quiet || echo "$tag  ${sha:0:7}"
+    done < <(git -C "$ROOT" reflog show --format=%H refs/remotes/origin/main 2>/dev/null | tac)
+}
+
+# The hook: git runs it on every ref update; it answers only a push (or fetch)
+# that moved origin/main, once the update is committed.
+HOOK_MARK="# medalluin: release tags (tools/release.sh hook)"
+cmd_hook() {
+    local hooks file
+    hooks=$(git -C "$ROOT" rev-parse --git-path hooks)
+    [[ $hooks == /* ]] || hooks="$ROOT/$hooks"
+    file="$hooks/reference-transaction"
+    if [[ ${1:-} == --remove ]]; then
+        if [[ -f $file ]] && grep -qF "$HOOK_MARK" "$file"; then rm "$file"; echo "removed $file"; fi
+        return 0
+    fi
+    if [[ -f $file ]] && ! grep -qF "$HOOK_MARK" "$file"; then
+        die "$file is someone else's hook: add a call to tools/release.sh tags --quiet to it yourself"
+    fi
+    mkdir -p "$hooks"
+    cat >"$file" <<HOOK
+#!/bin/sh
+$HOOK_MARK
+[ "\$1" = committed ] || exit 0
+grep -q ' refs/remotes/origin/main\$' || exit 0
+"\$(git rev-parse --show-toplevel)/tools/release.sh" tags --quiet || true
+HOOK
+    chmod +x "$file"
+    echo "installed $file"
+}
+
 case ${1:-} in
+    tags) shift; cmd_tags "$@" ;;
+    hook) shift; cmd_hook "$@" ;;
     bump) shift; cmd_bump "$@" ;;
     target) shift; cmd_target "$@" ;;
     set) shift; cmd_set "$@" ;;
@@ -162,5 +237,5 @@ case ${1:-} in
     plan) cmd_plan ;;
     package) shift; cmd_package "$@" ;;
     notes) shift; cmd_notes "$@" ;;
-    *) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+    *) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

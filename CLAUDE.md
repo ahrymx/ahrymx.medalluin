@@ -34,3 +34,8 @@ terminal), so answer them yourself:
 
 Levels count from the last release, so bumps between pushes stack instead of
 adding up: several fixes after a feature stay at that feature's minor.
+
+Release tags: `commit.sh` first runs `tools/release.sh tags`, which tags here
+the releases GitHub tagged, rebuilt from this clone's record of its own pushes
+(no fetch). Tags mirror releases only: never tag an unpushed commit, and never
+move a tag (a fetch would then reject GitHub's as a clobber).
