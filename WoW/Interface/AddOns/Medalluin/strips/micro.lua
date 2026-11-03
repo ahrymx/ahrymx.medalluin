@@ -235,6 +235,28 @@ local function Layout()
     end
 end
 
+-- Micro menu notification banners (unspent talents, profession knowledge,
+-- fanfare, journal): Blizzard's HelpTip alerts and Classic's alert frames.
+local function SilenceAlerts()
+    if MainMenuMicroButton_SetAlertsEnabled then
+        pcall(MainMenuMicroButton_SetAlertsEnabled, false, "Medalluin")
+    end
+    if HelpTip and HelpTip.HideAllSystem then
+        HelpTip:HideAllSystem("MicroButtons")
+    end
+    if HelpTip and HelpTip.HideAll then
+        for _, btn in ipairs(buttons) do
+            HelpTip:HideAll(btn)
+        end
+        if CharacterMicroButton then
+            HelpTip:HideAll(CharacterMicroButton)
+        end
+    end
+    for _, name in ipairs({ "TalentMicroButtonAlert", "CollectionsMicroButtonAlert", "EJMicroButtonAlert" }) do
+        ns.Kill(_G[name])
+    end
+end
+
 ns.On("PLAYER_LOGIN", function()
     Character()
     SetupQueueEye()
@@ -246,6 +268,28 @@ ns.On("PLAYER_LOGIN", function()
     end
     Silence(MainMenuBarPerformanceBar)            -- Classic's latency bar on the menu button
     Silence(MainMenuBarDownload)
+    SilenceAlerts()
+    if MainMenuMicroButton_ShowAlert then
+        hooksecurefunc("MainMenuMicroButton_ShowAlert", function(btn)
+            if MainMenuMicroButton_HideAlert then pcall(MainMenuMicroButton_HideAlert, btn) end
+            if MicroButtonPulseStop then pcall(MicroButtonPulseStop, btn) end
+            if HelpTip and HelpTip.HideAllSystem then HelpTip:HideAllSystem("MicroButtons") end
+        end)
+    end
+    if MicroButtonPulse then
+        hooksecurefunc("MicroButtonPulse", function(btn)
+            if MicroButtonPulseStop then pcall(MicroButtonPulseStop, btn) end
+        end)
+    end
+    if HelpTip and HelpTip.Show then
+        hooksecurefunc(HelpTip, "Show", function(self, parent, info, relativeRegion)
+            if (info and info.system == "MicroButtons")
+                or (relativeRegion and relativeRegion.medalluin)
+                or (parent and parent.medalluin) then
+                self:Hide(parent, info and info.text)
+            end
+        end)
+    end
     Layout()
 end)
 
@@ -257,8 +301,14 @@ local function UpdatePortrait()
     end
 end
 ns.On("PLAYER_ENTERING_WORLD", function()
+    SilenceAlerts()
     SetupQueueEye()
     UpdatePortrait()
+end)
+ns.On("ADDON_LOADED", function(_, addon)
+    if addon == "Blizzard_MicroMenu" then
+        SilenceAlerts()
+    end
 end)
 ns.On("PORTRAITS_UPDATED", UpdatePortrait)
 ns.On("QUEUE_STATUS_UPDATE", function()

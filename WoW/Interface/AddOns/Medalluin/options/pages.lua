@@ -165,6 +165,8 @@ function ns.OptionPages()
                         .. "what they show, a tab each for the party, the raid, the enemies and the "
                         .. "overhead frames: members and their health, deaths, range, pets, auras, "
                         .. "ready and role checks.")),
+                Group("Editor",
+                    Editor(nil, "Edit unit frames")),
                 Group("Key bindings",
                     Button("Bind keys", function()
                         if ns.CloseOptions then ns.CloseOptions() end
@@ -365,6 +367,21 @@ function ns.OptionPages()
             id = "units", name = "Unit Frames",
             tabs = {
                 {
+                    id = "general", name = "General",
+                    intro = "Shared by every profile.",
+                    groups = {
+                        Group("Editor",
+                            Editor(function() return ns.PartyWidgetLayout() and "partyWidget" or "party" end,
+                                "Edit the party frames"),
+                            Editor("unit", "Edit player and target")),
+                        Group("Blizzard's auras (shared by every profile)",
+                            Check("blizzardAuras", "Blizzard's buff and debuff rows",
+                                "Show Blizzard's own rows of buffs and debuffs at the top right of the screen. Off, "
+                                .. "Medalluin's auras stand in for them: the column over the portrait and the side "
+                                .. "panel's Auras tab.")),
+                    },
+                },
+                {
                     id = "party", name = "Party",
                     intro = "The party frames use the group their Party layout puts them in (Console > General). "
                         .. "The Console group is on the player and target frames too.",
@@ -376,15 +393,6 @@ function ns.OptionPages()
                             Range("partyWidgetRange", "party"), Pets("partyWidgetPets"),
                             Glow("partyWidgetGlow"), CC("partyWidgetCC", "the"), Buffs("partyWidgetBuffs"),
                             BossDebuffs("partyWidgetBoss"), Movers("partyWidgetMoverHover", "Party")),
-                        Group("Editor",
-                            Editor(function() return ns.PartyWidgetLayout() and "partyWidget" or "party" end,
-                                "Edit the party frames"),
-                            Editor("unit", "Edit player and target")),
-                        Group("Blizzard's auras (shared by every profile)",
-                            Check("blizzardAuras", "Blizzard's buff and debuff rows",
-                                "Show Blizzard's own rows of buffs and debuffs at the top right of the screen. Off, "
-                                .. "Medalluin's auras stand in for them: the column over the portrait and the side "
-                                .. "panel's Auras tab.")),
                     },
                 },
                 {

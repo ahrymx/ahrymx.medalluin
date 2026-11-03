@@ -1685,7 +1685,7 @@ if barPass then
     print("window", "size=" .. win.w .. "x" .. win.h, "strata=" .. tostring(win.strata),
         "esc=" .. tostring(UISpecialFrames[1]), "title=" .. win.title.text)
     for _, path in ipairs({ "general", "console/general", "console/bar", "console/overhead",
-        "console/minimap", "units/party", "units/raid", "units/battleground", "units/boss",
+        "console/minimap", "units/general", "units/party", "units/raid", "units/battleground", "units/boss",
         "units/arena", "chat", "side", "bags" }) do dump(path) end
     -- a master off greys its page; the footer asks for a reload
     page.settings.bags:Set(false)

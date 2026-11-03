@@ -19,6 +19,9 @@ read_globals = {
     "PetFrame", "FocusFrame", "BuffFrame", "DebuffFrame", "TemporaryEnchantFrame", "TargetFrameToT", "ShapeshiftBarFrame", "PetActionBarFrame",
     "MicroButtonAndBagsBar", "CharacterMicroButton", "MicroButtonPortrait", "MainMenuBarPerformanceBar",
     "MainMenuBarDownload", "MainMenuBarBackpackButton", "KeyRingButton",
+    "MainMenuMicroButton_SetAlertsEnabled", "MainMenuMicroButton_ShowAlert", "MainMenuMicroButton_HideAlert",
+    "MicroButtonPulse", "MicroButtonPulseStop", "HelpTip",
+    "TalentMicroButtonAlert", "CollectionsMicroButtonAlert", "EJMicroButtonAlert",
     -- frames of the Edit Mode clients (Forever, retail)
     "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "StanceBar", "PetActionBar",
     "MicroMenu", "MicroMenuContainer", "BagsBar", "CharacterReagentBag0Slot", "ChatAlertFrame", "StatusTrackingBarManager",
