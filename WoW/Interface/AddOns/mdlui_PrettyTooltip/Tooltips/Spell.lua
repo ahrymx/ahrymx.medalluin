@@ -42,6 +42,25 @@ local POWERS = {
     { key = "Focus", name = FOCUS, costs = { FOCUS_COST }, color = { 1, .55, .25 } },
     { key = "Runic Power", name = RUNIC_POWER, costs = { RUNIC_POWER_COST }, color = { 0, .82, 1 } },
 }
+local function addPower(key, name, costs, color)
+    local validCosts = {}
+    for _, cost in ipairs(costs) do
+        if cost and cost ~= "" then validCosts[#validCosts + 1] = cost end
+    end
+    if name and #validCosts > 0 then
+        POWERS[#POWERS + 1] = { key = key, name = name, costs = validCosts, color = color }
+    end
+end
+addPower("Fury", _G.FURY, { _G.FURY_COST }, { .79, .26, .99 })
+addPower("Pain", _G.PAIN, { _G.PAIN_COST }, { 1, .45, 0 })
+addPower("Astral Power", _G.ASTRAL_POWER or _G.LUNAR_POWER, { _G.ASTRAL_POWER_COST }, { 0, .80, 1 })
+addPower("Insanity", _G.INSANITY, { _G.INSANITY_COST }, { .40, 0, .80 })
+addPower("Maelstrom", _G.MAELSTROM, { _G.MAELSTROM_COST }, { 0, .50, 1 })
+addPower("Essence", _G.ESSENCE, { _G.ESSENCE_COST }, { .38, .85, .60 })
+addPower("Holy Power", _G.HOLY_POWER, { _G.HOLY_POWER_COST }, { 1, .90, .40 })
+addPower("Soul Shards", _G.SOUL_SHARDS, { _G.SOUL_SHARDS_COST }, { .60, .40, 1 })
+addPower("Arcane Charges", _G.ARCANE_CHARGES, { _G.ARCANE_CHARGES_COST }, { .20, .70, 1 })
+addPower("Chi", _G.CHI, { _G.CHI_COST }, { .40, 1, .80 })
 local POWER_COLORS = {}
 for _, power in ipairs(POWERS) do POWER_COLORS[power.key] = power.color end
 

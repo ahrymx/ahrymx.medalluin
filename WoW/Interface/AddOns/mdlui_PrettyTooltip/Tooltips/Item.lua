@@ -57,6 +57,13 @@ for _, kind in ipairs(ITEM_KINDS) do ITEM_KIND_NAMES[kind:lower()] = kind end
 local BINDINGS = { ITEM_BIND_ON_PICKUP, ITEM_BIND_ON_EQUIP, ITEM_BIND_ON_USE, ITEM_BIND_TO_ACCOUNT,
     ITEM_BIND_TO_BNETACCOUNT, ITEM_BIND_TO_ACCOUNT_UNTIL_EQUIP, ITEM_SOULBOUND, ITEM_UNIQUE, ITEM_UNIQUE_EQUIPPABLE,
     ITEM_UNIQUE_MULTIPLE, ITEM_LIMIT_CATEGORY, ITEM_LIMIT_CATEGORY_MULTIPLE }
+for _, modernBinding in ipairs({
+    _G.ITEM_ACCOUNTBOUND, _G.ITEM_ACCOUNTBOUND_UNTIL_EQUIP, _G.ITEM_BNETACCOUNTBOUND,
+    _G.ITEM_WARBOUND, _G.ITEM_WARBOUND_UNTIL_EQUIP, _G.ITEM_BIND_TO_WARBAND,
+    _G.ITEM_BIND_TO_WARBAND_UNTIL_EQUIP,
+}) do
+    if modernBinding and modernBinding ~= "" then BINDINGS[#BINDINGS + 1] = modernBinding end
+end
 local function isBinding(text)
     for _, binding in pairs(BINDINGS) do
         if unformat(text, binding) then return true end

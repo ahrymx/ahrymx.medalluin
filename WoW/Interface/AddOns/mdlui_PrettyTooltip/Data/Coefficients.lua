@@ -232,6 +232,7 @@ end
 -- cast, description, and spellID; part.spellPower, when set, stands in for
 -- the player's, as on the editor's samples; else game answers it.
 function ns.spellPowerRows(part, bonusCode, game)
+    if game and game.isRetail then return end
     local text = util.uncolored(table.concat(part.description, " ")):gsub("\194\160", " "):gsub("\226\128\175", " ")
     local rank = ns.spellRanks and ns.spellRanks[part.spellID]
     local named = not rank and ranksNamed(part.name)

@@ -73,6 +73,7 @@ local PARKED = -10000
 -- Moves a fading tooltip off the screen, saving its anchors for reuse.
 -- Hiding the tooltip instead would run its OnHide under the addon's taint.
 local function park(tooltip, panel)
+    if InCombatLockdown and InCombatLockdown() then return false end
     if panel.parked then return true end
     local clamped = util.call(tooltip.IsClampedToScreen, tooltip)
     local points = util.framePoints(tooltip)
@@ -100,6 +101,7 @@ local function unpark(tooltip)
     local panel = panels[tooltip]
     local parked = panel and panel.parked
     if not parked or not util.canModify(tooltip) then return end
+    if InCombatLockdown and InCombatLockdown() then return end
     local points = util.framePoints(tooltip)
     if not points then return end
     local kept = {}

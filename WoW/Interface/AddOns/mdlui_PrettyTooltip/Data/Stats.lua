@@ -66,6 +66,8 @@ local STATS = {
     CRIT_RATING = { category = "Attack", name = L["Critical Strike Rating"] },
     HASTE_RATING = { category = "Attack", name = L["Haste Rating"] },
     EXPERTISE_RATING = { category = "Attack", name = L["Expertise Rating"] },
+    MASTERY_RATING = { category = "Attack", name = mod("MASTERY_RATING_SHORT") or _G.STAT_MASTERY or L["Mastery"], line = mod("MASTERY_RATING") },
+    VERSATILITY = { category = "Attack", name = mod("VERSATILITY_SHORT") or _G.STAT_VERSATILITY or L["Versatility"], line = mod("VERSATILITY") },
 
     ARMOR = { category = "Defense", name = RESISTANCE0_NAME },
     DEFENSE_SKILL = { category = "Defense", name = L["Defense Skill"] },
@@ -78,6 +80,8 @@ local STATS = {
     BLOCK_RATING = { category = "Defense", name = L["Block Rating"] },
     BLOCK_VALUE = { category = "Defense", name = L["Shield Block Value"] },
     RESILIENCE_RATING = { category = "Defense", name = L["Resilience Rating"] },
+    SPEED_RATING = { category = "Defense", name = mod("CR_SPEED_SHORT") or _G.STAT_SPEED or L["Speed"], line = mod("CR_SPEED") },
+    AVOIDANCE_RATING = { category = "Defense", name = mod("CR_AVOIDANCE_SHORT") or _G.STAT_AVOIDANCE or L["Avoidance"], line = mod("CR_AVOIDANCE") },
     ALL_RESISTANCES = { category = "Defense", name = L["All Resistances"] },
     RESISTANCE = { each = "school" },
 
@@ -95,6 +99,7 @@ local STATS = {
 
     HEALING_POWER = { category = "Healing", magic = true, name = L["Healing Power"] },
     HEALTH_REGEN = { category = "Healing", name = L["Health per 5 sec"] },
+    LIFESTEAL_RATING = { category = "Healing", name = mod("CR_LIFESTEAL_SHORT") or _G.STAT_LIFESTEAL or L["Leech"], line = mod("CR_LIFESTEAL") },
     MANA_REGEN = { category = "Mana", name = L["Mana per 5 sec"] },
     MANA = { category = "Mana", name = mod("MANA_SHORT"), line = mod("MANA") },
 }

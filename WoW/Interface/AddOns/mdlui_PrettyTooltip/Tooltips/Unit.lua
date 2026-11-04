@@ -140,6 +140,7 @@ local function npcID(guid)
 end
 
 local function skinning(model, game)
+    if game and game.isRetail then return end
     if not (model.dead and ns.skinningLoot) then return end
     local creatureID = npcID(model.guid)
     local drops = creatureID and ns.skinningLoot(creatureID)

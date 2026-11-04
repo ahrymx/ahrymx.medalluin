@@ -91,13 +91,16 @@ locale.statWords = {
         ["spell critical strike"] = "SPELL_CRIT_RATING", ["haste"] = "HASTE_RATING",
         ["spell haste"] = "SPELL_HASTE_RATING", ["defense"] = "DEFENSE_RATING", ["dodge"] = "DODGE_RATING",
         ["parry"] = "PARRY_RATING", ["block"] = "BLOCK_RATING", ["resilience"] = "RESILIENCE_RATING",
-        ["expertise"] = "EXPERTISE_RATING",
+        ["expertise"] = "EXPERTISE_RATING", ["mastery"] = "MASTERY_RATING", ["versatility"] = "VERSATILITY",
+        ["speed"] = "SPEED_RATING", ["leech"] = "LIFESTEAL_RATING", ["avoidance"] = "AVOIDANCE_RATING",
     },
     attribute = {
         ["strength"] = "STRENGTH", ["agility"] = "AGILITY", ["stamina"] = "STAMINA", ["intellect"] = "INTELLECT",
         ["spirit"] = "SPIRIT", ["armor"] = "ARMOR", ["attack power"] = "ATTACK_POWER",
         ["ranged attack power"] = "RANGED_ATTACK_POWER", ["spell power"] = "SPELL_POWER",
         ["spell penetration"] = "SPELL_PENETRATION", ["all stats"] = "ALL_STATS",
+        ["mastery"] = "MASTERY_RATING", ["versatility"] = "VERSATILITY", ["speed"] = "SPEED_RATING",
+        ["leech"] = "LIFESTEAL_RATING", ["avoidance"] = "AVOIDANCE_RATING",
     },
     creature = {
         ["beasts"] = "BEAST", ["demons"] = "DEMON", ["dragonkin"] = "DRAGONKIN", ["elementals"] = "ELEMENTAL",

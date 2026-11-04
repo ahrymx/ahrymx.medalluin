@@ -93,6 +93,7 @@ end
 -- nil for an item that cannot be disenchanted. game answers the player's
 -- Enchanting, the results' names and icons, and their auction prices.
 function ns.disenchantFor(classID, quality, level, equipLoc, itemID, game)
+    if game and game.isRetail then return end
     if classID ~= ARMOR and classID ~= WEAPON or CRAFTED_WANDS[itemID] then return end
     if type(quality) ~= "number" or type(level) ~= "number" or NOT_DISENCHANTABLE[equipLoc] then return end
     local list = yields(classID, quality, level)

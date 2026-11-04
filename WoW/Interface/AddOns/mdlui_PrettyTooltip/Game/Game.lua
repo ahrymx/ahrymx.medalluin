@@ -10,6 +10,10 @@ local isSecret, readable, call, number, rgb = util.isSecret, util.readable, util
 local game = {}
 ns.Game = game
 
+local isRetailClient = (WOW_PROJECT_ID ~= nil and WOW_PROJECT_MAINLINE ~= nil and WOW_PROJECT_ID == WOW_PROJECT_MAINLINE)
+    or (GetBuildInfo and select(4, GetBuildInfo()) and select(4, GetBuildInfo()) >= 100000) or false
+game.isRetail = isRetailClient
+
 function game.mailAttachments(index)
     if not (GetInboxItem and GetInboxItemLink) then return {} end
     local items = {}
