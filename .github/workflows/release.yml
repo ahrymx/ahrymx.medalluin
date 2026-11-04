@@ -57,15 +57,22 @@ jobs:
         if: steps.plan.outputs.release == 'true'
         run: |
           tag="${{ steps.plan.outputs.tag }}"
+          set_tag() {
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$1" -f sha="$2" -F force=true >/dev/null 2>&1 \
+              || gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$1" -f sha="$2" >/dev/null
+          }
+          del_tag() {
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$1" >/dev/null 2>&1 || true
+          }
           for t in $(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+$'); do
-            git push -f origin "refs/tags/$t"
+            set_tag "$t" "$(git rev-parse "$t")"
           done
           # remove any legacy 3-part vX.Y.Z releases and tags, and any duplicate release on the active line's tag
           old_rel=$(gh release list --limit 200 --json tagName --jq '.[].tagName' \
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
           for t in $old_rel; do gh release delete "$t" --cleanup-tag --yes || true; done
           for t in $(git ls-remote --tags origin 'refs/tags/v*.*.*' | awk '{sub("refs/tags/","",$2); print $2}' | grep -v '\^{}$' || true); do
-            git push origin ":refs/tags/$t" || true
+            del_tag "$t"
           done
           gh release delete "$tag" --yes || true
           # freeze any earlier minor line (vX.Y != current tag) that has no release yet
@@ -77,7 +84,7 @@ jobs:
               tools/release.sh package dist-freeze "$t"
               tools/release.sh notes "$t" > freeze.md
               gh release create "$t" dist-freeze/*-"$t_ver".zip \
-                --target "$t" \
+                --target "$(git rev-parse "$t")" \
                 --title "Medalluin $t ($t_ver)" \
                 --notes-file freeze.md \
                 --latest=false
@@ -91,7 +98,7 @@ jobs:
           # the rolling release is made again, not edited, so it sorts as the
           # newest and takes Latest; its tag moves to this commit with it
           gh release delete rolling --cleanup-tag --yes || true
-          git push origin :refs/tags/rolling || true
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/rolling" >/dev/null 2>&1 || true
           {
             echo "**Rolling release: always the newest Medalluin, now $ver.**"
             echo "Each earlier minor and major line has a frozen release of its own below."
