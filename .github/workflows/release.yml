@@ -59,7 +59,7 @@ jobs:
           tag="${{ steps.plan.outputs.tag }}"
           set_tag() {
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$1" -f sha="$2" -F force=true >/dev/null 2>&1 \
-              || gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$1" -f sha="$2" >/dev/null
+              || gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$1" -f sha="$2" >/dev/null 2>&1 || true
           }
           del_tag() {
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$1" >/dev/null 2>&1 || true
@@ -84,7 +84,6 @@ jobs:
               tools/release.sh package dist-freeze "$t"
               tools/release.sh notes "$t" > freeze.md
               gh release create "$t" dist-freeze/*-"$t_ver".zip \
-                --target "$(git rev-parse "$t")" \
                 --title "Medalluin $t ($t_ver)" \
                 --notes-file freeze.md \
                 --latest=false
@@ -97,16 +96,24 @@ jobs:
           ver="v${{ steps.plan.outputs.version }}"
           # the rolling release is made again, not edited, so it sorts as the
           # newest and takes Latest; its tag moves to this commit with it
-          gh release delete rolling --cleanup-tag --yes || true
-          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/rolling" >/dev/null 2>&1 || true
+          gh release delete rolling --yes || true
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/rolling" -f sha="$GITHUB_SHA" -F force=true >/dev/null 2>&1 \
+            || gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/rolling" -f sha="$GITHUB_SHA" >/dev/null 2>&1 || true
           {
             echo "**Rolling release: always the newest Medalluin, now $ver.**"
             echo "Each earlier minor and major line has a frozen release of its own below."
             echo
             cat notes.md
           } > rolling.md
-          gh release create rolling dist/*-"$ver".zip \
-            --target "$GITHUB_SHA" \
-            --title "Medalluin $ver (rolling)" \
-            --notes-file rolling.md \
-            --latest
+          if git ls-remote --exit-code --tags origin refs/tags/rolling >/dev/null 2>&1; then
+            gh release create rolling dist/*-"$ver".zip \
+              --title "Medalluin $ver (rolling)" \
+              --notes-file rolling.md \
+              --latest
+          else
+            gh release create rolling dist/*-"$ver".zip \
+              --target "$GITHUB_SHA" \
+              --title "Medalluin $ver (rolling)" \
+              --notes-file rolling.md \
+              --latest
+          fi

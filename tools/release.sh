@@ -162,13 +162,16 @@ cmd_set() {
 }
 
 cmd_plan() {
-    local v line last release=true
+    local v line last prev_commit release=true
     v=$(version)
     line=${v%.*}
     last=$(last_tag)
-    if [[ -n $last ]] && [[ $v == "$last" ]]; then
-        release=false                      # this version is out already
-    elif [[ -n $last ]] && ! newer "$v" "$last"; then
+    prev_commit=$(toc_at HEAD~1)
+    if [[ ${GITHUB_EVENT_NAME:-} == workflow_dispatch ]]; then
+        release=true
+    elif [[ -n $last ]] && [[ $v == "$last" ]] && [[ $v == "$prev_commit" ]]; then
+        release=false                      # this version is out already and HEAD did not bump it
+    elif [[ -n $last ]] && ! newer "$v" "$last" && [[ $v != "$last" ]]; then
         die "the .toc's version $v is not newer than the last release, v$last"
     fi
     echo "version=$v"
