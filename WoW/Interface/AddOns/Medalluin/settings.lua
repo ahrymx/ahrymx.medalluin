@@ -447,6 +447,7 @@ local PAGES = {
     chat = "chat",
     side = "side", meter = "side", loot = "side", auras = "side",
     bags = "bags", bag = "bags", inventory = "bags",
+    tooltip = "tooltips", tooltips = "tooltips",
 }
 
 local function OpenSettings(arg)

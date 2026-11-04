@@ -53,57 +53,201 @@ local body, lists, rows
 local first, total = 0, 0
 local dirty, since, tick = true, 0, 0
 local runsOut = {}              -- auraInstanceID -> true / false, as last read
+local runsOutIcon = {}          -- icon -> true / false fallback when auraInstanceID is secret
+local kept = {}                 -- filter -> last entries, kept when a combat read is refused
+local removed = {}              -- auraInstanceID -> true when UNIT_AURA reports removal in combat
 local seconds                   -- the client's seconds formatter, for secret times
 local zero                      -- a zero duration, to stop a row's timer
+
+local function Key(v)
+    if ns.IsSecret(v) or v == nil then return nil end
+    return v
+end
 
 -- ------------------------------------------------------------- reading
 -- true if the aura runs out, false if it never does, nil if the client will not say
 local function RunsOut(aura)
     local id = aura.auraInstanceID
     local timed
-    if Auras.DoesAuraHaveExpirationTime and not ns.IsSecret(id) then
+    if Auras.DoesAuraHaveExpirationTime and ns.Present(id) then
         local ok, res = pcall(Auras.DoesAuraHaveExpirationTime, "player", id)
         if ok then timed = res end
-    else
+    elseif not InCombatLockdown() then
         timed = aura.expirationTime
         if not ns.IsSecret(timed) and timed ~= nil then timed = timed > 0 end
     end
     if ns.IsSecret(timed) or timed == nil then return nil end
+    if InCombatLockdown() and not timed then return nil end
     return timed and true or false
+end
+
+local function IsDebuffAura(aura)
+    local h = aura.isHarmful
+    if not ns.IsSecret(h) and h ~= nil then return h and true or false end
+    local help = aura.isHelpful
+    if not ns.IsSecret(help) and help ~= nil then return not help end
+    local id = Key(aura.auraInstanceID)
+    if id and Auras.IsAuraFilteredOutByInstanceID then
+        local ok, out = pcall(Auras.IsAuraFilteredOutByInstanceID, "player", id, "HARMFUL")
+        if ok and not ns.IsSecret(out) and out ~= nil then return not out end
+        local ok2, out2 = pcall(Auras.IsAuraFilteredOutByInstanceID, "player", id, "HELPFUL")
+        if ok2 and not ns.IsSecret(out2) and out2 ~= nil then return out2 and true or false end
+    end
+    return false
+end
+
+local function FetchByIndex(filter)
+    local out, refused = {}, false
+    for i = 1, 40 do
+        local ok, aura = pcall(Auras.GetAuraDataByIndex, "player", i, filter)
+        if not ok then
+            refused = true
+        elseif ns.IsSecret(aura) or not aura then
+            break
+        else
+            table.insert(out, aura)
+        end
+    end
+    return out, refused
+end
+
+local function AddAuras(dst, src, seenId, seenIcon)
+    for _, aura in ipairs(src) do
+        if not ns.IsSecret(aura) then
+            local id = Key(aura.auraInstanceID)
+            local icon = Key(aura.icon)
+            if id then
+                if not seenId[id] then
+                    seenId[id] = true
+                    table.insert(dst, aura)
+                end
+            elseif icon then
+                if not seenIcon[icon] then
+                    seenIcon[icon] = true
+                    table.insert(dst, aura)
+                end
+            else
+                table.insert(dst, aura)
+            end
+        end
+    end
 end
 
 -- The player's buffs or debuffs, the longest first as the client sorts them.
 local function Fetch(filter)
+    local out, seenId, seenIcon = {}, {}, {}
+    local refused = false
     if Auras.GetUnitAuras and SORT and DIRECTION then
         local ok, res = pcall(Auras.GetUnitAuras, "player", filter, nil, SORT.ExpirationOnly, DIRECTION.Reverse)
-        if ok and res then return res end
-        if not ok then return {} end
+        if ok and not ns.IsSecret(res) and res then
+            AddAuras(out, res, seenId, seenIcon)
+            if #out > 0 and not InCombatLockdown() then return out, false end
+        elseif not ok then
+            refused = true
+        end
     end
-    local out, i = {}, 1
-    while true do
-        local ok, aura = pcall(Auras.GetAuraDataByIndex, "player", i, filter)
-        if not ok or not aura then break end
-        out[i] = aura
-        i = i + 1
+    if #out == 0 or refused or InCombatLockdown() then
+        local idx, ref1 = FetchByIndex(filter)
+        AddAuras(out, idx, seenId, seenIcon)
+        refused = refused or ref1
     end
-    return out
+    if refused then
+        local ownFilter = filter .. "|PLAYER"
+        if #out == 0 and Auras.GetUnitAuras and SORT and DIRECTION then
+            local ok, res = pcall(
+                Auras.GetUnitAuras, "player", ownFilter, nil, SORT.ExpirationOnly, DIRECTION.Reverse
+            )
+            if ok and not ns.IsSecret(res) and res then AddAuras(out, res, seenId, seenIcon) end
+        end
+        local own = FetchByIndex(ownFilter)
+        AddAuras(out, own, seenId, seenIcon)
+    end
+    return out, refused
+end
+
+local function EntryFromAura(aura, debuff, seen, prevById, prevByIcon)
+    local key = Key(aura.auraInstanceID)
+    local icon = Key(aura.icon)
+    local prev = (key and prevById and prevById[key]) or (not key and icon and prevByIcon and prevByIcon[icon]) or nil
+    local timed = RunsOut(aura)
+    if key then
+        if timed == nil then timed = runsOut[key] end
+        seen[key] = timed
+    elseif icon and timed == nil then
+        timed = runsOutIcon[icon]
+    end
+    if icon and timed ~= nil then runsOutIcon[icon] = timed end
+    local ends = aura.expirationTime
+    if ns.IsSecret(ends) or ends == 0 then ends = nil end
+    local full = aura.duration
+    if ns.IsSecret(full) or full == 0 then full = prev and prev.full or nil end
+    local added = prev and prev.addedInCombat or (InCombatLockdown() and not prev and true or nil)
+    return {
+        aura = aura, debuff = debuff, timed = timed, ends = ends,
+        prevEnds = ends or (prev and prev.prevEnds),
+        duration = prev and prev.duration, full = full,
+        addedInCombat = added,
+    }
 end
 
 -- Each aura as an entry: whether it is a debuff, whether it runs out (as
 -- read now, or as last read), and its end time when that can be read.
 local function Entries(filter, debuff, seen)
-    local out = {}
-    for _, aura in ipairs(Fetch(filter)) do
-        local id = aura.auraInstanceID
-        local timed = RunsOut(aura)
-        if not ns.IsSecret(id) then
-            if timed == nil then timed = runsOut[id] end
-            seen[id] = timed
-        end
-        local ends = aura.expirationTime
-        if ns.IsSecret(ends) then ends = nil end
-        table.insert(out, { aura = aura, debuff = debuff, timed = timed, ends = ends })
+    local prevList = kept[filter] or {}
+    local prevById, prevByIcon = {}, {}
+    for _, e in ipairs(prevList) do
+        local id = Key(e.aura.auraInstanceID)
+        local icon = Key(e.aura.icon)
+        if id then prevById[id] = e end
+        if icon and not prevByIcon[icon] then prevByIcon[icon] = e end
     end
+    local list, refused = Fetch(filter)
+    local out, present, presentIcon = {}, {}, {}
+    for _, aura in ipairs(list) do
+        local id = Key(aura.auraInstanceID)
+        local icon = Key(aura.icon)
+        if not (id and removed[id]) then
+            local e = EntryFromAura(aura, debuff, seen, prevById, prevByIcon)
+            if id then present[id] = true end
+            if icon then presentIcon[icon] = true end
+            table.insert(out, e)
+        end
+    end
+    if InCombatLockdown() or refused then
+        local now = GetTime()
+        local keepAll = refused or #out == 0
+        for _, e in ipairs(prevList) do
+            local key = Key(e.aura.auraInstanceID)
+            local icon = Key(e.aura.icon)
+            local exp = e.ends or e.prevEnds
+            local alive = not exp or exp > now
+            if alive and (keepAll or e.addedInCombat) then
+                if key and not present[key] and not removed[key] then
+                    local keep = true
+                    if not e.addedInCombat and Auras.GetAuraDataByAuraInstanceID then
+                        local ok, aura = pcall(Auras.GetAuraDataByAuraInstanceID, "player", key)
+                        if ok and not ns.IsSecret(aura) then
+                            if not aura then
+                                keep = false
+                            else
+                                e = EntryFromAura(aura, debuff, seen, prevById, prevByIcon)
+                            end
+                        end
+                    end
+                    if keep then
+                        if seen[key] == nil then seen[key] = e.timed end
+                        present[key] = true
+                        if icon then presentIcon[icon] = true end
+                        table.insert(out, e)
+                    end
+                elseif not key and icon and not presentIcon[icon] then
+                    presentIcon[icon] = true
+                    table.insert(out, e)
+                end
+            end
+        end
+    end
+    kept[filter] = out
     return out
 end
 
@@ -143,7 +287,12 @@ local function Collect()
     local seen = {}
     local buffs = Entries("HELPFUL", false, seen)
     local debuffs = Entries("HARMFUL", true, seen)
-    runsOut = seen
+    if InCombatLockdown() then
+        for k, v in pairs(seen) do runsOut[k] = v end
+    else
+        runsOut = seen
+        wipe(removed)
+    end
     if ns.db.aurasColumns == 2 then
         return { Arrange(buffs), Arrange(debuffs) }
     end
@@ -179,14 +328,22 @@ end
 local function Left(r)
     local e = r.entry
     if e.ends then return math.max(0, e.ends - GetTime()) end
-    if not r.duration then return nil end
-    local s = r.duration:GetRemainingDuration()
-    if not ns.IsSecret(s) then return math.max(0, s) end
-    local f = Seconds()
-    if f then
-        local ok, text = pcall(f.Format, f, s)
-        if ok then return nil, text end
+    if r.duration and r.duration.GetRemainingDuration then
+        local ok, s = pcall(r.duration.GetRemainingDuration, r.duration)
+        if ok then
+            if not ns.IsSecret(s) then
+                if s ~= nil then return math.max(0, s) end
+            else
+                local f = Seconds()
+                if f then
+                    local ok2, text = pcall(f.Format, f, s)
+                    if ok2 and ns.Present(text) then return nil, text end
+                end
+                return nil
+            end
+        end
     end
+    if e.prevEnds then return math.max(0, e.prevEnds - GetTime()) end
     return nil
 end
 
@@ -201,7 +358,7 @@ local function Tick(r)
         r.left:SetTextColor(unpack(r.entry.debuff and s < URGENT and RED or ns.colors.text))
         if not r.clientBar then r:SetValue(s) end
     else
-        r.left:SetText(text or "")
+        r.left:SetText(ns.Or(text, ""))
         r.left:SetTextColor(unpack(ns.colors.text))
     end
 end
@@ -260,9 +417,9 @@ end
 
 local function Count(aura)
     local id = aura.auraInstanceID
-    if Auras.GetAuraApplicationDisplayCount and not ns.IsSecret(id) then
+    if Auras.GetAuraApplicationDisplayCount and ns.Present(id) then
         local ok, count = pcall(Auras.GetAuraApplicationDisplayCount, "player", id, 2)
-        if ok and count then return count end
+        if ok and ns.Present(count) then return count end
     end
     local n = aura.applications
     if ns.IsSecret(n) then return n end
@@ -280,7 +437,7 @@ local function Bar(r, e)
         if r.clientBar then
             zero = zero or C_DurationUtil and C_DurationUtil.CreateDuration and C_DurationUtil.CreateDuration()
             if zero then
-                r:SetTimerDuration(zero, INTERPOLATION and INTERPOLATION.Immediate or 0, TIMER.RemainingTime)
+                pcall(r.SetTimerDuration, r, zero, INTERPOLATION and INTERPOLATION.Immediate or 0, TIMER.RemainingTime)
             end
         end
         r.duration, r.clientBar = nil, false
@@ -290,15 +447,24 @@ local function Bar(r, e)
     end
     r.duration, r.clientBar = nil, false
     local id = aura.auraInstanceID
-    if Auras.GetAuraDuration and not ns.IsSecret(id) then
+    if Auras.GetAuraDuration and ns.Present(id) then
         local ok, dur = pcall(Auras.GetAuraDuration, "player", id)
-        if ok and dur then r.duration = dur end
+        if ok and ns.Present(dur) then
+            r.duration = dur
+            e.duration = dur
+        end
     end
+    if not r.duration and e.duration then r.duration = e.duration end
     if r.duration and r.SetTimerDuration and TIMER then
-        r:SetTimerDuration(r.duration, INTERPOLATION and INTERPOLATION.Immediate or 0, TIMER.RemainingTime)
-        r.clientBar = true
-    else
-        r:SetMinMaxValues(0, ns.Or(aura.duration, 1))
+        local ok = pcall(
+            r.SetTimerDuration, r, r.duration, INTERPOLATION and INTERPOLATION.Immediate or 0, TIMER.RemainingTime
+        )
+        r.clientBar = ok
+    end
+    if not r.clientBar then
+        if not pcall(r.SetMinMaxValues, r, 0, ns.Or(e.full or aura.duration, 1)) then
+            r:SetMinMaxValues(0, 1)
+        end
     end
 end
 
@@ -315,7 +481,7 @@ local function Fill(r, e)
     r:SetStatusBarColor(bar[1], bar[2], bar[3], 0.75)
     r.icon:SetTexture(aura.icon)
     r.count:SetText(Count(aura))
-    r.label:SetText(aura.name)
+    r.label:SetText(ns.Or(aura.name, ""))
     Bar(r, e)
     Tick(r)
     r:Show()
@@ -398,6 +564,68 @@ local function Refresh()
     ns.side.Changed()
 end
 
+local function RemoveKept(id)
+    for _, filter in ipairs({ "HELPFUL", "HARMFUL" }) do
+        local list = kept[filter]
+        if list then
+            for i = #list, 1, -1 do
+                if Key(list[i].aura.auraInstanceID) == id then table.remove(list, i) end
+            end
+        end
+    end
+end
+
+local function UpsertKept(aura, debuff)
+    if ns.IsSecret(aura) or not aura then return end
+    local id = Key(aura.auraInstanceID)
+    if id then removed[id] = nil end
+    local filter = debuff and "HARMFUL" or "HELPFUL"
+    local list = kept[filter]
+    if not list then
+        list = {}
+        kept[filter] = list
+    end
+    local icon = Key(aura.icon)
+    local prevById, prevByIcon, match = {}, {}, nil
+    for i, e in ipairs(list) do
+        local eid = Key(e.aura.auraInstanceID)
+        local eicon = Key(e.aura.icon)
+        if eid then prevById[eid] = e end
+        if eicon and not prevByIcon[eicon] then prevByIcon[eicon] = e end
+        if not match and ((id and eid == id) or (not id and not eid and icon and eicon == icon)) then
+            match = i
+        end
+    end
+    local ne = EntryFromAura(aura, debuff, runsOut, prevById, prevByIcon)
+    if match then
+        ne.addedInCombat = list[match].addedInCombat
+        list[match] = ne
+    else
+        ne.addedInCombat = InCombatLockdown() or nil
+        table.insert(list, ne)
+    end
+end
+
+local function ScanCombatAuras(retry)
+    if not InCombatLockdown() then return end
+    local ref = false
+    for _, spec in ipairs({ { "HELPFUL", false }, { "HARMFUL", true } }) do
+        local list, r = FetchByIndex(spec[1])
+        for _, aura in ipairs(list) do UpsertKept(aura, spec[2]) end
+        if r then
+            ref = true
+            local own = FetchByIndex(spec[1] .. "|PLAYER")
+            for _, aura in ipairs(own) do UpsertKept(aura, spec[2]) end
+        end
+    end
+    if ref and not retry and C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            ScanCombatAuras(true)
+            dirty = true
+        end)
+    end
+end
+
 -- --------------------------------------------------------------- the view
 local view = {
     key = "auras", label = "Auras", option = "sideAuras",
@@ -427,7 +655,34 @@ function view.Build(f)
     end)
     local events = CreateFrame("Frame")
     ns.RegisterUnitEvent(events, "UNIT_AURA", "player")
-    events:SetScript("OnEvent", function() dirty = true end)
+    events:SetScript("OnEvent", function(_, _, _, info)
+        dirty = true
+        if info and not ns.IsSecret(info) then
+            local rem = not ns.IsSecret(info.removedAuraInstanceIDs) and info.removedAuraInstanceIDs
+            for _, id in ipairs(rem or {}) do
+                local k = Key(id)
+                if k then
+                    removed[k] = true
+                    RemoveKept(k)
+                end
+            end
+            local add = not ns.IsSecret(info.addedAuras) and info.addedAuras
+            for _, aura in ipairs(add or {}) do
+                if not ns.IsSecret(aura) then UpsertKept(aura, IsDebuffAura(aura)) end
+            end
+            local upd = not ns.IsSecret(info.updatedAuraInstanceIDs) and info.updatedAuraInstanceIDs
+            for _, id in ipairs(upd or {}) do
+                local k = Key(id)
+                if k and Auras.GetAuraDataByAuraInstanceID then
+                    local ok, aura = pcall(Auras.GetAuraDataByAuraInstanceID, "player", k)
+                    if ok and not ns.IsSecret(aura) and aura then
+                        UpsertKept(aura, IsDebuffAura(aura))
+                    end
+                end
+            end
+        end
+        ScanCombatAuras(false)
+    end)
     -- out of combat the times can be read again: sort by them
     for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED" }) do
         ns.On(e, function() dirty = true end)

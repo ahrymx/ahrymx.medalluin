@@ -137,9 +137,11 @@ cmd_plan() {
     echo "previous=${last:+v$last}"
 }
 
-# The addon as players install it: a Medalluin folder (with the LICENSE) in a zip.
+# The addon as players install it: a Medalluin folder (with the LICENSE) in a zip,
+# and any optional companion addons as separate <companion>-vX.Y.Z.zip packages.
+COMPANIONS=(mdlui_PrettyTooltip)
 cmd_package() {
-    local out=${1:?package where?} v stage
+    local out=${1:?package where?} v stage companion cpath
     v=$(version)
     mkdir -p "$out"
     out=$(cd "$out" && pwd)
@@ -152,6 +154,21 @@ cmd_package() {
     rm -f "$out/Medalluin-v$v.zip"
     (cd "$stage" && zip -qr -X "$out/Medalluin-v$v.zip" Medalluin)
     echo "$out/Medalluin-v$v.zip"
+    for companion in "${COMPANIONS[@]}"; do
+        cpath="WoW/Interface/AddOns/$companion"
+        if git -C "$ROOT" cat-file -e "HEAD:$cpath/$companion.toc" 2>/dev/null; then
+            git -C "$ROOT" archive --format=tar HEAD "$cpath" | tar -x -C "$stage"
+            mv "$stage/$cpath" "$stage/$companion"
+            rm -f "$out/${companion}-v$v.zip"
+            (cd "$stage" && zip -qr -X "$out/${companion}-v$v.zip" "$companion")
+            echo "$out/${companion}-v$v.zip"
+        elif [[ -f "$ROOT/$cpath/$companion.toc" ]]; then
+            cp -r "$ROOT/$cpath" "$stage/$companion"
+            rm -f "$out/${companion}-v$v.zip"
+            (cd "$stage" && zip -qr -X "$out/${companion}-v$v.zip" "$companion")
+            echo "$out/${companion}-v$v.zip"
+        fi
+    done
 }
 
 cmd_notes() {

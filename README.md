@@ -101,6 +101,12 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 
 ---
 
+## ⚠️ Known Limitations
+
+- **Side Panel Auras in Combat**: Due to Blizzard's combat aura API restrictions (`RequiresUnitAuraAccess` and secret values in `C_UnitAuras` / `UNIT_AURA`), addon code is blocked from querying newly applied auras while in combat. Existing pre-combat buffs and debuffs remain visible in the side panel's **Auras** tab and continue counting down during combat, while newly gained auras are populated once combat ends.
+
+---
+
 ## 🛠️ Work in Progress & Contributions
 
 > [!IMPORTANT]
@@ -116,4 +122,4 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 
 Medalluin is **All Rights Reserved** © 2026 AhryMX. You may install it, play with it, read its code, and change your own copy for personal use. Screenshots, videos, and streams are welcome. You may not reupload, redistribute, fork, retexture, or rebrand it, in whole or in part, without written permission. The only official copies are on [GitHub](https://github.com/ahrymx/ahrymx.medalluin) and [CurseForge](https://www.curseforge.com/wow/addons/medalluin/). See [LICENSE](LICENSE) for the full terms.
 
-The Marcellus SC font is © Brian J. Bonislawsky (Astigmatic) and is included under the [SIL Open Font License 1.1](WoW/Interface/AddOns/Medalluin/media/fonts/OFL.txt). World of Warcraft is a trademark of Blizzard Entertainment, Inc.; Medalluin is not affiliated with or endorsed by Blizzard.
+The optional `mdlui_PrettyTooltip` companion addon is based on [PrettyTooltip](https://github.com/FallenShard/PrettyTooltip) © 2026 FallenShard and is included under the [MIT License](WoW/Interface/AddOns/mdlui_PrettyTooltip/LICENSE). The Marcellus SC font is © Brian J. Bonislawsky (Astigmatic) and is included under the [SIL Open Font License 1.1](WoW/Interface/AddOns/Medalluin/media/fonts/OFL.txt). World of Warcraft is a trademark of Blizzard Entertainment, Inc.; Medalluin is not affiliated with or endorsed by Blizzard.

@@ -508,5 +508,27 @@ function ns.OptionPages()
                         "The item level in the corner of each weapon and piece of armour, in its quality's colour.")),
             },
         },
+        {
+            id = "tooltips", name = "Tooltips (ext)",
+            intro = "Provided by the optional PrettyTooltip companion addon (mdlui_PrettyTooltip). "
+                .. "Enable PrettyTooltip in your AddOns list to reskin tooltips and open its style editor and options.",
+            enabled = function() return SlashCmdList and SlashCmdList.PRETTYTOOLTIP ~= nil end,
+            groups = {
+                Group("PrettyTooltip",
+                    Button("Open style editor", function()
+                        if SlashCmdList and SlashCmdList.PRETTYTOOLTIP then
+                            if ns.CloseOptions then ns.CloseOptions() end
+                            SlashCmdList.PRETTYTOOLTIP("")
+                        end
+                    end, "Closes this window and opens PrettyTooltip's live style editor (/ptip)."),
+                    Button("Tooltip options", function()
+                        if SlashCmdList and SlashCmdList.PRETTYTOOLTIP then
+                            if ns.CloseOptions then ns.CloseOptions() end
+                            SlashCmdList.PRETTYTOOLTIP("options")
+                        end
+                    end, "Closes this window and opens PrettyTooltip's options in the game's AddOns settings "
+                        .. "(/ptip options).")),
+            },
+        },
     }
 end

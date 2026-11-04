@@ -111,7 +111,13 @@ others are reserved by the author.
       Font License, Version 1.1 (https://openfontlicense.org). The full
       text is in media/fonts/OFL.txt, next to the font.
 
-   b. World of Warcraft, Blizzard Entertainment, and the game's own art and
+   b. The optional PrettyTooltip companion addon
+      (WoW/Interface/AddOns/mdlui_PrettyTooltip), based on PrettyTooltip
+      (https://github.com/FallenShard/PrettyTooltip), Copyright (c) 2026
+      FallenShard, is licensed under the MIT License. The full text is in
+      WoW/Interface/AddOns/mdlui_PrettyTooltip/LICENSE.
+
+   c. World of Warcraft, Blizzard Entertainment, and the game's own art and
       interface, which the Work uses from the game client by reference
       only, are trademarks or property of Blizzard Entertainment, Inc.
       Medalluin is not affiliated with or endorsed by Blizzard
