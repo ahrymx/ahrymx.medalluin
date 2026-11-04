@@ -3,8 +3,7 @@
 # for good) and:
 #
 #   rolling     replaces the "rolling" release with it: always the newest build,
-#               marked Latest, with a download link that never changes
-#               (releases/download/rolling/Medalluin.zip)
+#               marked Latest
 #   its line    moves the release of its minor line (0.2, 1.0) onto it: one
 #               release per line, holding the line's newest patch; the first
 #               version of the next minor or major starts a line of its own,
@@ -84,17 +83,13 @@ jobs:
           # newest and takes Latest; its tag moves to this commit with it
           gh release delete rolling --cleanup-tag --yes || true
           git push origin :refs/tags/rolling || true
-          for zipfile in dist/*-"$tag".zip; do
-            base=$(basename "$zipfile" "-$tag.zip")
-            cp "$zipfile" "dist/$base.zip"
-          done
           {
             echo "**Rolling release: always the newest Medalluin, now $tag.**"
             echo "Each minor and major version also has a release of its own below."
             echo
             cat notes.md
           } > rolling.md
-          gh release create rolling dist/*.zip \
+          gh release create rolling dist/*-"$tag".zip \
             --target "$GITHUB_SHA" \
             --title "Medalluin $tag (rolling)" \
             --notes-file rolling.md \
