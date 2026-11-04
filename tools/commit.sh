@@ -83,10 +83,12 @@ CHANGES=$(changes)
 PATCH=$(patch)
 
 # ------------------------------------------------------------ the evidence
-# what ships: anything under the addon's folder
-shipped=$(awk -F'\t' -v a="$ADDON/" 'index($NF, a) == 1 { n++ } END { print n + 0 }' <<<"$CHANGES")
-# new code files in the addon
-newCode=$(awk -F'\t' -v a="$ADDON/" '$1 == "A" && index($NF, a) == 1 && $NF ~ /\.(lua|xml)$/ { print $NF }' <<<"$CHANGES")
+# what ships: anything under Medalluin or any companion addon folder (mdlui_*)
+shipped_medalluin=$(awk -F'\t' -v a="$ADDON/" 'index($NF, a) == 1 { n++ } END { print n + 0 }' <<<"$CHANGES")
+shipped_companions=$(awk -F'\t' 'index($NF, "WoW/Interface/AddOns/mdlui_") == 1 { n++ } END { print n + 0 }' <<<"$CHANGES")
+shipped=$((shipped_medalluin + shipped_companions))
+# new code files in Medalluin or companion addons
+newCode=$(awk -F'\t' '$1 == "A" && index($NF, "WoW/Interface/AddOns/") == 1 && $NF ~ /\.(lua|xml)$/ { print $NF }' <<<"$CHANGES")
 # options gained, net of options removed (a control moved is not new)
 controls() {
     awk -v sign="$1" -v a="$ADDON/options/" '
@@ -116,7 +118,7 @@ else suggest=patch
 fi
 
 echo "The change"
-echo "  files: $(wc -l <<<"$CHANGES"), $shipped of them in the addon"
+echo "  files: $(wc -l <<<"$CHANGES"), $shipped shipped ($shipped_medalluin in Medalluin, $shipped_companions in companions)"
 [[ -n $newCode ]] && echo "  new code: $(tr '\n' ' ' <<<"$newCode")"
 echo "  options: net $netControls added; key bindings: $bindings added"
 [[ -n $subject ]] && echo "  message: \"$subject\"$($fixWords && echo ' (reads as a fix)')"
@@ -200,6 +202,10 @@ $all && git add -A
 if [[ $to != "$current" ]]; then
     "$REL" set "$to" >/dev/null
     git add "$TOC"
+    for companion in $("$REL" companions); do
+        ctoc="WoW/Interface/AddOns/$companion/$companion.toc"
+        [[ -f "$ctoc" ]] && git add "$ctoc"
+    done
 fi
 if [[ -n $msg ]]; then git commit -q -m "$msg"
 elif [[ -n $msgfile ]]; then git commit -q -F "$msgfile"

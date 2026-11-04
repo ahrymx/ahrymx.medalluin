@@ -15,11 +15,12 @@ terminal), so answer them yourself:
    staged).
 2. Pick the level from what the change *is*; the evidence is a hint, not the
    answer:
-   - **none**: nothing under `WoW/Interface/AddOns/Medalluin` changed (tools,
-     the harness, art sources, docs, CI). Nothing ships.
+   - **none**: nothing under `WoW/Interface/AddOns/Medalluin` or any companion
+     addon (`WoW/Interface/AddOns/mdlui_*`) changed (tools, the harness, art
+     sources, docs, CI). Nothing ships.
    - **minor**: it adds something a player can use that was not there before:
-     an option, a page, a frame, a key binding, a slash command. An option moved
-     or renamed is not new.
+     an option, a page, a frame, a key binding, a slash command, or a companion
+     addon. An option moved or renamed is not new.
    - **patch**: it fixes something that was broken, or ships anything else (art,
      wording, a cleanup).
    - **major**: when every minor feature since the last major has matured. That is

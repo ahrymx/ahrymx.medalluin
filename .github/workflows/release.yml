@@ -67,7 +67,7 @@ jobs:
           tag="${{ steps.plan.outputs.tag }}"
           line="${{ steps.plan.outputs.line }}"
           # made on this version first, so a failure leaves the old one standing
-          gh release create "$tag" "dist/Medalluin-$tag.zip" "dist/mdlui_PrettyTooltip-$tag.zip" \
+          gh release create "$tag" dist/*-"$tag".zip \
             --title "Medalluin $line ($tag)" \
             --notes-file line.md \
             --latest=false
@@ -84,16 +84,17 @@ jobs:
           # newest and takes Latest; its tag moves to this commit with it
           gh release delete rolling --cleanup-tag --yes || true
           git push origin :refs/tags/rolling || true
-          cp "dist/Medalluin-$tag.zip" dist/Medalluin.zip
-          cp "dist/mdlui_PrettyTooltip-$tag.zip" dist/mdlui_PrettyTooltip.zip
+          for zipfile in dist/*-"$tag".zip; do
+            base=$(basename "$zipfile" "-$tag.zip")
+            cp "$zipfile" "dist/$base.zip"
+          done
           {
             echo "**Rolling release: always the newest Medalluin, now $tag.**"
             echo "Each minor and major version also has a release of its own below."
             echo
             cat notes.md
           } > rolling.md
-          gh release create rolling dist/Medalluin.zip "dist/Medalluin-$tag.zip" \
-            dist/mdlui_PrettyTooltip.zip "dist/mdlui_PrettyTooltip-$tag.zip" \
+          gh release create rolling dist/*.zip \
             --target "$GITHUB_SHA" \
             --title "Medalluin $tag (rolling)" \
             --notes-file rolling.md \

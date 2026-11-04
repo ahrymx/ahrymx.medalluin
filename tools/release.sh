@@ -93,9 +93,25 @@ raised() {
     echo "$major.$minor.$patch"
 }
 
+# The optional companion addons (WoW/Interface/AddOns/mdlui_*), each with its
+# own <name>.toc.
+companions() {
+    local dir name
+    for dir in "$ROOT/WoW/Interface/AddOns"/mdlui_*; do
+        [[ -d "$dir" ]] || continue
+        name=$(basename "$dir")
+        [[ -f "$dir/$name.toc" ]] && echo "$name"
+    done
+}
+
 write_version() {
     [[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "'$1' is not MAJOR.MINOR.PATCH"
     sed -i "s/^## Version:.*/## Version: $1/" "$TOC"
+    local companion ctoc
+    for companion in $(companions); do
+        ctoc="$ROOT/WoW/Interface/AddOns/$companion/$companion.toc"
+        [[ -f "$ctoc" ]] && sed -i "s/^## Version:.*/## Version: $1/" "$ctoc"
+    done
 }
 
 cmd_bump() {
@@ -139,7 +155,6 @@ cmd_plan() {
 
 # The addon as players install it: a Medalluin folder (with the LICENSE) in a zip,
 # and any optional companion addons as separate <companion>-vX.Y.Z.zip packages.
-COMPANIONS=(mdlui_PrettyTooltip)
 cmd_package() {
     local out=${1:?package where?} v stage companion cpath
     v=$(version)
@@ -154,7 +169,7 @@ cmd_package() {
     rm -f "$out/Medalluin-v$v.zip"
     (cd "$stage" && zip -qr -X "$out/Medalluin-v$v.zip" Medalluin)
     echo "$out/Medalluin-v$v.zip"
-    for companion in "${COMPANIONS[@]}"; do
+    for companion in $(companions); do
         cpath="WoW/Interface/AddOns/$companion"
         if git -C "$ROOT" cat-file -e "HEAD:$cpath/$companion.toc" 2>/dev/null; then
             git -C "$ROOT" archive --format=tar HEAD "$cpath" | tar -x -C "$stage"
@@ -245,6 +260,7 @@ HOOK
 }
 
 case ${1:-} in
+    companions) companions ;;
     tags) shift; cmd_tags "$@" ;;
     hook) shift; cmd_hook "$@" ;;
     bump) shift; cmd_bump "$@" ;;
