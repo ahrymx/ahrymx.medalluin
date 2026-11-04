@@ -1,13 +1,12 @@
 # Releases, from the version in Medalluin.toc (tools/release.sh). On a push to
-# main whose .toc version has no tag yet, it tags it vX.Y.Z (every tag is kept
-# for good) and:
+# main with a new .toc version, only vMAJOR.MINOR and rolling tags exist:
 #
-#   rolling     replaces the "rolling" release with it: always the newest build,
-#               marked Latest
-#   its line    moves the release of its minor line (0.2, 1.0) onto it: one
-#               release per line, holding the line's newest patch; the first
-#               version of the next minor or major starts a line of its own,
-#               and the one before stays frozen at its last patch
+#   rolling     the active minor line's only release: always the newest build,
+#               marked Latest (the active line's vMAJOR.MINOR git tag moves
+#               with it, without a duplicate release of its own)
+#   frozen      when X or Y increases, the previous minor line's vMAJOR.MINOR
+#               tag is frozen into a permanent release (v0.1, v0.2, ...) at
+#               that line's last patch
 #
 # A push that does not change the version releases nothing. tools/commit.sh
 # raises the version with each commit (patch for a fix, minor for a feature,
@@ -49,48 +48,58 @@ jobs:
       - name: Package and notes
         if: steps.plan.outputs.release == 'true'
         run: |
+          tools/release.sh tags HEAD
           tools/release.sh package dist
           tools/release.sh notes > notes.md
-          tools/release.sh notes line > line.md
-          cat notes.md line.md
+          cat notes.md
 
-      - name: Tag
-        if: steps.plan.outputs.release == 'true'
-        run: |
-          git tag "${{ steps.plan.outputs.tag }}" "$GITHUB_SHA"
-          git push origin "${{ steps.plan.outputs.tag }}"
-
-      - name: Line release (the minor line's newest patch)
+      - name: Tags and frozen line releases (vMAJOR.MINOR)
         if: steps.plan.outputs.release == 'true'
         run: |
           tag="${{ steps.plan.outputs.tag }}"
-          line="${{ steps.plan.outputs.line }}"
-          # made on this version first, so a failure leaves the old one standing
-          gh release create "$tag" dist/*-"$tag".zip \
-            --title "Medalluin $line ($tag)" \
-            --notes-file line.md \
-            --latest=false
-          # then off the line's older patches; their tags stay
-          old=$(gh release list --limit 200 --json tagName --jq '.[].tagName' \
-            | grep -E "^v${line//./\\.}\.[0-9]+$" | grep -vxF "$tag" || true)
-          for t in $old; do gh release delete "$t" --yes; done
+          for t in $(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+$'); do
+            git push -f origin "refs/tags/$t"
+          done
+          # remove any legacy 3-part vX.Y.Z releases and tags, and any duplicate release on the active line's tag
+          old_rel=$(gh release list --limit 200 --json tagName --jq '.[].tagName' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          for t in $old_rel; do gh release delete "$t" --cleanup-tag --yes || true; done
+          for t in $(git ls-remote --tags origin 'refs/tags/v*.*.*' | awk '{sub("refs/tags/","",$2); print $2}' | grep -v '\^{}$' || true); do
+            git push origin ":refs/tags/$t" || true
+          done
+          gh release delete "$tag" --yes || true
+          # freeze any earlier minor line (vX.Y != current tag) that has no release yet
+          for t in $(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+$' | sort -V); do
+            [ "$t" = "$tag" ] && continue
+            if ! gh release view "$t" >/dev/null 2>&1; then
+              t_ver="v$(tools/release.sh version "$t")"
+              rm -rf dist-freeze
+              tools/release.sh package dist-freeze "$t"
+              tools/release.sh notes "$t" > freeze.md
+              gh release create "$t" dist-freeze/*-"$t_ver".zip \
+                --target "$t" \
+                --title "Medalluin $t ($t_ver)" \
+                --notes-file freeze.md \
+                --latest=false
+            fi
+          done
 
       - name: Rolling release (every version)
         if: steps.plan.outputs.release == 'true'
         run: |
-          tag="${{ steps.plan.outputs.tag }}"
+          ver="v${{ steps.plan.outputs.version }}"
           # the rolling release is made again, not edited, so it sorts as the
           # newest and takes Latest; its tag moves to this commit with it
           gh release delete rolling --cleanup-tag --yes || true
           git push origin :refs/tags/rolling || true
           {
-            echo "**Rolling release: always the newest Medalluin, now $tag.**"
-            echo "Each minor and major version also has a release of its own below."
+            echo "**Rolling release: always the newest Medalluin, now $ver.**"
+            echo "Each earlier minor and major line has a frozen release of its own below."
             echo
             cat notes.md
           } > rolling.md
-          gh release create rolling dist/*-"$tag".zip \
+          gh release create rolling dist/*-"$ver".zip \
             --target "$GITHUB_SHA" \
-            --title "Medalluin $tag (rolling)" \
+            --title "Medalluin $ver (rolling)" \
             --notes-file rolling.md \
             --latest

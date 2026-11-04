@@ -160,10 +160,10 @@ if [[ $level == patch || $level == minor ]] && [[ -n $last ]]; then
     major=${last%%.*}
     # the tags, and the minor pushed to main if its tag is not here yet
     newestMinor=$("$REL" last minor)
-    minors=$( { git tag --list "v$major.*.0"; [[ $newestMinor == "$major".* ]] && echo "v$newestMinor"; } \
-        | grep -vE "^v$major\.0\.0$" | sort -uV | tr '\n' ' ' || true)
-    since="since v$major.0.0"
-    git rev-parse -q --verify "refs/tags/v$major.0.0" >/dev/null || since="in $major.x"
+    minors=$( { git tag --list "v$major.*" | grep -E "^v$major\.[0-9]+$"; [[ $newestMinor == "$major".* ]] && echo "v${newestMinor%.*}"; } \
+        | grep -vE "^v$major\.0$" | sort -uV | tr '\n' ' ' || true)
+    since="since v$major.0"
+    git rev-parse -q --verify "refs/tags/v$major.0" >/dev/null || since="in $major.x"
     if [[ -n $minors ]]; then
         if $interactive; then
             echo

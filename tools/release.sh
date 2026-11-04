@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Medalluin's versions and release packages. The version lives in one place,
-# the .toc's "## Version:" line, as MAJOR.MINOR.PATCH; its tag is vMAJOR.MINOR.PATCH.
+# the .toc's "## Version:" line, as MAJOR.MINOR.PATCH; its line tag is vMAJOR.MINOR.
 #
 #   tools/release.sh bump patch|minor|major   raise the .toc's version (a minor
 #                                             or major bump zeroes what is below it)
@@ -11,26 +11,29 @@
 #                                             not add up); before any release, the
 #                                             .toc as it is. Writes nothing.
 #   tools/release.sh set X.Y.Z                write the .toc's version
-#   tools/release.sh last [minor|major]       the newest released version (x.y.0, x.0.0):
-#                                             a tag, or the .toc pushed to origin/main
-#   tools/release.sh tags [--quiet]           tag, here, the releases GitHub tagged:
-#                                             read from this clone's pushes, no fetch
+#   tools/release.sh last [minor|major]       the newest released version (x.y.z,
+#                                             x.y.0, x.0.0): a tag, or the .toc
+#                                             pushed to origin/main
+#   tools/release.sh tags [--quiet]           tag, here, the releases GitHub tagged
+#                                             (vMAJOR.MINOR): read from this clone's
+#                                             pushes, no fetch
 #   tools/release.sh hook [--remove]          run "tags" after every push to main
 #                                             (.git/hooks/reference-transaction)
 #   tools/release.sh plan                     what a release of the current .toc
 #                                             would be, as KEY=value lines
 #                                             (.github/workflows/release.yml reads them)
 #   tools/release.sh package <dir>            the addon zipped into <dir>
-#   tools/release.sh notes [line]             the commits since the last version tag;
-#                                             line: since the previous line's last
-#                                             version, so the line's release lists
+#   tools/release.sh notes [line]             the commits since the last release;
+#                                             line: since the previous minor line's
+#                                             tag, so the line's release lists
 #                                             everything its x.y.0 and patches did
 #
-# Two kinds of release (release.yml); every version keeps its tag for good:
-#   rolling   every version: one release, tag "rolling", replaced each time,
-#             so it is always the newest build and its download link never changes
-#   line      one per minor line (0.2, 1.0), on its newest patch's tag: each
-#             patch moves it there, and the next minor or major freezes it
+# Two kinds of release (release.yml); only vMAJOR.MINOR and rolling tags exist:
+#   rolling   the active line's release, tag "rolling", replaced on every push,
+#             marked Latest (the current vMAJOR.MINOR tag moves with it, with
+#             no duplicate release of its own)
+#   line      one frozen release per earlier minor line (v0.1, v0.2), tag
+#             vMAJOR.MINOR, frozen at that line's last patch when X or Y rises
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -46,18 +49,36 @@ version() {
     echo "$v"
 }
 
-# The newest version tag in the repository, without its v; empty when none.
+# The .toc's version at a git ref, or empty.
+toc_at() {
+    git -C "$ROOT" show "$1:$ADDON/Medalluin.toc" 2>/dev/null \
+        | sed -n 's/^## Version:[[:space:]]*\([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p' | head -n 1 || true
+}
+
+# The newest released version from the repository's vMAJOR.MINOR (or legacy
+# vMAJOR.MINOR.PATCH) tags, as MAJOR.MINOR.PATCH; empty when none.
 # "minor": the newest x.y.0 only; "major": the newest x.0.0.
 # "merged": only tags on origin/main's history, so a tag made here and not
 # pushed is not taken for a release (the commit side, without CI's checkout).
 last_tag() {
-    local minor='[0-9]*' patch='[0-9]*' scope=()
-    [[ ${1:-} == minor ]] && patch=0
-    [[ ${1:-} == major ]] && minor=0 && patch=0
+    local minor='[0-9]*' scope=() t v
+    [[ ${1:-} == major ]] && minor=0
     if [[ ${2:-} == merged ]] && git -C "$ROOT" rev-parse -q --verify refs/remotes/origin/main >/dev/null; then
         scope=(--merged refs/remotes/origin/main)
     fi
-    git -C "$ROOT" tag --list "${scope[@]}" 'v*' | sed -n "s/^v\([0-9]*\.$minor\.$patch\)\$/\1/p" | sort -V | tail -n 1
+    while read -r t; do
+        [[ -n $t ]] || continue
+        v=$(toc_at "$t")
+        [[ -n $v ]] || continue
+        if [[ ${1:-} == major ]]; then
+            echo "${v%%.*}.0.0"
+        elif [[ ${1:-} == minor ]]; then
+            echo "${v%.*}.0"
+        else
+            echo "$v"
+        fi
+    done < <(git -C "$ROOT" tag --list "${scope[@]}" 'v*' | grep -E "^v[0-9]+\.$minor(\.[0-9]+)?$" || true) \
+        | sort -V | tail -n 1
 }
 
 # The newest released version as this clone can know it: the newest tag, or
@@ -67,13 +88,16 @@ last_tag() {
 # commit side only (target, last): in CI, origin/main is the commit being
 # released, so plan and notes read the tags.
 last_released() {
-    local tag pushed minor='[0-9]*' patch='[0-9]*'
-    [[ ${1:-} == minor ]] && patch=0
-    [[ ${1:-} == major ]] && minor=0 && patch=0
+    local tag pushed
     tag=$(last_tag "${1:-}" merged)
-    pushed=$(git -C "$ROOT" show "refs/remotes/origin/main:$ADDON/Medalluin.toc" 2>/dev/null \
-        | sed -n 's/^## Version:[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -n 1 \
-        | sed -n "s/^\([0-9]*\.$minor\.$patch\)\$/\1/p" || true)
+    pushed=$(toc_at "refs/remotes/origin/main")
+    if [[ -n $pushed ]]; then
+        if [[ ${1:-} == major ]]; then
+            [[ ${pushed#*.} == 0.0 ]] || pushed=""
+        elif [[ ${1:-} == minor ]]; then
+            pushed="${pushed%.*}.0"
+        fi
+    fi
     if [[ -n $pushed ]] && { [[ -z $tag ]] || newer "$pushed" "$tag"; }; then echo "$pushed"; else echo "$tag"; fi
 }
 
@@ -138,46 +162,51 @@ cmd_set() {
 }
 
 cmd_plan() {
-    local v last release=true
+    local v line last release=true
     v=$(version)
+    line=${v%.*}
     last=$(last_tag)
-    if git -C "$ROOT" rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+    if [[ -n $last ]] && [[ $v == "$last" ]]; then
         release=false                      # this version is out already
     elif [[ -n $last ]] && ! newer "$v" "$last"; then
         die "the .toc's version $v is not newer than the last release, v$last"
     fi
     echo "version=$v"
-    echo "tag=v$v"
-    echo "line=${v%.*}"
+    echo "tag=v$line"
+    echo "line=$line"
     echo "release=$release"
-    echo "previous=${last:+v$last}"
+    echo "previous=${last:+v${last%.*}}"
 }
 
 # The addon as players install it: a Medalluin folder (with the LICENSE) in a zip,
 # and any optional companion addons as separate <companion>-vX.Y.Z.zip packages.
 cmd_package() {
-    local out=${1:?package where?} v stage companion cpath
-    v=$(version)
+    local out=${1:?package where?} ref=${2:-HEAD} v stage companion cpath
+    if [[ $ref == HEAD ]]; then v=$(version); else v=$(toc_at "$ref"); fi
     mkdir -p "$out"
     out=$(cd "$out" && pwd)
     stage=$(mktemp -d)
     trap 'rm -rf "$stage"' RETURN
     # only what git tracks, so nothing local or ignored slips in
-    git -C "$ROOT" archive --format=tar HEAD "$ADDON" | tar -x -C "$stage"
+    git -C "$ROOT" archive --format=tar "$ref" "$ADDON" | tar -x -C "$stage"
     mv "$stage/$ADDON" "$stage/Medalluin"
-    cp "$ROOT/LICENSE" "$stage/Medalluin/LICENSE"
+    if git -C "$ROOT" cat-file -e "$ref:LICENSE" 2>/dev/null; then
+        git -C "$ROOT" show "$ref:LICENSE" > "$stage/Medalluin/LICENSE"
+    else
+        cp "$ROOT/LICENSE" "$stage/Medalluin/LICENSE"
+    fi
     rm -f "$out/Medalluin-v$v.zip"
     (cd "$stage" && zip -qr -X "$out/Medalluin-v$v.zip" Medalluin)
     echo "$out/Medalluin-v$v.zip"
     for companion in $(companions); do
         cpath="WoW/Interface/AddOns/$companion"
-        if git -C "$ROOT" cat-file -e "HEAD:$cpath/$companion.toc" 2>/dev/null; then
-            git -C "$ROOT" archive --format=tar HEAD "$cpath" | tar -x -C "$stage"
+        if git -C "$ROOT" cat-file -e "$ref:$cpath/$companion.toc" 2>/dev/null; then
+            git -C "$ROOT" archive --format=tar "$ref" "$cpath" | tar -x -C "$stage"
             mv "$stage/$cpath" "$stage/$companion"
             rm -f "$out/${companion}-v$v.zip"
             (cd "$stage" && zip -qr -X "$out/${companion}-v$v.zip" "$companion")
             echo "$out/${companion}-v$v.zip"
-        elif [[ -f "$ROOT/$cpath/$companion.toc" ]]; then
+        elif [[ $ref == HEAD && -f "$ROOT/$cpath/$companion.toc" ]]; then
             cp -r "$ROOT/$cpath" "$stage/$companion"
             rm -f "$out/${companion}-v$v.zip"
             (cd "$stage" && zip -qr -X "$out/${companion}-v$v.zip" "$companion")
@@ -187,49 +216,57 @@ cmd_package() {
 }
 
 cmd_notes() {
-    local last range v
-    if [[ ${1:-} == line ]]; then
-        # the newest tag of any earlier line: the release covers the whole line
-        v=$(version)
-        last=$(git -C "$ROOT" tag --list 'v*' | sed -n 's/^v\([0-9]*\.[0-9]*\.[0-9]*\)$/\1/p' | sort -V \
-            | awk -v line="${v%.*}" -F. '$1 "." $2 != line' | while read -r t; do
-                newer "$v" "$t" && echo "$t"
-            done | tail -n 1)
-    else
-        last=$(last_tag)
-    fi
-    if [[ -n $last ]]; then range="v$last..HEAD"; else range=HEAD; fi
-    if [[ -z $last ]]; then echo "The first release."; echo; fi
-    echo "## Changes"
-    echo
-    git -C "$ROOT" log --no-merges --format='- %s' $range
+    local ref=${1:-HEAD} v line sha subj cur="" prev=""
+    [[ $ref == line ]] && ref=${2:-HEAD}
+    if [[ $ref == HEAD ]]; then v=$(version); else v=$(toc_at "$ref"); fi
+    line=${v%.*}
+    [[ $line == 0.1 ]] && { echo "The first release."; echo; }
+    while read -r sha subj; do
+        [[ -n $sha ]] || continue
+        cur=$(toc_at "$sha")
+        cur=${cur:-$v}
+        [[ ${cur%.*} == "$line" ]] || break
+        if [[ $cur != "$prev" ]]; then
+            [[ -n $prev ]] && echo
+            echo "## v$cur"
+            echo
+            prev=$cur
+        fi
+        echo "- $subj"
+    done < <(git -C "$ROOT" log --first-parent --no-merges --format='%H %s' "$ref")
 }
 
-# The release tags GitHub holds, made here from this clone's own record of
-# its pushes (the reflog of origin/main): release.yml tags the first pushed
-# head that carries a version with no tag yet, once the workflow is in the
-# commit. Lightweight, at the same commits, so a later fetch finds them equal.
-# A tag already here is never moved; one at another commit is reported.
+# The release tags GitHub holds (vMAJOR.MINOR), made here from main's commit
+# history (refs/remotes/origin/main locally, or a ref passed by CI): each minor
+# line's tag sits at the newest commit of that line. Any old 3-part vX.Y.Z tags
+# here are removed so local tags match GitHub's.
 cmd_tags() {
-    local quiet=false sha v tag at
-    [[ ${1:-} == --quiet ]] && quiet=true
-    git -C "$ROOT" rev-parse -q --verify refs/remotes/origin/main >/dev/null || return 0
+    local quiet=false tip="refs/remotes/origin/main" sha v line tag old
+    while (($#)); do
+        case $1 in
+            --quiet) quiet=true ;;
+            *) tip=$1 ;;
+        esac
+        shift
+    done
+    for old in $(git -C "$ROOT" tag --list 'v*.*.*'); do
+        git -C "$ROOT" tag -d "$old" >/dev/null
+    done
+    git -C "$ROOT" rev-parse -q --verify "$tip" >/dev/null || return 0
     local -A seen=()
-    # oldest first
+    # newest first: the first commit seen for a minor line is where vMAJOR.MINOR sits
     while read -r sha; do
         git -C "$ROOT" cat-file -e "$sha:.github/workflows/release.yml" 2>/dev/null || continue
         v=$(git -C "$ROOT" show "$sha:$ADDON/Medalluin.toc" 2>/dev/null \
             | sed -n 's/^## Version:[[:space:]]*\([0-9]*\.[0-9]*\.[0-9]*\)[[:space:]]*$/\1/p' | head -n 1)
-        [[ -n $v && -z ${seen[$v]:-} ]] || continue
-        seen[$v]=1
-        tag=v$v
-        if at=$(git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag^{commit}"); then
-            [[ $at == "$sha" ]] || echo "release.sh: $tag is at ${at:0:7} here, but was pushed at ${sha:0:7}: left as it is" >&2
-            continue
-        fi
-        git -C "$ROOT" tag "$tag" "$sha"
-        $quiet || echo "$tag  ${sha:0:7}"
-    done < <(git -C "$ROOT" reflog show --format=%H refs/remotes/origin/main 2>/dev/null | tac)
+        [[ -n $v ]] || continue
+        line=${v%.*}
+        [[ -z ${seen[$line]:-} ]] || continue
+        seen[$line]=1
+        tag=v$line
+        git -C "$ROOT" tag -f "$tag" "$sha" >/dev/null
+        $quiet || echo "$tag  ${sha:0:7} ($v)"
+    done < <(git -C "$ROOT" log --first-parent --format=%H "$tip" 2>/dev/null)
 }
 
 # The hook: git runs it on every ref update; it answers only a push (or fetch)
@@ -261,6 +298,7 @@ HOOK
 
 case ${1:-} in
     companions) companions ;;
+    version) shift; if [[ -n ${1:-} ]]; then toc_at "$1"; else version; fi ;;
     tags) shift; cmd_tags "$@" ;;
     hook) shift; cmd_hook "$@" ;;
     bump) shift; cmd_bump "$@" ;;
