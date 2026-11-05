@@ -2,7 +2,8 @@
 -- screen. Everything drawn in a window sits BELOW the art, so the art's cut
 -- edges shape the plain rectangles behind them; text sits above it.
 --
---   base       dark backing for each window (an empty window reads as ink)
+--   base       the light profile's combat aura, under all of it; then a
+--              dark backing for each window (an empty window reads as ink)
 --   base + 2   unit buttons, XP bars, minimap
 --   base + 10  the art (solo or group), and over it the combat tint
 --   base + 12  text and mouse-over hit areas
@@ -90,6 +91,17 @@ tint:SetBlendMode("ADD")
 tint:Hide()
 ns.tint = tint
 
+-- The light console's combat aura: a glow round each piece in the tint's
+-- colour, fading out over ten pixels (art/console/gen_light_console.py).
+-- Each glow is full inside its piece and drawn on the console itself, under
+-- everything the console holds, so the art covers all but what lies
+-- outside. A glow follows its piece: the bay's shape (the minimap's or the
+-- grid's), Bar 1 and the wings as they fade, the party row in a group.
+local AURA_ALPHA = 0.85
+local auras                 -- key -> texture, once the light profile has them
+local bayActive = false     -- the bay is the grid's (UpdateGroup)
+local hooked = {}
+
 local fighting = false
 local function Threatened()
     local s = UnitThreatSituation and UnitThreatSituation("player")
@@ -99,12 +111,63 @@ end
 
 local UpdateGroup
 
+local function AuraTexture(spec, shift)
+    local t = console:CreateTexture(nil, "BACKGROUND", nil, -8)
+    local b = spec.box
+    t:SetTexture(ns.media .. spec.file)
+    t:SetSize(b[2] - b[1], b[3] - b[4])
+    t:SetPoint("TOPLEFT", console, "TOP", b[1] + (shift or 0), b[3])
+    t:SetTexCoord(0, (b[2] - b[1]) / spec.texWidth, 0, (b[3] - b[4]) / spec.texHeight)
+    t:Hide()
+    return t
+end
+
+-- How much of a piece shows: nothing while it is missing or hidden, else
+-- its own alpha (Bar 1 and the wings fade on their own: bars/bar.lua).
+local function Shown(frame)
+    if not (frame and frame:IsShown()) then return 0 end
+    if not hooked[frame] then
+        hooked[frame] = true
+        hooksecurefunc(frame, "SetAlpha", function() ns.UpdateConsoleAura() end)
+    end
+    return frame:GetAlpha()
+end
+
+function ns.UpdateConsoleAura()
+    local spec = ns.art.aura
+    if not spec then return end
+    if not auras then
+        auras = {}
+        for _, key in ipairs({ "explore", "combat", "bar1", "hybrid", "wing", "row" }) do
+            auras[key] = AuraTexture(spec[key])
+        end
+        auras.wing2 = AuraTexture(spec.wing, spec.wingShift)
+    end
+    local wings = ns.barWingPlates or {}
+    local show = {
+        explore = not bayActive and 1 or 0,
+        combat = bayActive and 1 or 0,
+        bar1 = ns.barPlate and Shown(ns.actionBar) or 0,
+        hybrid = Shown(ns.hybridBar),
+        wing = wings[1] and Shown(ns.extraBars) or 0,
+        wing2 = wings[2] and Shown(ns.extraBars) or 0,
+        row = Shown(ns.partyRowBand),
+    }
+    local c = Threatened() and TINT.threat or TINT.combat
+    for key, t in pairs(auras) do
+        local a = fighting and show[key] or 0
+        t:SetShown(a > 0)
+        if a > 0 then t:SetVertexColor(c[1], c[2], c[3], AURA_ALPHA * a) end
+    end
+end
+
 local function UpdateTint()
     tint:SetShown(fighting)
     if fighting then
         local c = Threatened() and TINT.threat or TINT.combat
         tint:SetVertexColor(c[1], c[2], c[3], TINT_ALPHA)
     end
+    -- the light profile's art, and its aura with it
     if ns.art.exploreFile and UpdateGroup then UpdateGroup() end
 end
 ns.On("PLAYER_REGEN_DISABLED", function() fighting = true; UpdateTint() end)
@@ -134,11 +197,13 @@ UpdateGroup = function()
             local row = ns.PartyRowShown and ns.PartyRowShown()
             active = fighting or (UnitExists and UnitExists("target")) or ns.skyriding or row
         end
+        bayActive = active and true or false
         local file = ns.media .. (active and ns.art.combatFile or ns.art.exploreFile)
         tex:SetTexture(file)
         tint:SetTexture(ns.media .. ns.art.tintFile)
         for _, t in ipairs(backings.group) do t:SetShown(false) end
         if ns.ShowPartyRow then ns.ShowPartyRow() end
+        ns.UpdateConsoleAura()
         return
     end
     -- the party in its widget leaves the wings empty (widgets/party.lua)

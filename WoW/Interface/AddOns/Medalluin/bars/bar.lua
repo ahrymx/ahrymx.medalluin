@@ -266,6 +266,7 @@ function ns.BuildBar(rows)
         end
     end
     ns.extraBars = extra
+    ns.barWingPlates = wingPlates       -- the combat aura follows them (console/frame.lua)
 
     ns.pager = Pager(tray)
     if ns.BuildPower then ns.BuildPower(lowParent) end

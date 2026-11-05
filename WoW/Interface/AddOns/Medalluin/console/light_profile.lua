@@ -13,6 +13,23 @@ ns.lightProfile = {
         exploreFile = "console-light-explore",
         combatFile = "console-light-combat",
         tintFile = "console-light-tint",
+        -- the combat aura round each piece (console/frame.lua); the wing's
+        -- box is the left wing's, the right one moved by wingShift
+        aura = {
+            explore = { file = "console-light-aura-explore",
+                box = { -324, 324, 12, -168 }, texWidth = 1024, texHeight = 256 },
+            combat = { file = "console-light-aura-combat",
+                box = { -324, 324, 12, -100 }, texWidth = 1024, texHeight = 128 },
+            wing = { file = "console-light-aura-wing",
+                box = { -324, -92, -38, -100 }, texWidth = 256, texHeight = 64 },
+            bar1 = { file = "console-light-aura-bar1",
+                box = { -264, 264, 60, -13 }, texWidth = 1024, texHeight = 128 },
+            hybrid = { file = "console-light-aura-hybrid",
+                box = { -242, 242, 23, -11 }, texWidth = 512, texHeight = 64 },
+            row = { file = "console-light-aura-row",
+                box = { -324, 324, -75, -131 }, texWidth = 1024, texHeight = 64 },
+            wingShift = 416,
+        },
     },
     windows = {
         unit = { 106, 310, 2, 40 },

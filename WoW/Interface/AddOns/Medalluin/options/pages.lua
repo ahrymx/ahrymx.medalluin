@@ -345,7 +345,8 @@ function ns.OptionPages()
                 {
                     id = "minimap", name = "Minimap",
                     intro = "Kept per profile. The Central Console's minimap sits in the console's bay, or in the "
-                        .. "screen's corner while the 2x5 grid takes the bay. The Medallion's stays in its ring.",
+                        .. "screen's corner while the 2x5 grid takes the bay. The Medallion's stays in its ring: of "
+                        .. "this page, only Area name is for it too.",
                     enabled = function() return ns.MinimapMoves and ns.MinimapMoves() end,
                     groups = Concat({
                         Group("Switching",
@@ -368,7 +369,17 @@ function ns.OptionPages()
                                     needs = "minimapAuto" },
                             },
                         },
-                    }, Placed("minimap", "In the corner")),
+                    }, Placed("minimap", "In the corner"), {
+                        Group("Area name",
+                            { kind = "slider", key = "minimapAreaTime", label = "Shown for", min = 0, max = 10,
+                                step = 0.5, always = true,
+                                tip = "The area's name shows at the top of the minimap while the pointer is over "
+                                    .. "it. After this long it fades out; Always keeps it until the pointer leaves.",
+                                text = function(v)
+                                    if v < 0.25 then return "Always" end
+                                    return string.format("%gs", v)
+                                end }),
+                    }),
                 },
             },
         },

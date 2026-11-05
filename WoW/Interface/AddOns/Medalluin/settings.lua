@@ -37,6 +37,9 @@ local DEFAULTS = {
     minimapAuto = true,
     minimapAutoCombat = true, minimapAutoTarget = true, minimapAutoSkyriding = true,
     minimapScale = 1, minimapX = 0, minimapY = 0,
+    -- seconds the area shows over the hovered minimap before it fades; 0
+    -- keeps it until the pointer leaves (console/minimap.lua)
+    minimapAreaTime = 3,
     -- fading (console/fade.lua): the console fades while idle, which is what
     -- is ticked here not being so; its opacity shown and faded, and how long a
     -- fade takes each way, in seconds. The overhead shows whenever it holds
@@ -175,7 +178,7 @@ for _, key in ipairs({
     "hotkeySize", "cooldownText", "cooldownTextSize", "cooldownSwipe", "cooldownEdge", "cooldownBling",
     "consoleScale", "consoleX", "consoleY", "overheadScale", "overheadX", "overheadY",
     "minimapAuto", "minimapAutoCombat", "minimapAutoTarget", "minimapAutoSkyriding",
-    "minimapScale", "minimapX", "minimapY",
+    "minimapScale", "minimapX", "minimapY", "minimapAreaTime",
     "consoleFade", "consoleShowCombat", "consoleShowTarget", "consoleShowHurt", "consoleShowGroup",
     "consoleShowMouse", "consoleAlpha", "consoleFadedAlpha", "consoleFadeIn", "consoleFadeOut",
     "overheadAlpha", "overheadFadeIn", "overheadFadeOut",

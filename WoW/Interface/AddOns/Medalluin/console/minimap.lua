@@ -4,6 +4,12 @@
 local _, ns = ...
 
 local console = ns.console
+-- the hover label's look: the window trim on a brown well, both see-through
+local GOLD_D = { 0.541, 0.439, 0.204 }
+local AREA_BROWN = { 0.165, 0.125, 0.071 }      -- #2a2012
+local AREA_ALPHA = 0.8
+local AREA_SIZE, AREA_PAD, AREA_INSET = 10, 3, 4
+local AREA_FADE = 0.4                           -- seconds it takes to go, once its time is up
 
 -- ------------------------------------------------------------ where it goes
 -- The light profile's minimap sits in the console's bay, or in the screen's
@@ -199,6 +205,61 @@ ns.On("PLAYER_LOGIN", function()
         local zoom = self:GetZoom() + (delta > 0 and 1 or -1)
         self:SetZoom(math.max(0, math.min(self:GetZoomLevels() - 1, zoom)))
     end)
+
+    -- The area, at the top's middle of the shown map while the pointer is
+    -- over it, fading out once it has shown for as long as Console > Minimap
+    -- says (or never): the zone text the cluster had, gone with it below.
+    -- The minimap's child, so it keeps the map's alpha in the corner, but
+    -- placed on the clip, whose top is the one shown. A pin is a frame of
+    -- its own and takes the pointer from the map, so it hides when the
+    -- pointer leaves the shown shape, not the map.
+    local area = CreateFrame("Frame", "MedalluinMinimapArea", Minimap)
+    area:SetFrameLevel(ns.levels.text)
+    area:SetPoint("TOP", clip, "TOP", 0, -AREA_INSET)
+    area:Hide()
+    local well = area:CreateTexture(nil, "BACKGROUND")
+    well:SetAllPoints()
+    well:SetColorTexture(AREA_BROWN[1], AREA_BROWN[2], AREA_BROWN[3], AREA_ALPHA)
+    -- the trim in four lines: under a well that is not opaque, one gold
+    -- square would show through
+    for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, 1 },
+        { "TOPLEFT", "BOTTOMLEFT", 1, 0 }, { "TOPRIGHT", "BOTTOMRIGHT", 1, 0 } }) do
+        local line = area:CreateTexture(nil, "BORDER")
+        line:SetPoint(side[1])
+        line:SetPoint(side[2])
+        if side[3] == 1 then line:SetWidth(1) else line:SetHeight(1) end
+        line:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], AREA_ALPHA)
+    end
+    local label = ns.Text(area, AREA_SIZE)
+    label:SetPoint("LEFT", AREA_PAD, 0)
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
+    local function ShowArea()
+        label:SetText(GetMinimapZoneText())
+        -- no wider than the shown map; a longer name ends in an ellipsis
+        local most = clip:GetWidth() - 2 * (AREA_INSET + AREA_PAD)
+        label:SetWidth(math.min(label:GetStringWidth() + 1, most))
+        area:SetSize(label:GetWidth() + 2 * AREA_PAD, label:GetStringHeight() + 2 * AREA_PAD)
+    end
+    local shownFor = 0
+    Minimap:HookScript("OnEnter", function()
+        ShowArea()
+        shownFor = 0
+        area:SetAlpha(1)
+        area:Show()
+    end)
+    area:SetScript("OnUpdate", function(self, elapsed)
+        if not clip:IsMouseOver() then return self:Hide() end
+        local hold = tonumber(ns.db.minimapAreaTime) or 0
+        if hold <= 0 then return end
+        shownFor = shownFor + elapsed
+        local a = 1 - (shownFor - hold) / AREA_FADE
+        if a < 0.01 then return self:Hide() end
+        self:SetAlpha(math.min(1, a))
+    end)
+    for _, e in ipairs({ "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA" }) do
+        ns.On(e, ShowArea)
+    end
 
     -- The round border, zoom buttons, zone text and the rest of the cluster
     -- belong to the default frame. Mail and tracking are children of the

@@ -90,8 +90,9 @@ local function Control(parent, spec, width)
         c = UI.Button(parent, spec.label, math.min(width, 160), 24, spec.click, spec.tip)
     end
     -- a control drawn greyed while another option is off, or while its
-    -- page's own test says no (spec.needs; content.enabled)
-    c.needs = spec.needs
+    -- page's own test says no (spec.needs; content.enabled) unless it is
+    -- for every profile there (spec.always)
+    c.needs, c.always = spec.needs, spec.always
     -- a key control is found by its binding's name
     if spec.key or spec.command then controls[spec.key or spec.command] = c end
     return c
@@ -206,7 +207,7 @@ local function Refresh()
         local on = (not f.master or ns.db[f.master.spec.key] and Has(f.master))
             and (not f.enabled or f.enabled()) and true or false
         for _, c in ipairs(f.controls) do
-            c:Refresh((c == f.master or on) and Has(c))
+            c:Refresh((c == f.master or c.always or on) and Has(c))
         end
     end
     local name = ns.db.consoleProfile

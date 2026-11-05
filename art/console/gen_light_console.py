@@ -27,6 +27,7 @@ Usage:
     python3 art/console/gen_light_console.py          -> render/light-console-*.png
     python3 art/console/gen_light_console.py export   -> media/*.tga, console/light_profile.lua
     python3 art/console/gen_light_console.py export mask -> media/minimap-light-mask.tga alone
+    python3 art/console/gen_light_console.py aura     -> render/light-console-aura.png (combat aura preview)
 """
 import os
 import subprocess
@@ -296,6 +297,92 @@ def render_tint_piece():
     return img
 
 
+# ---------------------------------------------------------------------------
+# The combat aura: a glow round each piece of the console, full inside its
+# shape and fading to nothing AURA_FADE pixels out. White, tinted in game
+# (yellow in combat, red with threat), and drawn under all of the console's
+# art, so only what lies outside the pieces shows. One texture per piece,
+# as the pieces come and go on their own: Bar 1 and the wings fade, the
+# party row shows in a group, the bay is the minimap's or the grid's.
+AURA_FADE = 10
+AURA_MARGIN = AURA_FADE + 2
+
+
+def aura_pieces():
+    """Each piece's shape as polygons in screen coordinates."""
+    def rect(l, t, r, b):
+        return [(l, t), (r, t), (r, b), (l, b)]
+    left_x = CX - BAY_HALF - WING_W
+    right_x = CX + BAY_HALF
+    bay_l = CX - BAY_HALF
+    wings = rect(left_x, FLUSH_TOP_Y, right_x + WING_W, FLUSH_TOP_Y + UNIT_H + XP_H)
+    bar1_bot = BAR1_Y + BAR1_H
+    hyb_t, hyb_b = HYBRID_Y, HYBRID_Y + HYBRID_H
+    row_l, row_t = CX - CONSOLE_W / 2, FLUSH_TOP_Y + ROW_TOP
+    return {
+        "explore": [wings, rect(bay_l, FLUSH_TOP_Y, bay_l + BAY_W, FLUSH_TOP_Y + MINIMAP_H)],
+        "combat": [wings, rect(bay_l, FLUSH_TOP_Y, bay_l + BAY_W, FLUSH_TOP_Y + BAR7_H)],
+        "wing": [rect(left_x, BAR23_Y, left_x + WING_W, BAR23_Y + BAR23_H)],
+        "bar1": [[(CX - BAR1_TOP_W / 2, BAR1_Y), (CX + BAR1_TOP_W / 2, BAR1_Y),
+                  (CX + BAR1_BOT_W / 2, bar1_bot), (CX - BAR1_BOT_W / 2, bar1_bot)]],
+        "hybrid": [[(CX - HYBRID_TOP_W / 2, hyb_t), (CX + HYBRID_TOP_W / 2, hyb_t),
+                    (CX + HYBRID_BOT_W / 2, hyb_b), (CX - HYBRID_BOT_W / 2, hyb_b)]],
+        "row": [[(row_l, row_t), (row_l + CONSOLE_W, row_t),
+                 (row_l + CONSOLE_W - ROW_RUN, row_t + ROW_H), (row_l + ROW_RUN, row_t + ROW_H)]],
+    }
+
+
+def render_aura(polys, ss=4):
+    """A piece's glow, and its box ({ left, right, top, bottom }, from the
+    console's top centre, y up) as the game places it."""
+    from scipy.ndimage import distance_transform_edt
+    xs = [x for poly in polys for x, _ in poly]
+    ys = [y for poly in polys for _, y in poly]
+    x0, y0 = int(np.floor(min(xs))) - AURA_MARGIN, int(np.floor(min(ys))) - AURA_MARGIN
+    x1, y1 = int(np.ceil(max(xs))) + AURA_MARGIN, int(np.ceil(max(ys))) + AURA_MARGIN
+    w, h = x1 - x0, y1 - y0
+    hi = Image.new("L", (w * ss, h * ss), 0)
+    d = ImageDraw.Draw(hi)
+    for poly in polys:
+        d.polygon([((x - x0) * ss, (y - y0) * ss) for x, y in poly], fill=255)
+    inside = np.array(hi) > 127
+    dist = distance_transform_edt(~inside) / ss
+    t = np.clip(1 - dist / AURA_FADE, 0, 1)
+    a = np.where(inside, 1.0, t * t * (3 - 2 * t))   # smoothstep: soft at both ends
+    a = a.reshape(h, ss, w, ss).mean(axis=(1, 3))
+    img = Image.new("RGBA", (w, h), (255, 255, 255, 0))
+    img.putalpha(Image.fromarray(np.round(a * 255).astype(np.uint8)))
+    box = (x0 - CX, x1 - CX, FLUSH_TOP_Y - y0, FLUSH_TOP_Y - y1)
+    return img, box
+
+
+def aura_mockup(mode, colour, alpha=0.85, party=False):
+    """The console as composite_mockup draws it, its aura round it: the glow
+    shows only outside the pieces, as the art covers the rest in game."""
+    canvas = composite_mockup(mode=mode)
+    pieces = aura_pieces()
+    keys = [mode, "bar1", "hybrid", "wing", "wing+"] + (["row"] if party else [])
+    glow = np.zeros((H, W))
+    inside = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(inside)
+    for key in keys:
+        shift = 2 * BAY_HALF + WING_W if key == "wing+" else 0
+        polys = [[(x + shift, y) for x, y in poly] for poly in pieces[key.rstrip("+")]]
+        img, box = render_aura(polys)
+        a = np.array(img)[..., 3] / 255.0
+        x0, y0 = CX + box[0], FLUSH_TOP_Y - box[2]
+        sub = glow[y0:y0 + a.shape[0], x0:x0 + a.shape[1]]
+        sub[:] = 1 - (1 - sub) * (1 - a)
+        for poly in polys:
+            d.polygon(poly, fill=255)
+    glow *= alpha * (1 - np.array(inside) / 255.0)
+    layer = np.zeros((H, W, 4), dtype=np.uint8)
+    layer[..., :3] = colour
+    layer[..., 3] = np.round(glow * 255).astype(np.uint8)
+    canvas.alpha_composite(Image.fromarray(layer))
+    return canvas
+
+
 def render_bar1_piece(bg_only=False):
     """Render the 504x49 top Action Bar 1 plate with 70-degree sloped ends (or its solid background)."""
     bw, bh = BAR1_W, BAR1_H
@@ -519,6 +606,17 @@ def export_all():
     export_minimap_mask()
     row_frames = party_row_boxes()
 
+    auras = []
+    for key, polys in aura_pieces().items():
+        img, box = render_aura(polys)
+        file = f"console-light-aura-{key}"
+        tw, th = to_tga(img, os.path.join(MEDIA, file + ".tga"))
+        auras.append((key, file, box, tw, th))
+    aura_lua = "\n".join(
+        f'            {key} = {{ file = "{file}",\n'
+        f'                box = {{ {b[0]}, {b[1]}, {b[2]}, {b[3]} }}, texWidth = {tw}, texHeight = {th} }},'
+        for key, file, b, tw, th in auras)
+
     # Compute exact coordinates relative to console TOP-CENTER (CX = 960, FLUSH_TOP_Y = 904)
     # Bar 1 coordinates: x signed from CX, y height ABOVE FLUSH_TOP_Y (negative below)
     bar1_bottom = FLUSH_TOP_Y - (BAR1_Y + BAR1_H)  # 904 - (856 + 49) = -1
@@ -593,6 +691,12 @@ ns.lightProfile = {{
         exploreFile = "console-light-explore",
         combatFile = "console-light-combat",
         tintFile = "console-light-tint",
+        -- the combat aura round each piece (console/frame.lua); the wing's
+        -- box is the left wing's, the right one moved by wingShift
+        aura = {{
+{aura_lua}
+            wingShift = {2 * BAY_HALF + WING_W},
+        }},
     }},
     windows = {{
         unit = {{ {BAY_HALF + 2}, {BAY_HALF + WING_W - 2}, 2, {UNIT_H - 2} }},
@@ -982,6 +1086,18 @@ def main():
         return
     if len(sys.argv) > 1 and sys.argv[1] == "export":
         export_all()
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "aura":
+        crop_box = (CX - 360, 835, CX + 360, 1075)
+        shots = [aura_mockup("combat", (255, 209, 0)), aura_mockup("combat", (230, 31, 20)),
+                 aura_mockup("explore", (255, 209, 0))]
+        sheet = Image.new("RGBA", (crop_box[2] - crop_box[0], (crop_box[3] - crop_box[1] + 16) * 3 - 16),
+                          (12, 13, 16, 255))
+        for i, shot in enumerate(shots):
+            sheet.paste(shot.crop(crop_box), (0, i * (crop_box[3] - crop_box[1] + 16)))
+        path = os.path.join(OUT, "light-console-aura.png")
+        sheet.save(path)
+        print(f"Saved aura preview to {path}")
         return
 
     print("Generating lightweight console previews...")

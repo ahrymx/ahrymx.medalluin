@@ -383,6 +383,7 @@ function Region:UnregisterAllEvents() self.unregistered = true end
 function Region:GetStringWidth() return #(self.text or "") * 7 end   -- ~Marcellus SC 15px
 -- wrapped at its width, 6 a character, 14 a line
 function Region:GetStringHeight()
+    if self.wrap == false then return 14 end
     local w = self.w > 0 and self.w or 1e9
     return math.max(1, math.ceil(#(self.text or "") * 6 / w)) * 14
 end
@@ -1059,6 +1060,8 @@ local clock = "21:02"
 function date() return clock end
 local zone = "Black Temple"
 function GetRealZoneText() return zone end
+local subzone = "Illidari Training Grounds"
+function GetMinimapZoneText() return subzone end
 function Ambiguate(name) return (name:gsub("%-.*$", "")) end
 ITEM_QUALITY_COLORS = {}
 for q, c in pairs({ [0] = { 0.62, 0.62, 0.62, "9d9d9d" }, { 1, 1, 1, "ffffff" }, { 0.12, 1, 0, "1eff00" },
@@ -4946,7 +4949,8 @@ function MinimapPass()
     local function greyed()
         ns.OpenOptions("console/minimap")
         local out = {}
-        for _, key in ipairs({ "MEDALLUIN_MINIMAP", "minimapAuto", "minimapAutoCombat", "minimapScale" }) do
+        for _, key in ipairs({ "MEDALLUIN_MINIMAP", "minimapAuto", "minimapAutoCombat", "minimapScale",
+            "minimapAreaTime" }) do
             local c = ns.optionControls[key]
             -- a slider is greyed through its - and + buttons
             local hit = c.box or c.less or c
@@ -4955,6 +4959,57 @@ function MinimapPass()
         ns.CloseOptions()
         return table.concat(out, " ")
     end
+    -- the area at the shown map's top left: shown with the pointer on the
+    -- map, kept over a pin, renamed by a zone event, gone off the shape
+    local function area()
+        local a, c = _G.MedalluinMinimapArea, _G.MedalluinMinimapClip
+        local text, well, trim = a.all_[#a.all_], 0, 0
+        for _, t in ipairs(a.all_) do
+            if t.layer == "BACKGROUND" then well = t.color end
+            if t.layer == "BORDER" then trim = trim + 1 end
+        end
+        local top = Minimap.level
+        for _, f in ipairs({ Minimap:GetChildren() }) do
+            if f ~= a then top = math.max(top, f.level) end
+        end
+        local function show(tag)
+            local at, p = next(a.points)
+            print("minimap area " .. tag, "shown=" .. tostring(a.shown), "alpha=" .. tostring(a.alpha),
+                "text=" .. tostring(text.text),
+                string.format("size=%.0fx%.0f at=%s%+.0f,%+.0f of clip=%s text=%.0f/%.0f wide", a.w, a.h, at, p[3], p[4],
+                    tostring(p[1] == c), text.w, c.w), "above the pins=" .. tostring(top < a.level))
+        end
+        show("at rest")
+        mouseOver = c
+        Minimap.scripts.OnEnter(Minimap)
+        print("minimap area look", string.format("well=%.3f,%.3f,%.3f,%.2f trim=%d size=%s", well[1], well[2], well[3],
+            well[4], trim, tostring(select(2, text:GetFont()))))
+        show("hovered")
+        a.scripts.OnUpdate(a, 0)
+        show("over a pin")
+        subzone = "The Sanctuary of Shadows and the Very Long Name of a Den"
+        fire("ZONE_CHANGED")
+        show("zone changed")
+        -- its time (3s by default), then a fade
+        a.scripts.OnUpdate(a, 2.9)
+        show("2.9s")
+        a.scripts.OnUpdate(a, 0.2)
+        show("3.1s")
+        a.scripts.OnUpdate(a, 0.3)
+        show("3.4s")
+        Minimap.scripts.OnEnter(Minimap)
+        a.scripts.OnUpdate(a, 0.1)
+        show("entered again, 0.1s")
+        set("minimapAreaTime", 0)
+        a.scripts.OnUpdate(a, 100)
+        show("Always, 100s")
+        set("minimapAreaTime", 3)
+        mouseOver = false
+        a.scripts.OnUpdate(a, 0)
+        show("left")
+        subzone = "Illidari Training Grounds"
+    end
+    area()
     if not bezel then
         -- the Medallion: nothing moves, the page says so, the key says so
         print("minimap medallion", "moves=" .. tostring(ns.MinimapMoves()), "corner=" .. tostring(ns.MinimapInCorner()),
@@ -5364,6 +5419,40 @@ if lightPass then
         "bezelShown=" .. tostring(_G.MedalluinMinimapBezel.shown),
         "bar7Alpha=" .. tostring(ns.bar7Frame.alpha))
     out("minimap(combat)", Minimap)
+    -- the combat aura: a glow round each piece shown, under all the art
+    local function aura(tag)
+        local on = {}
+        for _, t in ipairs(ns.console.all_) do
+            local file = t.kind == "Texture" and tostring(t.texture):match("console%-light%-aura%-(%w+)$")
+            if file and t.shown then
+                local p, vc = t.points.TOPLEFT, t.vertex or {}
+                table.insert(on, string.format("%s@%d,%d %dx%d %s/%s %g,%g,%g@%.2f", file, p[3], p[4], t.w, t.h,
+                    tostring(t.layer), tostring(t.sub), vc[1] or -1, vc[2] or -1, vc[3] or -1, vc[4] or -1))
+            end
+        end
+        table.sort(on)
+        print("aura " .. tag, #on > 0 and table.concat(on, "  ") or "none")
+    end
+    aura("combat")
+    threatOf = 1
+    fire("UNIT_THREAT_SITUATION_UPDATE", "player")
+    aura("threat")
+    threatOf = 0
+    fire("UNIT_THREAT_SITUATION_UPDATE", "player")
+    ns.actionBar:SetAlpha(0.5)
+    aura("bar 1 half faded")
+    ns.actionBar:SetAlpha(1)
+    -- two rows: one wing, so one wing's glow
+    local right = ns.barWingPlates[2]
+    ns.barWingPlates[2] = nil
+    ns.UpdateConsoleAura()
+    aura("two rows")
+    ns.barWingPlates[2] = right
+    ns.UpdateConsoleAura()
+    -- the minimap pinned to the bay in combat: the bay's glow is the minimap's
+    ns.ToggleMinimap()
+    aura("minimap pinned in the bay")
+    ns.ToggleMinimap()
     -- The game's update pages Bar 7: cat form (Bar 8, slots 85..94), then
     -- stealth in combat (Bar 10, slots 109..118); Medalluin's code never does
     stateTick()
@@ -5381,6 +5470,7 @@ if lightPass then
     stateTick()
     inCombat = false
     fire("PLAYER_REGEN_ENABLED")
+    aura("out of combat")
     -- the party frames: the row, which the retired "vertical" seed became
     print("party layout", "saved=" .. tostring(ns.db.partyLayout), "row=" .. tostring(ns.PartyRowLayout()))
     for i = 1, 4 do out("party" .. i, ns.units["party" .. i]) end
