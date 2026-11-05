@@ -6,7 +6,9 @@
 --
 -- A button is any named Button on the minimap that is not Blizzard's own
 -- furniture (mail, tracking and the rest stay on the minimap) and not a map
--- pin, plus every LibDBIcon button. Each is reparented into the drawer and
+-- pin, plus every LibDBIcon button. A pin is told by name where it can be,
+-- and otherwise by HereBeDragons, which places most addons' pins: Questie's
+-- quest icons are named Buttons (QuestieFrame1, ...) it parents to the map. Each is reparented into the drawer and
 -- fitted to a cell; when its addon moves it (LibDBIcon re-places a button
 -- whenever its settings change), it is put back. Addons that load late, or
 -- make their buttons late, are picked up on the next scan: a few seconds
@@ -28,12 +30,38 @@ local NAMES = { [1] = "left", [2] = "up" }      -- ns.DRAWER, by value
 local BLIZZARD = { "^Minimap", "^MiniMap", "^GameTime", "^TimeManager", "^QueueStatus",
     "^GarrisonLandingPage", "^ExpansionLandingPage", "^AddonCompartment", "^HybridMinimap" }
 
+-- Every icon HereBeDragons has ever been handed for the minimap. Remembered,
+-- not looked up: a removed pin stays on the minimap, hidden, until its
+-- addon reuses it, and must not be taken meanwhile.
+local PINS = { "HereBeDragons-Pins-2.0", "HereBeDragons-Pins-1.0" }
+local pins, watched = setmetatable({}, { __mode = "k" }), {}
+
+local function WatchPins()
+    if not LibStub then return end
+    for _, major in ipairs(PINS) do
+        local lib = LibStub(major, true)
+        if lib and not watched[lib] then
+            watched[lib] = true
+            for icon in pairs(lib.minimapPins or {}) do pins[icon] = true end
+            -- (self, ref, icon, ...) in both versions
+            for _, method in ipairs({ "AddMinimapIconWorld", "AddMinimapIconMap" }) do
+                if type(lib[method]) == "function" then
+                    hooksecurefunc(lib, method, function(_, _, icon)
+                        if icon then pins[icon] = true end
+                    end)
+                end
+            end
+        end
+    end
+end
+
 local function Wanted(f)
     local name = f.GetName and f:GetName()
     if type(name) ~= "string" then return false end      -- unnamed: a map pin, or a part
     if name:match("^LibDBIcon10_") then return true end
     if not (f.IsObjectType and f:IsObjectType("Button")) then return false end
-    if name:match("Pin") then return false end            -- HandyNotes, GatherMate and the like
+    if pins[f] then return false end                      -- placed by HereBeDragons
+    if name:match("Pin") or name:match("^Questie") then return false end   -- HandyNotes, GatherMate, Questie
     for _, p in ipairs(BLIZZARD) do
         if name:match(p) then return false end
     end
@@ -127,6 +155,7 @@ function ns.BuildDrawer(tray)
     end
 
     local function Scan()
+        WatchPins()
         local found = false
         for _, f in ipairs({ Minimap:GetChildren() }) do
             if not taken[f] and Wanted(f) then

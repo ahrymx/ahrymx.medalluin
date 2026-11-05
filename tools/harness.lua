@@ -531,6 +531,24 @@ MinimapButton("BagnonMinimapButton", 33)
 MinimapButton("MiniMapTracking", 32)
 MinimapButton("HandyNotesPin3", 12)
 MinimapButton(nil, 12)
+-- HereBeDragons' pins, named like buttons: Questie's quest icons, one shown
+-- and one its addon has removed (hidden, still on the minimap), and a pin
+-- placed after the drawer is built
+do
+    local hbd = { minimapPins = {} }
+    function hbd:AddMinimapIconMap(_, icon) icon:SetParent(Minimap); self.minimapPins[icon] = {} end
+    function hbd:AddMinimapIconWorld(ref, icon) self:AddMinimapIconMap(ref, icon) end
+    function hbd:RemoveMinimapIcon(_, icon) self.minimapPins[icon] = nil; icon:Hide() end
+    local libs = { ["HereBeDragons-Pins-2.0"] = hbd }
+    function LibStub(major) return libs[major] end
+    hbd:AddMinimapIconMap("Questie", MinimapButton("QuestieFrame1", 16))
+    local gone = MinimapButton("QuestieFrame2", 16)
+    hbd:AddMinimapIconMap("Questie", gone)
+    hbd:RemoveMinimapIcon("Questie", gone)
+    hbd:AddMinimapIconMap("Questie", gone)
+    hbd:RemoveMinimapIcon("Questie", gone)
+    QuestieLate = function() hbd:AddMinimapIconWorld("Other", MinimapButton("OtherAddonIcon7", 16)) end
+end
 MinimapCluster = new("Frame", UIParent, "MinimapCluster")
 GameTooltip = new("Frame", UIParent, "GameTooltip")
 PlayerFrame, TargetFrame = new("Frame", UIParent), new("Frame", UIParent)
@@ -2051,6 +2069,7 @@ if barPass then
         BagnonMinimapButton:Hide()
         BagnonMinimapButton.scripts.OnHide(BagnonMinimapButton)
         MinimapButton("LibDBIcon10_Late", 31)
+        QuestieLate()
         toggle.scripts.OnClick(toggle)
         toggle.scripts.OnClick(toggle)
         drawerState("drawer rescanned")
@@ -5890,6 +5909,19 @@ if bagsPass then
     print("bags.reads on open", W.reads)
     grid("bags.grid")
     chrome("bags.chrome")
+    -- a click is Blizzard's: the template alone, and nothing its OnClick reads
+    -- (GetBagID, bagID) written by us, or UseContainerItem is blocked as tainted
+    do
+        local b = slot(0, 1)
+        local ours = {}
+        for _, key in ipairs({ "OnClick", "PreClick", "PostClick" }) do
+            if b.scripts[key] then table.insert(ours, key) end
+        end
+        for _, key in ipairs({ "GetBagID", "bagID", "GetSlotAndBagID" }) do
+            if rawget(b, key) ~= nil then table.insert(ours, key) end
+        end
+        print("bags.item click", "template=" .. tostring(b.template), "ours=" .. (#ours > 0 and table.concat(ours, ",") or "none"))
+    end
     print("bags.anchor", tostring(w.points.BOTTOMRIGHT and w.points.BOTTOMRIGHT[1].name),
         tostring(w.points.BOTTOMRIGHT and w.points.BOTTOMRIGHT[2]))
 
