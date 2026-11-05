@@ -87,7 +87,7 @@ local function Build(body, foot)
 end
 
 page = {
-    key = "statistics", label = "Stats", tip = "Statistics", frame = "StatisticsFrame", order = 6,
+    key = "statistics", label = "Statistics", frame = "StatisticsFrame", order = 6,
     height = 0, flex = true,
     events = { "CRITERIA_UPDATE" },
     Build = Build, Refresh = function() Refresh() end,

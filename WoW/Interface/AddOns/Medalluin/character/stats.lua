@@ -18,7 +18,7 @@
 -- number serves every class.
 local _, ns = ...
 
-local ROW, RIBBON, BADGE, GAP = 15, 38, 46, 6
+local ROW, RIBBON, BADGE, GAP = 18, 42, 50, 6
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local SCHOOLS = { "Arcane", "Fire", "Frost", "Nature", "Shadow" }
@@ -169,10 +169,10 @@ end
 -- ------------------------------------------------------------- the ribbon
 local function Cell(foot, i)
     local c = CreateFrame("Frame", nil, foot)
-    c.label = ns.Text(c, 9)
+    c.label = ns.Text(c, 11)
     c.label:SetPoint("TOP", 0, -5)
     c.label:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-    c.value = ns.Text(c, 13)
+    c.value = ns.Text(c, 15)
     c.value:SetPoint("BOTTOM", 0, 5)
     c.index = i
     return c
@@ -201,10 +201,10 @@ local function Ribbon(foot)
     bWell:SetPoint("TOPLEFT", 1, -1)
     bWell:SetPoint("BOTTOMRIGHT", -1, 1)
     bWell:SetColorTexture(0.24, 0.16, 0.08, 1)
-    badge.value = ns.Text(badge, 15)
+    badge.value = ns.Text(badge, 18)
     badge.value:SetPoint("CENTER", 0, 4)
     badge.value:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-    badge.label = ns.Text(badge, 8)
+    badge.label = ns.Text(badge, 10)
     badge.label:SetPoint("BOTTOM", 0, 5)
     badge.label:SetText("ilvl")
     badge.label:SetTextColor(unpack(ns.colors.dim))
@@ -231,10 +231,10 @@ local function Rows(foot, entries, side)
         local half = ns.character.width / 2
         r:SetWidth(half - 8)
         r.side = side
-        r.label = ns.Text(r, 10)
+        r.label = ns.Text(r, 12)
         r.label:SetPoint("LEFT", 4, 0)
         r.label:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-        r.value = ns.Text(r, 10)
+        r.value = ns.Text(r, 12)
         r.value:SetPoint("RIGHT", -4, 0)
         list[i] = r
     end
@@ -256,7 +256,7 @@ local function Resist(foot)
         c.icon:SetSize(14, 14)
         c.icon:SetPoint("RIGHT", c, "CENTER", -1, 0)
         c.icon:SetAtlas("UI-Character-Info-Resistance-" .. school)
-        c.value = ns.Text(c, 10)
+        c.value = ns.Text(c, 12)
         c.value:SetPoint("LEFT", c, "CENTER", 2, 0)
         c.school = school
         frame.cells[i] = c

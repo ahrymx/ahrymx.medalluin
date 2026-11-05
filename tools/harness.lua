@@ -7090,7 +7090,7 @@ if characterPass then
         local icon = w.chevron.icon.texture or ""
         print(tag, "shown=" .. tostring(w.shown), "blizzard=" .. tostring(CharacterFrame.shown),
             "page=" .. (p and p.key or "none"), string.format("size=%dx%d", w.w, w.h),
-            "details=" .. tostring(p and p.foot.shown), "chevron=" .. (icon:match("Arrow%-(%a+)") or "?")
+            "details=" .. tostring(p and p.foot.shown), "chevron=" .. (icon:match("chevron%-(%a+)$") or "?")
                 .. (w.chevron.shown and "" or " hidden"),
             "heard=" .. heard())
     end
@@ -7098,12 +7098,14 @@ if characterPass then
         local list = {}
         for _, p in ipairs(C.pages) do
             if p.tab then
-                local f = p.tab.label.font
-                table.insert(list, p.label .. (p.tab.mark.shown and "*" or "") .. "@" .. p.tab.w
-                    .. (f and f[2] ~= 10 and ("/" .. f[2]) or ""))
+                local glyph = (p.tab.icon.texture or ""):match("strips\\(.+)$") or "?"
+                table.insert(list, glyph .. (p.tab.mark.shown and "*" or "") .. "@" .. p.tab.w
+                    .. string.format("(%.1f)", p.tab.icon.alpha or 1))
             end
         end
-        print(tag, table.concat(list, " "), "toggles=" .. table.concat(charWorld.toggles, ","))
+        local close = C.window.close
+        print(tag, table.concat(list, " "), "close=" .. ((close.icon.texture or ""):match("strips\\(.+)$") or "?")
+            .. "@" .. close.w, "toggles=" .. table.concat(charWorld.toggles, ","))
     end
     local function where(r)
         local point, p = next(r.points)

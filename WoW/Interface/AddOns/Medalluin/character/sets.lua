@@ -17,7 +17,7 @@ local _, ns = ...
 local ES = C_EquipmentSet
 local SHIRT, TABARD, HEAD = 4, 19, 1
 local QUESTION = 134400                 -- Interface\Icons\INV_Misc_QuestionMark
-local BUTTONS, GAP = 20, 6
+local BUTTONS, GAP = 22, 6
 local list, buttons
 local selected                          -- a set's ID
 local sets = { available = ES ~= nil and ES.GetEquipmentSetIDs ~= nil }

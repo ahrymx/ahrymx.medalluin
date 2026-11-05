@@ -18,7 +18,7 @@
 -- thumb on its right says where it is when there is more than it shows.
 local _, ns = ...
 
-local ROW, INDENT, BAR_W, BAR_H, ICON = 20, 12, 150, 14, 16
+local ROW, INDENT, BAR_W, BAR_H, ICON = 22, 12, 150, 16, 18
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 
@@ -43,7 +43,7 @@ local function Bar(parent, width)
     bar:SetPoint("BOTTOMRIGHT", -1, 1)
     bar:SetStatusBarTexture(ns.bar)
     holder.bar = bar
-    holder.text = ns.Text(bar, 9)
+    holder.text = ns.Text(bar, 11)
     holder.text:SetPoint("CENTER", 0, 0)
     function holder:Fill(b)
         local lo, hi, cur = b.min or 0, b.max or 1, b.cur or 0
@@ -72,12 +72,12 @@ local function Row(list)
     glow:SetColorTexture(1, 1, 1, 0.06)
     r.icon = r:CreateTexture(nil, "ARTWORK")
     r.icon:SetSize(ICON, ICON)
-    r.label = ns.Text(r, 10)
+    r.label = ns.Text(r, 12)
     r.label:SetJustifyH("LEFT")
     r.label:SetWordWrap(false)
-    r.value = ns.Text(r, 10)
+    r.value = ns.Text(r, 12)
     r.value:SetPoint("RIGHT", -6, 0)
-    r.sign = ns.Text(r, 12)
+    r.sign = ns.Text(r, 14)
     r.sign:SetPoint("RIGHT", -6, 0)
     r.sign:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
     r.bar = Bar(r, BAR_W)
@@ -189,7 +189,7 @@ function ns.character.List(body, empty)
     list.thumb:SetWidth(3)
     list.thumb:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
     hooksecurefunc(list.track, "SetShown", function(_, on) list.thumb:SetShown(on) end)
-    list.empty = ns.Text(list, 11)
+    list.empty = ns.Text(list, 13)
     list.empty:SetPoint("CENTER")
     list.empty:SetTextColor(unpack(ns.colors.dim))
     list.empty:SetText(empty or "")
@@ -197,7 +197,8 @@ function ns.character.List(body, empty)
 end
 
 -- -------------------------------------------------------------- details
-local TICK = 14
+local TICK = 16
+local TITLE, SUB, LINE = 18, 14, 15      -- the details' title, its sub-line, a line of its text
 
 local function Tick(foot, spec)
     local b = CreateFrame("Button", nil, foot)
@@ -210,7 +211,7 @@ local function Tick(foot, spec)
     b.check:SetPoint("TOPLEFT", 3, -3)
     b.check:SetPoint("BOTTOMRIGHT", -3, 3)
     b.check:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
-    b.label = ns.Text(b, 10)
+    b.label = ns.Text(b, 12)
     b.label:SetPoint("LEFT", b.box, "RIGHT", 5, 0)
     b.label:SetText(spec.label)
     b:SetWidth(TICK + 5 + b.label:GetStringWidth() + 4)
@@ -235,21 +236,21 @@ end
 function ns.character.Details(foot, ticks, nothing, lines)
     local d = { ticks = {} }
     lines = lines or 3
-    d.title = ns.Text(foot, 13)
+    d.title = ns.Text(foot, 15)
     d.title:SetPoint("TOP", 0, -2)
     d.title:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-    d.sub = ns.Text(foot, 10)
+    d.sub = ns.Text(foot, 12)
     d.sub:SetPoint("TOP", d.title, "BOTTOM", 0, -3)
     d.sub:SetTextColor(unpack(ns.colors.dim))
     d.bar = Bar(foot, 220)
     d.bar:SetPoint("TOP", d.sub, "BOTTOM", 0, -5)
-    d.text = ns.PlainText(foot, 10)
-    d.text:SetPoint("TOPLEFT", 4, -(16 + 3 + 12 + 5 + BAR_H + 6))
-    d.text:SetPoint("TOPRIGHT", -4, -(16 + 3 + 12 + 5 + BAR_H + 6))
+    d.text = ns.PlainText(foot, 12)
+    d.text:SetPoint("TOPLEFT", 4, -(TITLE + 3 + SUB + 5 + BAR_H + 6))
+    d.text:SetPoint("TOPRIGHT", -4, -(TITLE + 3 + SUB + 5 + BAR_H + 6))
     d.text:SetJustifyH("LEFT")
     d.text:SetJustifyV("TOP")
-    d.text:SetHeight(lines * 13)           -- more trail off
-    d.nothing = ns.Text(foot, 11)
+    d.text:SetHeight(lines * LINE)           -- more trail off
+    d.nothing = ns.Text(foot, 13)
     d.nothing:SetPoint("CENTER")
     d.nothing:SetTextColor(unpack(ns.colors.dim))
     d.nothing:SetText(nothing or "")
@@ -259,7 +260,7 @@ function ns.character.Details(foot, ticks, nothing, lines)
         if prev then b:SetPoint("LEFT", prev, "RIGHT", 16, 0) else b:SetPoint("BOTTOMLEFT", 4, 2) end
         d.ticks[i], prev = b, b
     end
-    d.height = 16 + 3 + 12 + 5 + BAR_H + 6 + lines * 13 + ((ticks and #ticks > 0) and (6 + TICK + 2) or 0)
+    d.height = TITLE + 3 + SUB + 5 + BAR_H + 6 + lines * LINE + ((ticks and #ticks > 0) and (6 + TICK + 2) or 0)
     local parts = { d.title, d.sub, d.bar, d.text }
     function d:Set(info)
         for _, p in ipairs(parts) do p:SetShown(info ~= nil) end

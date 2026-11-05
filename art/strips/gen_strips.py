@@ -17,6 +17,7 @@ references are not mirrored (portrait outer, backpack inner), so two mirrored re
 
     python3 art/strips/gen_strips.py          -> render/strips.png
     python3 art/strips/gen_strips.py layer3   -> assets/layer3.png, assets/strips/*.png
+    python3 art/strips/gen_strips.py glyphs   -> assets/strips/<glyph>.png alone
 
 The user chose B. assets/layer3.png is B's two strips in the console's
 asset format (a 1920x1080 screen, the medallion wells cut out), and
@@ -110,6 +111,35 @@ def glyph(kind, x, y):
     if kind == "legacy":        # an hourglass
         return P("M3,2 L17,2 L17,4 L15,4 C15,8 11,9 11,10 C11,11 15,12 15,16 L17,16 L17,18 L3,18 L3,16 L5,16 "
                  "C5,12 9,11 9,10 C9,9 5,8 5,4 L3,4 Z")
+    # the character window's tabs (character/window.lua)
+    if kind == "character":     # head and shoulders
+        return P("M6,6.5 a4,4.5 0 1,0 8,0 a4,4.5 0 1,0 -8,0 Z M1.5,19 C1.5,13 5,11.5 10,11.5 C15,11.5 18.5,13 18.5,19 Z")
+    if kind == "reputation":    # a pennant on its pole
+        return P("M3,1.5 L5,1.5 L5,19 L3,19 Z M5,2.5 L18,2.5 L14.5,6.5 L18,10.5 L5,10.5 Z")
+    if kind == "currency":      # a stack of coins, and one standing beside it
+        coins = "".join(f'<rect x="1.5" y="{y}" width="11" height="3.6" rx="1.8"/>' for y in (15, 11.5, 8, 4.5))
+        return (f'<g transform="translate({x},{y}) scale({s})" {f}>{coins}'
+                f'<circle cx="14.5" cy="13.5" r="4.6"/><circle cx="14.5" cy="13.5" r="2.2" fill="none"/></g>')
+    if kind == "skills":        # a sword, point up
+        return P("M10,1 L12,4 L12,12.5 L15.5,12.5 L15.5,14.5 L11.2,14.5 L11.2,17 L12.2,17 L12.2,19 L7.8,19 "
+                 "L7.8,17 L8.8,17 L8.8,14.5 L4.5,14.5 L4.5,12.5 L8,12.5 L8,4 Z")
+    if kind == "pvp":           # two swords, crossed
+        blade = ("M10,0.5 L11.6,3 L11.6,12 L14.5,12 L14.5,13.6 L11,13.6 L11,17.5 L9,17.5 L9,13.6 L5.5,13.6 "
+                 "L5.5,12 L8.4,12 L8.4,3 Z")
+        return (f'<g transform="translate({x},{y}) scale({s})" {f}>'
+                f'<path d="{blade}" transform="rotate(-38 10 10.5)"/><path d="{blade}" transform="rotate(38 10 10.5)"/>'
+                f'</g>')
+    if kind == "statistics":    # three bars on a line
+        return P("M2,17 L18,17 L18,19 L2,19 Z M3.5,10 L7,10 L7,16 L3.5,16 Z M8.25,4 L11.75,4 L11.75,16 L8.25,16 Z"
+                 "M13,7.5 L16.5,7.5 L16.5,16 L13,16 Z")
+    # the window's own controls: fold the details, unfold them, close
+    if kind == "chevron-down":
+        return P("M2,5 L10,13 L18,5 L18,9.5 L10,17.5 L2,9.5 Z")
+    if kind == "chevron-up":
+        return P("M2,15 L10,7 L18,15 L18,10.5 L10,2.5 L2,10.5 Z")
+    if kind == "close":         # a cross of two bars
+        bar = '<rect x="8.4" y="1" width="3.2" height="18" rx="0.6" transform="rotate({} 10 10)"/>'
+        return f'<g transform="translate({x},{y}) scale({s})" {f}>{bar.format(45)}{bar.format(-45)}</g>'
     if kind == "misc":          # a lozenge, for a button this list does not know
         return P("M10,1.5 L18.5,10 L10,18.5 L1.5,10 Z M10,5.5 L14.5,10 L10,14.5 L5.5,10 Z", "evenodd")
     raise ValueError(kind)
@@ -271,6 +301,34 @@ def render(kind):
 # ----------------------------------------------------------------- layer3
 GLYPHS = ["spellbook", "talents", "quests", "social", "guild", "lfg", "map", "menu", "help",
           "profession", "achievement", "housing", "collections", "journal", "store", "legacy", "misc"]
+# the character window's tabs, and its controls
+TABS = ["character", "reputation", "currency", "skills", "pvp", "statistics",
+        "chevron-down", "chevron-up", "close"]
+
+
+def part(name, inner, size=32):
+    """One of the parts code places: assets/strips/<name>.png."""
+    parts = os.path.join(ROOT, "assets", "strips")
+    os.makedirs(parts, exist_ok=True)
+    doc = svg(inner).replace(f'width="{W}" height="{H}"', f'width="{size}" height="{size}"')
+    subprocess.run(["rsvg-convert", "-o", os.path.join(parts, name + ".png")], input=doc.encode(), check=True)
+
+
+def glyphs():
+    """The glyph parts alone (layer3 untouched), and a sheet of them at 4x
+    in render/glyphs.png to look at."""
+    for g in GLYPHS + TABS:
+        part(g, glyph(g, 6, 6))
+    os.makedirs(OUT, exist_ok=True)
+    names = GLYPHS + TABS
+    sheet = Image.new("RGBA", (len(names) * 140, 140), (18, 17, 16, 255))
+    for i, g in enumerate(names):
+        im = Image.open(os.path.join(ROOT, "assets", "strips", g + ".png")).convert("RGBA").resize((128, 128),
+                                                                                                    Image.NEAREST)
+        sheet.alpha_composite(im, (i * 140 + 6, 6))
+    path = os.path.join(OUT, "glyphs.png")
+    sheet.save(path)
+    print(path)
 WELL_R = MED_R - 4            # the hole under the ring: portrait or bag icon
 
 
@@ -299,12 +357,7 @@ def layer3():
     print(path, img.getchannel("A").getbbox())
 
     parts = os.path.join(ROOT, "assets", "strips")
-    os.makedirs(parts, exist_ok=True)
-
-    def part(name, inner, size=32):
-        doc = svg(inner).replace(f'width="{W}" height="{H}"', f'width="{size}" height="{size}"')
-        subprocess.run(["rsvg-convert", "-o", os.path.join(parts, name + ".png")], input=doc.encode(), check=True)
-    for g in GLYPHS:
+    for g in GLYPHS + TABS:
         part(g, glyph(g, 6, 6))
     # white disc: the backpack icon's mask and the medallions' hover glow
     part("round", '<circle cx="32" cy="32" r="31.5" fill="#fff"/>', size=64)
@@ -458,4 +511,9 @@ def main():
 
 if __name__ == "__main__":
     import sys
-    layer3() if sys.argv[1:2] == ["layer3"] else main()
+    if sys.argv[1:2] == ["layer3"]:
+        layer3()
+    elif sys.argv[1:2] == ["glyphs"]:
+        glyphs()
+    else:
+        main()

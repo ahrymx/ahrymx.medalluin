@@ -2,7 +2,7 @@
 -- standing on the left strip over the chat panel's place, from the screen's
 -- edge to its top.
 --
---   [Character][Reputation][Currency][Skills][PvP][Stats]   [v] [x]
+--   [  @  ][  @  ][  @  ][  @  ][  @  ][  @  ]               [v] [x]
 --   ---------------------------------------------------------------
 --   the page
 --   ---------------------------------------------------------------
@@ -26,10 +26,15 @@
 -- which page is open; in combat it only turns our page, leaving Blizzard's
 -- panel code alone.
 --
+-- The tabs are icons, the glyph art/strips draws for each page (named by
+-- the page's key, or glyph), spread across the row, with the page's name
+-- in a tooltip (tip, or the label). The chevron and the cross are glyphs
+-- of the same set.
+--
 -- The pages are our own, drawn from the game's API, one per Blizzard page
 -- this client has (Forever has six, retail three):
 --
---   ns.CharacterPage{ key, label, frame (Blizzard's page), order, height,
+--   ns.CharacterPage{ key, label, tip, glyph, frame (Blizzard's page), order, height,
 --                     footHeight, flex, bandUsed, events = { ... },
 --                     Build(body, foot, band), Fit(height), Refresh(),
 --                     OnEvent(event, ...), Shown(), Showing(on) }
@@ -52,7 +57,8 @@ local L, ART = ns.stripLayout, ns.stripArt
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local WIDTH = L.chatLeft + L.chatWidth          -- from the screen's edge to the chat panel's far edge
-local PAD, TAB, RULE = 8, 20, 6                 -- the edge, the tab row, the gap round a rule
+local PAD, TAB, RULE = 8, 28, 6                 -- the edge, the tab row, the gap round a rule
+local GLYPH, CONTROL = 20, 16                   -- a tab's glyph, the chevron's and the cross's
 local TOP = PAD + TAB + RULE                    -- the page's top
 local MEDALLION = L.chatLeft                    -- the medallion's width: the strip's art left of the chat
 local OVER = ART.height - L.stripHeight         -- how far the medallion stands above the strip
@@ -94,7 +100,7 @@ local function Button(parent, width, click, tip, template)
     glow:SetPoint("TOPLEFT", 1, -1)
     glow:SetPoint("BOTTOMRIGHT", -1, 1)
     glow:SetColorTexture(1, 1, 1, 0.12)
-    b.label = ns.Text(b, 10)
+    b.label = ns.Text(b, 12)
     b.label:SetPoint("CENTER")
     if click then b:SetScript("OnClick", click) end
     b:SetScript("OnEnter", function(self)
@@ -114,7 +120,7 @@ local function Ornament(parent, label)
     f:SetHeight(12)
     local mid
     if label then
-        mid = ns.Text(f, 9)
+        mid = ns.Text(f, 11)
         mid:SetText(label)
         mid:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
     else
@@ -234,7 +240,7 @@ local function Layout()
         current.foot:SetHeight(current.footHeight)
     end
     window:SetHeight(total)
-    chevron.icon:SetTexture(details and "Interface\\Buttons\\Arrow-Down-Up" or "Interface\\Buttons\\Arrow-Up-Up")
+    chevron.icon:SetTexture(ns.media .. "strips\\" .. (details and "chevron-down" or "chevron-up"))
     dirty = true            -- a list's rows follow its height
 end
 
@@ -271,7 +277,10 @@ local function Select(page)
             p.band:SetShown(p == page)
             if p ~= page then p.foot:Hide() end
         end
-        if p.tab then p.tab.mark:SetShown(p == page) end
+        if p.tab then
+            p.tab.mark:SetShown(p == page)
+            p.tab.icon:SetAlpha(p == page and 1 or 0.6)
+        end
     end
     Layout()
     Listen()
@@ -296,19 +305,30 @@ local function Open(page)
 end
 
 -- ---------------------------------------------------------------- build
+-- a control's glyph, centred in its button
+local function Glyph(b, name)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetSize(CONTROL, CONTROL)
+    b.icon:SetPoint("CENTER")
+    if name then b.icon:SetTexture(ns.media .. "strips\\" .. name) end
+end
+
 local function Tabs()
     local shown = {}
     for _, p in ipairs(pages) do
         if p.available then table.insert(shown, p) end
     end
+    -- the row less the chevron and the cross, shared out; the tabs overlap
+    -- a pixel, sharing their edges
     local room = WIDTH - 2 * PAD - 2 * (TAB + 4)
     local w = math.floor((room + #shown - 1) / #shown)
     local prev
     for _, p in ipairs(shown) do
         local b = Button(window, w, function() Open(p) end, function() return p.tip or p.label end)
-        b.label:SetText(p.label)
-        -- a label too long for its tab steps down a size
-        if b.label:GetStringWidth() > w - 6 then b.label:SetFont(ns.font, 9, "") end
+        b.icon = b:CreateTexture(nil, "ARTWORK")
+        b.icon:SetSize(GLYPH, GLYPH)
+        b.icon:SetPoint("CENTER")
+        b.icon:SetTexture(ns.media .. "strips\\" .. (p.glyph or p.key))
         if prev then b:SetPoint("LEFT", prev, "RIGHT", -1, 0) else b:SetPoint("TOPLEFT", PAD, -PAD) end
         p.tab, prev = b, b
         table.insert(tabs, b)
@@ -353,13 +373,11 @@ local function Build()
 
     close = Button(window, TAB, function() HideUIPanel(CharacterFrame) end,
         function() return "Close the character window." end)
-    close.label:SetText("x")
+    Glyph(close, "close")
     close:SetPoint("TOPRIGHT", -PAD, -PAD)
     chevron = Button(window, TAB, function() ns.SetOption("characterDetails", not ns.db.characterDetails) end,
         function() return ns.db.characterDetails and "Hide the details." or "Show the details." end)
-    chevron.icon = chevron:CreateTexture(nil, "ARTWORK")
-    chevron.icon:SetPoint("TOPLEFT", 3, -3)
-    chevron.icon:SetPoint("BOTTOMRIGHT", -3, 3)
+    Glyph(chevron)
     chevron:SetPoint("RIGHT", close, "LEFT", -4, 0)
     window.close, window.chevron = close, chevron
 

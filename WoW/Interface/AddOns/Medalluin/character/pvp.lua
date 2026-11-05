@@ -105,9 +105,9 @@ local function Fit(h)
 end
 
 local function Build(body, foot)
-    season = ns.Text(body, 10)
+    season = ns.Text(body, 12)
     season:SetTextColor(unpack(ns.colors.dim))
-    rank = ns.Text(body, 15)
+    rank = ns.Text(body, 18)
     rank:SetPoint("TOP", season, "BOTTOM", 0, -6)
     rank:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
     emblem = body:CreateTexture(nil, "ARTWORK")

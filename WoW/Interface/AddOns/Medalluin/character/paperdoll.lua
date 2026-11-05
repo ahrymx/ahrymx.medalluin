@@ -40,7 +40,7 @@ local PLAIN = { Shirt = true, Tabard = true, Ammo = true }
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local TURN = 0.012                              -- the model's turn, in radians per pixel dragged
-local SWITCH = 20 + 6                           -- the details' switch, and the gap under it
+local SWITCH = 22 + 6                           -- the details' switch, and the gap under it
 local VIEWS = { { "stats", "Stats", "Your stats." }, { "titles", "Titles", "Wear a title you have earned." },
     { "sets", "Sets", "Your equipment sets." } }
 
@@ -101,7 +101,7 @@ local function Style(btn, slotName)
     end
     btn.edge = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
     btn.edge:SetAllPoints()
-    btn.level = ns.Text(btn, 9)
+    btn.level = ns.Text(btn, 11)
     btn.level:SetPoint("BOTTOM", 0, 2)
     Restyle(btn)
     for _, method in ipairs({ "SetNormalTexture", "SetNormalAtlas" }) do
@@ -362,7 +362,7 @@ local function Shortcuts(band)
     for i, e in ipairs(list) do
         local s, target = e[1], e[2]
         local b = ns.character.Button(row, w, nil, function() return s[2] end, "SecureActionButtonTemplate")
-        b:SetHeight(22)
+        b:SetHeight(24)
         b:SetPoint("LEFT", (i - 1) * (w + gap), -1)
         b:RegisterForClicks("AnyUp", "AnyDown")
         b:SetAttribute("type", "click")
@@ -383,9 +383,9 @@ end
 
 local function Build(frame, foot, band)
     body = frame
-    name = ns.Text(body, 15)
+    name = ns.Text(body, 18)
     name:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-    line = ns.Text(body, 10)
+    line = ns.Text(body, 12)
     line:SetPoint("TOP", name, "BOTTOM", 0, -4)
     line:SetTextColor(unpack(ns.colors.dim))
     divider = ns.character.Ornament(body)
