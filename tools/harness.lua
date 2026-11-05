@@ -838,6 +838,13 @@ function UnregisterStateDriver(f, state)
 end
 local inCombat = false
 function InCombatLockdown() return inCombat end
+-- a frame's mouse, and whether it was set during the lockdown (blocked on a
+-- protected frame in WoW)
+function Region:EnableMouse(on)
+    self.mouse = on and true or false
+    if inCombat then self.mouseInCombat = true end
+end
+function Region:IsMouseEnabled() return self.mouse ~= false end
 -- A secure wrap: the snippet runs before the frame's own script, with the
 -- frame as self and the header as owner, in the restricted environment's
 -- few functions.
@@ -5144,10 +5151,21 @@ function MinimapPass()
         ns.ToggleMinimap()
         print("minimap medallion key", "corner=" .. tostring(ns.MinimapInCorner()), "pin=" .. tostring(ns.MinimapPinned()))
     else
+        -- how many grid buttons take the pointer, and whether any was set
+        -- during the lockdown (blocked on a protected button)
+        local function gridMouse()
+            local n, locked = 0, false
+            for _, b in ipairs(ns.bar7Buttons) do
+                if b:IsMouseEnabled() then n = n + 1 end
+                locked = locked or b.mouseInCombat == true
+            end
+            return n .. "/" .. #ns.bar7Buttons .. (locked and " SET IN LOCKDOWN" or "")
+        end
         local function where(tag)
             print("minimap " .. tag, "corner=" .. tostring(Minimap.points.CENTER[1] == bezel),
                 "bezel=" .. tostring(bezel.shown), "grid=" .. tostring(ns.bar7Frame.alpha),
-                "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"), "pin=" .. tostring(ns.MinimapPinned()))
+                "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"), "pin=" .. tostring(ns.MinimapPinned()),
+                "grid mouse=" .. gridMouse())
         end
         inCombat, hasTarget = false, false
         fire("PLAYER_REGEN_ENABLED")
@@ -5216,6 +5234,19 @@ function MinimapPass()
         ns.PartyRowShown = realRow
         ns.ToggleMinimap()
         where("released")
+        -- the grid's buttons take the pointer only while it shows. Combat's
+        -- own move comes at PLAYER_REGEN_DISABLED, before the lockdown, so
+        -- it is made at once; one asked in combat waits for its end
+        fire("PLAYER_REGEN_DISABLED")
+        inCombat = true
+        where("grid, combat begins")
+        ns.ToggleMinimap()
+        where("grid, pinned in the bay in combat")
+        inCombat = false
+        fire("PLAYER_REGEN_ENABLED")
+        where("grid, combat over, still pinned")
+        ns.ToggleMinimap()
+        where("grid, released")
 
         -- size and place, in the corner; the console's scale leaves them be
         ns.ToggleMinimap()

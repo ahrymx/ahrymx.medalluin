@@ -90,8 +90,21 @@ ns.On("PLAYER_LOGIN", function()
         ns.ApplyGridPaging()
     end)
 
+    -- Its alpha alone leaves the grid's buttons taking the pointer: under
+    -- the docked minimap they showed their spells' tooltips and took its
+    -- clicks (a ping could cast). So they take it only while the grid
+    -- shows; their keys work either way. A protected button's mouse is set
+    -- out of combat only, so a move asked in combat waits for it to end;
+    -- combat's own move comes at PLAYER_REGEN_DISABLED, before the lockdown.
+    -- The minimap's hit insets are its own and stay as they are. A wait
+    -- reads the grid's alpha when it ends, so the last move decides.
+    local function Mouse()
+        local on = header:GetAlpha() > 0
+        for _, btn in ipairs(btns) do btn:EnableMouse(on) end
+    end
     function ns.UpdateBar7Visibility(relocated)
         header:SetAlpha(relocated and 1 or 0)
+        ns.OutOfCombat(Mouse)
     end
 
     -- shown by console/minimap.lua's one rule (combat, a target, skyriding, a party row),
