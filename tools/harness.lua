@@ -294,10 +294,16 @@ function Region:CreateTexture(_, layer, _, sub)
 end
 function Region:CreateFontString() return new("FontString", self) end
 local events = {}
+-- registering one already registered changes nothing, as in WoW
+local function listening(f, e)
+    for _, g in ipairs(events[e] or {}) do
+        if g == f then return true end
+    end
+end
 function Region:RegisterUnitEvent(e, unit)
     if e == "UNIT_HEALTH_FREQUENT" then error("unknown event " .. e) end
     events[e] = events[e] or {}
-    table.insert(events[e], self)
+    if not listening(self, e) then table.insert(events[e], self) end
     self.unitOf = self.unitOf or {}
     self.unitOf[e] = unit
 end
@@ -379,7 +385,15 @@ function Region:GetParent() return self.parent end
 function Region:GetText() return self.text end
 function Region:IsVisible() return self.shown end
 function Region:IsShown() return self.shown end
-function Region:UnregisterAllEvents() self.unregistered = true end
+-- as in WoW: the frame hears none of them after, until registered again
+function Region:UnregisterAllEvents()
+    self.unregistered = true
+    for _, list in pairs(events) do
+        for i = #list, 1, -1 do
+            if list[i] == self then table.remove(list, i) end
+        end
+    end
+end
 function Region:GetStringWidth() return #(self.text or "") * 7 end   -- ~Marcellus SC 15px
 -- wrapped at its width, 6 a character, 14 a line
 function Region:GetStringHeight()
@@ -753,7 +767,7 @@ function CreateFrame(kind, name, parent, template)
         -- an event the client does not have raises, as in WoW
         if missingEvents[e] then error("Attempt to register unknown event \"" .. e .. "\"", 2) end
         events[e] = events[e] or {}
-        table.insert(events[e], self)
+        if not listening(self, e) then table.insert(events[e], self) end
     end
     return f
 end
@@ -1002,6 +1016,8 @@ function GameTime_GetTime() return "11:39" end
 function UnitChannelInfo() end
 local catForm = false
 function UnitPowerType() return catForm and 3 or 0 end
+-- Forever's swing timer API (Blizzard_SwingTimer); retail has none
+C_SwingTimer = {}
 local isDragonriding = false
 local vigorCharges = 6
 local vigorStart = 0
@@ -2073,6 +2089,93 @@ if barPass then
         cb.scripts.OnUpdate(cb, 1)
         castState("cast done, faded")
         now = now - 1
+
+        -- the lower row's other two, chosen on the page: the swing timer
+        -- (Forever's PLAYER_SWING) and mana; the cast bar over each
+        local sw, mn = ns.barSwing, ns.barMana
+        local function heard(f, e)
+            for _, g in ipairs(events[e] or {}) do
+                if g == f then return "y" end
+            end
+            return "n"
+        end
+        local function rowState(tag)
+            local function one(b)
+                return string.format("%s value=%.2f/%s clock=%s", b.shown and "shown" or "hidden", b.value,
+                    tostring(b.max), tostring(b.clock.text))
+            end
+            print("low row " .. tag, "resource=" .. tostring(strip.shown), "swing " .. one(sw), "mana " .. one(mn),
+                "hears swing=" .. heard(sw, "PLAYER_SWING") .. " mana=" .. heard(mn, "UNIT_POWER_FREQUENT"))
+        end
+        ns.BuildOptions()
+        print("low row", "choices=" .. #ns.optionControls.barLowRow.spec.choices,
+            string.format("swing colour=%.2f,%.2f,%.2f", sw.barColor[1], sw.barColor[2], sw.barColor[3]),
+            string.format("mana colour=%.2f,%.2f,%.2f", mn.barColor[1], mn.barColor[2], mn.barColor[3]),
+            "level=" .. sw.level .. "," .. mn.level .. " cast over=" .. tostring(cb.level > sw.level),
+            "on the row=" .. tostring(sw.points.TOPLEFT[4] == strip.points.TOPLEFT[4]
+                and mn.points.BOTTOMRIGHT[3] == strip.points.BOTTOMRIGHT[3]))
+        rowState("as saved")
+        local function swing(d, hand)
+            for _, f in ipairs(events.PLAYER_SWING or {}) do f.scripts.OnEvent(f, "PLAYER_SWING", d, hand) end
+        end
+        local function later(s)
+            now = now + s
+            if sw.shown and sw.scripts.OnUpdate then sw.scripts.OnUpdate(sw, s) end
+        end
+        page.settings.barLowRow:Set("swing")
+        rowState("swing, idle")
+        swing(2.6, 0)
+        rowState("swing, main hand")
+        later(1.3)
+        rowState("swing, halfway")
+        swing(1.4, 1)
+        rowState("swing, the off hand's")
+        swing(3, 2)
+        rowState("swing, a ranged shot")
+        later(1.5)
+        rowState("swing, ranged halfway")
+        later(1.5)
+        rowState("swing, landed")
+        local ticking = sw.scripts.OnUpdate ~= nil
+        local realPower = UnitPower
+        UnitPower = function(_, kind) return kind == 0 and 12345 or 60 end
+        page.settings.barLowRow:Set("mana")
+        rowState("mana")
+        UnitPower = function(_, kind) return kind == 0 and 777 or 60 end
+        local function power(kind)
+            for _, f in ipairs(events.UNIT_POWER_FREQUENT or {}) do
+                if f == mn then f.scripts.OnEvent(f, "UNIT_POWER_FREQUENT", "player", kind) end
+            end
+        end
+        power("ENERGY")
+        rowState("mana, energy changed")
+        power("MANA")
+        rowState("mana, mana changed")
+        local realMax = UnitPowerMax
+        UnitPowerMax = function() return 0 end
+        power("MANA")
+        rowState("mana, a class without")
+        UnitPowerMax = realMax
+        swing(2, 0)
+        print("low row", "swing ticking after it landed=" .. tostring(ticking),
+            "swing heard while hidden=" .. tostring(sw.scripts.OnUpdate ~= nil))
+        -- retail: no swing timer, and a profile holding it shows the resource
+        local realSwing = C_SwingTimer
+        C_SwingTimer = nil
+        page.settings.barLowRow:Set("swing")
+        rowState("swing, on retail")
+        C_SwingTimer = realSwing
+        UnitPower = realPower
+        page.settings.barLowRow:Set("resource")
+        rowState("resource again")
+        casting = true
+        cast("UNIT_SPELLCAST_START", 7)
+        castState("cast over the row")
+        casting = false
+        cast("UNIT_SPELLCAST_STOP", 7)
+        now = now + 1
+        cb.scripts.OnUpdate(cb, 1)
+        now = now - 1 - 4.3
         -- the beam as cast bars: off by default; on, the player's casts over
         -- experience and the target's over reputation, each clear while its
         -- unit is idle

@@ -270,6 +270,7 @@ function ns.BuildBar(rows)
 
     ns.pager = Pager(tray)
     if ns.BuildPower then ns.BuildPower(lowParent) end
+    if ns.BuildLowRow then ns.BuildLowRow(lowParent) end
     if ns.BuildCast then ns.BuildCast(lowParent) end
     if ns.BuildDrawer then ns.BuildDrawer(tray) end
     Tint(ns.db.artColor)

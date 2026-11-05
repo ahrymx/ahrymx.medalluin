@@ -17,6 +17,9 @@ local DEFAULTS = {
     bareIcons = false,      -- WeakAuras-style icons instead of Blizzard's button art
     artColor = "ffffffff",  -- AARRGGBB, as the colour swatch stores it; white leaves the art as drawn
     hideEmpty = true,       -- hide empty buttons on extra bars (action bars 2 and 3)
+    -- the bar's lower row, under the cast bar (bars/lowrow.lua): "resource"
+    -- (the class's), "swing" (the swing timer, Forever only) or "mana"
+    barLowRow = "resource",
     -- the bar's buttons' text and cooldowns (bars/buttons.lua); a size is a
     -- scale of what the button draws on its own, so 1 leaves it as it was
     hotkeySize = 1,         -- keybind text; 0 hides it
@@ -174,7 +177,7 @@ ns.PROFILE_NAMES = {
 -- Reset profile clears the current profile's choices and nothing else.
 local PER_PROFILE = {}
 for _, key in ipairs({
-    "actionBar", "rows", "bareIcons", "artColor", "hideEmpty", "visibility", "extraVisibility", "drawer",
+    "actionBar", "rows", "bareIcons", "artColor", "hideEmpty", "barLowRow", "visibility", "extraVisibility", "drawer",
     "hotkeySize", "cooldownText", "cooldownTextSize", "cooldownSwipe", "cooldownEdge", "cooldownBling",
     "consoleScale", "consoleX", "consoleY", "overheadScale", "overheadX", "overheadY",
     "minimapAuto", "minimapAutoCombat", "minimapAutoTarget", "minimapAutoSkyriding",

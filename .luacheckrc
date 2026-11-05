@@ -57,7 +57,7 @@ read_globals = {
     -- the side panel (strips/side.lua): the meter and the loot log
     "C_DamageMeter", "C_StringUtil", "C_DurationUtil", "AbbreviateLargeNumbers", "SecondsToClock", "GetClassAtlas", "STANDARD_TEXT_FONT",
     "C_LootHistory", "C_Item", "C_CurrencyInfo", "GetItemInfo", "GetItemIcon", "ITEM_QUALITY_COLORS",
-    "HandleModifiedItemClick", "Ambiguate", "GetRealZoneText", "GetMinimapZoneText",
+    "HandleModifiedItemClick", "Ambiguate", "GetRealZoneText", "GetMinimapZoneText", "C_SwingTimer",
     "LOOT_ITEM", "LOOT_ITEM_MULTIPLE", "LOOT_ITEM_SELF", "LOOT_ITEM_SELF_MULTIPLE", "CURRENCY_GAINED",
     "CURRENCY_GAINED_MULTIPLE", "YOU_LOOT_MONEY", "YOU_LOOT_MONEY_GUILD", "LOOT_MONEY_SPLIT",
     "LOOT_MONEY_SPLIT_GUILD", "GOLD_AMOUNT", "SILVER_AMOUNT", "COPPER_AMOUNT",

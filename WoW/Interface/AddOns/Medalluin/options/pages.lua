@@ -54,6 +54,21 @@ local function Seconds(key, label, tip)
         end }
 end
 
+-- The lower row's choices: the swing timer only where the client has one
+-- (bars/lowrow.lua)
+local function LowRows()
+    local out = {
+        { "resource", "Class resource", "Combo points, holy power, chi, soul shards, arcane charges, essence or "
+            .. "runes; vigor while skyriding. Empty for a class without one." },
+    }
+    if ns.SwingTimerAvailable and ns.SwingTimerAvailable() then
+        table.insert(out, { "swing", "Swing timer", "Fills until your next main-hand swing or ranged shot, the "
+            .. "seconds left at its right." })
+    end
+    table.insert(out, { "mana", "Mana", "Your mana, the amount at its right. Empty for a class without mana." })
+    return out
+end
+
 -- Lists of groups, one after another.
 local function Concat(...)
     local out = {}
@@ -283,6 +298,9 @@ function ns.OptionPages()
                                 .. "red tint, instead of Blizzard's button art.", true),
                             Check("hideEmpty", "Hide empty buttons",
                                 "Hides empty buttons and their keybind text on extra bars (action bars 2 and 3).")),
+                        Group("Lower row",
+                            Choice("barLowRow", "Shows", LowRows(),
+                                "What the row under the buttons shows. Your cast bar covers it while you cast.")),
                         Group("Text",
                             Choice("hotkeySize", "Keybind text size", TextSizes({ 0, "Hidden", "No keybind text." }),
                                 "The key bound to each button, at its top right.")),
