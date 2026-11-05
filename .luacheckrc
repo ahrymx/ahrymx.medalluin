@@ -88,6 +88,18 @@ read_globals = {
     "PlaceAction", "ClearCursor", "GetCursorInfo", "PickupSpell", "PickupItem", "C_Item", "C_MountJournal",
     "C_PetJournal", "C_SpellBook", "C_EquipmentSet", "C_SpecializationInfo", "GetSpecialization",
     "GetActiveTalentGroup", "Enum",
+    -- the character window (character/)
+    "CharacterFrame", "SkillsFrame", "UnitPVPName", "UnitStat", "UnitArmor", "UnitAttackPower", "UnitResistance",
+    "UnitSpellHaste", "UnitDefenseSkill", "UnitFactionGroup", "UnitSex", "GetAverageItemLevel", "GetAvoidance",
+    "GetBlockChance", "GetCombatRatingBonus", "GetCritChance", "GetDodgeChance", "GetHaste", "GetHitModifier",
+    "GetLifesteal", "GetMasteryEffect", "GetMeleeHaste", "GetParryChance", "GetRangedCritChance", "GetRangedHaste",
+    "GetSpellBonusDamage", "GetSpellBonusHealing", "GetSpellCritChance", "GetSpellHitModifier", "GetUnitSpeed",
+    "GetVersatilityBonus", "BASE_MOVEMENT_SPEED", "CR_HIT_MELEE", "CR_HIT_SPELL", "CR_VERSATILITY_DAMAGE_DONE",
+    "GetInventoryItemQuality", "GetInventoryItemTexture", "GetDetailedItemLevelInfo", "GetSpecializationInfo",
+    "C_GossipInfo", "C_MajorFactions", "C_SkillInfo", "GetText", "IsModifiedClick", "ChatEdit_InsertLink",
+    "GetCurrentArenaSeason", "GetStatisticsCategoryList", "GetCategoryInfo", "GetCategoryNumAchievements",
+    "GetStatistic", "GetAchievementInfo", "GetNumTitles", "IsTitleKnown", "GetTitleName", "GetCurrentTitle",
+    "SetCurrentTitle", "PLAYER_TITLE_NONE", "EquipmentManager_EquipSet", "MAX_EQUIPMENT_SETS_PER_PLAYER", "REMOVE",
 }
 -- the saved variables, the slash command and the reset popup's key
 globals = { "_G", "MedalluinDB", "MedalluinCharDB", "SLASH_MEDALLUIN1", "SLASH_MEDALLUIN2", "SLASH_MDLUI1", "SlashCmdList",

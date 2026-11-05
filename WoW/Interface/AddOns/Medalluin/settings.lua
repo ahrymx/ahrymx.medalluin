@@ -78,6 +78,8 @@ local DEFAULTS = {
     bagsColumns = 10,       -- slots across the window (not on the page: the window's corner sets it, 8 to 24)
     bagsItemLevel = true,   -- item levels on weapons and armour
     bagsPoint = false,      -- where the window was dragged to: { point, relativePoint, x, y } (not on the page)
+    character = true,       -- Medalluin's character window instead of Blizzard's
+    characterDetails = true, -- its pages' details open (the window's chevron sets it too)
     optionsPoint = false,   -- where the settings window was dragged to, the same way (options/window.lua)
     editorPoint = false,    -- and the unit-frame editor's (options/editor.lua)
     editCanvasPoint = false, -- and its edit-mode canvas (options/canvas.lua)
@@ -455,6 +457,7 @@ local PAGES = {
     chat = "chat",
     side = "side/general", meter = "side/meter", loot = "side/loot", auras = "side/auras",
     bags = "bags", bag = "bags", inventory = "bags",
+    character = "character", char = "character",
     tooltip = "tooltips", tooltips = "tooltips",
 }
 

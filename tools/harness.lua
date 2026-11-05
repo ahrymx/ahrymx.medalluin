@@ -64,6 +64,14 @@ local sidePass = args[2] == "side"
 local savedNoSide = args[3] == "noside"
 local bagsPass = args[2] == "bags"
 local savedNoBags = args[3] == "nobags"
+-- "character" (with "modern": Forever's six pages; "modern retail": retail's
+-- three) plays the character window (character/): Blizzard's window kept
+-- under ns.hidden and followed, its page switches, the tabs, the details'
+-- chevron, and each page over stubbed data. "character nochar" plays a
+-- saved Character window option that is off.
+local characterPass = args[2] == "character"
+local characterRetail = characterPass and args[3] == "retail"
+local savedNoCharacter = characterPass and args[3] == "nochar"
 local barOff = args[3] == "nobar"
 local savedRows = tonumber((args[3] or ""):match("^rows(%d)$"))
 local savedBare = args[3] == "bare"
@@ -1533,7 +1541,7 @@ MedalluinDB = profilesPass and args[3] == "saved" and { consoleProfile = "light"
     or savedBare and { bareIcons = true } or savedNoChat and { chat = false }
     or savedBeam and { xpCast = true, repCast = true }
     or savedSimParty and { simParty = true } or savedNoSide and { side = false }
-    or savedNoBags and { bags = false } or nil
+    or savedNoBags and { bags = false } or savedNoCharacter and { character = false } or nil
 if modern then
     function CreateColor(r, g, b, a) return { r, g, b, a } end
     function Region:SetGradient(o, a, b) self.gradient = { o, a, b } end
@@ -1664,6 +1672,368 @@ if bagsPass and modern then
     end
     function ToggleAllBags()
         if ContainerFrameCombinedBags:IsShown() then CloseAllBags() else OpenAllBags() end
+    end
+end
+
+-- ------------------------------------------------------------ the character
+-- Blizzard's character window and its pages (Forever's six, or retail's
+-- three), its gear slot buttons, a shaman's gear and stats on Forever and a
+-- rogue's on retail. Only for the character pass.
+local charWorld
+if characterPass then
+    charWorld = { toggles = {} }
+    function Region:SetUnit(u) self.unit, self.unitSets = u, (self.unitSets or 0) + 1 end
+    function Region:SetFacing(f) self.facing = f end
+    function Region:GetFacing() return self.facing end
+    local subs = characterRetail and { "PaperDollFrame", "ReputationFrame", "TokenFrame" }
+        or { "PaperDollFrame", "ReputationFrame", "TokenFrame", "PVPRankFrame", "SkillsFrame", "StatisticsFrame" }
+    charWorld.subs = subs
+    CharacterFrame = new("Frame", UIParent, "CharacterFrame")
+    CharacterFrame.shown = false
+    for _, n in ipairs(subs) do
+        local f = new("Frame", CharacterFrame, n)
+        f.shown = n == "PaperDollFrame"
+    end
+    function CharacterFrame:ShowSubFrame(name)
+        for _, n in ipairs(subs) do
+            if n ~= name then _G[n]:Hide() end
+        end
+        _G[name]:Show()
+    end
+    function ShowUIPanel(f) f:Show() end
+    function HideUIPanel(f) f:Hide() end
+    -- Blizzard's own, as CharacterFrame.lua has it
+    function ToggleCharacter(tab, onlyShow)
+        table.insert(charWorld.toggles, tab)
+        local sub = _G[tab]
+        if CharacterFrame:IsShown() then
+            if sub:IsShown() then
+                if not onlyShow then HideUIPanel(CharacterFrame) end
+            else
+                CharacterFrame:ShowSubFrame(tab)
+            end
+        else
+            CharacterFrame:ShowSubFrame(tab)
+            ShowUIPanel(CharacterFrame)
+        end
+    end
+    -- the slots by name, their inventory ids, and what is in them:
+    -- { quality, item level }
+    local SLOTS = { Head = 1, Neck = 2, Shoulder = 3, Shirt = 4, Chest = 5, Waist = 6, Legs = 7, Feet = 8,
+        Wrist = 9, Hands = 10, Finger0 = 11, Finger1 = 12, Trinket0 = 13, Trinket1 = 14, Back = 15,
+        MainHand = 16, SecondaryHand = 17, Ranged = 18, Tabard = 19, Ammo = 0 }
+    charWorld.gear = characterRetail
+        and { [1] = { 4, 321 }, [3] = { 4, 321 }, [5] = { 4, 331 }, [16] = { 4, 334 }, [17] = { 4, 321 },
+            [4] = { 1, 1 }, [11] = { 3, 315 } }
+        or { [1] = { 2, 14 }, [5] = { 1, 10 }, [7] = { 2, 16 }, [16] = { 3, 18 }, [17] = { 2, 15 },
+            [4] = { 1, 1 }, [19] = { 1, 1 } }
+    local PARENT = new("Frame", PaperDollFrame, "PaperDollItemsFrame")
+    for slotName, id in pairs(SLOTS) do
+        local forever = slotName == "Ranged" or slotName == "Ammo"
+        if not (characterRetail and forever) then
+            local name = "Character" .. slotName .. "Slot"
+            local b = new("Button", PARENT, name)
+            b:SetID(id)
+            b.icon = new("Texture", b, name .. "IconTexture")
+            b.normal = new("Texture", b)
+            b.IconBorder = new("Texture", b)
+            function b:GetNormalTexture() return self.normal end
+            -- a shaman uses no ammo: Blizzard hides the slot at load
+            if slotName == "Ammo" then b.shown = false end
+        end
+    end
+    function GetInventoryItemLink(_, slot)
+        if charWorld.gear[slot] then return "|Hitem:" .. slot .. "|h" end
+    end
+    function GetInventoryItemQuality(_, slot) return charWorld.gear[slot] and charWorld.gear[slot][1] end
+    ItemLocation = ItemLocation or {}
+    function ItemLocation.CreateFromEquipmentSlot(_, slot)
+        return { equip = slot, IsValid = function() return true end }
+    end
+    C_Item = C_Item or {}
+    function C_Item.GetCurrentItemLevel(loc) return charWorld.gear[loc.equip][2] end
+    function UnitPVPName() return characterRetail and "Vasheron, Famed Slayer" or "Ahry Medalluin" end
+    function GetAverageItemLevel()
+        if characterRetail then return 322.4, 322.0 end
+        return 15.8, 15.1
+    end
+    function UnitStat(_, i)
+        local v = characterRetail and ({ 900, 2505, 38553, 700, 0 })[i] or ({ 32, 20, 40, 29, 31 })[i]
+        return v, v
+    end
+    function UnitArmor() return 300, characterRetail and 1086 or 334 end
+    function GetCritChance() return characterRetail and 39 or 5.2 end
+    function GetRangedCritChance() return 4 end
+    function GetSpellCritChance(school) return school == 4 and 6.5 or 2 end
+    function GetDodgeChance() return characterRetail and 15 or 4.5 end
+    function GetParryChance() return characterRetail and 3 or 5 end
+    function GetCombatRatingBonus(cr) return cr == 29 and 10 or 0 end
+    function UnitSpellHaste() return characterRetail and 25 or 2.5 end
+    if characterRetail then
+        CR_VERSATILITY_DAMAGE_DONE = 29
+        function GetHaste() return 25 end
+        function GetMasteryEffect() return 14 end
+        function GetVersatilityBonus() return 2 end
+        function GetLifesteal() return 9 end
+        function GetAvoidance() return 2 end
+        function GetUnitSpeed() return 0, 8.05 end
+        function GetSpecialization() return 2 end
+        function GetSpecializationInfo(i) return i, "Outlaw" end
+    else
+        CR_HIT_MELEE, CR_HIT_SPELL = 6, 8
+        function GetHitModifier() return 1 end
+        function GetSpellHitModifier() return 3 end
+        function GetMeleeHaste() return 0 end
+        function GetRangedHaste() return 0 end
+        function UnitAttackPower() return 60, 8, 0 end
+        function GetSpellBonusDamage(school) return school == 4 and 12 or 5 end
+        function GetSpellBonusHealing() return 20 end
+        function UnitDefenseSkill() return 60, 0 end
+        function GetBlockChance() return 5 end
+        function UnitResistance(_, class) return 0, 0, class * 2, 0 end
+    end
+    function UnitSex() return 2 end
+    function UnitFactionGroup() return "Alliance" end
+    function GetText(key) return _G[key] end
+    FACTION_STANDING_LABEL4, FACTION_STANDING_LABEL5, FACTION_STANDING_LABEL8 = "Neutral", "Friendly", "Exalted"
+    charWorld.calls = {}
+    local function called(s) table.insert(charWorld.calls, s) end
+    charWorld.called = called
+    -- a list whose headings fold: the rows the game hands out are the ones
+    -- not under a folded heading (a top heading folds to the next top one)
+    local function visible(all)
+        local out, hidden = {}, false
+        for _, e in ipairs(all) do
+            if e.isHeader and not e.isChild then
+                hidden = false
+                table.insert(out, e)
+                hidden = e.isCollapsed
+            elseif not hidden then
+                table.insert(out, e)
+            end
+        end
+        return out
+    end
+    charWorld.visible = visible
+    -- reputations: Darnassus friendly, Ironforge friendly, Stormwind exalted,
+    -- the Argent Dawn neutral
+    local factions = {
+        { name = "Alliance", isHeader = true, factionID = 1 },
+        { name = "Darnassus", factionID = 69, reaction = 5, currentStanding = 3100, currentReactionThreshold = 3000,
+            nextReactionThreshold = 9000, description = "The Alliance capital of the night elves.",
+            canToggleAtWar = false, canSetInactive = true },
+        { name = "Ironforge", factionID = 47, reaction = 5, currentStanding = 6000, currentReactionThreshold = 3000,
+            nextReactionThreshold = 9000, canSetInactive = true },
+        { name = "Stormwind", factionID = 72, reaction = 8, currentStanding = 42000, currentReactionThreshold = 42000,
+            nextReactionThreshold = 43000, canSetInactive = true },
+        { name = "Other", isHeader = true, factionID = 2 },
+        { name = "Argent Dawn", factionID = 529, reaction = 4, currentStanding = 500, currentReactionThreshold = 0,
+            nextReactionThreshold = 3000, canToggleAtWar = true, canSetInactive = true },
+        { name = "Inactive", isHeader = true, factionID = 3 },
+    }
+    charWorld.factions = factions
+    local function shown() return visible(factions) end
+    C_Reputation = {
+        GetNumFactions = function() return #shown() end,
+        GetFactionDataByIndex = function(i) return shown()[i] end,
+        ExpandFactionHeader = function(i) shown()[i].isCollapsed = false; called("rep expand " .. i) end,
+        CollapseFactionHeader = function(i) shown()[i].isCollapsed = true; called("rep collapse " .. i) end,
+        ToggleFactionAtWar = function(i)
+            local f = shown()[i]
+            f.atWarWith = not f.atWarWith
+            called("rep war " .. f.name)
+        end,
+        IsFactionActive = function(i) return not shown()[i].inactive end,
+        -- inactive: moved under the Inactive heading, at the end
+        SetFactionActive = function(i, on)
+            local f = shown()[i]
+            called("rep active " .. f.name .. " " .. tostring(on))
+            f.inactive = not on
+            for k, e in ipairs(factions) do
+                if e == f then table.remove(factions, k) break end
+            end
+            if on then table.insert(factions, 2, f) else table.insert(factions, f) end
+        end,
+        SetWatchedFactionByIndex = function(i)
+            for _, e in ipairs(factions) do e.isWatched = nil end
+            if i > 0 then shown()[i].isWatched = true end
+            called("rep watch " .. i)
+        end,
+    }
+    -- currencies: honor (capped), arena points (weekly)
+    local currencies = {
+        { name = "Player vs. Player", isHeader = true, isHeaderExpanded = true },
+        { name = "Honor Points", currencyID = 1901, quantity = 1250, iconFileID = 101, maxQuantity = 75000 },
+        { name = "Arena Points", currencyID = 1900, quantity = 0, iconFileID = 102, canEarnPerWeek = true,
+            maxWeeklyQuantity = 1500, quantityEarnedThisWeek = 300 },
+    }
+    charWorld.currencies = currencies
+    local function curShown()
+        local out, hidden = {}, false
+        for _, c in ipairs(currencies) do
+            if c.isHeader then
+                hidden = not c.isHeaderExpanded
+                table.insert(out, c)
+            elseif not hidden then
+                table.insert(out, c)
+            end
+        end
+        return out
+    end
+    C_CurrencyInfo = {
+        GetCurrencyListSize = function() return #curShown() end,
+        GetCurrencyListInfo = function(i) return curShown()[i] end,
+        ExpandCurrencyList = function(i, on) curShown()[i].isHeaderExpanded = on; called("cur expand " .. i .. " "
+            .. tostring(on)) end,
+        GetCurrencyDescription = function(id) return "Currency " .. id .. "." end,
+        SetCurrencyBackpack = function(i, on) curShown()[i].isShowInBackpack = on; called("cur backpack " .. i
+            .. " " .. tostring(on)) end,
+        SetCurrencyUnused = function(i, on) curShown()[i].isTypeUnused = on; called("cur unused " .. i .. " "
+            .. tostring(on)) end,
+        GetCurrencyListLink = function(i) return "[currency " .. i .. "]" end,
+    }
+    function ChatEdit_InsertLink(link) called("link " .. link) end
+    charWorld.modified = false
+    function IsModifiedClick(action) return action == "CHATLINK" and charWorld.modified end
+    if not characterRetail then
+        -- skills: the class's own heading and a parented line are left out;
+        -- defense takes its bonus from UnitDefenseSkill
+        local skills = {
+            { name = "Weapon Skills", isHeader = true, skillLineCategoryID = 6 },
+            { name = "Defense", skillID = 95, rank = 53, maxRank = 60, modifier = 0, skillLineCategoryID = 6 },
+            { name = "Maces", skillID = 54, rank = 52, maxRank = 60, modifier = 0, skillLineCategoryID = 6 },
+            { name = "Class Skills", isHeader = true, skillLineCategoryID = 7 },
+            { name = "Enhancement", skillID = 373, rank = 1, maxRank = 1, skillLineCategoryID = 7 },
+            { name = "Professions", isHeader = true, skillLineCategoryID = 11 },
+            { name = "Herbalism", skillID = 182, rank = 45, maxRank = 75, modifier = 0, skillLineCategoryID = 11,
+                description = "Higher herbalism skill allows you to harvest more difficult herbs." },
+            { name = "Apprentice Herbalism", skillID = 9182, rank = 1, maxRank = 1, parentSkillLineID = 182,
+                skillLineCategoryID = 11 },
+        }
+        charWorld.skills = skills
+        local function skShown()
+            local out, hidden = {}, false
+            for _, e in ipairs(skills) do
+                if e.isHeader then
+                    hidden = e.isCollapsed
+                    table.insert(out, e)
+                elseif not hidden then
+                    table.insert(out, e)
+                end
+            end
+            return out
+        end
+        C_SkillInfo = {
+            GetNumSkillLines = function() return #skShown() end,
+            GetSkillLineInfo = function(i)
+                local e = skShown()[i]
+                return e and setmetatable({}, { __index = e })
+            end,
+            ExpandSkillHeader = function(i) skShown()[i].isCollapsed = false; called("skill expand " .. i) end,
+            CollapseSkillHeader = function(i) skShown()[i].isCollapsed = true; called("skill collapse " .. i) end,
+        }
+        function UnitDefenseSkill() return 60, 5 end
+        -- the PvP rank: rank 2, 300 of 750 points; the cap 5 ranks this week, 4 the last
+        C_MajorFactions = {
+            GetMajorFactionProgressionInfo = function(id)
+                if id ~= 2800 then return end
+                return { renownLevel = 2, renownReputationEarned = 300, renownLevelThreshold = 750, maxLevel = 14,
+                    currentWeekProgressiveMaxLevel = 5, previousWeekProgressiveMaxLevel = 4 }
+            end,
+            GetTotalReputationForRenownLevel = function(_, level) return level * 750 end,
+            GetRenownRewardsForLevel = function(_, r)
+                if r == 3 then return { { icon = 123, description = "Faction Tabard" } } end
+                return {}
+            end,
+        }
+        PVP_RANK_6_1 = "Corporal"
+        Enum.PvPRanks = { Rank_1 = 5 }
+        function GetCurrentArenaSeason() return 1 end
+        -- statistics: Character (two, one nought), Kills (one skipped) and
+        -- its child Creatures
+        local CATS = { [130] = { "Character", -1 }, [131] = { "Kills", -1 }, [132] = { "Creatures", 131 } }
+        local STATS = { [130] = { { "309", false, 1001 }, { "0", false, 1002 } },
+            [131] = { { "--", false, 1003 }, { "5", true, 1004 } }, [132] = { { "308", false, 1005 } } }
+        local STAT_NAMES = { [1001] = "Total kills", [1002] = "Total deaths", [1003] = "Total honorable kills",
+            [1004] = "Hidden", [1005] = "Creatures killed" }
+        function GetStatisticsCategoryList() return { 130, 131, 132 } end
+        function GetCategoryInfo(id) return CATS[id][1], CATS[id][2] end
+        function GetCategoryNumAchievements(id) return #STATS[id] end
+        function GetStatistic(id, i) return unpack(STATS[id][i]) end
+        function GetAchievementInfo(id) return id, STAT_NAMES[id] end
+    end
+    -- titles: four of five known, one of those not a player's; the
+    -- explorer's worn. Blizzard's names come with a space at an end.
+    local TITLES = { { "Private ", true }, { " the Explorer", true }, { "Corporal ", true }, { "Unknown ", true },
+        { "Guild Master", false } }
+    local KNOWN = { true, true, true, false, true }
+    charWorld.title = 2
+    function GetNumTitles() return #TITLES end
+    function IsTitleKnown(i) return KNOWN[i] or false end
+    function GetTitleName(i) return TITLES[i][1], TITLES[i][2] end
+    function GetCurrentTitle() return charWorld.title end
+    function SetCurrentTitle(i) charWorld.title = i; called("title " .. i) end
+    PLAYER_TITLE_NONE = "No Title"
+    -- equipment sets: one worn (its shirt ignored), one with two items lost;
+    -- room for three
+    local sets = { { id = 0, name = "Tanking", icon = 111, worn = true, lost = 0, ignored = { [4] = true } },
+        { id = 1, name = "Healing", icon = 222, worn = false, lost = 2, ignored = { [4] = false, [19] = true } } }
+    charWorld.sets = sets
+    local function setBy(id)
+        for i, e in ipairs(sets) do
+            if e.id == id then return e, i end
+        end
+    end
+    local ignoring = {}
+    local function ignored()
+        local out = {}
+        for slot in pairs(ignoring) do table.insert(out, slot) end
+        table.sort(out)
+        return table.concat(out, ",")
+    end
+    C_EquipmentSet = {
+        GetEquipmentSetIDs = function()
+            local ids = {}
+            for _, e in ipairs(sets) do table.insert(ids, e.id) end
+            return ids
+        end,
+        GetEquipmentSetInfo = function(id)
+            local e = setBy(id)
+            if e then return e.name, e.icon, e.id, e.worn, 5, 5, 0, e.lost, 0 end
+        end,
+        GetNumEquipmentSets = function() return #sets end,
+        GetEquipmentSetID = function(name)
+            for _, e in ipairs(sets) do
+                if e.name == name then return e.id end
+            end
+        end,
+        GetIgnoredSlots = function(id) return setBy(id).ignored end,
+        ClearIgnoredSlotsForSave = function() ignoring = {} end,
+        IgnoreSlotForSave = function(slot) ignoring[slot] = true end,
+        SaveEquipmentSet = function(id) called("set save " .. id .. " ignoring " .. ignored()) end,
+        CreateEquipmentSet = function(name, icon)
+            table.insert(sets, { id = 7, name = name, icon = icon, worn = true, lost = 0, ignored = {} })
+            called("set new " .. name .. " icon " .. tostring(icon) .. " ignoring " .. ignored())
+        end,
+        DeleteEquipmentSet = function(id)
+            table.remove(sets, select(2, setBy(id)))
+            called("set remove " .. id)
+        end,
+    }
+    function EquipmentManager_EquipSet(id)
+        for _, e in ipairs(sets) do e.worn = e.id == id end
+        called("set equip " .. id)
+    end
+    function GetInventoryItemTexture(_, slot) if slot == 1 then return 999 end end
+    -- the professions' micro button (the harness's world has the rest)
+    ProfessionMicroButton = new("Button", MainMenuBar, "ProfessionMicroButton")
+    MAX_EQUIPMENT_SETS_PER_PLAYER = 3
+    -- a dialog shown is noted; the test answers it
+    charWorld.popups = {}
+    function StaticPopup_Show(which, a, _, data)
+        table.insert(charWorld.popups, which .. ":" .. tostring(a))
+        charWorld.popup = { which = which, data = data }
+        return {}
     end
 end
 
@@ -6685,6 +7055,548 @@ if bagsPass then
     local p = w.points.TOPLEFT
     print("bags.old point", p and (p[2] .. "," .. p[3] .. "," .. p[4]))
     CloseAllBags()
+end
+
+-- ---------------------------------------------------- the character window
+if characterPass then
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local C = ns.character
+    local w = _G.MedalluinCharacter
+    print("char", "window=" .. tostring(w ~= nil), "setting=" .. tostring(ns.db.character),
+        "parked=" .. tostring(CharacterFrame.parent == ns.hidden))
+    if not w then return end
+    local function frame()
+        if w.shown and w.scripts.OnUpdate then w.scripts.OnUpdate(w, 0) end
+    end
+    local function current()
+        for _, p in ipairs(C.pages) do
+            if p.body and p.body.shown then return p end
+        end
+    end
+    -- the events the window listens to now
+    local function heard()
+        local n = 0
+        for _, list in pairs(events) do
+            for _, f in ipairs(list) do
+                if f == C.listener then n = n + 1 end
+            end
+        end
+        return n
+    end
+    local function state(tag)
+        local p = current()
+        local icon = w.chevron.icon.texture or ""
+        print(tag, "shown=" .. tostring(w.shown), "blizzard=" .. tostring(CharacterFrame.shown),
+            "page=" .. (p and p.key or "none"), string.format("size=%dx%d", w.w, w.h),
+            "details=" .. tostring(p and p.foot.shown), "chevron=" .. (icon:match("Arrow%-(%a+)") or "?")
+                .. (w.chevron.shown and "" or " hidden"),
+            "heard=" .. heard())
+    end
+    local function tabs(tag)
+        local list = {}
+        for _, p in ipairs(C.pages) do
+            if p.tab then
+                local f = p.tab.label.font
+                table.insert(list, p.label .. (p.tab.mark.shown and "*" or "") .. "@" .. p.tab.w
+                    .. (f and f[2] ~= 10 and ("/" .. f[2]) or ""))
+            end
+        end
+        print(tag, table.concat(list, " "), "toggles=" .. table.concat(charWorld.toggles, ","))
+    end
+    local function where(r)
+        local point, p = next(r.points)
+        if not point then return "nowhere" end
+        return string.format("%s %s %s %d,%d", point, p[1] and (p[1].name or (p[1] == r.parent and "parent")
+            or "?") or "-", p[2] or "-", p[3] or 0, p[4] or 0)
+    end
+    local function txt(t) return isSecret(t) and "secret" or t end
+    local function character(tag)
+        local S = C.slots
+        local cols = {}
+        for _, b in ipairs(S.columns) do
+            local p = b.points.TOPLEFT or b.points.TOPRIGHT
+            table.insert(cols, string.format("%s%s%d", b.slotName, b.side < 0 and "<" or ">", -p[4])
+                .. (b.level.text ~= "" and ("=" .. b.level.text) or "")
+                .. string.format("(%.2f)", b.edge.color[1]))
+        end
+        print(tag .. " columns", "parent=" .. tostring(S.columns[1].parent == current().body), table.concat(cols, " "))
+        local row = {}
+        for _, b in ipairs(S.weapons) do
+            if b.shown then
+                local p = b.points.TOPLEFT
+                table.insert(row, string.format("%s@%d,%d", b.slotName, p[3], -p[4])
+                    .. (b.level.text ~= "" and ("=" .. b.level.text) or ""))
+            else
+                table.insert(row, b.slotName .. " hidden")
+            end
+        end
+        print(tag .. " weapons", table.concat(row, " "))
+        local body = current().body
+        local texts = {}
+        for _, r in ipairs(body.all_) do
+            if r.kind == "FontString" and r.text and r.text ~= "" then table.insert(texts, r.text) end
+        end
+        print(tag .. " head", table.concat(texts, " | "), "model=" .. tostring(S.model.unit) .. " x"
+            .. tostring(S.model.unitSets), "muted=" .. tostring(S.columns[1].normal.vertex
+            and S.columns[1].normal.vertex[4] == 0))
+        local st = C.stats
+        local cells = {}
+        for _, c in ipairs(st.ribbon.cells) do table.insert(cells, c.label.text .. " " .. c.value.text) end
+        print(tag .. " ribbon", table.concat(cells, " | "), "ilvl=" .. st.badge.value.text)
+        for _, side in ipairs({ "left", "right" }) do
+            local rows = {}
+            for _, r in ipairs(st.columns[side]) do
+                if r.shown then
+                    local p = r.points.TOPLEFT or r.points.TOPRIGHT
+                    table.insert(rows, r.label.text .. "=" .. txt(r.value.text) .. "@" .. -p[4])
+                end
+            end
+            print(tag .. " " .. side, table.concat(rows, " "))
+        end
+        if st.resist then
+            local rs = {}
+            for _, c in ipairs(st.resist.cells) do table.insert(rs, c.school .. "=" .. c.value.text) end
+            print(tag .. " resist", table.concat(rs, " "))
+        end
+    end
+
+    -- 1. at login: Blizzard's window out of sight, ours closed
+    state("char.login")
+    print("char.anchor", where(w), "parent=" .. tostring(w.parent == ns.strips[-1]), "strata=" .. tostring(w.strata),
+        "ignoresParentAlpha=" .. tostring(w.ignoreParentAlpha))
+    tabs("char.tabs")
+
+    -- 2. C opens Blizzard's window on its Character page: ours follows
+    ToggleCharacter("PaperDollFrame")
+    frame()
+    state("char.open")
+    character("char")
+
+    -- 3. the chevron folds the details away, and opens them again
+    w.chevron.scripts.OnClick(w.chevron)
+    state("char.folded")
+    print("char.folded saved", tostring(ns.db.characterDetails))
+    w.chevron.scripts.OnClick(w.chevron)
+    state("char.unfolded")
+
+    -- 3b. the window is the screen's height, and the page spreads out over
+    -- it; folded details give the page their room
+    local function pageOf(key)
+        for _, p in ipairs(C.pages) do
+            if p.key == key then return p end
+        end
+    end
+    local function fit(tag)
+        local f = pageOf("character").fit
+        print(tag, string.format("slot=%d pitch=%d top=%d cols=%d divider=%s", f.size, f.pitch, f.top, f.cols,
+            tostring(f.divider)), string.format("size=%dx%d", w.w, w.h))
+    end
+    fit("char.fit")
+    w.chevron.scripts.OnClick(w.chevron)
+    fit("char.fit folded")
+    w.chevron.scripts.OnClick(w.chevron)
+    -- the medallion over the window's margin: the portrait lifted to the
+    -- window's strata, the medallion's art copied over it
+    local function medallion(tag)
+        local b = CharacterMicroButton
+        print(tag, "portrait=" .. tostring(b.strata) .. "/" .. tostring(b.level),
+            "window=" .. tostring(w.strata) .. "/" .. tostring(w.level),
+            "art=" .. tostring(w.medal.level) .. string.format(" %dx%d", w.medal.w, w.medal.h)
+                .. " " .. where(w.medal),
+            "margin=" .. where(w.bandRule))
+    end
+    medallion("char.medallion")
+    -- the shortcuts: secure clicks on Blizzard's micro buttons, on the strip,
+    -- following the window out of combat and hidden by a driver in it
+    local row = _G.MedalluinCharacterShortcuts
+    local function shortcuts(tag)
+        local out = {}
+        for _, b in ipairs(row.buttons) do
+            table.insert(out, b.label.text .. ">" .. tostring(b.attrs.clickbutton and b.attrs.clickbutton.name)
+                .. "(" .. tostring(b.attrs.type) .. ")")
+        end
+        print(tag, "shown=" .. tostring(row.shown), "driver=" .. tostring(row.stateDrivers
+            and row.stateDrivers.visibility), "parent=" .. tostring(row.parent == ns.strips[-1]),
+            table.concat(out, " "))
+    end
+    shortcuts("char.shortcuts")
+
+
+    charWorld.gear[1] = { 4, 22 }
+    fire("PLAYER_EQUIPMENT_CHANGED", 1, true)
+    print("char.equip before the frame", "head=" .. C.slots.columns[1].level.text)
+    frame()
+    print("char.equip", "head=" .. C.slots.columns[1].level.text, string.format("(%.2f)",
+        C.slots.columns[1].edge.color[1]), "model x" .. C.slots.model.unitSets)
+
+    -- 5. Blizzard places a slot of its own (it does, for the main hand):
+    -- it goes back; the ammo slot shown closes the row up round four
+    CharacterMainHandSlot:ClearAllPoints()
+    CharacterMainHandSlot:SetPoint("BOTTOM", UIParent, "BOTTOM", -40, 30)
+    character("char.replaced")
+    if CharacterAmmoSlot then
+        CharacterAmmoSlot:Show()
+        character("char.ammo")
+        CharacterAmmoSlot:Hide()
+    end
+
+    -- 6. the model turns as it is dragged
+    local m = C.slots.model
+    local realCursor = GetCursorPosition
+    local cx = 100
+    function GetCursorPosition() return cx, 0 end
+    m.scripts.OnMouseDown(m, "LeftButton")
+    cx = 150
+    m.scripts.OnUpdate(m, 0.1)
+    m.scripts.OnMouseUp(m, "LeftButton")
+    cx = 300
+    m.scripts.OnUpdate(m, 0.1)
+    print("char.turned", string.format("%.2f", m.facing or 0))
+    GetCursorPosition = realCursor
+
+    -- 7. a stat this client lacks drops its row and the column closes up
+    local parry = GetParryChance
+    GetParryChance = nil
+    fire("UNIT_STATS", "player")
+    frame()
+    character("char.no parry")
+    GetParryChance = parry
+
+    -- 7b. the shortcuts in combat: the driver hides them; closed in combat,
+    -- they are put away when it ends; opened in combat, they wait for its end
+    local function combat(on)
+        harnessHolds.combat = on or nil
+        inCombat = on
+        stateTick()
+        if not on then
+            for _, f in ipairs(events.PLAYER_REGEN_ENABLED or {}) do f.scripts.OnEvent(f, "PLAYER_REGEN_ENABLED") end
+        end
+    end
+    combat(true)
+    shortcuts("char.shortcuts in combat")
+    HideUIPanel(CharacterFrame)
+    shortcuts("char.shortcuts closed in combat")
+    medallion("char.medallion closed")
+    combat(false)
+    shortcuts("char.shortcuts closed after combat")
+    combat(true)
+    ToggleCharacter("PaperDollFrame")
+    frame()
+    shortcuts("char.shortcuts opened in combat")
+    combat(false)
+    shortcuts("char.shortcuts after combat")
+    -- another tab puts them away
+    pageOf("reputation").tab.scripts.OnClick(pageOf("reputation").tab)
+    frame()
+    shortcuts("char.shortcuts on reputation")
+    print("rep.margin", "ornament=" .. tostring(#pageOf("reputation").band.all_ > 0))
+    pageOf("character").tab.scripts.OnClick(pageOf("character").tab)
+    frame()
+    shortcuts("char.shortcuts back")
+
+    -- 8. Escape closes Blizzard's window: ours follows, and stops listening;
+    -- a change while closed is drawn at the next opening
+    HideUIPanel(CharacterFrame)
+    state("char.closed")
+    shortcuts("char.shortcuts closed")
+    charWorld.gear[1] = nil
+    fire("PLAYER_EQUIPMENT_CHANGED", 1, false)
+    ToggleCharacter("PaperDollFrame")
+    frame()
+    print("char.reopened", "head=" .. C.slots.columns[1].level.text, string.format("(%.2f)",
+        C.slots.columns[1].edge.color[1]))
+    -- C again: Blizzard closes it
+    ToggleCharacter("PaperDollFrame")
+    state("char.toggled shut")
+
+    -- ------------------------------------------------- the list pages
+    local function page(key)
+        -- the Character page's titles and sets are lists of their own
+        if C[key] and C[key].list then return { list = C[key].list, body = C[key].list.body } end
+        for _, p in ipairs(C.pages) do
+            if p.key == key then return p end
+        end
+    end
+    local function rows(tag, key)
+        local list = page(key).list
+        local out = {}
+        for _, r in ipairs(list.rows) do
+            if r.shown then
+                local d = r.data
+                local bit = string.rep(".", d.depth or 0) .. d.label
+                if d.header then bit = "[" .. bit .. " " .. r.sign.text .. "]" end
+                if d.icon then bit = bit .. "{" .. tostring(d.icon) .. "}" end
+                if r.bar.shown then
+                    bit = bit .. string.format(" <%s %s/%s>", r.bar.text.text, tostring(r.bar.bar.value),
+                        tostring(r.bar.bar.max))
+                end
+                if r.value.shown then bit = bit .. " =" .. r.value.text end
+                if r.mark.shown then bit = bit .. " *" end
+                if d.dim then bit = bit .. " dim" end
+                table.insert(out, bit)
+            end
+        end
+        print(tag, "body=" .. page(key).body.h, "rows=" .. #list.data, "drawn=" .. #out
+            .. (list.empty.shown and " empty:" .. list.empty.text or "")
+            .. (list.track.shown and string.format(" thumb=%d@%d", list.thumb.h, -list.thumb.points.TOP[4]) or ""),
+            table.concat(out, " | "))
+    end
+    local function details(tag, key)
+        local d = page(key).details
+        if d.nothing.shown then
+            print(tag, "nothing: " .. d.nothing.text)
+            return
+        end
+        local ticks = {}
+        for _, t in ipairs(d.ticks) do
+            table.insert(ticks, t.label.text .. "=" .. tostring(t.on) .. (t.enabled and "" or "(off)"))
+        end
+        print(tag, d.title.text, "| " .. tostring(d.sub.text), d.bar.shown and string.format("| <%s %s/%s>",
+            d.bar.text.text, tostring(d.bar.bar.value), tostring(d.bar.bar.max)) or "| no bar",
+            "| " .. tostring(d.text.text):gsub("\n", " / "), table.concat(ticks, " "))
+    end
+    local function click(key, label, button)
+        for _, r in ipairs(page(key).list.rows) do
+            if r.shown and r.data.label == label then
+                r.scripts.OnClick(r, button or "LeftButton")
+                frame()
+                return
+            end
+        end
+        print("  no row " .. label)
+    end
+    local function tick(key, i)
+        local t = page(key).details.ticks[i]
+        t.scripts.OnClick(t)
+        frame()
+    end
+    local function calls(tag)
+        print(tag, table.concat(charWorld.calls, "; "))
+        charWorld.calls = {}
+    end
+
+    -- 8b. the Character page's details: Stats, Titles, Sets, each the stats'
+    -- height, so the window keeps its own
+    ToggleCharacter("PaperDollFrame")
+    frame()
+    local views = page("character").views
+    local function view(tag)
+        local on = {}
+        for _, k in ipairs({ "stats", "titles", "sets" }) do
+            local v = views[k]
+            if v then
+                table.insert(on, k .. (v.button.mark.shown and "*" or "") .. (v.frame.shown and "+" or "")
+                    .. "@" .. v.button.points.TOPLEFT[3] .. "/" .. v.frame.h)
+            end
+        end
+        print(tag, table.concat(on, " "), string.format("size=%dx%d", w.w, w.h))
+    end
+    local function press(key)
+        views[key].button.scripts.OnClick(views[key].button)
+        frame()
+    end
+    view("gear.views")
+    press("titles")
+    view("gear.titles")
+    rows("gear.titles", "titles")
+    click("titles", "Corporal")
+    rows("gear.title worn", "titles")
+    click("titles", "No Title")
+    rows("gear.title none", "titles")
+    calls("gear.title calls")
+    -- a title the game no longer counts as known is not marked worn
+    charWorld.title = 4
+    fire("KNOWN_TITLES_UPDATE")
+    frame()
+    rows("gear.title unknown", "titles")
+
+    press("sets")
+    view("gear.sets")
+    rows("gear.sets", "sets")
+    local function buttons(tag)
+        local out = {}
+        for _, b in ipairs(C.sets.buttons) do table.insert(out, b.label.text .. "=" .. tostring(b.enabled)) end
+        print(tag, table.concat(out, " "))
+    end
+    local function act(label)
+        for _, b in ipairs(C.sets.buttons) do
+            if b.label.text == label then b.scripts.OnClick(b) end
+        end
+        frame()
+    end
+    buttons("gear.sets none")
+    act("Remove")
+    print("gear.sets refused", "popups=" .. table.concat(charWorld.popups, ","))
+    click("sets", "Healing")
+    buttons("gear.sets healing")
+    act("Equip")
+    fire("EQUIPMENT_SETS_CHANGED")
+    frame()
+    rows("gear.sets equipped", "sets")
+    buttons("gear.sets worn")
+    -- Save asks first; its answer keeps the set's own ignored slots
+    charWorld.sets[2].worn = false
+    fire("EQUIPMENT_SETS_CHANGED")
+    frame()
+    act("Save")
+    StaticPopupDialogs[charWorld.popup.which].OnAccept({}, charWorld.popup.data)
+    -- New asks for a name; the head's icon, and the shirt and tabard ignored
+    act("New")
+    local dialog = { editBox = { GetText = function() return "  PvP " end } }
+    StaticPopupDialogs[charWorld.popup.which].OnAccept(dialog)
+    frame()
+    rows("gear.sets new", "sets")
+    buttons("gear.sets full")
+    -- a name already taken makes nothing
+    StaticPopupDialogs.MEDALLUIN_SET_NEW.OnAccept({ editBox = { GetText = function() return "PvP" end } })
+    act("Remove")
+    StaticPopupDialogs[charWorld.popup.which].OnAccept({}, charWorld.popup.data)
+    fire("EQUIPMENT_SETS_CHANGED")
+    frame()
+    rows("gear.sets removed", "sets")
+    print("gear.popups", table.concat(charWorld.popups, ","))
+    calls("gear.set calls")
+    press("stats")
+    view("gear.stats again")
+    ToggleCharacter("PaperDollFrame")
+
+    -- 9. the reputation key opens Blizzard's window on its page: ours follows
+    ToggleCharacter("ReputationFrame")
+    frame()
+    state("rep.open")
+    tabs("rep.tabs")
+    rows("rep", "reputation")
+    details("rep.none", "reputation")
+    click("reputation", "Darnassus")
+    rows("rep.chosen", "reputation")
+    details("rep.chosen", "reputation")
+    -- the ticks: inactive moves it under Inactive and it stays chosen
+    tick("reputation", 2)
+    rows("rep.inactive", "reputation")
+    details("rep.inactive", "reputation")
+    tick("reputation", 3)
+    details("rep.watched", "reputation")
+    -- and off again: no faction followed
+    tick("reputation", 3)
+    tick("reputation", 3)
+    -- at war is greyed for Darnassus; the Argent Dawn's can be ticked
+    tick("reputation", 1)
+    click("reputation", "Argent Dawn")
+    tick("reputation", 1)
+    details("rep.war", "reputation")
+    calls("rep.calls")
+    -- a heading folds
+    click("reputation", "Alliance")
+    rows("rep.folded", "reputation")
+    click("reputation", "Alliance")
+    calls("rep.fold calls")
+    -- a short screen: the list gives up height and scrolls by the wheel
+    local realHeight = UIParent.GetHeight
+    function UIParent:GetHeight() return 240 end
+    ns.SetOption("characterDetails", true)
+    frame()
+    rows("rep.short", "reputation")
+    local list = page("reputation").list
+    list.scripts.OnMouseWheel(list, -1)
+    rows("rep.scrolled", "reputation")
+    list.scripts.OnMouseWheel(list, -5)
+    rows("rep.scrolled to the end", "reputation")
+    UIParent.GetHeight = realHeight
+    ns.SetOption("characterDetails", true)
+    frame()
+    state("rep.tall again")
+
+    -- 10. a tab asks Blizzard for its page out of combat; in combat it turns
+    -- ours only
+    charWorld.toggles = {}
+    page("currency").tab.scripts.OnClick(page("currency").tab)
+    frame()
+    state("cur.tab")
+    tabs("cur.tabs")
+    print("cur.blizzard on", TokenFrame.shown and "TokenFrame" or "?")
+    rows("cur", "currency")
+    click("currency", "Honor Points")
+    details("cur.honor", "currency")
+    click("currency", "Arena Points")
+    details("cur.arena", "currency")
+    tick("currency", 1)
+    tick("currency", 1)
+    tick("currency", 1)
+    tick("currency", 2)
+    rows("cur.unused", "currency")
+    details("cur.ticked", "currency")
+    -- a shift click links it, and chooses nothing
+    charWorld.modified = true
+    click("currency", "Honor Points")
+    charWorld.modified = false
+    details("cur.linked", "currency")
+    click("currency", "Player vs. Player")
+    rows("cur.folded", "currency")
+    calls("cur.calls")
+    -- no currencies at all, as a new character has
+    local saved = {}
+    for i, c in ipairs(charWorld.currencies) do saved[i] = c end
+    for i = #charWorld.currencies, 1, -1 do charWorld.currencies[i] = nil end
+    fire("CURRENCY_DISPLAY_UPDATE")
+    frame()
+    rows("cur.empty", "currency")
+    details("cur.empty", "currency")
+    for i, c in ipairs(saved) do charWorld.currencies[i] = c end
+
+    if page("skills").available then
+        inCombat = true
+        charWorld.toggles = {}
+        page("skills").tab.scripts.OnClick(page("skills").tab)
+        frame()
+        inCombat = false
+        state("skills.tab in combat")
+        tabs("skills.tabs")
+        rows("skills", "skills")
+        click("skills", "Defense")
+        details("skills.defense", "skills")
+        click("skills", "Herbalism")
+        details("skills.herbalism", "skills")
+        click("skills", "Weapon Skills")
+        rows("skills.folded", "skills")
+        calls("skills.calls")
+
+        ToggleCharacter("PVPRankFrame")
+        frame()
+        local pv = page("pvp")
+        state("pvp.key")
+        print("pvp", pv.season.text, "|", pv.rank.text, "|", pv.emblem.atlas, "|", pv.bar.text.text)
+        details("pvp", "pvp")
+        print("pvp.fit", "emblem=" .. pv.emblemSize, "season " .. where(pv.season))
+        -- a short screen: a fixed page keeps the Character page's height,
+        -- the tallest, and the emblem its least
+        local realHeight = UIParent.GetHeight
+        function UIParent:GetHeight() return 240 end
+        ns.SetOption("characterDetails", true)
+        frame()
+        state("pvp.short")
+        print("pvp.short fit", "emblem=" .. pv.emblemSize, "season " .. where(pv.season))
+        UIParent.GetHeight = realHeight
+        ns.SetOption("characterDetails", true)
+        frame()
+
+        page("statistics").tab.scripts.OnClick(page("statistics").tab)
+        frame()
+        state("stats.tab")
+        rows("stats", "statistics")
+        click("statistics", "Total kills")
+        details("stats.chosen", "statistics")
+        click("statistics", "Kills")
+        rows("stats.folded", "statistics")
+        tabs("stats.tabs")
+    else
+        print("char.retail pages", "skills=" .. tostring(page("skills").available), "pvp=" .. tostring(page("pvp")
+            .available), "stats=" .. tostring(page("statistics").available))
+    end
+    HideUIPanel(CharacterFrame)
+    state("char.end")
+    return
 end
 
 -- the combat tint over the art's grey surface: hidden out of combat,

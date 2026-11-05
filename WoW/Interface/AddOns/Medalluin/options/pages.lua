@@ -576,6 +576,19 @@ function ns.OptionPages()
             },
         },
         {
+            id = "character", name = "Character", intro = "Shared by every profile.",
+            master = Check("character", "Character window",
+                "Your character, reputations and currencies (and on Forever your skills, PvP rank and statistics) in "
+                .. "one window standing on the chat panel, with the gear down both sides of your model and the stats "
+                .. "under it. Untick it to keep the game's window.", true),
+            groups = {
+                Group("Window",
+                    Check("characterDetails", "Details",
+                        "The lower part of each page: the stats, a reputation's or currency's details, and the rest. "
+                        .. "The window's arrow folds it too.")),
+            },
+        },
+        {
             id = "tooltips", name = "Tooltips (ext)",
             intro = "Provided by the optional mdlui_PrettyTooltip companion addon. "
                 .. "Enable mdlui_PrettyTooltip in your AddOns list to reskin tooltips "

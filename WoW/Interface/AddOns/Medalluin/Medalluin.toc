@@ -60,6 +60,17 @@ strips\loot.lua
 strips\meter.lua
 strips\auras.lua
 inventory\bags.lua
+character\window.lua
+character\list.lua
+character\stats.lua
+character\titles.lua
+character\sets.lua
+character\paperdoll.lua
+character\reputation.lua
+character\currency.lua
+character\skills.lua
+character\pvp.lua
+character\statistics.lua
 keybind.lua
 diag.lua
 
