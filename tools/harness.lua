@@ -1151,6 +1151,14 @@ if modern then
     CastingBarFrame = nil
     PlayerCastingBarFrame = new("Frame", UIParent, "PlayerCastingBarFrame")
     MainMenuBar = nil                                   -- Forever has none
+    -- the XP and reputation bars: two containers in their manager, each
+    -- finding the manager as its parent, as Edit Mode does on retail
+    StatusTrackingBarManager = new("Frame", UIParent, "StatusTrackingBarManager")
+    function StatusTrackingBarManager.CheckForLayoutChange() end
+    for _, n in ipairs({ "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer" }) do
+        local c = new("Frame", StatusTrackingBarManager, n)
+        function c.UpdateShownState(self) self:GetParent():CheckForLayoutChange() end
+    end
     -- the action buttons sit in containers on their bars; their art pass
     -- puts atlases on the normal and on whatever the pushed texture is
     MainActionBar = new("Frame", UIParent, "MainActionBar")
@@ -1553,6 +1561,11 @@ if bagsPass and modern then
             bagWorld.reads = bagWorld.reads + 1
             return bagWorld.items[bag .. ":" .. slot]
         end,
+        -- the equipped bags' names; the backpack and the reagent bag left to
+        -- the window's own
+        GetBagName = function(bag)
+            return ({ [1] = "Netherweave Bag", [3] = "Mooncloth Bag", [4] = "Frostweave Bag" })[bag]
+        end,
         GetContainerItemQuestInfo = function(bag, slot)
             local info = bagWorld.items[bag .. ":" .. slot]
             return { isQuestItem = info ~= nil and info.itemID == 104, questID = 9, isActive = false }
@@ -1936,6 +1949,13 @@ if barPass then
         mb.scripts.OnClick(mb, "RightButton")
         print("minimapButton right again", "simParty=" .. tostring(ns.db.simParty))
         GameTooltip.AddLine = add
+    end
+    if StatusTrackingBarManager then
+        local c = MainStatusTrackingBarContainer
+        print("status bars", "manager=" .. (StatusTrackingBarManager.parent == ns.hidden and "hidden" or "kept"),
+            "container in manager=" .. tostring(c.parent == StatusTrackingBarManager),
+            "silenced=" .. tostring(c.unregistered and SecondaryStatusTrackingBarContainer.unregistered or false),
+            "edit mode=" .. (pcall(c.UpdateShownState, c) and "ok" or "error"))
     end
     if not ns.actionBar then
         print("tray none")
@@ -6198,6 +6218,27 @@ if bagsPass then
             print("bags.view tip", tostring(GameTooltip.text))
         end
     end
+
+    -- the bags, each under its name; the empty bag slot (bag 2) left out.
+    -- The choice is the saved table's, so a reload keeps it
+    for _, r in ipairs(w.all_) do
+        if r.kind == "Button" and r.mark and r.label.text == "Bags" then r.scripts.OnClick(r) end
+    end
+    print("bags.view bags", ns.db.bagsView, "saved=" .. tostring(MedalluinDB.global.bagsView),
+        "window shows=" .. optionShows("bagsView"))
+    grid("bags.by bag")
+    do
+        local lit = {}
+        for _, r in ipairs(w.all_) do
+            if r.kind == "Button" and r.mark then
+                local c = r.label.textColor or {}
+                table.insert(lit, string.format("%s=%s/g%.2f", r.label.text, tostring(r.mark.shown), c[2] or -1))
+            end
+        end
+        print("bags.view lit", table.concat(lit, " "))
+    end
+    page.settings.bagsView:Set("grid")
+    print("bags.view grid", "saved=" .. tostring(MedalluinDB.global.bagsView))
 
     -- 6. the search, the client's: what does not match is dimmed
     local box = _G.MedalluinBagsSearch

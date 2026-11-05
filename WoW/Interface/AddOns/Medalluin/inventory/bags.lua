@@ -3,11 +3,12 @@
 -- other characters, no filters of one's own.
 --
 --   [the bags' slots]                              <- the drawer, from Bags
---   [Bags]  [search ...............]  [Groups] [Sort] [x]
+--   [Bags]  [search .......]  [Bags|Grid|Groups] [Sort] [x]
 --   ------------------------------------------------------
---   one grid of every slot, bag by bag (the reagent bag on its own rows),
---   or the items in fixed groups: New, Equipment, Consumables, Quest items,
---   Trade goods, Other, Junk, and one slot for the free ones
+--   each bag on rows of its own under its name, or one grid of every slot,
+--   bag by bag (the reagent bag on its own rows), or the items in fixed
+--   groups: New, Equipment, Consumables, Quest items, Trade goods, Other,
+--   Junk, and one slot for the free ones
 --   [money]                                       [Free 23 / 120] .:
 --
 -- The corner's dots resize it: dragging them sets how many slots go across,
@@ -52,6 +53,14 @@ local GROUPS = {
 }
 local CLASS = { [2] = "equipment", [4] = "equipment", [0] = "consumable", [12] = "quest",
     [3] = "trade", [5] = "trade", [7] = "trade", [8] = "trade", [9] = "trade", [19] = "trade" }
+
+-- The views, as the header's buttons show them.
+local VIEWS = {
+    { key = "bags", name = "Bags", width = 40, tip = "Show each bag on rows of its own, under its name." },
+    { key = "grid", name = "Grid", width = 36, tip = "Show every slot in one grid, bag by bag." },
+    { key = "groups", name = "Groups", width = 50,
+        tip = "Show the items in groups: new, equipment, consumables and the rest." },
+}
 
 local window, body, search, money, free, drawer
 local holders, slots, headings = {}, {}, {}
@@ -103,6 +112,15 @@ local function Slot(bag, slot)
     b.spare:SetTextColor(unpack(ns.colors.dim))
     slots[bag][slot] = b
     return b
+end
+
+-- A bag's name, as its tooltip gives it.
+local function BagName(bag)
+    local name = Container.GetBagName and Container.GetBagName(bag)
+    if name and name ~= "" then return name end
+    if bag == 0 then return "Backpack" end
+    if bag == ReagentBag() then return "Reagent bag" end
+    return "Bag " .. bag
 end
 
 -- What group an item goes in.
@@ -192,6 +210,22 @@ local function Grid(list)
     return top + Rows(i) * (SLOT + GAP) - GAP
 end
 
+-- Each bag on rows of its own, its name over it.
+local function ByBag(list)
+    local top, n = 0, 0
+    for _, bag in ipairs(Bags()) do
+        local items = list[bag]
+        if #items > 0 then
+            n = n + 1
+            Heading(n, BagName(bag), top)
+            top = top + TITLE
+            for i, s in ipairs(items) do Place(s.button, i, top) end
+            top = top + Rows(#items) * (SLOT + GAP) + GAP
+        end
+    end
+    return top - GAP * 2, n
+end
+
 -- The items in their groups, a heading over each; the free slots as one
 -- slot per kind of bag (the bags, the reagent bag) with how many are free.
 local function Groups(list)
@@ -247,7 +281,14 @@ local function Free()
 end
 
 local function Paint()
-    for _, b in ipairs(buttons) do b.label:SetText(b.text()) end
+    for _, b in ipairs(buttons) do
+        b.label:SetText(b.text())
+        if b.lit then
+            local on = b.lit()
+            b.mark:SetShown(on)
+            b.label:SetTextColor(unpack(on and GOLD or ns.colors.text))
+        end
+    end
 end
 
 local function Refresh()
@@ -270,7 +311,14 @@ local function Refresh()
     end
     for _, h in ipairs(headings) do h:Hide() end
     local height
-    if ns.db.bagsView == "groups" then height = Groups(list) else height = Grid(list) end
+    local view = ns.db.bagsView
+    if view == "groups" then
+        height = Groups(list)
+    elseif view == "bags" then
+        height = ByBag(list)
+    else
+        height = Grid(list)
+    end
     local width = ns.db.bagsColumns * (SLOT + GAP) - GAP
     body:SetSize(width, math.max(height, SLOT))
     window:SetSize(width + PAD * 2, math.max(height, SLOT) + HEAD + FOOT + PAD)
@@ -297,6 +345,14 @@ local function Button(spec)
     b.label = ns.Text(b, 10)
     b.label:SetPoint("CENTER")
     b.text = spec.text
+    -- one of a set: the one in use marked
+    if spec.lit then
+        b.lit = spec.lit
+        b.mark = b:CreateTexture(nil, "BACKGROUND", nil, 3)
+        b.mark:SetPoint("TOPLEFT", 1, -1)
+        b.mark:SetPoint("BOTTOMRIGHT", -1, 1)
+        b.mark:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.45)
+    end
     b:SetScript("OnClick", spec.click)
     b:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -575,13 +631,17 @@ local function Build()
         click = function() if Container.SortBags then Container.SortBags() end end,
         tip = function() return "Sort the bags, as the game sorts them." end })
     sort:SetPoint("RIGHT", close, "LEFT", -4, 0)
-    local view = Button({ width = 54, text = function() return ns.db.bagsView == "groups" and "Grid" or "Groups" end,
-        click = function() ns.SetOption("bagsView", ns.db.bagsView == "groups" and "grid" or "groups") end,
-        tip = function()
-            return ns.db.bagsView == "groups" and "Show every slot, bag by bag."
-                or "Show the items in groups: new, equipment, consumables and the rest."
-        end })
-    view:SetPoint("RIGHT", sort, "LEFT", -4, 0)
+    -- the views, one button each, joined edge to edge, right to left
+    local view
+    for i = #VIEWS, 1, -1 do
+        local v = VIEWS[i]
+        local b = Button({ width = v.width, text = function() return v.name end,
+            click = function() ns.SetOption("bagsView", v.key) end,
+            lit = function() return ns.db.bagsView == v.key end,
+            tip = function() return v.tip end })
+        if view then b:SetPoint("RIGHT", view, "LEFT", 1, 0) else b:SetPoint("RIGHT", sort, "LEFT", -4, 0) end
+        view = b
+    end
 
     search = CreateFrame("EditBox", "MedalluinBagsSearch", window, "SearchBoxTemplate")
     search:SetHeight(20)

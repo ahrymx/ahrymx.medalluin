@@ -50,10 +50,16 @@ ns.On("PLAYER_LOGIN", function()
     -- and bags bars are retired by strips/micro.lua and strips/bags.lua
     -- once their buttons have moved out of them. Secure frames only move
     -- out of combat.
+    -- The XP and reputation bars: the manager to the hidden parent, its two
+    -- containers left in it, silenced. A container finds its manager as
+    -- its parent (retail's Edit Mode calls it there), so one moved out of
+    -- it breaks Edit Mode.
     ns.OutOfCombat(function()
-        ns.Kill(StatusTrackingBarManager)   -- the XP and reputation bars
-        ns.Kill(MainStatusTrackingBarContainer)
-        ns.Kill(SecondaryStatusTrackingBarContainer)
+        local manager = StatusTrackingBarManager
+        ns.Kill(manager)
+        for _, c in ipairs({ MainStatusTrackingBarContainer, SecondaryStatusTrackingBarContainer }) do
+            if manager and c:GetParent() == manager then c:UnregisterAllEvents() else ns.Kill(c) end
+        end
     end)
 end)
 

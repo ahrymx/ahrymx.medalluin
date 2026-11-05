@@ -537,10 +537,11 @@ function ns.OptionPages()
             groups = {
                 Group("Window",
                     Choice("bagsView", "Show", {
-                        { "grid", "Every slot", "Every slot, bag by bag, the reagent bag on rows of its own." },
+                        { "bags", "Bags", "Each bag on rows of its own, under its name." },
+                        { "grid", "Grid", "Every slot, bag by bag, the reagent bag on rows of its own." },
                         { "groups", "Groups", "The items in groups: new, equipment, consumables, quest items, trade "
                             .. "goods, other and junk, with one slot for the free ones." },
-                    }, "The window's Groups and Grid button switches this too."),
+                    }, "The window's Bags, Grid and Groups buttons switch this too. Kept across reloads."),
                     Check("bagsItemLevel", "Item levels",
                         "The item level in the corner of each weapon and piece of armour, in its quality's colour.")),
             },
