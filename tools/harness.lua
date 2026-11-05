@@ -4985,28 +4985,50 @@ function MinimapPass()
         print("minimap area look", string.format("well=%.3f,%.3f,%.3f,%.2f trim=%d size=%s", well[1], well[2], well[3],
             well[4], trim, tostring(select(2, text:GetFont()))))
         show("hovered")
-        a.scripts.OnUpdate(a, 0)
-        show("over a pin")
+        -- it comes over half a second
+        a.scripts.OnUpdate(a, 0.25)
+        show("0.25s")
+        a.scripts.OnUpdate(a, 0.35)
+        show("0.6s")
+        -- a pin takes the pointer and gives it back: the same visit
+        Minimap.scripts.OnEnter(Minimap)
+        show("back from a pin")
         subzone = "The Sanctuary of Shadows and the Very Long Name of a Den"
         fire("ZONE_CHANGED")
         show("zone changed")
-        -- its time (3s by default), then a fade
-        a.scripts.OnUpdate(a, 2.9)
+        -- its time (3s by default), then a second's fade, then nothing
+        -- until the pointer leaves, whatever pins it crosses
+        a.scripts.OnUpdate(a, 2.3)
         show("2.9s")
-        a.scripts.OnUpdate(a, 0.2)
-        show("3.1s")
-        a.scripts.OnUpdate(a, 0.3)
-        show("3.4s")
+        a.scripts.OnUpdate(a, 0.6)
+        show("3.5s")
+        a.scripts.OnUpdate(a, 0.6)
+        show("4.1s")
         Minimap.scripts.OnEnter(Minimap)
         a.scripts.OnUpdate(a, 0.1)
-        show("entered again, 0.1s")
+        show("4.2s, back from a pin")
+        mouseOver = false
+        a.scripts.OnUpdate(a, 0.1)
+        show("left")
+        -- a new visit; left halfway, it goes over a second
+        mouseOver = c
+        Minimap.scripts.OnEnter(Minimap)
+        a.scripts.OnUpdate(a, 0.5)
+        show("entered again, 0.5s")
+        mouseOver = false
+        a.scripts.OnUpdate(a, 0.5)
+        show("left, 0.5s")
+        -- back while it goes: a new visit, coming again
+        mouseOver = c
+        a.scripts.OnUpdate(a, 0.1)
+        show("back while it goes")
         set("minimapAreaTime", 0)
         a.scripts.OnUpdate(a, 100)
         show("Always, 100s")
         set("minimapAreaTime", 3)
         mouseOver = false
-        a.scripts.OnUpdate(a, 0)
-        show("left")
+        a.scripts.OnUpdate(a, 1)
+        show("left, 1s")
         subzone = "Illidari Training Grounds"
     end
     area()

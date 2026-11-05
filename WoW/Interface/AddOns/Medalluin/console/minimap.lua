@@ -9,7 +9,7 @@ local GOLD_D = { 0.541, 0.439, 0.204 }
 local AREA_BROWN = { 0.165, 0.125, 0.071 }      -- #2a2012
 local AREA_ALPHA = 0.8
 local AREA_SIZE, AREA_PAD, AREA_INSET = 10, 3, 4
-local AREA_FADE = 0.4                           -- seconds it takes to go, once its time is up
+local AREA_FADE_IN, AREA_FADE_OUT = 0.5, 1      -- seconds it takes to come and to go
 
 -- ------------------------------------------------------------ where it goes
 -- The light profile's minimap sits in the console's bay, or in the screen's
@@ -241,21 +241,32 @@ ns.On("PLAYER_LOGIN", function()
         label:SetWidth(math.min(label:GetStringWidth() + 1, most))
         area:SetSize(label:GetWidth() + 2 * AREA_PAD, label:GetStringHeight() + 2 * AREA_PAD)
     end
+    -- One visit shows it once. A pin takes the pointer and gives it back,
+    -- and the map's OnEnter comes again, which must not start it over: so
+    -- it stays shown, at no alpha once its time is up, until the pointer
+    -- leaves the shown shape, and fades in and out on the way. Back on the
+    -- map while it fades out is a new visit. Its time counts while the
+    -- pointer is on the shape, from naught each time it is off it, so it
+    -- is naught again whenever it has hidden.
     local shownFor = 0
     Minimap:HookScript("OnEnter", function()
+        if area:IsShown() then return end
         ShowArea()
-        shownFor = 0
-        area:SetAlpha(1)
+        area:SetAlpha(0)
         area:Show()
     end)
     area:SetScript("OnUpdate", function(self, elapsed)
-        if not clip:IsMouseOver() then return self:Hide() end
         local hold = tonumber(ns.db.minimapAreaTime) or 0
-        if hold <= 0 then return end
-        shownFor = shownFor + elapsed
-        local a = 1 - (shownFor - hold) / AREA_FADE
-        if a < 0.01 then return self:Hide() end
-        self:SetAlpha(math.min(1, a))
+        local over = clip:IsMouseOver()
+        shownFor = over and shownFor + elapsed or 0
+        local a = self:GetAlpha()
+        if over and (hold <= 0 or shownFor < hold) then
+            a = math.min(1, a + elapsed / AREA_FADE_IN)
+        else
+            a = math.max(0, a - elapsed / AREA_FADE_OUT)
+        end
+        self:SetAlpha(a)
+        if a == 0 and not over then self:Hide() end
     end)
     for _, e in ipairs({ "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA" }) do
         ns.On(e, ShowArea)
