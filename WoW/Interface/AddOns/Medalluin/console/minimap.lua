@@ -69,9 +69,20 @@ ns.On("PLAYER_LOGIN", function()
     -- the bay's (art/console/gen_light_console.py) is a band across the
     -- middle. A parent that clips its children does not crop it: the client
     -- draws the minimap past its parent's edges.
+    --
+    -- The mask hides only the ground, though, and the pins addons hang on
+    -- the minimap are frames of their own, drawn over the whole square. The
+    -- parent that cannot crop the ground does crop them (measured in game,
+    -- in and out of combat): the minimap sits in a frame of the shown shape,
+    -- clipping, so nothing on it shows past the gold. A pin floated to the
+    -- edge of a round map past the band is cut off with it.
     local round = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
     local square = "Interface\\Buttons\\WHITE8X8"
-    Minimap:SetParent(console)
+    local clip = CreateFrame("Frame", "MedalluinMinimapClip", console)
+    clip:SetFrameLevel(math.max(0, ns.levels.bars - 1))
+    clip:SetClipsChildren(true)
+    clip:SetPoint("CENTER", Minimap, "CENTER")
+    Minimap:SetParent(clip)
     Minimap:SetFrameStrata(console:GetFrameStrata())
     Minimap:SetFrameLevel(ns.levels.bars)
     Minimap:SetScale(1)
@@ -80,6 +91,7 @@ ns.On("PLAYER_LOGIN", function()
     local function Fit(w, h)
         local side = math.max(w, h)
         Minimap:SetSize(side, side)
+        clip:SetSize(w, h)
         Minimap:SetHitRectInsets((side - w) / 2, (side - w) / 2, (side - h) / 2, (side - h) / 2)
         if not (mmCfg and mmCfg.square) then
             Minimap:SetMaskTexture(round)

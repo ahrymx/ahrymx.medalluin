@@ -205,6 +205,7 @@ function Region:GetID() return self.idOf end
 function Region:GetFrameStrata() return self.strata or "LOW" end
 function Region:SetFrameStrata(s) self.strata = s end
 function Region:SetParent(p) self.parent = p end
+function Region:SetClipsChildren(on) self.clipsChildren = on end
 function Region:Show()
     self.shown = true
     if self.scripts.OnShow then self.scripts.OnShow(self) end
@@ -4932,6 +4933,14 @@ function MinimapPass()
     end
     local bezel = _G.MedalluinMinimapBezel
     local function set(k, v) page.settings[k]:Set(v) end
+    -- the frame the map sits in, the shape shown, clipping what is on it
+    local function clip()
+        local c = _G.MedalluinMinimapClip
+        if not c then return "clip=none" end
+        local p = c.points.CENTER
+        return string.format("clip=%.0fx%.0f clips=%s parent=%s on=%s", c.w, c.h, tostring(c.clipsChildren),
+            tostring(Minimap.parent == c), tostring(p and p[1] == Minimap))
+    end
     -- the square map drops the round map's edge rings; the round one keeps them
     print("minimap blob rings", ns.layout.minimap and ns.layout.minimap.square and "square" or "round", BlobRing())
     local function greyed()
@@ -4951,7 +4960,7 @@ function MinimapPass()
         print("minimap medallion", "moves=" .. tostring(ns.MinimapMoves()), "corner=" .. tostring(ns.MinimapInCorner()),
             "page " .. greyed())
         print("minimap shape medallion", string.format("map=%.0fx%.0f mask=%s hit insets=%s", Minimap.w, Minimap.h,
-            tostring(Minimap.mask):match("[^\\]+$"), table.concat(Minimap.hitInsets or {}, ",")))
+            tostring(Minimap.mask):match("[^\\]+$"), table.concat(Minimap.hitInsets or {}, ",")), clip())
         ns.ToggleMinimap()
         print("minimap medallion key", "corner=" .. tostring(ns.MinimapInCorner()), "pin=" .. tostring(ns.MinimapPinned()))
     else
@@ -4971,7 +4980,7 @@ function MinimapPass()
             local _, _, _, x, y = Minimap:GetPoint()
             print("minimap shape " .. tag, string.format("map=%.0fx%.0f mask=%s hit insets=%s,%s,%s,%s at=%.0f,%.0f",
                 Minimap.w, Minimap.h, tostring(Minimap.mask):match("[^\\]+$"), tostring(i[1]), tostring(i[2]),
-                tostring(i[3]), tostring(i[4]), x, y))
+                tostring(i[3]), tostring(i[4]), x, y), clip())
         end
         shape("in the bay")
         hasTarget = true
