@@ -447,7 +447,7 @@ local PAGES = {
     arena = "units/arena",
     overhead = "console/overhead", top = "console/overhead",
     chat = "chat",
-    side = "side", meter = "side", loot = "side", auras = "side",
+    side = "side/general", meter = "side/meter", loot = "side/loot", auras = "side/auras",
     bags = "bags", bag = "bags", inventory = "bags",
     tooltip = "tooltips", tooltips = "tooltips",
 }

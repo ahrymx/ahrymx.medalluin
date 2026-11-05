@@ -13,6 +13,12 @@ local RELOAD = " Takes effect after a reload."
 local function Check(key, label, tip, reload)
     return { kind = "check", key = key, label = label, tip = reload and tip .. RELOAD or tip, reload = reload }
 end
+-- An option greyed while another is off: for a master, whose page has no
+-- other way to say so.
+local function Needs(key, spec)
+    spec.needs = key
+    return spec
+end
 local function Choice(key, label, choices, tip, reload)
     return { kind = "choice", key = key, label = label, choices = choices,
         tip = reload and tip .. RELOAD or tip, reload = reload }
@@ -447,55 +453,79 @@ function ns.OptionPages()
             groups = {},
         },
         {
-            id = "side", name = "Side panel", intro = "Shared by every profile.",
-            master = Check("side", "Side panel",
-                "The chat panel's mirror on the right strip, over the stats, with an Auras tab, a Meter tab and a "
-                .. "Loot tab. Untick it to keep the right corner clear, or to use a meter addon.", true),
-            groups = {
-                Group("Auras",
-                    Check("sideAuras", "Auras tab",
-                        "Your buffs and debuffs, each with the time it has left, the longest first."),
-                    Choice("aurasColumns", "Aura lists", {
-                        { 2, "Two", "Buffs and debuffs side by side." },
-                        { 1, "One", "Buffs and debuffs in one list. In combat the game keeps the times to itself, "
-                            .. "so there the list shows the debuffs first, then the buffs." },
-                    }, "The column button with the bars on it switches this too."),
-                    Check("aurasTimeless", "Auras that never run out",
-                        "List forms, aspects, mounts and the like too, at the top. They are over the portrait "
-                        .. "already. The infinity button switches this too."),
-                    Check("aurasTrackedBars", "Tracked bars in combat",
-                        "In combat the game keeps new buffs to itself, so the tab shows the Cooldown Manager's "
-                        .. "tracked bars instead, until combat ends. Which bars, and how wide, are set in Edit Mode. "
-                        .. "Only where the game has the Cooldown Manager.")),
-                Group("Meter",
-                    Check("sideMeter", "Meter tab",
-                        "Damage, healing and more for each member of your group, from the game's own combat meter."),
-                    Choice("meterColumns", "Meter lists", {
-                        { 1, "One", "One list across the panel." },
-                        { 2, "Two", "Two lists side by side, each showing its own thing: damage and healing, say." },
-                    }, "The column button with the bars on it switches this too."),
-                    Choice("meterLeft", "First list shows", metrics,
-                        "Clicking a list's heading steps through these too; a right click steps back."),
-                    Choice("meterRight", "Second list shows", metrics, "Shown when the meter has two lists."),
-                    Choice("meterSession", "Fight", {
-                        { M.CURRENT, "Current", "The fight you are in, or the last one." },
-                        { M.OVERALL, "Overall", "Every fight since the meter was last reset." },
-                    }, "The clock button switches this too."),
-                    Check("meterRate", "Per second",
-                        "Damage and healing as amounts per second instead of totals. The /s button switches this "
-                        .. "too.")),
-                Group("Loot",
-                    Check("sideLoot", "Loot tab",
+            id = "side", name = "Side panel",
+            -- the panel itself, then a tab for each of its own tabs; those
+            -- grey while the panel is off, through their masters
+            tabs = {
+                {
+                    id = "general", name = "General", intro = "Shared by every profile.",
+                    master = Check("side", "Side panel",
+                        "The chat panel's mirror on the right strip, over the stats, with an Auras tab, a Meter tab "
+                        .. "and a Loot tab. Untick it to keep the right corner clear, or to use a meter addon.", true),
+                    groups = {},
+                },
+                {
+                    id = "auras", name = "Auras", intro = "Shared by every profile.",
+                    master = Needs("side", Check("sideAuras", "Auras tab",
+                        "Your buffs and debuffs, each with the time it has left, the longest first.")),
+                    groups = {
+                        Group("Lists",
+                            Choice("aurasColumns", "Aura lists", {
+                                { 2, "Two", "Buffs and debuffs side by side." },
+                                { 1, "One", "Buffs and debuffs in one list. In combat the game keeps the times to "
+                                    .. "itself, so there the list shows the debuffs first, then the buffs." },
+                            }, "The column button with the bars on it switches this too."),
+                            Check("aurasTimeless", "Auras that never run out",
+                                "List forms, aspects, mounts and the like too, at the top. They are over the portrait "
+                                .. "already. The infinity button switches this too.")),
+                        Group("In combat",
+                            Check("aurasTrackedBars", "Enable tracked aura bars",
+                                "In combat the game keeps new buffs to itself, so the tab shows the Cooldown "
+                                .. "Manager's tracked bars instead, until combat ends. Ticking this turns the "
+                                .. "Cooldown Manager on in the game's options too. Which bars, and how wide, are set "
+                                .. "in Edit Mode. Only where the game has the Cooldown Manager.")),
+                    },
+                },
+                {
+                    id = "meter", name = "Meter", intro = "Shared by every profile.",
+                    master = Needs("side", Check("sideMeter", "Meter tab",
+                        "Damage, healing and more for each member of your group, from the game's own combat meter.")),
+                    groups = {
+                        Group("Lists",
+                            Choice("meterColumns", "Meter lists", {
+                                { 1, "One", "One list across the panel." },
+                                { 2, "Two", "Two lists side by side, each showing its own thing: damage and "
+                                    .. "healing, say." },
+                            }, "The column button with the bars on it switches this too."),
+                            Choice("meterLeft", "First list shows", metrics,
+                                "Clicking a list's heading steps through these too; a right click steps back."),
+                            Choice("meterRight", "Second list shows", metrics, "Shown when the meter has two lists."),
+                            Choice("meterSession", "Fight", {
+                                { M.CURRENT, "Current", "The fight you are in, or the last one." },
+                                { M.OVERALL, "Overall", "Every fight since the meter was last reset." },
+                            }, "The clock button switches this too."),
+                            Check("meterRate", "Per second",
+                                "Damage and healing as amounts per second instead of totals. The /s button switches "
+                                .. "this too.")),
+                    },
+                },
+                {
+                    id = "loot", name = "Loot", intro = "Shared by every profile.",
+                    master = Needs("side", Check("sideLoot", "Loot tab",
                         "What your group looted, boss by boss, with who won each roll. Not the chat's loot lines: "
-                        .. "the chat keeps those."),
-                    Choice("lootWho", "Whose loot", {
-                        { ns.LOOT_WHO.GROUP, "The group's", "Everything the group looted, yours included." },
-                        { ns.LOOT_WHO.MINE, "Mine", "Only what you looted or won." },
-                    }, "The funnel button switches this too."),
-                    Choice("lootQuality", "Least quality", qualities,
-                        "Items below this quality are left out. The diamond button steps through these too."),
-                    Check("lootMoney", "Money and currencies",
-                        "Your share of looted money on each heading, and the currencies you loot as lines.")),
+                        .. "the chat keeps those.")),
+                    groups = {
+                        Group("Lists",
+                            Choice("lootWho", "Whose loot", {
+                                { ns.LOOT_WHO.GROUP, "The group's", "Everything the group looted, yours included." },
+                                { ns.LOOT_WHO.MINE, "Mine", "Only what you looted or won." },
+                            }, "The funnel button switches this too."),
+                            Choice("lootQuality", "Least quality", qualities,
+                                "Items below this quality are left out. The diamond button steps through these too."),
+                            Check("lootMoney", "Money and currencies",
+                                "Your share of looted money on each heading, and the currencies you loot as lines.")),
+                    },
+                },
             },
         },
         {

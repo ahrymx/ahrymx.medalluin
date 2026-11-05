@@ -30,10 +30,12 @@
 -- In combat, where the client has the Cooldown Manager (retail's
 -- Blizzard_CooldownViewer), the tab shows its tracked bars instead
 -- (BuffBarCooldownViewer, chosen and sized in Edit Mode), as the game keeps
--- new buffs to itself there. The bars are adopted into the tab out of combat;
--- the swap is two visibility state drivers, run by the game's secure manager,
--- so nothing here shows, hides or moves a frame in combat. The tab stays the
--- one the player picked: the bars show only while the Auras tab does.
+-- new buffs to itself there. The Cooldown Manager's own option is turned on
+-- with the bars, as it draws nothing without it. The bars are adopted into
+-- the tab out of combat; the swap is two visibility state drivers, run by the
+-- game's secure manager, so nothing here shows, hides or moves a frame in
+-- combat. The tab stays the one the player picked: the bars show only while
+-- the Auras tab does.
 local _, ns = ...
 
 local Auras = C_UnitAuras
@@ -700,11 +702,24 @@ local function GiveBack()
     placing = false
 end
 
+-- The Cooldown Manager draws nothing until its own option is on (the
+-- game's Gameplay Enhancements): turned on with the bars. Never turned off
+-- here, as it carries the cooldown viewers too. No such setting, no
+-- Cooldown Manager: nothing to do.
+local CVAR = "cooldownViewerEnabled"
+local function EnableManager()
+    local cv = C_CVar
+    if not (cv and cv.GetCVar and cv.SetCVar) then return end
+    local now = cv.GetCVar(CVAR)
+    if now ~= nil and now ~= "1" then pcall(cv.SetCVar, CVAR, "1") end
+end
+
 -- Out of combat only: adopt the viewer (or give it back) and set the two
 -- drivers that swap the lists for the bars while combat lasts.
 local function Drive()
     if not host then return end
     ns.OutOfCombat(function()
+        if ns.db.aurasTrackedBars then EnableManager() end
         local v = Viewer()
         if ns.db.aurasTrackedBars and v then
             if adopted ~= v then Adopt(v) end

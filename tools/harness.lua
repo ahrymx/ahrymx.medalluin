@@ -1831,13 +1831,17 @@ if barPass then
         "esc=" .. tostring(UISpecialFrames[1]), "title=" .. win.title.text)
     for _, path in ipairs({ "general", "console/general", "console/bar", "console/overhead",
         "console/minimap", "units/general", "units/party", "units/raid", "units/battleground", "units/boss",
-        "units/arena", "chat", "side", "bags" }) do dump(path) end
+        "units/arena", "chat", "side/general", "side/auras", "side/meter", "side/loot", "bags" }) do dump(path) end
     -- a master off greys its page; the footer asks for a reload
     page.settings.bags:Set(false)
     dump("bags")
     print("  footer", win.footProfile.text, "reload=" .. tostring(win.footReload.shown))
     page.settings.bags:Set(true)
     print("  bags back", "reload=" .. tostring(win.footReload.shown))
+    -- the side panel off greys its tabs' pages, each tab's own master too
+    page.settings.side:Set(false)
+    dump("side/auras")
+    page.settings.side:Set(true)
     -- a dropdown's list: its choices, the one in use marked; a row chosen
     ns.OpenOptions("units/party")
     local range = ns.optionControls.partyRange
@@ -1869,11 +1873,11 @@ if barPass then
     info.cancelFunc()
     print("colour cancelled", "artColor=" .. ns.db.artColor, "swatch=" .. shows(art))
     -- the long page scrolls, and a new page starts at its top
-    ns.OpenOptions("side")
+    ns.OpenOptions("console/overhead")
     win.scroll.scripts.OnMouseWheel(win.scroll, -1)
-    print("scroll side", "at=" .. win.scroll:GetVerticalScroll(), "thumb=" .. tostring(win.thumb.shown))
+    print("scroll overhead", "at=" .. win.scroll:GetVerticalScroll(), "thumb=" .. tostring(win.thumb.shown))
     win.scroll.scripts.OnMouseWheel(win.scroll, -100)
-    print("scroll side bottom", "at=" .. win.scroll:GetVerticalScroll() .. "/" .. win.scroll:GetVerticalScrollRange())
+    print("scroll overhead bottom", "at=" .. win.scroll:GetVerticalScroll() .. "/" .. win.scroll:GetVerticalScrollRange())
     ns.OpenOptions("console/bar")
     print("scroll bar", "at=" .. win.scroll:GetVerticalScroll(), "thumb at=" .. win.thumb.points.TOPRIGHT[4])
     -- the Console page comes back on the tab it was left on
@@ -2874,7 +2878,20 @@ if sidePass then
         -- Blizzard_CooldownViewer is present and aurasTrackedBars is on
         local host = _G.MedalluinAurasTrackedBars
         local cdm = CreateFrame("Frame", "BuffBarCooldownViewer", UIParent)
+        -- the Cooldown Manager's own option, off as on a new character
+        local cvars, writes = { cooldownViewerEnabled = "0" }, 0
+        local savedCVar = C_CVar
+        C_CVar = {
+            GetCVar = function(name) return cvars[name] end,
+            SetCVar = function(name, value)
+                cvars[name], writes = tostring(value), writes + 1
+                return true
+            end,
+        }
         fire("ADDON_LOADED", "Blizzard_CooldownViewer")
+        -- and leave it be once it is on
+        fire("ADDON_LOADED", "Blizzard_CooldownViewer")
+        print("tracked bars turn the Cooldown Manager on", cvars.cooldownViewerEnabled, "writes", writes)
         print("tracked bars adopted", cdm.parent == host,
             "holder out of combat", AL.shown, "host out of combat", host.shown)
         cdm:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
@@ -2885,9 +2902,22 @@ if sidePass then
             "thumb", select(3, A.Thumb()))
         harnessHolds.combat = nil
         stateTick()
+        -- unticked: the Cooldown Manager is left as the player has it
+        cvars.cooldownViewerEnabled = "0"
         page.settings.aurasTrackedBars:Set(false)
         print("tracked bars off", cdm.parent == UIParent,
-            "holder", AL.shown, "host", host.shown)
+            "holder", AL.shown, "host", host.shown, "Cooldown Manager left", cvars.cooldownViewerEnabled)
+        -- ticked again: on again, and a client with no such setting is left alone
+        cvars.cooldownViewerEnabled = "0"
+        page.settings.aurasTrackedBars:Set(true)
+        local again = cvars.cooldownViewerEnabled
+        cvars.cooldownViewerEnabled = nil
+        page.settings.aurasTrackedBars:Set(false)
+        page.settings.aurasTrackedBars:Set(true)
+        print("tracked bars ticked again", again, "no setting", tostring(cvars.cooldownViewerEnabled),
+            "writes", writes)
+        page.settings.aurasTrackedBars:Set(false)
+        C_CVar = savedCVar
         _G.BuffBarCooldownViewer = nil
         for k in pairs(base) do base[k] = saved[k] end
     end

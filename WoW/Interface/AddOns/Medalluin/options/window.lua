@@ -201,10 +201,12 @@ end
 local function Refresh()
     if not window then return end
     for _, f in pairs(built) do
-        local on = (not f.master or ns.db[f.master.spec.key]) and (not f.enabled or f.enabled())
-            and true or false
+        -- a master greys only with what it needs; all else with it too
+        local function Has(c) return not c.needs or ns.db[c.needs] and true or false end
+        local on = (not f.master or ns.db[f.master.spec.key] and Has(f.master))
+            and (not f.enabled or f.enabled()) and true or false
         for _, c in ipairs(f.controls) do
-            c:Refresh(c == f.master or on and (not c.needs or ns.db[c.needs] and true or false))
+            c:Refresh((c == f.master or on) and Has(c))
         end
     end
     local name = ns.db.consoleProfile
