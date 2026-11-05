@@ -401,6 +401,12 @@ function Region:GetVerticalScrollRange()
     return math.max(0, c.h - (r[4] - r[2]))
 end
 function Region:SetTexCoord(...) self.coords = { ... } end
+-- the game's eight corners (UL, LL, UR, LR), from the four-number form
+function Region:GetTexCoord()
+    local c = self.coords or { 0, 1, 0, 1 }
+    if #c == 8 then return unpack(c) end
+    return c[1], c[3], c[1], c[4], c[2], c[3], c[2], c[4]
+end
 function Region:SetDesaturated(d) self.desaturated = d end
 function Region:CreateMaskTexture() return new("MaskTexture", self) end
 local mouseOver = false
@@ -556,6 +562,14 @@ PlayerFrame, TargetFrame = new("Frame", UIParent), new("Frame", UIParent)
 BuffFrame, DebuffFrame = new("Frame", UIParent, "BuffFrame"), new("Frame", UIParent, "DebuffFrame")
 MainMenuBar = new("Frame", UIParent, "MainMenuBar")
 
+-- what IsActionInRange answers, by action: nil (nothing to check) unless set
+local rangeOf = {}
+local manaShort = {}        -- actions short of mana: not usable, noMana
+-- Blizzard's range mark: the hotkey's colour (ActionButton.lua)
+function ActionButton_UpdateRangeIndicator(self, checksRange, inRange)
+    if checksRange and not inRange then self.HotKey:SetVertexColor(1, 0.1, 0.1)
+    else self.HotKey:SetVertexColor(0.6, 0.6, 0.6) end
+end
 -- Blizzard's action buttons, with the parts bars/buttons.lua restyles.
 local function ActionButton(name, parent, action)
     local b = new("CheckButton", parent, name)
@@ -573,6 +587,13 @@ local function ActionButton(name, parent, action)
     b.cooldown = new("Cooldown", b, name .. "Cooldown")
     b.showgrid = 1
     function b:GetShowGrid() return self.showgrid and self.showgrid > 0 end
+    -- Blizzard's usable colours, as ActionBarActionButtonMixin:UpdateUsable
+    function b:UpdateUsable()
+        local usable, noMana = (C_ActionBar and C_ActionBar.IsUsableAction or IsUsableAction)(self.action)
+        if usable then self.icon:SetVertexColor(1, 1, 1)
+        elseif noMana then self.icon:SetVertexColor(0.5, 0.5, 1)
+        else self.icon:SetVertexColor(0.4, 0.4, 0.4) end
+    end
     function b:HasAction() return HasAction and HasAction(self.action) or false end
     return b
 end
@@ -620,6 +641,61 @@ for i = 1, 10 do
     o.cornersTex = corners
     b.AutoCastOverlay = o
 end
+-- Forever's totem bar (MultiCastActionBarFrame.lua): shown only while the
+-- player has a totem element. Three pages of four elements, the summon and
+-- recall spells, and the flyout of an element's totems with the arrow that
+-- opens it; Blizzard's functions as far as the overhead hooks them.
+MultiCastActionBarFrame = new("Frame", UIParent, "MultiCastActionBarFrame")
+MultiCastActionBarFrame.shown = false
+MultiCastActionBarFrame.currentPage = 1
+NUM_MULTI_CAST_PAGES, NUM_MULTI_CAST_BUTTONS_PER_PAGE = 3, 4
+for p = 1, 3 do
+    local page = new("Frame", MultiCastActionBarFrame, "MultiCastActionPage" .. p)
+    page.shown = p == 1
+    for i = 1, 4 do
+        local n = (p - 1) * 4 + i
+        local b = ActionButton("MultiCastActionButton" .. n, page, 132 + n)
+        b.overlayTex = new("Texture", b, nil)
+    end
+end
+ActionButton("MultiCastSummonSpellButton", MultiCastActionBarFrame, 150)
+ActionButton("MultiCastRecallSpellButton", MultiCastActionBarFrame, 151)
+MultiCastFlyoutFrame = new("Frame", MultiCastActionBarFrame, "MultiCastFlyoutFrame")
+MultiCastFlyoutFrame.shown, MultiCastFlyoutFrame.w = false, 32
+MultiCastFlyoutFrame.top = new("Texture", MultiCastFlyoutFrame, nil)
+MultiCastFlyoutFrame.middle = new("Texture", MultiCastFlyoutFrame, nil)
+MultiCastFlyoutFrame.buttons = {}
+for i = 1, 3 do
+    local b = new("CheckButton", MultiCastFlyoutFrame, "MultiCastFlyoutButton" .. i)
+    b.w, b.h = 24, 24
+    MultiCastFlyoutFrame.buttons[i] = b
+end
+MultiCastFlyoutFrameCloseButton = new("Button", MultiCastFlyoutFrame, "MultiCastFlyoutFrameCloseButton")
+MultiCastFlyoutFrameCloseButton.normalTexture = new("Texture", MultiCastFlyoutFrameCloseButton, nil)
+MultiCastFlyoutFrameOpenButton = new("Button", MultiCastActionBarFrame, "MultiCastFlyoutFrameOpenButton")
+MultiCastFlyoutFrameOpenButton.shown = false
+MultiCastFlyoutFrameOpenButton.normalTexture = new("Texture", MultiCastFlyoutFrameOpenButton, nil)
+function MultiCastFlyoutFrame_ToggleFlyout(self, _, parent)
+    if self:IsShown() and self.parent == parent then self:Hide(); return end
+    self.parent = parent
+    self:SetPoint("BOTTOM", parent, "TOP", 0, 0)
+    self:Show()
+    self.top:SetTexCoord(0, 1, 0.1, 0.2)
+    self.middle:SetTexCoord(0, 1, 0.3, 0.4)
+    MultiCastFlyoutFrameCloseButton.normalTexture:SetTexCoord(0, 1, 0.5, 0.6)
+end
+function MultiCastFlyoutFrameOpenButton_Show(self, _, parent)
+    self.normalTexture:SetTexCoord(0, 1, 0.7, 0.8)
+    self.parent = parent
+    self:SetParent(parent)
+    self:SetPoint("BOTTOM", parent, "TOP", 0, 0)
+    self:Show()
+end
+function ChangeMultiCastActionPage(page)
+    MultiCastActionBarFrame.currentPage = page
+    for p = 1, 3 do _G["MultiCastActionPage" .. p]:SetShown(p == page) end
+end
+function MultiCastRecallSpellButton_Update(self) self:SetPoint("LEFT", MultiCastActionBarFrame, "LEFT", 140, 0) end
 
 -- Forever's bar divider (a three-slice of textures) exists only on an Edit
 -- Mode client; elsewhere it raises, as an unknown template does in WoW.
@@ -851,6 +927,8 @@ function GetRaidRosterInfo(i)
     if m then return m[1], 0, m[2] end
 end
 local hasTarget = true
+local targetHostile = true
+function UnitCanAttack(_, u) return u == "target" and hasTarget and targetHostile end
 function UnitExists(u) return u == "player" or (u == "target" and hasTarget) or (grouped and u:match("^party[12]$")) end
 function UnitName(u) return ({ player = "Ahrymx", target = "Defias Pillager", party1 = "Thalric",
     party2 = "Okun" })[u] end
@@ -905,8 +983,8 @@ function hooksecurefunc(t, k, f)
 end
 function GetActionCooldown(a) if a == 63 then return 90, 33, 1 end return 0, 0, 1 end
 function HasAction() return true end
-function IsUsableAction() return true end
-function IsActionInRange() return nil end
+function IsUsableAction(a) return not manaShort[a], manaShort[a] or false end
+function IsActionInRange(a) return rangeOf[a] end
 local casting, castUnit = false, "player"
 FAILED, INTERRUPTED = "Failed", "Interrupted"
 -- Frostbolt, a second into two (times in ms; GetTime is 100), cast id 7, by
@@ -954,6 +1032,9 @@ C_Spell = {
     end,
 }
 function UnitLevel() return 30 end
+-- the target an elite, its level coloured by how hard it is
+function UnitClassification(u) return u == "target" and "elite" or "normal" end
+function GetQuestDifficultyColor() return { r = 1, g = 0.82, b = 0 } end
 function UnitXP() return 650 end
 function UnitXPMax() return 1000 end
 function GetXPExhaustion() return 200 end
@@ -1202,8 +1283,8 @@ if modern then
     C_ActionBar = {
         GetActionBarPage = function() return actionPage end,
         HasAction = function() return true end,
-        IsUsableAction = function() return true end,
-        IsActionInRange = function() return nil end,
+        IsUsableAction = function(a) return not manaShort[a], manaShort[a] or false end,
+        IsActionInRange = function(a) return rangeOf[a] end,
         GetActionCooldown = function(a)
             if a == 63 then return { startTime = secret(), duration = secret(), isEnabled = true, modRate = 1 } end
             return { startTime = 0, duration = 0, isEnabled = true, modRate = 1 }
@@ -2148,6 +2229,44 @@ if barPass then
     print("tint", v(tex))
     S.artColor:Set("ff806040")
     print("tint ff806040", v(tex))
+    -- the range tint: red only out of range of an enemy target, and the
+    -- usable colour back after it (Blizzard's numbers, or the bare icons')
+    do
+        local b = ActionButton1
+        local function range(tag, inRange, hostile, target)
+            rangeOf[b.action], targetHostile, hasTarget = inRange, hostile, target
+            ActionButton_UpdateRangeIndicator(b, inRange ~= nil, inRange)
+            print("range " .. tag, "icon=" .. tostring(v(b.icon)))
+        end
+        b:UpdateUsable()
+        print("range usable", "icon=" .. tostring(v(b.icon)))
+        range("enemy out", false, true, true)
+        b:UpdateUsable()
+        print("range enemy out, usable update", "icon=" .. tostring(v(b.icon)))
+        range("enemy in", true, true, true)
+        range("friend out", false, false, true)
+        range("enemy out again", false, true, true)
+        hasTarget = false
+        for _, f in ipairs(events.PLAYER_TARGET_CHANGED or {}) do f.scripts.OnEvent(f, "PLAYER_TARGET_CHANGED") end
+        print("range target cleared", "icon=" .. tostring(v(b.icon)))
+        range("no range check", nil, true, true)
+        manaShort[b.action] = true
+        b:UpdateUsable()
+        range("short of mana, enemy out", false, true, true)
+        range("short of mana, enemy in", true, true, true)
+        manaShort[b.action] = nil
+        -- walking into range with the target held: no event, no usable
+        -- update, only the ticker (2026-11-05: with the art it stuck red)
+        local function walk(tag, inRange)
+            rangeOf[b.action] = inRange
+            ns.barTicker.scripts.OnUpdate(ns.barTicker, 0.2)
+            print("range " .. tag, "ticker=" .. tostring(ns.barTicker.shown), "icon=" .. tostring(v(b.icon)))
+        end
+        walk("walked out, ticker", false)
+        walk("walked in, ticker", true)
+        b:UpdateUsable()
+        rangeOf[b.action], targetHostile, hasTarget = nil, true, true
+    end
     if ns.pager then
         actionPage = 2
         for _, f in ipairs(events.ACTIONBAR_PAGE_CHANGED or {}) do f.scripts.OnEvent(f, "ACTIONBAR_PAGE_CHANGED") end
@@ -3325,6 +3444,18 @@ if args[2] == "widgets" or args[3] == "widgets" then
         widget("raid", ns.raidWidget)
         widget("boss", ns.bossWidget)
         widget("arena", ns.arenaWidget)
+        -- the level: party1's where its layout put it, the first boss's
+        local function level(b)
+            local r = b and b.levelText
+            if not r then return "none" end
+            local p, to, rp, x, y = r:GetPoint(1)
+            local on = to == b.health and "health" or to == b.power and "power" or to == b.text and "text" or "other"
+            local c = r.textColor or {}
+            return string.format("%s>%s.%s,%s,%s text=%s colour=%.2f,%.2f,%.2f shown=%s", tostring(p), on,
+                tostring(rp), tostring(x), tostring(y), tostring(r.text), c[1] or 0, c[2] or 0, c[3] or 0,
+                tostring(b.shown))
+        end
+        print("  level " .. tag, "party1 " .. level(ns.units.party1), "| boss1 " .. level(MedalluinBossWidgetUnit1))
     end
     -- the game's header: a button per member of its group, configured by
     -- its initialConfigFunction, then given its unit
@@ -4311,6 +4442,23 @@ local function EditorPass()
     local before = everything()
     E.ApplyAll()
     print("editor untouched", same(before, everything()))
+
+    -- the level: on every frame, shown but on the raid and the arena; an
+    -- enemy's coloured by difficulty, a friend's dim, a boss's "??" in red
+    for _, frame in ipairs(E.FRAMES) do
+        local list = frame.buttons()
+        if not list[1] then print("level " .. frame.id, "no buttons") end
+        for i = 1, frame.id == "unit" and 2 or math.min(1, #list) do
+            local b = list[i]
+            local r = E.PIECES.level.get(b)
+            local c = r and r.textColor or {}
+            print("level " .. frame.id, tostring(b.unit), "shown=" .. tostring(E.Shown(frame, "level")),
+                r and ("text=" .. tostring(r.text) .. " colour=" .. table.concat({ n((c[1] or 0) * 100),
+                    n((c[2] or 0) * 100), n((c[3] or 0) * 100) }, ",") .. " at=" .. pts(b, r)
+                    .. " font=" .. fonts(r) .. " alpha=" .. n((r.alpha or 1) * 100)) or "none")
+        end
+    end
+    piece("level target", T, "level")
 
     -- the window: its tabs, the pieces of the chosen frame
     ns.BuildEditor()
@@ -5493,7 +5641,9 @@ if savedSimParty then
     print("overhead.parked", "stance=" .. tostring(StanceBar.parent == ns.hidden),
         "stanceEvents=" .. tostring(not StanceBar.unregistered),
         "pet=" .. tostring(PetActionBar.parent == ns.hidden),
-        "petEvents=" .. tostring(not PetActionBar.unregistered))
+        "petEvents=" .. tostring(not PetActionBar.unregistered),
+        "totems=" .. tostring(MultiCastActionBarFrame.parent == ns.hidden),
+        "totemEvents=" .. tostring(not MultiCastActionBarFrame.unregistered))
 
     -- no bosses (they are in the Boss widget): the companion deck moves to
     -- the top, on its own pieces
@@ -5559,6 +5709,63 @@ if savedSimParty then
     petBar = false
     ns.UpdateOverhead()
     rowState("overhead.simNoPet.row")
+    -- a shaman: summon, four elements, recall, as the totem bar has them;
+    -- then Ghost Wolf before them, a separator between; then page two
+    do
+        local bar = MultiCastActionBarFrame
+        bar.shown = true
+        for _, e in ipairs({ "UPDATE_MULTI_CAST_ACTIONBAR" }) do
+            for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e) end
+        end
+        rowState("overhead.shaman.row")
+        local names = {}
+        for _, b in ipairs(ns.overheadRow or {}) do table.insert(names, (b:GetName():gsub("MultiCast", ""))) end
+        print("overhead.shaman.order", table.concat(names, " "),
+            "overlay=" .. tostring(MultiCastActionButton1.overlayTex.alpha),
+            "pageParent=" .. tostring(MultiCastActionPage1.parent == ns.overhead),
+            -- a button stays in its page, so a hidden page hides its four
+            "inPage=" .. tostring(MultiCastActionButton5.parent == MultiCastActionPage2))
+        -- an element not learned yet, and no summon spell: the row closes up
+        MultiCastActionButton4:Hide()
+        MultiCastSummonSpellButton:Hide()
+        rowState("overhead.shamanThree.row")
+        MultiCastActionButton4:Show()
+        MultiCastSummonSpellButton:Show()
+        shapeshiftForms = 1
+        ns.UpdateOverhead()
+        rowState("overhead.shamanWolf.row")
+        ChangeMultiCastActionPage(2)
+        print("overhead.shaman.page2", tostring(ns.overheadRow[3] and ns.overheadRow[3]:GetName()))
+        MultiCastRecallSpellButton_Update(MultiCastRecallSpellButton)
+        print("overhead.shaman.recall", "relaid=" .. tostring(MultiCastRecallSpellButton.points.LEFT == nil))
+        ChangeMultiCastActionPage(1)
+        -- an element's flyout and its arrow open below the button
+        local fly, el = MultiCastFlyoutFrame, MultiCastActionButton2
+        -- before it opens: Blizzard's own field for the button it opens from
+        -- is "parent", which in this mock is also the frame's parent
+        local under = fly:GetParent() == ns.overhead
+        local function tc(t) return t.coords[3] .. "," .. t.coords[4] end
+        MultiCastFlyoutFrameOpenButton_Show(MultiCastFlyoutFrameOpenButton, "slot", el)
+        local arrow = MultiCastFlyoutFrameOpenButton.points
+        MultiCastFlyoutFrame_ToggleFlyout(fly, "slot", el)
+        local function at(f, p)
+            local pt = f.points[p]
+            return pt and (p .. ">" .. (pt[1] == el and "el" or pt[1] == fly and "fly"
+                or tostring(pt[1] and pt[1]:GetName())) .. "." .. pt[2] .. "," .. pt[4]) or "-"
+        end
+        local c = MultiCastFlyoutFrameCloseButton
+        print("overhead.shaman.flyout", at(fly, "TOP"), "bottom=" .. at(fly, "BOTTOM"),
+            "first=" .. at(fly.buttons[1], "TOP"), "close=" .. at(c, "BOTTOM"), "cap=" .. at(fly.top, "BOTTOM"),
+            "top=" .. tc(fly.top), "middle=" .. tc(fly.middle), "closeTc=" .. tc(c.normalTexture),
+            "under=" .. tostring(under))
+        print("overhead.shaman.arrow", arrow.TOP and "below" or "above", "bottom=" .. tostring(arrow.BOTTOM ~= nil),
+            "tc=" .. tc(MultiCastFlyoutFrameOpenButton.normalTexture))
+        MultiCastFlyoutFrame_ToggleFlyout(fly, "slot", el)
+        MultiCastFlyoutFrameOpenButton:Hide()
+        bar.shown, shapeshiftForms = false, 0
+        ns.UpdateOverhead()
+        rowState("overhead.shamanGone.row")
+    end
     -- not simulating: nothing to show; then a pet arrives (UNIT_PET for the
     -- player) with its bar, and the row stands alone at the top
     page.settings.simParty:Set(false)
@@ -6457,6 +6664,74 @@ if args[2] == "unitrow" or args[3] == "unitrow" then
     inCombat = false
     fireAll("PLAYER_REGEN_ENABLED")
     state("under a boss, combat over")
+
+    -- the command row alone, then the target's target turns up mid-fight
+    -- (2026-11-05: it stood over the totems). The icons step down a deck
+    -- under it and the plates follow; back up when it goes.
+    page.settings.bossFrames:Set("vertical")
+    exists.targettarget, exists.boss1, exists.pet = nil, nil, nil
+    petBar, shapeshiftForms = false, 2
+    harnessNextFrame()
+    ns.UpdateOverhead()
+    local function rowAt(tag)
+        local decks = {}
+        for _, d in ipairs(ns.overheadDecks) do
+            if d.shown then table.insert(decks, d.kind .. "@" .. d.y .. "w" .. 2 * d.half) end
+        end
+        local icons = {}
+        for _, b in ipairs({ StanceButton1, StanceButton2 }) do
+            local l, _, y = span(b)
+            table.insert(icons, l and (l .. "," .. y) or "unplaced")
+        end
+        local tot = tot.shown and select(3, span(tot))
+        print("unitrow " .. tag, "decks=" .. table.concat(decks, " "), "icons=" .. table.concat(icons, " "),
+            "tot=" .. tostring(tot))
+    end
+    local function rowAlone(tag)
+        rowAt(tag)
+        inCombat = true
+        fireAll("PLAYER_REGEN_DISABLED")
+        exists.targettarget = true
+        harnessNextFrame()
+        rowAt(tag .. ", ToT in combat")
+        exists.targettarget = nil
+        harnessNextFrame()
+        rowAt(tag .. ", ToT gone in combat")
+        exists.targettarget = true
+        harnessNextFrame()
+        inCombat = false
+        fireAll("PLAYER_REGEN_ENABLED")
+        rowAt(tag .. ", combat over")
+        -- laid out with the deck: the last cell going takes it away again
+        inCombat = true
+        fireAll("PLAYER_REGEN_DISABLED")
+        exists.targettarget = nil
+        harnessNextFrame()
+        rowAt(tag .. ", ToT gone in a new fight")
+        inCombat = false
+        fireAll("PLAYER_REGEN_ENABLED")
+        rowAt(tag .. ", that fight over")
+    end
+    rowAlone("row alone")
+    -- a row wider than the cell's deck: the deck over it is widened to
+    -- stand a ledge out from the tray, as the layout draws it
+    page.settings.topPet:Set(false)
+    petBar, shapeshiftForms = true, 6
+    for i = 1, 10 do _G["PetActionButton" .. i].shown = true end
+    harnessNextFrame()
+    ns.UpdateOverhead()
+    rowAlone("wide row")
+    -- and under a boss: the boss deck stays on top, the rest below it
+    exists.boss1 = true
+    page.settings.bossFrames:Set("overhead")
+    harnessNextFrame()
+    ns.UpdateOverhead()
+    rowAlone("under a boss")
+    exists.boss1 = nil
+    page.settings.bossFrames:Set("vertical")
+    page.settings.topPet:Set(true)
+    exists.targettarget, exists.pet = nil, true
+    petBar, shapeshiftForms = true, 0
 
     -- Test 3 of the 2026-11-03 disconnect: the pet frame and the pet bar both
     -- on, the pet dismissed on mounting and back on landing. The watch shows

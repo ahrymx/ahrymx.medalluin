@@ -214,6 +214,42 @@ local function UpdateName(self)
     if self.dead and self.dead:IsShown() then self.dead.name:SetText(name) end
 end
 
+-- The level: "??" for a boss (or a unit too far above to tell), "+" on an
+-- elite; an enemy's in the colour of how hard it is, anyone else's dim. A
+-- simulated unit shows its stub's, else the player's. A secret level still
+-- displays, as it is, in the plain colour.
+local ELITE = { elite = "+", rareelite = "+" }
+local function UpdateLevel(self)
+    local fs = self.levelText
+    if not fs then return end
+    local stub = self.stub
+    local level = stub and (stub.level or UnitLevel("player")) or UnitLevel(self.unit)
+    if ns.IsSecret(level) then
+        fs:SetText(level)
+        fs:SetTextColor(unpack(C.dim))
+        return
+    end
+    if type(level) ~= "number" or level == 0 then
+        fs:SetText("")
+        return
+    end
+    if level < 0 then
+        fs:SetText("??")
+        fs:SetTextColor(1, 0.1, 0.1)
+        return
+    end
+    local class = not stub and UnitClassification and UnitClassification(self.unit)
+    fs:SetText(level .. (not ns.IsSecret(class) and ELITE[class] or ""))
+    local hostile = not stub and UnitCanAttack("player", self.unit)
+    local Difficulty = GetCreatureDifficultyColor or GetQuestDifficultyColor
+    if hostile and not ns.IsSecret(hostile) and Difficulty then
+        local c = Difficulty(level)
+        fs:SetTextColor(c.r, c.g, c.b)
+    else
+        fs:SetTextColor(unpack(C.dim))
+    end
+end
+
 local function UpdateRole(self)
     if not self or not self.roleFrame then return end
     local role
@@ -233,6 +269,7 @@ end
 local function UpdateAll(self)
     if not UnitExists(self.unit) and not self.stub then return end
     UpdateName(self)
+    UpdateLevel(self)
     UpdateHealth(self)
     UpdatePower(self)
     UpdateRole(self)
@@ -390,6 +427,8 @@ local unitEvents = {
     UNIT_MAXPOWER = UpdatePower,
     UNIT_DISPLAYPOWER = UpdatePower,
     UNIT_NAME_UPDATE = UpdateName,
+    UNIT_LEVEL = UpdateLevel,
+    UNIT_CLASSIFICATION_CHANGED = UpdateLevel,
     PLAYER_ROLES_ASSIGNED = UpdateRole,
     ROLE_CHANGED_INFORM = UpdateRole,
 }
@@ -404,6 +443,15 @@ end
 
 -- the party's health value from its window's inner end, short of the cut
 local PARTY_VALUE_INSET = 24
+-- the party's level from its window's outer end, past the role icon
+local PARTY_LEVEL_INSET = 20
+
+-- A party member's level on its power bar's outer end, inset from it.
+local function PartyLevel(b, side, inset)
+    local outer = side == 1 and "RIGHT" or "LEFT"
+    b.levelText:ClearAllPoints()
+    b.levelText:SetPoint(outer, b.power, outer, -side * inset, 0)
+end
 
 local function Spawn(unit)
     local window, side = unpack(ns.slots[unit])
@@ -475,6 +523,10 @@ local function Spawn(unit)
         b.powerValue:SetPoint("CENTER", ptext, "CENTER", 0, 0)
         b.powerValue:SetJustifyH("CENTER")
         b.powerValue:SetWordWrap(false)
+
+        -- the level on the power bar's outer end, clear of its value
+        b.levelText = ns.Text(text, style.powerSize)
+        b.levelText:SetPoint(outer, b.power, outer, -side * style.textInset, 0)
     else
         b.name:SetPoint(inner, text, inner, side * style.textInset, 0)
         b.name:SetJustifyH(outer)
@@ -486,6 +538,10 @@ local function Spawn(unit)
         b.value:SetPoint(inner, text, inner, side * PARTY_VALUE_INSET, 0)
         b.value:SetWordWrap(false)
         b.value:SetAlpha(0)
+
+        -- the level on the power bar, its outer end being the role icon's
+        b.levelText = ns.Text(text, style.nameSize - 3)
+        PartyLevel(b, side, PARTY_LEVEL_INSET)
 
         -- Role icon at bottom outer edge (overlapping power and console surface)
         local rf = CreateFrame("Frame", nil, b)
@@ -516,6 +572,7 @@ local function Spawn(unit)
         b.statusWidget = sw
     end
     b.name:SetWordWrap(false)
+    b.levelText:SetWordWrap(false)
     -- a friend's frame shows its death (dead.lua); the target may be an enemy
     if unit ~= "target" then ns.DeadLook(b) end
 
@@ -726,11 +783,12 @@ local function ConsoleParty(b)
     end
     b.value:ClearAllPoints()
     b.value:SetPoint(inner, b.text, inner, side * PARTY_VALUE_INSET, 0)
+    PartyLevel(b, side, PARTY_LEVEL_INSET)
     if b.pet then b.pet.health:SetReverseFill(side == 1) end
     if ns.LayBuffs then ns.LayBuffs(b, side) end
     -- what the editor changed goes back on (editor.lua)
     if ns.editor then
-        ns.editor.Relaid(b, "name", "role", "value", "buffs")
+        ns.editor.Relaid(b, "name", "level", "role", "value", "buffs")
         ns.ApplyEdits(b)
     end
 end
@@ -819,6 +877,8 @@ function ns.RelayoutUnits()
             b.name:SetJustifyH(outer)
             b.value:ClearAllPoints()
             b.value:SetPoint(inner, b.health, inner, side * 6, 0)
+            -- under the name's outer end, the role icon outside both
+            PartyLevel(b, side, 22)
             if b.pet then
                 -- hung under its owner by the row (ns.LayoutPet), facing as it does
                 b.pet.side = side
@@ -826,7 +886,7 @@ function ns.RelayoutUnits()
             end
             if ns.LayBuffs then ns.LayBuffs(b, side) end
             if ns.editor then
-                ns.editor.Relaid(b, "name", "role", "value", "buffs")
+                ns.editor.Relaid(b, "name", "level", "role", "value", "buffs")
                 ns.ApplyEdits(b)
             end
         end

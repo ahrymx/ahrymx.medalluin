@@ -41,6 +41,7 @@ ns.On("PLAYER_LOGIN", function()
             ns.Park(PetActionBar)
             ns.Park(PetActionBarFrame)
         end
+        if ns.db.topTotems ~= false then ns.Park(MultiCastActionBarFrame) end
     end
     -- The stance and pet bars and the other action bars stay Blizzard's,
     -- placed by Edit Mode; bars/buttons.lua takes action bar 1 when its

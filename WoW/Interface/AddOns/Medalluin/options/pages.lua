@@ -324,7 +324,10 @@ function ns.OptionPages()
                             Check("topPetBar", "Pet action bar", "Pet command and ability buttons on the bottom tier.",
                                 true),
                             Check("topStances", "Stance bar",
-                                "Shapeshift forms, stealth, stances, and auras on the bottom tier.", true)),
+                                "Shapeshift forms, stealth, stances, and auras on the bottom tier.", true),
+                            Check("topTotems", "Totem bar",
+                                "A shaman's totems on the bottom tier: each element's totem, and its choices "
+                                .. "opening below it.", true)),
                     }, Placed("overhead", "Position"), {
                         Group("Opacity",
                             Opacity("overheadAlpha", "Opacity", "How much of the overhead shows. It shows "

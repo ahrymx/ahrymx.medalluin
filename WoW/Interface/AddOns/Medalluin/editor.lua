@@ -52,6 +52,7 @@ E.FORMATS = {
 local PIECES = {
     cell = { label = "Cell size", type = "cell" },
     name = { label = "Name", type = "text", get = function(b) return b.name end },
+    level = { label = "Level", type = "text", get = function(b) return b.levelText end },
     value = { label = "Health value", type = "text", get = function(b) return b.value end },
     powerValue = { label = "Power value", type = "text", get = function(b) return b.powerValue end },
     role = { label = "Role", type = "icon", get = function(b) return b.roleFrame end },
@@ -86,25 +87,27 @@ end
 E.FRAMES = {
     { id = "unit", key = "editUnit", name = "Player · Target", buttons = function()
         return { ns.units.player, ns.units.target }
-    end, pieces = { "name", "value", "powerValue", "cc", "boss", "buffs" },
+    end, pieces = { "name", "level", "value", "powerValue", "cc", "boss", "buffs" },
       shows = { cc = "auraCC", boss = "auraBoss", buffs = "auraBuffs" } },
     { id = "party", key = "editParty", name = "Party", buttons = Party(false),
-      pieces = { "name", "value", "role", "status", "cc", "boss", "buffs" },
+      pieces = { "name", "level", "value", "role", "status", "cc", "boss", "buffs" },
       hidden = { value = true },
       shows = { cc = "auraCC", boss = "auraBoss", buffs = "auraBuffs" } },
     { id = "partyWidget", key = "editPartyWidget", name = "Party widget", buttons = Party(true),
       cell = { 160, 40 },
-      pieces = { "cell", "name", "value", "role", "status", "cc", "boss", "buffs" },
+      pieces = { "cell", "name", "level", "value", "role", "status", "cc", "boss", "buffs" },
       hidden = { value = true },
       shows = { cc = "partyWidgetCC", boss = "partyWidgetBoss", buffs = "partyWidgetBuffs" } },
     { id = "raid", key = "editRaid", name = "Raid", buttons = Cells("raid"), cell = { 112, 36 },
-      pieces = { "cell", "name", "value", "cc", "boss" },
+      pieces = { "cell", "name", "level", "value", "cc", "boss" },
+      hidden = { level = true },
       shows = { cc = "raidCC", boss = "raidBoss" } },
     { id = "boss", key = "editBoss", name = "Boss", buttons = Cells("boss"), cell = { 180, 40 },
-      pieces = { "cell", "name", "value", "mine" },
+      pieces = { "cell", "name", "level", "value", "mine" },
       shows = { mine = "bossWidgetMine" } },
     { id = "arena", key = "editArena", name = "Arena", buttons = Cells("arena"), cell = { 160, 40 },
-      pieces = { "cell", "name", "value", "cc", "mine" },
+      pieces = { "cell", "name", "level", "value", "cc", "mine" },
+      hidden = { level = true },
       shows = { cc = "arenaCC", mine = "arenaMine" } },
 }
 local byId = {}

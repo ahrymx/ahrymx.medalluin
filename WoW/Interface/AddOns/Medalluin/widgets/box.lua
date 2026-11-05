@@ -208,7 +208,8 @@ end
 
 -- ------------------------------------------------------------ the cells
 -- A unit cell, the suite's one rectangle: health, a seam, power under it;
--- the name top left, the health's value bottom right. units.lua draws it
+-- the name top left, the level bottom left, the health's value bottom
+-- right. units.lua draws it
 -- (ns.UpdateUnitButton) as it draws the console's frames, and auras.lua its
 -- auras (ns.AttachAuras gives it them).
 function ns.WidgetCell(b, width, height)
@@ -236,6 +237,9 @@ function ns.WidgetCell(b, width, height)
     b.value = ns.Text(text, 9)
     b.value:SetTextColor(unpack(C.dim))
     b.value:SetPoint("BOTTOMRIGHT", -4, 3)
+    b.levelText = ns.Text(text, 9)
+    b.levelText:SetPoint("BOTTOMLEFT", 4, 3)
+    b.levelText:SetWordWrap(false)
     return b
 end
 

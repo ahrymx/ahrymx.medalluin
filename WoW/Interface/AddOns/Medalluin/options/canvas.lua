@@ -30,10 +30,10 @@ local SAMPLE = {
     unit = { "Player", "Target" }, party = { "Party member" }, partyWidget = { "Party member" },
     raid = { "Raider" }, boss = { "Boss" }, arena = { "Enemy" },
 }
-local SAMPLE_TEXT = { value = "100%", powerValue = "60 | 60%" }
+local SAMPLE_TEXT = { level = "60", value = "100%", powerValue = "60 | 60%" }
 
 -- ------------------------------------------------------------ a copy
-local TEXTS = { name = "text", value = "text", powerValue = "powerBox" }
+local TEXTS = { name = "text", level = "text", value = "text", powerValue = "powerBox" }
 
 local function Icon(p)
     local f = CreateFrame("Frame", nil, p)

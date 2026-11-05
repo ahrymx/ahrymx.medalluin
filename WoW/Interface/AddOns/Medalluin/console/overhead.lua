@@ -2,7 +2,7 @@
 -- console's navy and gold (art/console/gen_overhead.py, variant C).
 --   the boss deck:      boss1..boss5
 --   the companion deck: pet, focus, target of target
---   the tray:           the stance bar and the pet bar, one centred row of bare icons
+--   the tray:           the stance bar, the pet bar and the totem bar, one centred row of bare icons
 -- Each deck is an inverted trapezoid; a lower one is narrower than the floor
 -- above it, so the stack reads as an upside-down ziggurat. When a lower deck
 -- is too wide for that, the decks above grow, and their cells stretch to fill. Every unit is one
@@ -139,11 +139,13 @@ local function CellWidth(kind, n, w)
 end
 ns.OverheadCellWidth = CellWidth
 
--- The command row's width: stances, the separator, the pet bar.
-local function RowWidth(n, stances)
+-- The command row's width: its icons, and a separator before each group
+-- but the first (breaks: the indices a separator comes before).
+local function RowWidth(n, breaks)
     if n == 0 then return 0 end
-    local sep = (stances > 0 and stances < n) and A.iconSep or 0
-    return n * (A.icon + A.iconGap) - A.iconGap + sep, sep
+    local seps = 0
+    for _ in pairs(breaks) do seps = seps + 1 end
+    return n * (A.icon + A.iconGap) - A.iconGap + seps * A.iconSep, A.iconSep
 end
 
 -- ------------------------------------------------------------ the cells
@@ -252,7 +254,11 @@ local totUnit = CreateCell("targettarget", "unit", "targettarget")
 -- standing there now. So in combat the row lays itself out, securely: the
 -- cells shown, centred on the deck the last layout drew, each at most its
 -- drawn width, narrower when more show than that deck was drawn for. The
--- plates stay as they were until combat ends.
+-- command row's icons go with it: a cell that turns up where no unit deck
+-- was drawn takes the tray's place, so the icons step down a deck under it
+-- (2026-11-05: a target's target over the totems), and back up when the
+-- last cell goes. The plates follow on the next frame (CombatPlates): they
+-- are textures, free in combat.
 local unitCells = { petUnit, focusUnit, totUnit }
 -- The header is the cells' anchor in combat: a restricted snippet may only
 -- anchor to a protected frame, and the overhead is not one (2026-11-02: the
@@ -265,6 +271,8 @@ unitRow:SetAttribute("cell", A.cell.unit)
 unitRow:SetAttribute("gap", A.gap)
 unitRow:SetAttribute("floor", 0)
 unitRow:SetAttribute("top", A.cellTop)
+unitRow:SetAttribute("icons", 0)
+unitRow:SetAttribute("unitDeck", A.deck.unit)
 ns.overheadUnitRow = unitRow
 -- Restricted code has no math library; everything is worked out before a
 -- cell is touched, and each keeps its point until the new one is set.
@@ -276,6 +284,16 @@ local UNIT_ROW = [=[
         if c and c:IsShown() then
             n = n + 1
             cells[n] = c
+        end
+    end
+    -- the command row: under the unit deck while a cell shows, else in its place
+    local icons = owner:GetAttribute("icons")
+    if icons > 0 then
+        local y = owner:GetAttribute("trayBase")
+        if n > 0 then y = y + owner:GetAttribute("unitDeck") end
+        for i = 1, icons do
+            local b = owner:GetFrameRef("icon" .. i)
+            if b then b:SetPoint("TOPLEFT", owner, "TOP", owner:GetAttribute("iconX" .. i), -y) end
         end
     end
     if n == 0 then return end
@@ -403,10 +421,11 @@ function UpdateUnitStatus(b)
 end
 
 -- ------------------------------------------------------------ the command row
--- Blizzard's stance and pet buttons, adopted as bare icons. Their bars are
--- parked, not killed (blizzard.lua): the bars' own events still give the
--- buttons their icons and show the ones that are in use.
+-- Blizzard's stance, pet and totem buttons, adopted as bare icons. Their
+-- bars are parked, not killed (blizzard.lua): the bars' own events still
+-- give the buttons their icons and show the ones that are in use.
 local stanceButtons, petButtons = {}, {}
+local totems = {}           -- the totem bar's adopted buttons, as a set
 
 -- Each icon edged in gold, as the unit cells are (variant A, chosen
 -- 2026-11-01 from art/console/render/overhead-frames.png): a 1px black edge
@@ -462,8 +481,8 @@ local function FadeAutoCastCorners(btn)
     if corners then corners:SetAlpha(0) end
 end
 
-local function Adopt(btn, list)
-    btn:SetParent(overhead)
+local function Adopt(btn, list, keepParent)
+    if not keepParent then btn:SetParent(overhead) end
     btn:SetFrameStrata(overhead:GetFrameStrata())
     btn:SetFrameLevel(LEVELS.buttons)
     Bare(btn)
@@ -472,6 +491,115 @@ local function Adopt(btn, list)
     btn:HookScript("OnShow", function() if not laying then UpdateOverhead() end end)
     btn:HookScript("OnHide", function() if not laying then UpdateOverhead() end end)
     table.insert(list, btn)
+end
+
+-- Forever's totem bar (MultiCastActionBarFrame, Wrath's): the summon spell,
+-- the current page's action per element, the recall spell. Its pages move,
+-- not their buttons, so a page Blizzard hides still takes its four with it.
+-- Its flyouts (an element's totems, the summons) and the arrow that opens
+-- them hang above a button on Blizzard's bar; the tray hangs from the
+-- screen's top, so here they open below it instead.
+local function Flip(tex)
+    local ulx, uly, _, lly, urx = tex:GetTexCoord()
+    if ulx then tex:SetTexCoord(ulx, urx, lly, uly) end
+end
+
+local function FlyoutDown(flyout)
+    local parent = flyout.parent
+    if not (flyout:IsShown() and totems[parent]) then return end
+    flyout:ClearAllPoints()
+    flyout:SetPoint("TOP", parent, "BOTTOM", 0, 0)
+    local prev
+    for _, b in ipairs(flyout.buttons or {}) do
+        if b:IsShown() then
+            b:ClearAllPoints()
+            if prev then b:SetPoint("TOP", prev, "BOTTOM", 0, -2) else b:SetPoint("TOP", flyout, "TOP", 0, -4) end
+            prev = b
+        end
+    end
+    -- the cap and the close arrow at the foot now, both turned over
+    local close = MultiCastFlyoutFrameCloseButton
+    if close then
+        close:ClearAllPoints()
+        close:SetPoint("BOTTOM", flyout, "BOTTOM", 0, 0)
+        if close.normalTexture then Flip(close.normalTexture) end
+    end
+    if flyout.top and flyout.middle then
+        flyout.top:ClearAllPoints()
+        flyout.top:SetPoint("BOTTOM", flyout, "BOTTOM", 0, 10)
+        Flip(flyout.top)
+        flyout.middle:ClearAllPoints()
+        flyout.middle:SetPoint("TOP", flyout, "TOP", 0, 0)
+        flyout.middle:SetPoint("BOTTOM", flyout.top, "TOP", 0, 0)
+        Flip(flyout.middle)
+    end
+end
+
+local function ArrowDown(arrow, _, parent)
+    if not (totems[parent] and arrow:IsShown()) then return end
+    arrow:ClearAllPoints()
+    arrow:SetPoint("TOP", parent, "BOTTOM", 0, 0)
+    if arrow.normalTexture then Flip(arrow.normalTexture) end
+end
+
+local function AdoptTotems()
+    local bar = MultiCastActionBarFrame
+    if not bar then return end
+    local perPage = NUM_MULTI_CAST_BUTTONS_PER_PAGE or 4
+    for p = 1, NUM_MULTI_CAST_PAGES or 3 do
+        local page = _G["MultiCastActionPage" .. p]
+        if page then
+            page:SetParent(overhead)
+            page:SetFrameStrata(overhead:GetFrameStrata())
+            for i = 1, perPage do
+                local btn = _G["MultiCastActionButton" .. ((p - 1) * perPage + i)]
+                if btn then
+                    Adopt(btn, {}, true)
+                    totems[btn] = true
+                    -- the element's coloured ring: the gold edge says it here
+                    if btn.overlayTex then btn.overlayTex:SetAlpha(0) end
+                end
+            end
+        end
+    end
+    for _, btn in ipairs({ MultiCastSummonSpellButton, MultiCastRecallSpellButton }) do
+        Adopt(btn, {})
+        totems[btn] = true
+    end
+    local flyout = MultiCastFlyoutFrame
+    if flyout then
+        flyout:SetParent(overhead)
+        flyout:SetFrameStrata(overhead:GetFrameStrata())
+        flyout:SetFrameLevel(LEVELS.buttons + 4)
+    end
+    if MultiCastFlyoutFrame_ToggleFlyout then hooksecurefunc("MultiCastFlyoutFrame_ToggleFlyout", FlyoutDown) end
+    if MultiCastFlyoutFrameOpenButton_Show then
+        hooksecurefunc("MultiCastFlyoutFrameOpenButton_Show", ArrowDown)
+    end
+    -- the recall's update anchors it beside the last slot on Blizzard's bar;
+    -- a page change shows other buttons: either way the row is laid again
+    if MultiCastRecallSpellButton_Update then
+        hooksecurefunc("MultiCastRecallSpellButton_Update", function() if not laying then UpdateOverhead() end end)
+    end
+    if ChangeMultiCastActionPage then hooksecurefunc("ChangeMultiCastActionPage", UpdateOverhead) end
+end
+
+-- The totem bar's row: the summon, the current page's elements, the recall,
+-- as Blizzard's bar has them. None while the bar has no element (not a
+-- shaman, or none learned yet).
+local function TotemRow()
+    local list, bar = {}, MultiCastActionBarFrame
+    if not (bar and next(totems)) then return list end
+    if not bar:IsShown() then return list end
+    if MultiCastSummonSpellButton:IsShown() then table.insert(list, MultiCastSummonSpellButton) end
+    local perPage = NUM_MULTI_CAST_BUTTONS_PER_PAGE or 4
+    local first = ((bar.currentPage or 1) - 1) * perPage
+    for i = 1, perPage do
+        local btn = _G["MultiCastActionButton" .. (first + i)]
+        if btn and btn:IsShown() then table.insert(list, btn) end
+    end
+    if MultiCastRecallSpellButton:IsShown() then table.insert(list, MultiCastRecallSpellButton) end
+    return list
 end
 
 local function AdoptCommandButtons()
@@ -488,6 +616,7 @@ local function AdoptCommandButtons()
             if btn then Adopt(btn, petButtons) end
         end
     end
+    if ns.db and ns.db.topTotems ~= false then AdoptTotems() end
 end
 
 -- ------------------------------------------------------------ layout
@@ -535,20 +664,66 @@ local function Present(b, key)
     return true
 end
 
--- Which command icons show, in order: stances in use, then the pet bar's.
+-- Which command icons show, in order: stances in use, the pet bar's, the
+-- totem bar's; a separator comes before each group but the first.
 local function CommandRow()
     -- real buttons only, simulating or not: an invented stance or pet slot is
     -- an empty, invisible button that still takes its place in the row
-    local row, stances = {}, 0
+    local row, breaks = {}, {}
+    local function Group(list)
+        if #list == 0 then return end
+        if #row > 0 then breaks[#row + 1] = true end
+        for _, btn in ipairs(list) do table.insert(row, btn) end
+    end
+    local stances, pets = {}, {}
     local forms = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
     for i, btn in ipairs(stanceButtons) do
-        if i <= forms then table.insert(row, btn); stances = stances + 1 else btn:Hide() end
+        if i <= forms then table.insert(stances, btn) else btn:Hide() end
     end
-    local pets = PetHasActionBar and PetHasActionBar()
+    local hasPetBar = PetHasActionBar and PetHasActionBar()
     for _, btn in ipairs(petButtons) do
-        if pets and btn:IsShown() then table.insert(row, btn) else btn:Hide() end
+        if hasPetBar and btn:IsShown() then table.insert(pets, btn) else btn:Hide() end
     end
-    return row, stances
+    Group(stances)
+    Group(pets)
+    Group(TotemRow())
+    return row, #stances, breaks
+end
+
+-- The decks the last layout drew, by kind: their widths (nil, not drawn).
+local drawn = {}
+
+local function Widen(stack)
+    for i = #stack - 1, 1, -1 do
+        stack[i].w = math.max(stack[i].w, stack[i + 1].w + 2 * A.deck[stack[i].kind] + 2 * A.ledge)
+    end
+end
+
+-- In combat: the plates only, for the cells the watch shows now. The cells
+-- and icons are secure, and unitRow has placed them; the boss deck and the
+-- tray keep their widths, and a unit deck keeps the one it was drawn at,
+-- which is the floor unitRow fits its cells to.
+local function CombatPlates()
+    if not overhead:IsShown() then return end
+    local n = 0
+    for _, b in ipairs(unitCells) do
+        if b:IsShown() then n = n + 1 end
+    end
+    local stack = {}
+    if drawn.boss then table.insert(stack, { kind = "boss", w = drawn.boss }) end
+    if n > 0 then table.insert(stack, { kind = "unit", w = drawn.unit or DeckWidth("unit", n) }) end
+    if drawn.tray then table.insert(stack, { kind = "tray", w = drawn.tray }) end
+    Widen(stack)
+    local y = 0
+    for slot = 1, #decks do
+        local d = stack[slot]
+        if d then
+            decks[slot]:Place(d.kind, y, d.w / 2)
+            y = y + A.deck[d.kind]
+        else
+            decks[slot]:Clear()
+        end
+    end
 end
 
 local finishing = false     -- the pass after a fade out, that clears and hides
@@ -575,8 +750,8 @@ local function Layout()
     if Present(totUnit, "topToT") then table.insert(units, totUnit) end
 
     -- the command row first: it is the bottom deck, and decks grow from it
-    local row, stances = CommandRow()
-    local rowW, sep = RowWidth(#row, stances)
+    local row, stances, breaks = CommandRow()
+    local rowW, sep = RowWidth(#row, breaks)
 
     -- the decks, top down; bottom up, a deck grows when the one under it
     -- would not be a ledge narrower than its floor
@@ -584,9 +759,7 @@ local function Layout()
     if #bosses > 0 then table.insert(stack, { kind = "boss", cells = bosses, w = DeckWidth("boss", #bosses) }) end
     if #units > 0 then table.insert(stack, { kind = "unit", cells = units, w = DeckWidth("unit", #units) }) end
     if #row > 0 then table.insert(stack, { kind = "tray", w = rowW + 2 * A.deck.tray + 2 * A.margin }) end
-    for i = #stack - 1, 1, -1 do
-        stack[i].w = math.max(stack[i].w, stack[i + 1].w + 2 * A.deck[stack[i].kind] + 2 * A.ledge)
-    end
+    Widen(stack)
 
     -- emptied: the plate stays as it was while it fades out (console/fade.lua),
     -- then this runs again to clear it and hide
@@ -603,6 +776,7 @@ local function Layout()
     end
 
     local y, widest = 0, 0
+    drawn = {}
     -- where the unit row's cells go in combat (unitRow): no deck, at its top
     local rowFloor, rowTop = 0, nil
     for slot = 1, #decks do
@@ -616,11 +790,16 @@ local function Layout()
             if d.kind == "tray" then
                 -- the icons inside the tray, centred
                 local x, step = -rowW / 2, A.icon + A.iconGap
+                -- the tray's top with no unit deck over it, for unitRow
+                local trayBase = y + A.trayTop - (drawn.unit and A.deck.unit or 0)
+                unitRow:SetAttribute("trayBase", trayBase)
                 for i, btn in ipairs(row) do
-                    if i == stances + 1 then x = x + sep end
+                    if breaks[i] then x = x + sep end
                     btn:ClearAllPoints()
                     btn:SetPoint("TOPLEFT", overhead, "TOP", x, -(y + A.trayTop))
                     btn:Show()
+                    unitRow:SetFrameRef("icon" .. i, btn)
+                    unitRow:SetAttribute("iconX" .. i, x)
                     x = x + step
                 end
             else
@@ -636,10 +815,12 @@ local function Layout()
             end
             y = y + A.deck[d.kind]
             widest = math.max(widest, d.w)
+            drawn[d.kind] = d.w
         else
             decks[slot]:Clear()
         end
     end
+    unitRow:SetAttribute("icons", drawn.tray and #row or 0)
     unitRow:SetAttribute("floor", rowFloor)
     unitRow:SetAttribute("top", rowTop or y + A.cellTop)
     -- bosses past the count, hidden but still watched
@@ -680,16 +861,18 @@ local function Runaway()
 end
 -- An error in the layout goes to the game's handler with its stack, and the
 -- depth comes back down whatever happens.
-local function Guarded()
+local function Guarded(fn)
     depth = depth + 1
-    local ok = xpcall(Layout, geterrorhandler and geterrorhandler() or function(e) print("Lua error", e) end)
+    local ok = xpcall(fn or Layout, geterrorhandler and geterrorhandler() or function(e) print("Lua error", e) end)
     depth = depth - 1
     if not ok then laying = false end
 end
 function UpdateOverhead()
     if Runaway() then return end
-    if pending then return end
+    if pending and not InCombatLockdown() then return end
     if InCombatLockdown() then
+        Guarded(CombatPlates)
+        if pending then return end
         pending = true
         ns.OutOfCombat(function()
             pending = false
@@ -717,6 +900,7 @@ ns.On("UNIT_PET", function(_, u)
 end)
 ns.On("UPDATE_SHAPESHIFT_FORMS", UpdateOverhead)
 ns.On("PET_BAR_UPDATE", UpdateOverhead)
+ns.On("UPDATE_MULTI_CAST_ACTIONBAR", UpdateOverhead)
 
 ns.OnSetting("overhead", UpdateOverhead)
 ns.OnSetting("bossFrames", UpdateOverhead)
@@ -725,4 +909,5 @@ ns.OnSetting("topFocus", UpdateOverhead)
 ns.OnSetting("topToT", UpdateOverhead)
 ns.OnSetting("topPetBar", UpdateOverhead)
 ns.OnSetting("topStances", UpdateOverhead)
+ns.OnSetting("topTotems", UpdateOverhead)
 ns.OnSetting("simParty", UpdateOverhead)

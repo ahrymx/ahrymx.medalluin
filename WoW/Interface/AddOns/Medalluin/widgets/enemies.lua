@@ -113,7 +113,7 @@ ns.bossWidget = Column({
         local list = {}
         for i, stub in ipairs(ns.bossStubs) do
             list[i] = { name = stub.name, class = stub.class, health = stub.health, maxHealth = stub.maxHealth,
-                power = stub.power, maxPower = 100, powerType = 1 }
+                power = stub.power, maxPower = 100, powerType = 1, level = -1 }
         end
         return list
     end)(),

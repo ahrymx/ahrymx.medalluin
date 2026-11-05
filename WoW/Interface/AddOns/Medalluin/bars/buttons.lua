@@ -13,7 +13,8 @@
 -- the Rows option leaves out stays Blizzard's too.
 --
 -- With Bare icons, what a WeakAuras icon shows that Blizzard's does not is drawn here: the
--- cooldown time centred on the icon, keybind text at the top-right, and range as a red tint.
+-- cooldown time centred on the icon, and keybind text at the top-right. With either look an
+-- ability out of range of an enemy target turns red (Tint, below).
 -- Where the cooldown frame can draw its own countdown (Forever, retail) that text is used,
 -- restyled: there a cooldown's numbers may be secret, and Lua cannot subtract them.
 local _, ns = ...
@@ -368,6 +369,68 @@ ns.OnSetting("cooldownBling", function(on)
     end
 end)
 
+-- ------------------------------------------------------------ the range tint
+-- An ability out of range of an enemy target turns its icon red, with
+-- Blizzard's art or bare icons: Blizzard's own range mark is the hotkey
+-- text alone, which an unbound button does not have. A friendly target
+-- out of reach (a heal) leaves the icon be. Both looks repaint on the
+-- ticker, below: range is polled, since Blizzard's range event does not
+-- reach the adopted buttons (2026-11-05: with the art, the tint stuck red
+-- as the player walked into range; the bare icons, polled, did not). With
+-- Blizzard's art the tint also rides on Blizzard's own updates
+-- (UpdateUsable, the range indicator) and, red no longer, puts back the
+-- colour Blizzard's UpdateUsable gives; bare icons keep their own colours.
+local RED = { 0.85, 0.25, 0.25 }
+local BLIZZARD = { usable = { 1, 1, 1 }, mana = { 0.5, 0.5, 1 }, unusable = { 0.4, 0.4, 0.4 } }
+local BARE = { usable = { 1, 1, 1 }, mana = { 0.4, 0.45, 0.9 }, unusable = { 0.45, 0.45, 0.45 } }
+
+local function EnemyTarget()
+    local exists = UnitExists("target")
+    if ns.IsSecret(exists) or not exists then return false end
+    local enemy = UnitCanAttack("player", "target")
+    return not ns.IsSecret(enemy) and enemy and true or false
+end
+
+-- nil from the client is "no range to check" (no target, a self buff)
+local function OutOfRange(action)
+    local inRange = ns.IsActionInRange(action)
+    if ns.IsSecret(inRange) or not (inRange == false or inRange == 0) then return false end
+    return EnemyTarget()
+end
+
+local function Tint(btn)
+    local action, icon = btn.action, btn.medalluinIcon or Part(btn, "icon", "Icon")
+    if not (action and icon and ns.HasAction(action)) then return end
+    local red = OutOfRange(action)
+    local bare = ns.db.bareIcons
+    -- Blizzard's art: its own colour stands unless the tint has to change it
+    if not (bare or red or btn.medalluinRed) then return end
+    btn.medalluinRed = red
+    if red then
+        icon:SetVertexColor(unpack(RED))
+        return
+    end
+    local colours = bare and BARE or BLIZZARD
+    local usable, noMana = ns.IsUsableAction(action)
+    if ns.IsSecret(usable) or ns.IsSecret(noMana) or usable then
+        icon:SetVertexColor(unpack(colours.usable))
+    elseif noMana then
+        icon:SetVertexColor(unpack(colours.mana))
+    else
+        icon:SetVertexColor(unpack(colours.unusable))
+    end
+end
+
+local adopted = {}
+if ActionButton_UpdateRangeIndicator then
+    hooksecurefunc("ActionButton_UpdateRangeIndicator", function(btn)
+        if adopted[btn] then Tint(btn) end
+    end)
+end
+ns.On("PLAYER_TARGET_CHANGED", function()
+    for _, btn in ipairs(buttons) do Tint(btn) end
+end)
+
 local function Adopt(btn, slot, parent, isExtra)
     parent = parent or ns.actionBar
     btn:SetParent(parent)
@@ -376,6 +439,8 @@ local function Adopt(btn, slot, parent, isExtra)
     ns.PlaceOnBar(btn, slot)
     if ns.db.bareIcons then Style(btn) end
     table.insert(buttons, btn)
+    adopted[btn] = true
+    if btn.UpdateUsable then hooksecurefunc(btn, "UpdateUsable", Tint) end
     if isExtra then
         table.insert(extraButtons, btn)
         btn.medalluinExtra = true
@@ -502,6 +567,7 @@ end)
 
 local ticker = CreateFrame("Frame")
 ticker:Hide()
+ns.barTicker = ticker
 
 -- Each row's buttons, and the Blizzard bar they leave. Action bar 1's is
 -- MainActionBar on the newest Edit Mode clients, MainMenuBar before them (on
@@ -525,15 +591,16 @@ ns.On("PLAYER_LOGIN", function()
             for i, slot in ipairs(slots[r]) do Adopt(_G[prefix .. i], slot, parent, r > 1) end
             ns.Kill(bar)
         end
-        -- Blizzard's own art keeps its own range and cooldown display
-        if ns.db.bareIcons then ticker:Show() end
+        -- Blizzard's own art keeps its own cooldown display; the ticker
+        -- only tints it (range)
+        ticker:Show()
     end)
 end)
 
 -- --------------------------------------------------------------- the ticker
--- Bare icons only. Ten times a second: the usable/range tint, and the cooldown clock where
--- the cooldown frame cannot draw one. The global cooldown (1.5s and under)
--- gets the swipe but no number.
+-- Ten times a second: the tint; and, bare icons only, the cooldown clock
+-- where the cooldown frame cannot draw one. The global cooldown (1.5s and
+-- under) gets the swipe but no number.
 local function Clock(t)
     if t >= 3600 then return format("%dh", math.ceil(t / 3600)) end
     if t >= 60 then return format("%d:%02d", math.floor(t / 60), math.floor(t % 60)) end
@@ -548,22 +615,6 @@ local function Remaining(action, now)
     if left > 0 then return left end
 end
 
-local function Tint(btn, action)
-    local usable, noMana = ns.IsUsableAction(action)
-    local inRange = ns.IsActionInRange(action)
-    if ns.IsSecret(usable) or ns.IsSecret(noMana) or ns.IsSecret(inRange) then
-        btn.medalluinIcon:SetVertexColor(1, 1, 1)
-    elseif inRange == false or inRange == 0 then
-        btn.medalluinIcon:SetVertexColor(0.85, 0.25, 0.25)
-    elseif usable then
-        btn.medalluinIcon:SetVertexColor(1, 1, 1)
-    elseif noMana then
-        btn.medalluinIcon:SetVertexColor(0.4, 0.45, 0.9)
-    else
-        btn.medalluinIcon:SetVertexColor(0.45, 0.45, 0.45)
-    end
-end
-
 local function Update(btn, now)
     local action, timer = btn.action, btn.medalluinTimer
     if btn.medalluinExtra then UpdateExtraButton(btn) end
@@ -571,7 +622,7 @@ local function Update(btn, now)
         if timer then timer:SetText("") end
         return
     end
-    Tint(btn, action)
+    Tint(btn)
     if btn.medalluinNative then return end
     local left = ns.db.cooldownText ~= "hide" and Remaining(action, now)
     local text = left and Clock(left) or ""
@@ -587,8 +638,10 @@ ticker:SetScript("OnUpdate", function(_, dt)
     elapsed = elapsed + dt
     if elapsed < 0.1 then return end
     elapsed = 0
-    local now = GetTime()
+    local now, bare = GetTime(), ns.db.bareIcons
     for _, btn in ipairs(buttons) do
-        if btn:IsVisible() then Update(btn, now) end
+        if btn:IsVisible() then
+            if bare then Update(btn, now) else Tint(btn) end
+        end
     end
 end)

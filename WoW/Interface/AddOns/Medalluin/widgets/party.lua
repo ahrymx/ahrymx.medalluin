@@ -67,6 +67,9 @@ function ns.LayoutPartyWidget()
             -- the health value where a cell has it (box.lua)
             b.value:ClearAllPoints()
             b.value:SetPoint("BOTTOMRIGHT", b.health, "BOTTOMRIGHT", -4, 3)
+            -- the level bottom left, under the name, clear of the role icon
+            b.levelText:ClearAllPoints()
+            b.levelText:SetPoint("BOTTOMLEFT", b.health, "BOTTOMLEFT", 22, 3)
 
             -- the pet's strip: its name left, its value right
             local pet = b.pet
@@ -85,7 +88,7 @@ function ns.LayoutPartyWidget()
             ns.LayBuffs(b, -1)
             b.inWidget = true
             -- what the editor changed goes back on (editor.lua)
-            ns.editor.Relaid(b, "name", "role", "value", "buffs")
+            ns.editor.Relaid(b, "name", "level", "role", "value", "buffs")
             ns.ApplyEdits(b)
         end
     end)

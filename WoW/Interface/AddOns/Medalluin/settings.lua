@@ -93,6 +93,7 @@ local DEFAULTS = {
     topToT = true,          -- target of target frame on the middle tier
     topPetBar = true,       -- pet action bar on the bottom tier
     topStances = true,      -- stance bar on the bottom tier
+    topTotems = true,       -- totem bar on the bottom tier (Forever's)
     auraGlow = true,        -- border glow for dispellable debuffs
     auraCC = true,          -- large center icon for crowd control
     auraBuffs = true,       -- row of player-cast buffs on outer health corner
@@ -182,7 +183,7 @@ for _, key in ipairs({
     "gridPaging", "gridPagingCustom",
     "partyPets", "partyLayout", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss", "bossMine",
     "editUnit", "editParty",
-    "overhead", "bossFrames", "topPet", "topFocus", "topToT", "topPetBar", "topStances",
+    "overhead", "bossFrames", "topPet", "topFocus", "topToT", "topPetBar", "topStances", "topTotems",
     "xpCast", "repCast",
 }) do PER_PROFILE[key] = true end
 ns.PER_PROFILE = PER_PROFILE
