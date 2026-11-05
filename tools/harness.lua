@@ -1112,8 +1112,23 @@ if modern then
     end
     function ActionButton_UpdateCooldownNumberHidden(btn) btn.cooldown:SetHideCountdownNumbers(true) end
 
-    -- the micro menu in Forever's order; Help is hidden there
-    MicroMenu = new("Frame", UIParent, "MicroMenu")
+    -- the micro menu in Forever's order; Help is hidden there. Each button's
+    -- SetParent calls MicroMenuContainer:Layout -> MicroMenu:Layout ->
+    -- UpdateHelpTicketButtonAnchor -> GetEdgeButton (MainMenuBarMicroButtons.lua:494),
+    -- which compares nil with a number once the buttons have left MicroMenu.
+    MicroMenuContainer = new("Frame", UIParent, "MicroMenuContainer")
+    MicroMenu = new("Frame", MicroMenuContainer, "MicroMenu")
+    function MicroMenu:UpdateHelpTicketButtonAnchor()
+        local edge
+        for _, c in ipairs(self.all_ or {}) do
+            if c.parent == self and c.layoutIndex and (not edge or c.layoutIndex < edge) then
+                edge = c.layoutIndex
+            end
+        end
+        if edge < 1 then return end
+    end
+    function MicroMenu:Layout() self:UpdateHelpTicketButtonAnchor() end
+    function MicroMenuContainer:Layout() MicroMenu:Layout() end
     MicroButtonPortrait = nil
     for i, n in ipairs({ "Character", "Profession", "Spellbook", "Talent", "Legacy", "QuestLog", "Housing",
         "Guild", "LFD", "Collections", "EJ", "Help", "Store", "MainMenu" }) do
@@ -1125,6 +1140,7 @@ if modern then
         end
         b.normalTex, b.pushedTex = new("Texture", b), new("Texture", b)
         b.highlightTex, b.disabledTex = new("Texture", b), new("Texture", b)
+        hooksecurefunc(b, "SetParent", function() MicroMenuContainer:Layout() end)
     end
     new("Frame", MicroMenu)                             -- a child that is no button
 
@@ -2481,6 +2497,8 @@ if sidePass then
     if not A or not A.body then
         print("auras none")
     else
+        -- the lists sit in a frame of their own, the tracked bars' beside it
+        local AL = A.body.all_[1]
         -- the player's auras: buffs and debuffs, as the client keeps them.
         -- In combat every time, name, stack and dispel type is secret; the
         -- instance ids are not (the player's own).
@@ -2564,7 +2582,7 @@ if sidePass then
         end }
         local function aurasState(tag)
             print(tag)
-            for _, list in ipairs({ A.body.all_[1], A.body.all_[2] }) do
+            for _, list in ipairs({ AL.all_[1], AL.all_[2] }) do
                 if list.shown then
                     local l, _, r = rect(list)
                     local fs = {}
@@ -2619,7 +2637,7 @@ if sidePass then
         column(A)
         aurasState("auras one list")
         -- the wheel: eleven auras, fewer rows; a row passes it on
-        A.body.all_[1].all_[5].scripts.OnMouseWheel(A.body.all_[1].all_[5], -2)
+        AL.all_[1].all_[5].scripts.OnMouseWheel(AL.all_[1].all_[5], -2)
         aurasState("auras scrolled two")
         thumb("auras")
         p.scripts.OnMouseWheel(p, -50)
@@ -2658,9 +2676,9 @@ if sidePass then
         changed()
         tick()
         -- a right click in combat cancels nothing
-        local row = A.body.all_[1].all_[5]
+        local row = AL.all_[1].all_[5]
         local rowsOf = {}
-        for _, c in ipairs(A.body.all_[1].all_) do if c.kind == "StatusBar" then table.insert(rowsOf, c) end end
+        for _, c in ipairs(AL.all_[1].all_) do if c.kind == "StatusBar" then table.insert(rowsOf, c) end end
         row = rowsOf[1]
         row.scripts.OnMouseUp(row, "RightButton")
         print("cancelled in combat", #cancelled)
@@ -2673,7 +2691,7 @@ if sidePass then
         row.scripts.OnMouseUp(row, "LeftButton")
         row.scripts.OnMouseUp(row, "RightButton")
         local debuffRow
-        for _, c in ipairs(A.body.all_[2].all_) do if c.kind == "StatusBar" and not debuffRow then debuffRow = c end end
+        for _, c in ipairs(AL.all_[2].all_) do if c.kind == "StatusBar" and not debuffRow then debuffRow = c end end
         debuffRow.scripts.OnMouseUp(debuffRow, "RightButton")
         print("cancelled", table.concat(cancelled, ","))
         -- the auras are read only when they change, at most four times a second
@@ -2691,7 +2709,7 @@ if sidePass then
         -- a client whose status bars have no timer: the range is the full
         -- duration and the time left is set on each tick
         noTimer = true
-        for _, list in ipairs({ A.body.all_[1], A.body.all_[2] }) do
+        for _, list in ipairs({ AL.all_[1], AL.all_[2] }) do
             for _, r in ipairs(list.all_) do r.timer = nil end
         end
         changed()
@@ -2714,6 +2732,25 @@ if sidePass then
         aurasState("auras none, one list")
         print("aurasColumns window shows", optionShows("aurasColumns"),
             "aurasTimeless window shows", optionShows("aurasTimeless"))
+        -- the Cooldown Manager's tracked buff bars take over in combat when
+        -- Blizzard_CooldownViewer is present and aurasTrackedBars is on
+        local host = _G.MedalluinAurasTrackedBars
+        local cdm = CreateFrame("Frame", "BuffBarCooldownViewer", UIParent)
+        fire("ADDON_LOADED", "Blizzard_CooldownViewer")
+        print("tracked bars adopted", cdm.parent == host,
+            "holder out of combat", AL.shown, "host out of combat", host.shown)
+        cdm:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        print("tracked bars re-anchored after Edit Mode", cdm.points.TOPLEFT[1] == host)
+        harnessHolds.combat = true
+        stateTick()
+        print("tracked bars in combat", "holder", AL.shown, "host", host.shown,
+            "thumb", select(3, A.Thumb()))
+        harnessHolds.combat = nil
+        stateTick()
+        page.settings.aurasTrackedBars:Set(false)
+        print("tracked bars off", cdm.parent == UIParent,
+            "holder", AL.shown, "host", host.shown)
+        _G.BuffBarCooldownViewer = nil
         for k in pairs(base) do base[k] = saved[k] end
     end
 

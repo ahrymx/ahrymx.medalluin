@@ -26,6 +26,7 @@ read_globals = {
     "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "StanceBar", "PetActionBar",
     "MicroMenu", "MicroMenuContainer", "BagsBar", "CharacterReagentBag0Slot", "ChatAlertFrame", "StatusTrackingBarManager",
     "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer", "IconIntroTracker",
+    "EditModeManagerFrame", "EventRegistry", "nop",
     -- API
     "CreateFrame", "InCombatLockdown", "RegisterUnitWatch", "UnregisterUnitWatch", "RegisterStateDriver", "UnregisterStateDriver", "IsInGroup", "UnitAffectingCombat", "UnitThreatSituation",
     "UnitExists", "GetNumShapeshiftForms", "PetHasActionBar", "UnitName", "UnitClass", "UnitIsPlayer", "UnitIsConnected", "UnitIsDeadOrGhost", "UnitGUID", "UnitIsFriend", "UnitIsUnit",

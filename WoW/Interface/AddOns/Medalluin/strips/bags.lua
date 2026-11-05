@@ -116,6 +116,10 @@ local function Backpack()
     }
     Watch(btn)
     Hold(btn, PlaceBackpack)
+    ns.OutOfCombat(function()
+        ns.Kill(MicroButtonAndBagsBar)
+        ns.Kill(BagsBar)
+    end)
 end
 
 ns.On("PLAYER_LOGIN", Backpack)

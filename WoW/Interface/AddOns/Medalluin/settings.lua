@@ -66,6 +66,7 @@ local DEFAULTS = {
     lootMoney = true,       -- money and currencies in the loot log
     aurasColumns = 2,       -- 2: buffs and debuffs side by side; 1: one list of both
     aurasTimeless = false,  -- list the auras that never run out too (they are over the portrait already)
+    aurasTrackedBars = true, -- in combat, the Cooldown Manager's tracked bars in place of the lists
     bags = true,            -- Medalluin's bags window instead of Blizzard's bags
     bagsView = "grid",      -- "grid": every slot, bag by bag; "groups": the items in fixed groups
     bagsColumns = 10,       -- slots across the window (not on the page: the window's corner sets it, 8 to 24)

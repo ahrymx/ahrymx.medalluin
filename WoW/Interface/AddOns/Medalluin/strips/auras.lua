@@ -26,6 +26,14 @@
 -- learnt out of combat is kept for each aura instance.
 --
 -- A right click on a buff cancels it out of combat, as over the portrait.
+--
+-- In combat, where the client has the Cooldown Manager (retail's
+-- Blizzard_CooldownViewer), the tab shows its tracked bars instead
+-- (BuffBarCooldownViewer, chosen and sized in Edit Mode), as the game keeps
+-- new buffs to itself there. The bars are adopted into the tab out of combat;
+-- the swap is two visibility state drivers, run by the game's secure manager,
+-- so nothing here shows, hides or moves a frame in combat. The tab stays the
+-- one the player picked: the bars show only while the Auras tab does.
 local _, ns = ...
 
 local Auras = C_UnitAuras
@@ -58,6 +66,11 @@ local kept = {}                 -- filter -> last entries, kept when a combat re
 local removed = {}              -- auraInstanceID -> true when UNIT_AURA reports removal in combat
 local seconds                   -- the client's seconds formatter, for secret times
 local zero                      -- a zero duration, to stop a row's timer
+local holder, host              -- the lists' frame, and the tracked bars' frame over the same body
+local adopted                   -- the Cooldown Manager's bar viewer, while it sits in the host
+local placing = false           -- the viewer is being moved here, not by Blizzard
+local watched = false
+local fighting = false
 
 local function Key(v)
     if ns.IsSecret(v) or v == nil then return nil end
@@ -488,21 +501,27 @@ local function Fill(r, e)
 end
 
 -- ------------------------------------------------------------ the lists
-local function List()
-    local list = { rows = {} }
-    local f = CreateFrame("Frame", nil, body)
-    list.frame = f
-    list.title = ns.Text(f, 11)
-    list.title:SetPoint("TOPLEFT", 2, -(HEAD / 2) + 5)
-    list.title:SetTextColor(unpack(GOLD))
-    list.number = ns.PlainText(f, 10)
-    list.number:SetPoint("TOPRIGHT", -2, -(HEAD / 2) + 5)
-    list.number:SetTextColor(unpack(DIM))
+-- A list's heading: its title, its count, and the gold line under them.
+local function Header(f)
+    local title = ns.Text(f, 11)
+    title:SetPoint("TOPLEFT", 2, -(HEAD / 2) + 5)
+    title:SetTextColor(unpack(GOLD))
+    local number = ns.PlainText(f, 10)
+    number:SetPoint("TOPRIGHT", -2, -(HEAD / 2) + 5)
+    number:SetTextColor(unpack(DIM))
     local line = f:CreateTexture(nil, "ARTWORK")
     line:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.8)
     line:SetHeight(1)
     line:SetPoint("TOPLEFT", 0, -(HEAD - 2))
     line:SetPoint("TOPRIGHT", 0, -(HEAD - 2))
+    return title, number
+end
+
+local function List()
+    local list = { rows = {} }
+    local f = CreateFrame("Frame", nil, body)
+    list.frame = f
+    list.title, list.number = Header(f)
     list.empty = ns.Text(f, 10)
     list.empty:SetPoint("TOPLEFT", 4, -(HEAD + 6))
     list.empty:SetPoint("RIGHT", -4, 0)
@@ -626,6 +645,85 @@ local function ScanCombatAuras(retry)
     end
 end
 
+-- ---------------------------------------------------- the tracked bars
+local function Viewer() return _G.BuffBarCooldownViewer end
+
+-- The bars are what the tab shows: adopted, and the player fighting.
+local function Tracking() return adopted ~= nil and fighting end
+
+-- Edit Mode (or anything else) moving the viewer away: back into the tab
+-- once combat allows.
+local function Watch(v)
+    if watched then return end
+    watched = true
+    local function Moved()
+        if placing or adopted ~= v then return end
+        ns.OutOfCombat(function()
+            if adopted == v then
+                placing = true
+                pcall(function()
+                    v:SetParent(host)
+                    v:ClearAllPoints()
+                    v:SetPoint("TOPLEFT", host, "TOPLEFT", 0, -(HEAD + 1))
+                end)
+                placing = false
+            end
+        end)
+    end
+    hooksecurefunc(v, "SetParent", function(_, parent) if parent ~= host then Moved() end end)
+    hooksecurefunc(v, "SetPoint", Moved)
+end
+
+-- Under the tab's own heading; Edit Mode keeps their width, which bars
+-- are tracked, and whether the Cooldown Manager is on at all.
+local function Adopt(v)
+    placing = true
+    local ok = pcall(function()
+        v:SetParent(host)
+        v:ClearAllPoints()
+        v:SetPoint("TOPLEFT", host, "TOPLEFT", 0, -(HEAD + 1))
+    end)
+    placing = false
+    if not ok then return end
+    adopted = v
+    Watch(v)
+end
+
+-- Back to UIParent and its Edit Mode place.
+local function GiveBack()
+    local v = adopted
+    if not v then return end
+    adopted = nil
+    placing = true
+    pcall(v.SetParent, v, UIParent)
+    if v.ApplySystemAnchor then pcall(v.ApplySystemAnchor, v) end
+    placing = false
+end
+
+-- Out of combat only: adopt the viewer (or give it back) and set the two
+-- drivers that swap the lists for the bars while combat lasts.
+local function Drive()
+    if not host then return end
+    ns.OutOfCombat(function()
+        local v = Viewer()
+        if ns.db.aurasTrackedBars and v then
+            if adopted ~= v then Adopt(v) end
+        else
+            GiveBack()
+        end
+        if adopted then
+            RegisterStateDriver(host, "visibility", "[combat] show; hide")
+            RegisterStateDriver(holder, "visibility", "[combat] hide; show")
+        else
+            UnregisterStateDriver(host, "visibility")
+            UnregisterStateDriver(holder, "visibility")
+            host:Hide()
+            holder:Show()
+        end
+        ns.side.Changed()
+    end)
+end
+
 -- --------------------------------------------------------------- the view
 local view = {
     key = "auras", label = "Auras", option = "sideAuras",
@@ -633,13 +731,26 @@ local view = {
 }
 
 function view.Build(f)
-    body = f
+    -- the lists in a frame of their own, the tracked bars' over the same body
+    holder = CreateFrame("Frame", nil, f)
+    holder:SetAllPoints(f)
+    holder:SetSize(f:GetWidth(), f:GetHeight())
+    body = holder
     rows = math.floor((f:GetHeight() - HEAD - 1 + GAP) / (ROW + GAP))
     lists = { List(), List() }
     Layout()
+    host = CreateFrame("Frame", "MedalluinAurasTrackedBars", f)
+    host:SetAllPoints(f)
+    host:SetSize(f:GetWidth(), f:GetHeight())
+    host:Hide()
+    local title = Header(host)
+    title:SetText("Tracked bars")
+    fighting = InCombatLockdown() and true or false
     -- the auras change in bursts: read them at most four times a second,
-    -- and only while the tab is shown; the times five times a second
+    -- and only while the tab is shown; the times five times a second.
+    -- Not while the tracked bars stand in for the lists.
     f:SetScript("OnUpdate", function(_, elapsed)
+        if Tracking() then return end
         since, tick = since + elapsed, tick + elapsed
         if dirty and since >= 0.25 then
             Refresh()
@@ -692,16 +803,33 @@ function view.Build(f)
         Layout()
         Refresh()
     end)
+    -- the tracked bars: when the Cooldown Manager loads, and when their option changes
+    ns.On("ADDON_LOADED", function(_, name)
+        if name == "Blizzard_CooldownViewer" then Drive() end
+    end)
+    ns.On("PLAYER_REGEN_DISABLED", function()
+        fighting = true
+        ns.side.Changed()
+    end)
+    ns.On("PLAYER_REGEN_ENABLED", function()
+        fighting = false
+        ns.side.Changed()
+    end)
+    ns.OnSetting("aurasTrackedBars", Drive)
+    Drive()
 end
 
 view.Refresh = Refresh
 
 function view.Scroll(by)
+    if Tracking() then return end
     first = math.max(0, math.min(first + by, total - rows))
     Refresh()
 end
 
+-- No thumb while the tracked bars are shown: they are not scrolled.
 function view.Thumb()
+    if Tracking() then return 0, 0, 0 end
     return first, rows, total
 end
 

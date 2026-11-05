@@ -236,28 +236,33 @@ local function Layout()
 end
 
 -- Micro menu notification banners (unspent talents, profession knowledge,
--- fanfare, journal): Blizzard's HelpTip alerts and Classic's alert frames.
+-- fanfare, journal): muted on their own regions so HelpTip.framePool,
+-- info.callback and g_microButtonAlertsEnabledLocks stay untainted for
+-- Blizzard_NewPlayerExperience and Blizzard_TutorialManager.
+local function MuteHelpTips()
+    if not (HelpTip and HelpTip.framePool and HelpTip.framePool.EnumerateActive) then return end
+    for frame in HelpTip.framePool:EnumerateActive() do
+        local micro = frame.info and frame.info.system == "MicroButtons"
+        frame:SetAlpha(micro and 0 or 1)
+        if frame.EnableMouse then frame:EnableMouse(not micro) end
+    end
+end
+
 local function SilenceAlerts()
-    if MainMenuMicroButton_SetAlertsEnabled then
-        pcall(MainMenuMicroButton_SetAlertsEnabled, false, "Medalluin")
-    end
-    if HelpTip and HelpTip.HideAllSystem then
-        HelpTip:HideAllSystem("MicroButtons")
-    end
-    if HelpTip and HelpTip.HideAll then
-        for _, btn in ipairs(buttons) do
-            HelpTip:HideAll(btn)
-        end
-        if CharacterMicroButton then
-            HelpTip:HideAll(CharacterMicroButton)
-        end
-    end
+    MuteHelpTips()
     for _, name in ipairs({ "TalentMicroButtonAlert", "CollectionsMicroButtonAlert", "EJMicroButtonAlert" }) do
         ns.Kill(_G[name])
     end
 end
 
 ns.On("PLAYER_LOGIN", function()
+    local noop = nop or function() end
+    local mmc, mm = _G.MicroMenuContainer, _G.MicroMenu
+    if mmc then mmc.Layout = noop end
+    if mm then
+        mm.Layout = noop
+        mm.UpdateHelpTicketButtonAnchor = noop
+    end
     Character()
     SetupQueueEye()
     buttons = Buttons()
@@ -266,29 +271,12 @@ ns.On("PLAYER_LOGIN", function()
         btn:HookScript("OnShow", Layout)
         btn:HookScript("OnHide", Layout)
     end
+    ns.OutOfCombat(function() ns.Kill(MicroMenuContainer) end)
     Silence(MainMenuBarPerformanceBar)            -- Classic's latency bar on the menu button
     Silence(MainMenuBarDownload)
     SilenceAlerts()
-    if MainMenuMicroButton_ShowAlert then
-        hooksecurefunc("MainMenuMicroButton_ShowAlert", function(btn)
-            if MainMenuMicroButton_HideAlert then pcall(MainMenuMicroButton_HideAlert, btn) end
-            if MicroButtonPulseStop then pcall(MicroButtonPulseStop, btn) end
-            if HelpTip and HelpTip.HideAllSystem then HelpTip:HideAllSystem("MicroButtons") end
-        end)
-    end
-    if MicroButtonPulse then
-        hooksecurefunc("MicroButtonPulse", function(btn)
-            if MicroButtonPulseStop then pcall(MicroButtonPulseStop, btn) end
-        end)
-    end
     if HelpTip and HelpTip.Show then
-        hooksecurefunc(HelpTip, "Show", function(self, parent, info, relativeRegion)
-            if (info and info.system == "MicroButtons")
-                or (relativeRegion and relativeRegion.medalluin)
-                or (parent and parent.medalluin) then
-                self:Hide(parent, info and info.text)
-            end
-        end)
+        hooksecurefunc(HelpTip, "Show", MuteHelpTips)
     end
     Layout()
 end)

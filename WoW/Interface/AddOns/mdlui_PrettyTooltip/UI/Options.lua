@@ -10,7 +10,7 @@ ns.Options = {}
 function ns.Options.register()
     if page then return end
     page = CreateFrame("Frame")
-    page.name = "PrettyTooltip"
+    page.name = "mdlui_PrettyTooltip"
     -- Created hidden, or the settings window never fires OnShow on first open.
     page:Hide()
     local controls = {}

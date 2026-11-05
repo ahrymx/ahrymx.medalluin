@@ -1,11 +1,14 @@
 ## Interface: 16001, 120105
-## Title: PrettyTooltip
+## Title: mdlui_PrettyTooltip
 ## Notes: A full reskin of tooltips for WoW Forever.
 ## Author: FallenShard
 ## X-License: MIT
 ## X-Curse-Project-ID: 1720719
-## Version: 0.3.6
+## Version: 0.4.0
 ## X-Upstream-Version: 1.3.7
+## Category: Medalluin
+## Category-enUS: Medalluin
+## Group: Medalluin
 ## IconTexture: Interface\AddOns\mdlui_PrettyTooltip\art\logo
 ## SavedVariables: PrettyTooltipDB, PrettyTooltipCaptures
 ## OptionalDeps: Medalluin, Questie, Auctionator, DialogueUI, EllesmereUI, LibSharedMedia-3.0

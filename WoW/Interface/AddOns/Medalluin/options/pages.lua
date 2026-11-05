@@ -459,7 +459,11 @@ function ns.OptionPages()
                     }, "The column button with the bars on it switches this too."),
                     Check("aurasTimeless", "Auras that never run out",
                         "List forms, aspects, mounts and the like too, at the top. They are over the portrait "
-                        .. "already. The infinity button switches this too.")),
+                        .. "already. The infinity button switches this too."),
+                    Check("aurasTrackedBars", "Tracked bars in combat",
+                        "In combat the game keeps new buffs to itself, so the tab shows the Cooldown Manager's "
+                        .. "tracked bars instead, until combat ends. Which bars, and how wide, are set in Edit Mode. "
+                        .. "Only where the game has the Cooldown Manager.")),
                 Group("Meter",
                     Check("sideMeter", "Meter tab",
                         "Damage, healing and more for each member of your group, from the game's own combat meter."),
@@ -510,11 +514,12 @@ function ns.OptionPages()
         },
         {
             id = "tooltips", name = "Tooltips (ext)",
-            intro = "Provided by the optional PrettyTooltip companion addon (mdlui_PrettyTooltip). "
-                .. "Enable PrettyTooltip in your AddOns list to reskin tooltips and open its style editor and options.",
+            intro = "Provided by the optional mdlui_PrettyTooltip companion addon. "
+                .. "Enable mdlui_PrettyTooltip in your AddOns list to reskin tooltips "
+                .. "and open its style editor and options.",
             enabled = function() return SlashCmdList and SlashCmdList.PRETTYTOOLTIP ~= nil end,
             groups = {
-                Group("PrettyTooltip",
+                Group("mdlui_PrettyTooltip",
                     Button("Open style editor", function()
                         if SlashCmdList and SlashCmdList.PRETTYTOOLTIP then
                             if ns.CloseOptions then ns.CloseOptions() end

@@ -281,8 +281,11 @@ ns.OnAnySetting(function(key)
     if key == "overhead" and showing then ShowMovers(true) end
 end)
 
--- Edit Mode's own events; a client without them has /mdlui move.
-if EventRegistry and EventRegistry.RegisterCallback then
+-- Edit Mode's own frame or events; a client without them has /mdlui move.
+if EditModeManagerFrame and EditModeManagerFrame.HookScript then
+    EditModeManagerFrame:HookScript("OnShow", function() ShowMovers(true) end)
+    EditModeManagerFrame:HookScript("OnHide", function() ShowMovers(false) end)
+elseif EventRegistry and EventRegistry.RegisterCallback then
     local owner = {}
     EventRegistry:RegisterCallback("EditMode.Enter", function() ShowMovers(true) end, owner)
     EventRegistry:RegisterCallback("EditMode.Exit", function() ShowMovers(false) end, owner)
