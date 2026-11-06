@@ -9,9 +9,10 @@
 --   [General][Trade]           |(*)[o P <]  <- the tabs, the cog and its
 --                                               drawer, open
 --
--- The quest tracker's full view stands in the same box, above the tabs:
--- the box reaches up to the screen's top for it (Reach), and comes down
--- to the chat again when the tracker goes minimal.
+-- The quest tracker's full view stands over the box, up to the screen's
+-- top, in a box of its own on it (Reach): its foot is the chat box's top
+-- edge, so the two read as one, and it fades with the tracker, and goes
+-- when the tracker goes minimal.
 --
 -- Nothing of the chat is replaced. The docked chat frames (they all follow
 -- ChatFrame1) are anchored into the panel and their backgrounds and borders
@@ -537,17 +538,33 @@ local function Build()
     line:SetPoint("BOTTOMRIGHT")
     ns.chat = { box = chatBox, dress = dress, panel = panel, area = area, edit = edit, head = head, top = top }
 
-    -- The box up to the screen's top, the quest tracker's full view in it
-    -- above the tabs; or down to the chat alone.
-    function ns.chat.Reach(up)
-        chatBox:ClearAllPoints()
-        chatBox:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", 0, L.stripHeight)
-        if up then
-            chatBox:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
-        else
-            chatBox:SetHeight(top + PAD)
-        end
+    chatBox:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", 0, L.stripHeight)
+    chatBox:SetHeight(top + PAD)
+    -- The box's reach up to the screen's top, the quest tracker's full view
+    -- in it: a box of its own on the chat's, its foot the chat box's top
+    -- edge, so the two read as one; and the tracker fading fades it alone,
+    -- the chat box's top corners coming back as it goes.
+    local reach = CreateFrame("Frame", nil, strip)
+    reach:SetFrameStrata("BACKGROUND")
+    reach:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+    reach:SetPoint("BOTTOMRIGHT", chatBox, "TOPRIGHT", 0, -1)
+    local reachDress = ns.window.Dress(reach, 0)
+    reachDress.rule:Hide()
+    local corners = {}
+    for point, lines in pairs(reachDress.corners) do
+        if point:find("^BOTTOM") then for _, t in ipairs(lines) do t:Hide() end end
     end
+    for point, lines in pairs(dress.corners) do
+        if point:find("^TOP") then for _, t in ipairs(lines) do table.insert(corners, t) end end
+    end
+    -- up: the reach shown, as much of it as alpha (the tracker's fade)
+    function ns.chat.Reach(up, alpha)
+        alpha = up and (alpha or 1) or 0
+        reach:SetShown(up and true or false)
+        reach:SetAlpha(alpha)
+        for _, t in ipairs(corners) do t:SetAlpha(1 - alpha) end
+    end
+    ns.chat.reach = reach
     ns.chat.Reach(false)
     -- the timeless buffs along the margin, beside the medallion
     ns.BuffRow({ x = L.chatLeft + PAD, y = ns.stripArt.height - L.stripHeight - margin / 2 })

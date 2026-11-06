@@ -405,7 +405,8 @@ local function Layout()
         frame:SetWidth(wide)
         frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
         if chat then
-            frame:SetPoint("BOTTOMLEFT", chat.box, "BOTTOMLEFT", 0, chat.top)
+            -- the rule over the chat's tabs on the box's top edge
+            frame:SetPoint("BOTTOMLEFT", chat.box, "TOPLEFT", 0, -(RULE + 1))
         else
             frame:SetPoint("BOTTOMLEFT", ns.strips[-1], "BOTTOMLEFT", 0, L.stripHeight)
         end
@@ -418,7 +419,7 @@ local function Layout()
             frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
         end
     end
-    if chat then chat.Reach(full) end
+    if chat then chat.Reach(full, frame:GetAlpha()) end
     -- the items are secure: hidden in combat by the game's own driver
     if Hides("Combat") then
         RegisterStateDriver(layer, "visibility", "[combat] hide; show")
@@ -690,6 +691,8 @@ local function Build()
             local alpha = Ease(now, want, elapsed)
             frame:SetAlpha(alpha)
             layer:SetAlpha(alpha)
+            -- the chat box's reach for the full view, with it
+            if Full() and ns.chat then ns.chat.Reach(true, alpha) end
         end
     end)
     Q.Listen(function()

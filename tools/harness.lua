@@ -10046,6 +10046,23 @@ if questPass then
     ns.chat = chat
     T.Layout()
     view("quests.chat again")
+    do
+        -- the reach: a box of its own from the screen's top to the chat
+        -- box's top edge, its foot open (no corners, no band rule)
+        local r = ns.chat.reach
+        local pts = {}
+        for i = 1, r:GetNumPoints() do
+            local p, rel, rp, x, y = r:GetPoint(i)
+            pts[#pts + 1] = string.format("%s>%s:%s %d,%d", p, rel and rel:GetName() or "?", rp, x, y)
+        end
+        table.sort(pts)
+        local dress
+        for _, c in ipairs({ r:GetChildren() }) do if c.corners then dress = c end end
+        print("quests.reach", table.concat(pts, " "), "level=" .. r:GetFrameLevel() .. "/" .. ns.chat.box:GetFrameLevel(),
+            "corners top=" .. tostring(dress.corners.TOPLEFT[1].shown) .. "/" .. tostring(dress.corners.TOPRIGHT[2].shown),
+            "bottom=" .. tostring(dress.corners.BOTTOMLEFT[1].shown) .. "/" .. tostring(dress.corners.BOTTOMRIGHT[2].shown),
+            "rule=" .. tostring(dress.rule.shown))
+    end
 
     -- each view hidden on its own options: until the pointer is over it, and
     -- in combat (the secure items by the game's driver, the rest taking no mouse)
@@ -10055,7 +10072,10 @@ if questPass then
             "items shown=" .. tostring(layer.shown),
             "driver=" .. tostring(layer.stateDrivers and layer.stateDrivers.visibility),
             "head mouse=" .. tostring(T.head.mouse), "footer mouse=" .. tostring(T.gear.mouse),
-            "row mouse=" .. tostring(list.rows[1] and list.rows[1].mouse))
+            "row mouse=" .. tostring(list.rows[1] and list.rows[1].mouse),
+            string.format("reach=%s %.2f chat corners=%.2f/%.2f", tostring(ns.chat.reach.shown),
+                ns.chat.reach:GetAlpha(), ns.chat.dress.corners.TOPLEFT[1]:GetAlpha(),
+                ns.chat.dress.corners.TOPRIGHT[2]:GetAlpha()))
     end
     local function combat(on)
         inCombat = on
@@ -10066,6 +10086,9 @@ if questPass then
     hidden("quests.hide none")
     ns.SetOption("questsFullMouseover", true)
     hidden("quests.hide mouseover away")
+    -- laid out again while hidden: the reach stays as faded as the list
+    T.Layout()
+    print("quests.hide relaid", string.format("reach=%.2f", ns.chat.reach:GetAlpha()))
     mouseOver = f
     hidden("quests.hide mouseover over")
     mouseOver = false

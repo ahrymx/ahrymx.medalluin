@@ -133,8 +133,10 @@ local function Ornament(parent, label)
 end
 ns.window.Ornament = Ornament
 
--- Gold brackets in a frame's four corners, inset from its edge.
+-- Gold brackets in a frame's four corners, inset from its edge; each
+-- corner's two lines, by its point.
 local function Corners(f, inset, size)
+    local corners = {}
     for _, c in ipairs({ { "TOPLEFT", 1, -1 }, { "TOPRIGHT", -1, -1 }, { "BOTTOMLEFT", 1, 1 },
         { "BOTTOMRIGHT", -1, 1 } }) do
         local across = f:CreateTexture(nil, "ARTWORK")
@@ -145,7 +147,9 @@ local function Corners(f, inset, size)
         down:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.8)
         down:SetSize(1, size)
         down:SetPoint(c[1], c[2] * inset, c[3] * inset)
+        corners[c[1]] = { across, down }
     end
+    return corners
 end
 ns.window.Corners = Corners
 
@@ -179,7 +183,7 @@ local function Dress(parent, band)
         t:SetPoint(edge[2])
         t[edge[3]](t, 1)
     end
-    Corners(dress, 3, 12)
+    dress.corners = Corners(dress, 3, 12)
     local bandRule = dress:CreateTexture(nil, "ARTWORK")
     bandRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
     bandRule:SetHeight(1)
