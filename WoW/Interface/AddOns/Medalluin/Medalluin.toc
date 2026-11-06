@@ -77,6 +77,8 @@ spells\spellbook.lua
 spells\talents.lua
 professions\window.lua
 professions\crafting.lua
+quests\source.lua
+quests\tracker.lua
 keybind.lua
 diag.lua
 

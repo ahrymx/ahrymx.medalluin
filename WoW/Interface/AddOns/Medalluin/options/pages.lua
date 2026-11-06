@@ -627,6 +627,21 @@ function ns.OptionPages()
             },
         },
         {
+            id = "quests", name = "Quests", intro = "Shared by every profile.",
+            master = Check("quests", "Quest tracker",
+                "Your tracked quests on the left of the screen, over the chat panel: by zone, each zone folding, "
+                .. "with a button for a quest's item. Reads Questie's tracked quests when Questie is loaded; "
+                .. "Questie's own tracker is left to Questie's options.", true),
+            groups = {
+                Group("Tracker",
+                    Choice("questsSort", "Sort", {
+                        { "level", "Level", "The lowest quests first, and the zones by their lowest quest." },
+                        { "zone", "Zone", "The zone you are in first, then the rest by name." },
+                        { "distance", "Distance", "The nearest objective first. Needs Questie; level without it." },
+                    }, "How the quests are ordered. The tracker's own button changes it too.")),
+            },
+        },
+        {
             id = "tooltips", name = "Tooltips (ext)",
             intro = "Provided by the optional mdlui_PrettyTooltip companion addon. "
                 .. "Enable mdlui_PrettyTooltip in your AddOns list to reskin tooltips "

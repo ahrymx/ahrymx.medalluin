@@ -103,6 +103,9 @@ read_globals = {
     -- the spellbook, talents and professions (spells/, talents/, professions/)
     "PlayerSpellsFrame", "PlayerSpellsUtil", "SpellbookMicroButton", "GetPetIcon", "C_Traits", "C_ClassTalents",
     "GetNumSpecGroups", "GetProfessions", "GetProfessionInfo", "ProfessionsFrame", "C_TradeSkillUI", "Professions", "SecondsToTime",
+    -- the quest tracker (quests/); Questie is read, never written
+    "GetQuestLink", "GetQuestLogSpecialItemInfo", "QuestMapFrame_OpenToQuestDetails", "QuestLogFrame",
+    "GetDifficultyColor", "GetQuestDifficultyColor", "QuestieLoader", "C_QuestLog", "ShowUIPanel",
 }
 -- the saved variables, the slash command and the reset popup's key
 globals = { "_G", "MedalluinDB", "MedalluinCharDB", "SLASH_MEDALLUIN1", "SLASH_MEDALLUIN2", "SLASH_MDLUI1", "SlashCmdList",

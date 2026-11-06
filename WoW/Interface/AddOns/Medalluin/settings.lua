@@ -86,6 +86,10 @@ local DEFAULTS = {
     talentsDetails = true,  -- its trees' details open (the window's chevron sets it too)
     professions = true,     -- Medalluin's professions instead of Blizzard's (Forever)
     professionsDetails = true, -- its recipes' details open (the window's chevron sets it too)
+    quests = true,          -- Medalluin's quest tracker on the left, over the chat panel
+    questsSort = "level",   -- "level", "zone" or "distance" (Questie's; the tracker's button sets it too)
+    questsFolded = false,   -- the zone headings folded: { [zone] = true } (not on the page)
+    questsMinimised = false, -- the tracker folded to its heading (not on the page: its [-] sets it)
     optionsPoint = false,   -- where the settings window was dragged to, the same way (options/window.lua)
     editorPoint = false,    -- and the unit-frame editor's (options/editor.lua)
     editCanvasPoint = false, -- and its edit-mode canvas (options/canvas.lua)
@@ -467,6 +471,7 @@ local PAGES = {
     spellbook = "spellbook", spells = "spellbook", book = "spellbook",
     talents = "talents", talent = "talents",
     professions = "professions", profession = "professions", prof = "professions", craft = "professions",
+    quests = "quests", quest = "quests", tracker = "quests",
     tooltip = "tooltips", tooltips = "tooltips",
 }
 

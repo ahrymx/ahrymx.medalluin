@@ -91,6 +91,15 @@ local talentRetail = talentPass and args[3] == "retail"
 -- on the right strip.
 local profPass = args[2] == "professions"
 local profRetail = profPass and args[3] == "retail"
+-- "quests" (with "modern") plays the quest tracker (quests/) over a stubbed
+-- quest log of three zones: the anchor, the sorts, a fold, the minimise, the
+-- clicks, the item buttons, combat holding the rows still, and the character
+-- window standing over it. "quests questie" adds a stub of Questie that
+-- becomes ready after login (its tracked set, its items, its distances, its
+-- untrack); "quests broken" one whose every call raises.
+local questPass = args[2] == "quests"
+local questieStub = questPass and args[3] == "questie"
+local questieBroken = questPass and args[3] == "broken"
 local barOff = args[3] == "nobar"
 local savedRows = tonumber((args[3] or ""):match("^rows(%d)$"))
 local savedBare = args[3] == "bare"
@@ -1708,7 +1717,7 @@ end
 -- three), its gear slot buttons, a shaman's gear and stats on Forever and a
 -- rogue's on retail. Only for the character pass.
 local charWorld
-if characterPass then
+if characterPass or questPass then
     charWorld = { toggles = {} }
     function Region:SetUnit(u) self.unit, self.unitSets = u, (self.unitSets or 0) + 1 end
     function Region:SetFacing(f) self.facing = f end
@@ -2062,6 +2071,112 @@ if characterPass then
         table.insert(charWorld.popups, which .. ":" .. tostring(a))
         charWorld.popup = { which = which, data = data }
         return {}
+    end
+end
+
+-- ------------------------------------------------------------ the quest log
+-- Three zones of quests, Black Temple (the zone you are in) last in the log:
+-- six tracked and shown, one tracked but hidden, one not tracked; one with a
+-- usable item, one complete, one failed. Questie's stub, for "questie" and
+-- "broken", tracks its own set. Only for the quests pass.
+local questWorld
+if questPass then
+    questWorld = { calls = {}, tickers = {} }
+    local W = questWorld
+    local function called(s) table.insert(W.calls, s) end
+    local function o(text, done) return { text = text, finished = done } end
+    W.log = {
+        { title = "Elwynn Forest", isHeader = true },
+        { title = "The Fargodeep Mine", level = 10, questID = 101, objectives = { o("Kobold Laborer slain: 4/10") } },
+        { title = "Princess Must Die!", level = 12, questID = 102, complete = true,
+            objectives = { o("Princess slain: 1/1", true) } },
+        { title = "A Threat Within", level = 5, questID = 103, objectives = {} },
+        { title = "Westfall", isHeader = true },
+        { title = "The Defias Brotherhood", level = 18, questID = 201,
+            objectives = { o("Defias Messenger: 0/1"), o("Report to Gryan", true) } },
+        { title = "Westfall Stew", level = 14, questID = 202, failed = true, objectives = { o("Stringy meat: 2/3") } },
+        { title = "Red Leather Bandanas", level = 15, questID = 203, objectives = { o("Bandana: 6/15") } },
+        { title = "Black Temple", isHeader = true },
+        { title = "Seek Out the Ashtongue", level = 70, questID = 301, objectives = { o("Akama: 0/1") } },
+        { title = "A Hidden Errand", level = 70, questID = 302, isHidden = true, objectives = {} },
+    }
+    W.watched = { [101] = true, [102] = true, [201] = true, [202] = true, [203] = true, [301] = true, [302] = true }
+    W.special = { [2] = 5001, [3] = 5002, [10] = 5003 }   -- by log index; 5002 not once complete
+    W.bags = { [5001] = 3, [5003] = 1, [6001] = 0 }
+    local function byId(id)
+        for _, e in ipairs(W.log) do if e.questID == id then return e end end
+    end
+    W.byId = byId
+    function GetRealZoneText() return "Westfall" end   -- not the first by name
+    C_QuestLog = {
+        GetNumQuestLogEntries = function() return #W.log end,
+        GetInfo = function(i) return W.log[i] end,
+        IsComplete = function(id) return byId(id).complete or false end,
+        IsFailed = function(id) return byId(id).failed or false end,
+        GetQuestObjectives = function(id) return byId(id).objectives end,
+        GetQuestWatchType = function(id) return W.watched[id] and 0 or nil end,
+        RemoveQuestWatch = function(id) W.watched[id] = nil; called("unwatch " .. id) end,
+        SetSelectedQuest = function(id) called("select " .. id) end,
+    }
+    function GetQuestLogSpecialItemInfo(i)
+        local item = W.special[i]
+        if item then return "|Hitem:" .. item .. "|h[Thing]|h", 1000 + item, 1, false end
+    end
+    function GetQuestLink(id) return "[quest " .. id .. "]" end
+    function QuestMapFrame_OpenToQuestDetails(id) called("map " .. id) end
+    function GetQuestDifficultyColor(level)
+        return level >= 70 and { r = 1, g = 0.1, b = 0.1 } or level >= 15 and { r = 1, g = 1, b = 0 }
+            or { r = 0.25, g = 0.75, b = 0.25 }
+    end
+    C_Item = C_Item or {}
+    C_Item.GetItemCount = function(id) return W.bags[id] or 0 end
+    C_Item.GetItemIconByID = function(id) return "icon" .. id end
+    C_Container = C_Container or {}
+    C_Container.GetItemCooldown = function(id) if id == 5003 then return 100, 30, 1 end return 0, 0, 1 end
+    -- the ticker kept for the pass to run; nothing else is scheduled
+    C_Timer = C_Timer or { After = function() end }
+    C_Timer.NewTicker = function(_, fn) table.insert(W.tickers, fn) end
+    function GameTooltip:SetItemByID(id) self.item = id end
+    function Region:SetCooldown(start, duration) self.start, self.duration = start, duration end
+    function Region:Clear() self.start, self.duration = nil, nil end
+    function ChatEdit_InsertLink(link) called("link " .. link) end
+    -- Questie's stub: ready when the pass says, tracking its own set
+    if questieStub or questieBroken then
+        local Z = { ready = {}, updates = {}, broken = questieBroken, tracked = { [101] = true, [103] = true, [201] = true, [301] = true },
+            items = { [201] = 6001 }, far = { [101] = 300, [103] = 50, [201] = 900, [301] = 10 } }
+        W.questie = Z
+        local function call(name, fn)
+            return function(...)
+                if Z.broken then error("Questie " .. name .. " changed") end
+                return fn(...)
+            end
+        end
+        local tracker = { Update = function() end }
+        tracker.IsTrackedByQuestie = call("IsTrackedByQuestie", function(id) return Z.tracked[id] or false end)
+        tracker.UntrackQuestId = call("UntrackQuestId", function(_, id) Z.tracked[id] = nil; called("questie untrack " .. id) end)
+        local utils = {
+            GetQuestItemIds = call("GetQuestItemIds", function(q) return { Z.items[q.id] } end),
+            ShowQuestLog = call("ShowQuestLog", function(_, q) called("questie log " .. q.id) end),
+            FocusQuest = call("FocusQuest", function(_, id) called("questie focus " .. id) end),
+            SetQuestTomTomTarget = call("SetQuestTomTomTarget", function(id) called("questie arrow " .. id) end),
+        }
+        local data = { GetQuest = call("GetQuest", function(id) return { id = id } end) }
+        local distance = { GetNearestSpawnForQuest = call("GetNearestSpawnForQuest",
+            function(q) return nil, nil, nil, Z.far[q.id] end) }
+        local modules = { QuestieTracker = tracker, TrackerUtils = utils, TrackerData = data, DistanceUtils = distance }
+        QuestieLoader = { ImportModule = function(_, name) return modules[name] end }
+        Questie = { API = { isReady = false,
+            RegisterOnReady = function(fn) table.insert(Z.ready, fn) end,
+            RegisterForQuestUpdates = function(fn) table.insert(Z.updates, fn) end } }
+        function Z.Ready()
+            Questie.API.isReady = true
+            for _, fn in ipairs(Z.ready) do fn() end
+        end
+        -- its quest updates, and its own tracker redrawn: each alone
+        function Z.Changed()
+            for _, fn in ipairs(Z.updates) do fn() end
+        end
+        function Z.Redrawn() tracker.Update() end
     end
 end
 
@@ -9108,4 +9223,226 @@ if profPass then
     P.Toggle()
     frame()
     state("prof.book again")
+end
+
+-- ------------------------------------------------------- the quest tracker
+if questPass then
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local W = questWorld
+    local T = ns.quests
+    local f = _G.MedalluinQuests
+    print("quests", "tracker=" .. tostring(f ~= nil), "setting=" .. tostring(ns.db.quests),
+        "sort=" .. tostring(ns.db.questsSort))
+    if not f then return end
+    local list, layer = T.list, T.layer
+    list.body.h = 22 * 12               -- twelve rows tall: the screen's height, which the mock has not
+    T.Refresh()
+    local function frame()
+        if f.shown and f.scripts.OnUpdate then f.scripts.OnUpdate(f, 0) end
+    end
+    local function where(r)
+        local out = {}
+        for point, p in pairs(r.points) do
+            table.insert(out, string.format("%s>%s:%s %d,%d", point, p[1] and (p[1].name or (p[1] == r.parent
+                and "parent") or "?") or "-", p[2] or "-", p[3] or 0, p[4] or 0))
+        end
+        table.sort(out)
+        return table.concat(out, " ")
+    end
+    local function c3(c) return c and string.format("%.2f,%.2f,%.2f", c[1], c[2], c[3]) or "-" end
+    local function state(tag)
+        print(tag, "shown=" .. tostring(f.shown), "sort=" .. T.sort.label.text, "fold=" .. T.fold.label.text,
+            "body=" .. tostring(list.body.shown), "empty=" .. tostring(list.empty.shown), "offset=" .. list.offset)
+    end
+    local function rows(tag)
+        local out = {}
+        for _, r in ipairs(list.rows) do
+            if r.shown then
+                local d = r.data
+                table.insert(out, d.header and (r.sign.text .. r.label.text)
+                    or (string.rep(">", d.depth or 0) .. r.label.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                        .. (d.quest and ("(" .. c3(r.label.textColor) .. ")") or (d.dim and "(dim)" or ""))))
+            end
+        end
+        print(tag, #out > 0 and table.concat(out, " | ") or "none")
+    end
+    -- each shown item button: its item, the row it stands beside, its count
+    local function items(tag)
+        local out = {}
+        for i, b in ipairs(layer.buttons) do
+            if b.shown then
+                local p = b.points.TOPRIGHT
+                local at = (-p[4] - 54 - 1) / 22 + 1
+                local r = list.rows[at]
+                table.insert(out, string.format("%d:%s %s,%d row%s=%s n=%s%s%s", i, b.attrs.type, tostring(b.attrs.item),
+                    p[3], at, r and r.data and r.data.quest and r.data.quest.id or "?", b.count.text or "",
+                    b.icon.desaturated and " dim" or "", b.cooldown.start and (" cd" .. b.cooldown.start) or ""))
+            end
+        end
+        print(tag, "layer=" .. where(layer) .. (layer.all == f and " all" or ""), #out > 0 and table.concat(out, " ")
+            or "none")
+    end
+    local function calls(tag)
+        print(tag, #W.calls > 0 and table.concat(W.calls, ", ") or "none")
+        W.calls = {}
+    end
+    local function row(label, button)
+        for _, r in ipairs(list.rows) do
+            if r.shown and r.label.text:find(label, 1, true) then
+                r.scripts.OnClick(r, button or "LeftButton")
+                return
+            end
+        end
+        print("  no row " .. label)
+    end
+    local Z = W.questie
+
+    -- 1. at login: the frame's place, the game's tracked quests by level
+    print("quests.frame", "width=" .. f.w, "strata=" .. tostring(f.strata), "mouse=" .. tostring(f.mouse),
+        where(f), "parent=" .. tostring(f.parent == ns.strips[-1]))
+    state("quests.login")
+    rows("quests.level")
+    items("quests.items")
+
+    -- 2. Questie ready: its set, its items, its distances
+    if Z then
+        Z.Ready()
+        frame()
+        state("quests.questie ready")
+        rows("quests.questie")
+        items("quests.questie items")
+    end
+
+    -- 3. the sorts: each click the next; distance only with Questie
+    for _ = 1, 3 do
+        T.sort.scripts.OnClick(T.sort, "LeftButton")
+        frame()
+        state("quests.sorted")
+        rows("quests.sorted")
+    end
+    print("quests.saved sort", ns.db.questsSort)
+    if ns.db.questsSort ~= "level" then        -- back to level, where every quest shows
+        T.sort.scripts.OnClick(T.sort, "LeftButton")
+        frame()
+    end
+
+    -- 4. Westfall folds, and is remembered; the whole tracker minimises
+    row("Westfall")
+    frame()
+    rows("quests.westfall folded")
+    items("quests.folded items")
+    print("quests.saved folds", tostring(ns.db.questsFolded and ns.db.questsFolded.Westfall))
+    row("Westfall")
+    frame()
+    T.fold.scripts.OnClick(T.fold, "LeftButton")
+    frame()
+    state("quests.minimised")
+    rows("quests.minimised")
+    items("quests.minimised items")
+    T.fold.scripts.OnClick(T.fold, "LeftButton")
+    frame()
+    state("quests.restored")
+
+    -- 5. the clicks: the quest log, a link, Alt's focus, a right click
+    row("The Fargodeep Mine")
+    calls("quests.click")
+    charWorld.modified = true
+    row("The Fargodeep Mine")
+    charWorld.modified = false
+    calls("quests.shift")
+    modsDown.ALT = true
+    row("The Fargodeep Mine")
+    modsDown.ALT = nil
+    calls("quests.alt")
+    row("The Defias Brotherhood", "RightButton")
+    calls("quests.right")
+    -- Questie's untrack leaves the game's watches alone: only its own update says so
+    if Z and not Z.broken then Z.Changed() else fire("QUEST_WATCH_LIST_CHANGED") end
+    frame()
+    rows("quests.untracked")
+    items("quests.untracked items")
+
+    -- 6. combat: counts change in place, a quest gone waits for the end,
+    -- sort, fold and scroll do nothing, the items keep their places
+    inCombat = true
+    fire("PLAYER_REGEN_DISABLED")
+    W.byId(101).objectives[1].text = "Kobold Laborer slain: 5/10"
+    W.bags[5001] = 2
+    fire("QUEST_LOG_UPDATE")
+    frame()
+    rows("quests.combat count")
+    items("quests.combat items")
+    W.watched[203] = nil
+    if Z then Z.tracked[103] = nil end
+    fire("QUEST_WATCH_LIST_CHANGED")
+    frame()
+    rows("quests.combat removed")
+    T.sort.scripts.OnClick(T.sort, "LeftButton")
+    T.fold.scripts.OnClick(T.fold, "LeftButton")
+    list:Scroll(2)
+    row("Elwynn Forest")
+    frame()
+    state("quests.combat")
+    print("quests.combat folds", tostring(ns.db.questsFolded and ns.db.questsFolded["Elwynn Forest"]))
+    items("quests.combat still")
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    frame()
+    state("quests.after combat")
+    rows("quests.after combat")
+    items("quests.after combat items")
+
+    -- 7. the character window stands over it, and its items go
+    ToggleCharacter("PaperDollFrame")
+    frame()
+    state("quests.character")
+    items("quests.character items")
+    ToggleCharacter("PaperDollFrame")
+    frame()
+    state("quests.character closed")
+    items("quests.character closed items")
+
+    -- 8. a shorter screen: the wheel over a row scrolls, and the items follow
+    list.body.h = 22 * 4
+    T.Refresh()
+    items("quests.short items")
+    local first = list.rows[1]
+    first.scripts.OnMouseWheel(first, -1)
+    frame()
+    state("quests.scrolled")
+    rows("quests.scrolled")
+    items("quests.scrolled items")
+    list:Scroll(-5)
+    list.body.h = 22 * 12
+    T.Refresh()
+
+    -- 9. distance is measured again as you move: the ticker redraws only
+    -- in that sort
+    print("quests.tickers", #W.tickers)
+    W.watched[201], W.watched[203] = true, true
+    if Z then
+        Z.tracked[201], Z.tracked[103] = true, true
+        Z.Redrawn()
+        frame()
+        rows("quests.questie redrawn")
+    end
+    if Z then Z.far[101] = 1 end
+    for _, fn in ipairs(W.tickers) do fn() end
+    frame()
+    rows("quests.moved, by level")
+    ns.db.questsSort = "distance"
+    for _, fn in ipairs(W.tickers) do fn() end
+    frame()
+    state("quests.moved")
+    rows("quests.moved")
+    -- a Questie that raised, mended: distance is asked for again
+    if Z and Z.broken then
+        Z.broken = false
+        for _, fn in ipairs(W.tickers) do fn() end
+        frame()
+        state("quests.mended")
+        rows("quests.mended")
+    end
 end
