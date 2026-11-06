@@ -69,7 +69,7 @@ read_globals = {
     -- paging (bars/paging.lua)
     "SAVE",
     -- key binding on hover (keybind.lua)
-    "GetBindingKey", "GetBindingAction", "GetBindingText", "SetBinding", "SaveBindings", "GetCurrentBindingSet",
+    "ToggleQuestLog", "GetBindingKey", "GetBindingAction", "GetBindingText", "SetBinding", "SaveBindings", "GetCurrentBindingSet",
     "GetConvertedKeyOrButton", "IsKeyPressIgnoredForBinding", "CreateKeyChordStringUsingMetaKeyState",
     "IsAltKeyDown", "IsControlKeyDown", "IsShiftKeyDown", "HideUIPanel", "DONE",
     "Settings", "SettingsPanel", "CreateSettingsButtonInitializer", "CreateSettingsListSectionHeaderInitializer",

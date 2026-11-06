@@ -4,9 +4,9 @@
 --
 -- The quest tracker's full view stands where the column would, with an
 -- empty row beside the medallion: it asks for the buffs there instead, left
--- to right (ns.BuffRow{ x, y, Placed(last) }: the first icon's left edge
--- from the screen's, the row's middle from the strip art's top; Placed is
--- told the last icon shown, or nil), and ns.BuffRow() gives the column back.
+-- to right (ns.BuffRow{ x, y }: the first icon's left edge from the
+-- screen's, the row's middle from the strip art's top), and ns.BuffRow()
+-- gives the column back.
 --
 -- Which buffs are timeless can be secret in combat (Forever and retail:
 -- DoesAuraHaveExpirationTime is restricted with the rest of the aura API),
@@ -125,7 +125,6 @@ local function Layout()
         buttons[i]:Hide()
     end
     ns.buffs = buttons
-    if row and row.Placed then row.Placed(buttons[#ids]) end
 end
 
 function ns.BuffRow(spec)

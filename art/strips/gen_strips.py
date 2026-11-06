@@ -111,6 +111,20 @@ def glyph(kind, x, y):
     if kind == "legacy":        # an hourglass
         return P("M3,2 L17,2 L17,4 L15,4 C15,8 11,9 11,10 C11,11 15,12 15,16 L17,16 L17,18 L3,18 L3,16 L5,16 "
                  "C5,12 9,11 9,10 C9,9 5,8 5,4 L3,4 Z")
+    # the quest tracker's footer (quests/tracker.lua)
+    if kind == "questlog":      # a closed book, the quest mark cut from its cover
+        return P("M3,3.4 C3,2.6 3.7,2 4.5,2 L17,2 L17,15.5 L5,15.5 C3.7,15.5 3.7,17.5 5,17.5 L17,17.5 L17,19 "
+                 "L4.5,19 C3.7,19 3,18.4 3,17.5 Z"
+                 "M9.4,4.2 L11.6,4.2 L11.1,10.4 L9.9,10.4 Z M9.3,12.6 a1.2,1.2 0 1,0 2.4,0 a1.2,1.2 0 1,0 -2.4,0 Z",
+                 "evenodd")
+    if kind == "sort":          # three bars, the longest first
+        return P("M2,3 L18,3 L18,6 L2,6 Z M2,8.5 L13,8.5 L13,11.5 L2,11.5 Z M2,14 L8,14 L8,17 L2,17 Z")
+    if kind == "view-minimal":  # a box of its own, in the screen
+        return P("M1,2 L19,2 L19,18 L1,18 Z M2.6,3.6 L17.4,3.6 L17.4,16.4 L2.6,16.4 Z M4.2,5.2 L11,5.2 L11,10.4 "
+                 "L4.2,10.4 Z", "evenodd")
+    if kind == "view-full":     # a column down the screen's left
+        return P("M1,2 L19,2 L19,18 L1,18 Z M2.6,3.6 L17.4,3.6 L17.4,16.4 L2.6,16.4 Z M4.2,5.2 L9,5.2 L9,14.8 "
+                 "L4.2,14.8 Z", "evenodd")
     # the character window's tabs (character/window.lua)
     if kind == "character":     # head and shoulders
         return P("M6,6.5 a4,4.5 0 1,0 8,0 a4,4.5 0 1,0 -8,0 Z M1.5,19 C1.5,13 5,11.5 10,11.5 C15,11.5 18.5,13 18.5,19 Z")
@@ -301,9 +315,9 @@ def render(kind):
 # ----------------------------------------------------------------- layer3
 GLYPHS = ["spellbook", "talents", "quests", "social", "guild", "lfg", "map", "menu", "help",
           "profession", "achievement", "housing", "collections", "journal", "store", "legacy", "misc"]
-# the character window's tabs, and its controls
+# the character window's tabs, its controls, and the quest tracker's footer
 TABS = ["character", "reputation", "currency", "skills", "pvp", "statistics",
-        "chevron-down", "chevron-up", "close"]
+        "chevron-down", "chevron-up", "close", "questlog", "sort", "view-minimal", "view-full"]
 
 
 def part(name, inner, size=32):

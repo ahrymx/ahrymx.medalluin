@@ -9399,10 +9399,17 @@ if questPass then
         return table.concat(out, " ")
     end
     local function c3(c) return c and string.format("%.2f,%.2f,%.2f", c[1], c[2], c[3]) or "-" end
+    -- a footer button's tooltip
+    local function tip(b)
+        b.scripts.OnEnter(b)
+        local text = GameTooltip.text
+        b.scripts.OnLeave(b)
+        return tostring(text)
+    end
     local function state(tag)
-        print(tag, "shown=" .. tostring(f.shown), "sort=" .. T.sort.label.text,
-            "minimised=" .. tostring(ns.db.questsMinimised), "all=" .. T.foldAll.label.text,
-            "view=" .. T.view.label.text, "body=" .. tostring(list.body.shown), "foot=" .. tostring(T.footer.shown),
+        print(tag, "shown=" .. tostring(f.shown), "sort=" .. tip(T.sort),
+            "minimised=" .. tostring(ns.db.questsMinimised), "all=" .. T.foldAll.glyph,
+            "view=" .. T.view.glyph, "body=" .. tostring(list.body.shown), "foot=" .. tostring(T.footer.shown),
             "empty=" .. tostring(list.empty.shown), "offset=" .. list.offset)
     end
     local function plain(t) return (t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
@@ -9645,15 +9652,6 @@ if questPass then
     -- above the medallion's lip, the list down to its rule
     ns.db.questsSort = "level"
     T.Refresh()
-    -- what the margin's divider starts after: a buff (by its place in the
-    -- row), or the margin's own edge
-    local function divider()
-        local p = T.divider.points.LEFT
-        for i, b in ipairs(ns.buffs or {}) do
-            if p[1] == b then return "buff " .. i .. " +" .. p[3] end
-        end
-        return p[2] .. " " .. p[3] .. "," .. p[4]
-    end
     local function view(tag)
         local ink = T.ink
         local g = ink.gradient
@@ -9665,8 +9663,7 @@ if questPass then
         for _, b in ipairs(ns.buffs or {}) do
             if b.shown then icons[#icons + 1] = tostring(b.icon.texture) .. "@" .. where(b) end
         end
-        print(tag .. " buffs", #icons > 0 and table.concat(icons, " ") or "none",
-            "divider=" .. divider())
+        print(tag .. " buffs", #icons > 0 and table.concat(icons, " ") or "none")
         if ns.chat then
             print(tag .. " chat", where(ns.chat.panel), "size=" .. tostring(ns.chat.panel.w) .. "x"
                 .. tostring(ns.chat.panel.h), "art=" .. tostring(ns.chat.art.shown), "rule=" .. tostring(T.chatRule.shown),
@@ -9674,6 +9671,22 @@ if questPass then
         end
     end
     view("quests.full")
+    -- the footer: the settings and the quest log at the left, the list's
+    -- own three at the right, each its glyph and its tooltip
+    for _, k in ipairs({ "gear", "book", "sort", "foldAll", "view" }) do
+        local b = T[k]
+        print("quests.footer " .. k, b.glyph, b.w .. "x" .. b.h, where(b), tip(b))
+    end
+    SetBinding("L", "TOGGLEQUESTLOG")
+    print("quests.footer book bound", tip(T.book))
+    local open, toggled = ns.OpenOptions, 0
+    ns.OpenOptions = function(path) print("quests.footer gear opens", tostring(path)) end
+    T.gear.scripts.OnClick(T.gear, "LeftButton")
+    ns.OpenOptions = open
+    ToggleQuestLog = function() toggled = toggled + 1 end
+    T.book.scripts.OnClick(T.book, "LeftButton")
+    ToggleQuestLog = nil
+    print("quests.footer book toggles", toggled)
     -- the Defias Brotherhood's report, as the lines it wraps to
     local function wrapped(tag)
         local out, on = {}, false
