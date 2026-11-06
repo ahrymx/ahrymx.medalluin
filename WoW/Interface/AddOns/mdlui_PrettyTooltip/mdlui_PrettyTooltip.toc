@@ -4,7 +4,7 @@
 ## Author: FallenShard
 ## X-License: MIT
 ## X-Curse-Project-ID: 1720719
-## Version: 0.8.0
+## Version: 0.8.1
 ## X-Upstream-Version: 1.3.7
 ## Category: Medalluin
 ## Category-enUS: Medalluin

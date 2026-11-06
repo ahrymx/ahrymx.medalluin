@@ -147,6 +147,9 @@ local function Secure(i)
     if b then return b end
     b = CreateFrame("Button", nil, layer, "SecureActionButtonTemplate")
     b:RegisterForClicks("AnyUp", "AnyDown")
+    -- cast on the release, whatever ActionButtonUseKeyDown says: a press
+    -- held to drag the spell to a bar casts nothing
+    b:SetAttribute("useOnKeyDown", false)
     b:RegisterForDrag("LeftButton")
     b:SetScript("OnDragStart", function(self)
         if self.item and not InCombatLockdown() then SB.PickupSpellBookItem(self.item.slot, self.item.bank) end

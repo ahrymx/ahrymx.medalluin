@@ -255,6 +255,7 @@ function Region:SetShown(s)
 end
 function Region:SetScript(k, f) self.scripts[k] = f end
 function Region:SetAttribute(k, v) self.attrs[k] = v end
+function Region:RegisterForClicks(...) self.clicks = { ... } end
 function Region:GetAttribute(k) return self.attrs[k] end
 function Region:SetFrameRef(k, f) self.refs = self.refs or {}; self.refs[k] = f end
 function Region:GetFrameRef(k) return self.refs and self.refs[k] end
@@ -8746,8 +8747,25 @@ if spellPass then
     tabs("book.tabs")
     cells("book.general")
 
-    -- 3. a click casts through the layer and chooses the spell
+    -- 3. a click casts through the layer and chooses the spell; with
+    -- ActionButtonUseKeyDown on or off, the press casts nothing (a press is
+    -- where a drag to a bar starts), the release casts (Forever's
+    -- SecureActionButton_OnClick: the useOnKeyDown attribute, else the CVar)
     local b = layer.buttons[1]
+    local function hears(down)
+        for _, c in ipairs(b.clicks or {}) do
+            if c == (down and "AnyDown" or "AnyUp") or c == (down and "LeftButtonDown" or "LeftButtonUp") then
+                return true
+            end
+        end
+        return false
+    end
+    for _, cvar in ipairs({ true, false }) do
+        local use = b.attrs.useOnKeyDown
+        if use == nil then use = cvar end
+        print("book.press", "keydown=" .. tostring(cvar), "press casts=" .. tostring(hears(true) and use),
+            "release casts=" .. tostring(hears(false) and not use))
+    end
     b.scripts.PostClick(b, "LeftButton")
     cells("book.chosen")
     details("book.details")
