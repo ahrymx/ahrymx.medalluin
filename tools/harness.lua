@@ -534,6 +534,15 @@ function Region:GetLeft()
     if not ok and tostring(r):find("secret") then return secret() end
     return ok and r and r[1] or nil
 end
+-- the top and bottom edges, up from the screen's foot (1080 high)
+function Region:GetTop()
+    local ok, r = pcall(resolve, self)
+    return ok and r and 1080 - r[2] or nil
+end
+function Region:GetBottom()
+    local ok, r = pcall(resolve, self)
+    return ok and r and 1080 - r[4] or nil
+end
 -- a drag: StartMoving takes the frame, StopMovingOrSizing leaves it where
 -- harnessDropAt says, on UIParent, as the game re-anchors a moved frame
 function Region:StartMoving() self.isMoving = true end
@@ -1188,6 +1197,14 @@ local function ChatWindow(i)
     f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 32 + 40 * i, 95)
     for _, part in ipairs(CHAT_FRAME_TEXTURES) do new("Texture", f, name .. part) end
     f.Background = _G[name .. "Background"]
+    -- over the frame and its scroll bar (FloatingChatFrame.lua's
+    -- UpdateBackgroundAnchors, with a 16 wide bar)
+    f.Background:SetPoint("TOPLEFT", f, "TOPLEFT", -2, 3)
+    f.Background:SetPoint("TOPRIGHT", f, "TOPRIGHT", 7 + 16, 3)
+    -- room for the button column at the left (FloatingChatFrame.xml)
+    f.clampInsets = { -35, 35, 38, -50 }
+    function f.SetClampRectInsets(self, ...) self.clampInsets = { ... } end
+    function f.GetClampRectInsets(self) return unpack(self.clampInsets) end
     f.ResizeButton = new("Button", f, name .. "ResizeButton")
     f.ScrollBar = new("Frame", f)
     f.ScrollBar.w = 8
@@ -1205,11 +1222,49 @@ local function ChatWindow(i)
     f.editBox = box
     local tab = new("Button", UIParent, name .. "Tab")
     for _, k in ipairs(TAB_ART) do tab[k] = new("Texture", tab) end
+    tab.w, tab.h = 60, 32
+    tab.Text = new("FontString", tab)
+    tab.Text:SetPoint("CENTER", tab, "CENTER", 0, -5)     -- under the pill's middle
     table.insert(CHAT_FRAMES, name)
     return f
 end
 for i = 1, NUM_CHAT_WINDOWS do ChatWindow(i) end
 GENERAL_CHAT_DOCK = new("Frame", UIParent, "GeneralDockManager")
+GENERAL_CHAT_DOCK.h = 26
+-- along the top of ChatFrame1's background, which runs past its right
+-- edge (FCFDock_SetPrimary: two SetPoints, no ClearAllPoints)
+local function dockAnchor()
+    GENERAL_CHAT_DOCK:SetPoint("BOTTOMLEFT", ChatFrame1.Background, "TOPLEFT")
+    GENERAL_CHAT_DOCK:SetPoint("BOTTOMRIGHT", ChatFrame1.Background, "TOPRIGHT")
+end
+dockAnchor()
+local tabsFitted = 0
+-- a tab rests faded until the mouse comes (FloatingChatFrame.lua's values)
+CHAT_FRAME_TAB_SELECTED_MOUSEOVER_ALPHA, CHAT_FRAME_TAB_SELECTED_NOMOUSE_ALPHA = 1.0, 0.4
+CHAT_FRAME_TAB_ALERTING_MOUSEOVER_ALPHA, CHAT_FRAME_TAB_ALERTING_NOMOUSE_ALPHA = 1.0, 1.0
+CHAT_FRAME_TAB_NORMAL_MOUSEOVER_ALPHA, CHAT_FRAME_TAB_NORMAL_NOMOUSE_ALPHA = 0.6, 0.2
+function FCFTab_UpdateAlpha(f)
+    local selected = not f.isDocked or f == FCFDock_GetSelectedWindow()
+    _G[f.name .. "Tab"]:SetAlpha(selected and CHAT_FRAME_TAB_SELECTED_NOMOUSE_ALPHA or CHAT_FRAME_TAB_NORMAL_NOMOUSE_ALPHA)
+end
+-- the docked tabs in a line on the dock's foot (FCFDock_UpdateTabs)
+function FCFDock_UpdateTabs()
+    tabsFitted = tabsFitted + 1
+    local prev
+    for _, name in ipairs(CHAT_FRAMES) do
+        if _G[name].isDocked then
+            FCFTab_UpdateAlpha(_G[name])
+            local t = _G[name .. "Tab"]
+            t:ClearAllPoints()
+            if prev then
+                t:SetPoint("LEFT", prev, "RIGHT", 1, 0)
+            else
+                t:SetPoint("BOTTOMLEFT", GENERAL_CHAT_DOCK, "BOTTOMLEFT")
+            end
+            prev = t
+        end
+    end
+end
 local selectedChat = ChatFrame1
 function FCFDock_GetSelectedWindow() return selectedChat end
 function FCFTab_UpdateColors(tab, selected)
@@ -1232,6 +1287,8 @@ function FCF_OpenTemporaryWindow()
 end
 ChatFrame1.isDocked = true
 FCF_DockFrame(ChatFrame2)
+FCFDock_UpdateTabs()
+tabsFitted = 0
 -- ChatFrame1's button column, where FCF_SetButtonSide puts it on the left
 -- (its background's corners, less 3, are the frame's less 5), and the alert
 -- frame the friends toast stacks on, 27 above it
@@ -1242,10 +1299,44 @@ ChatFrame1.buttonFrame:SetPoint("BOTTOMRIGHT", ChatFrame1, "BOTTOMLEFT", -5, 0)
 local function alertAnchor() ChatAlertFrame:SetPoint("BOTTOMLEFT", ChatFrame1.buttonFrame, "TOPLEFT", -1, 27) end
 ChatAlertFrame = new("Frame", UIParent, "ChatAlertFrame")
 ChatAlertFrame.w, ChatAlertFrame.h = 10, 10
+-- counts its moves: Blizzard re-stacks the friends toast on every one
+ChatAlertFrame.moves = 0
+function ChatAlertFrame:SetPoint(...)
+    self.moves = self.moves + 1
+    return Region.SetPoint(self, ...)
+end
 alertAnchor()
 QuickJoinToastButton = new("Button", UIParent, "QuickJoinToastButton")
 QuickJoinToastButton.w, QuickJoinToastButton.h = 32, 32
-QuickJoinToastButton:SetPoint("BOTTOMLEFT", ChatAlertFrame, "BOTTOMLEFT")
+-- stacked on the alert frame: above it, as its subsystems are
+local function toastAnchor()
+    QuickJoinToastButton:ClearAllPoints()
+    -- not flush: the in-game toast stood a little high on it
+    QuickJoinToastButton:SetPoint("BOTTOMLEFT", ChatAlertFrame, "TOPLEFT", 0, 2)
+end
+toastAnchor()
+QuickJoinToastButton.FriendsButton = new("Texture", QuickJoinToastButton)
+QuickJoinToastButton.QueueButton = new("Texture", QuickJoinToastButton)
+QuickJoinToastButton.FriendCount = new("FontString", QuickJoinToastButton)
+QuickJoinToastButton.FriendCount:SetPoint("BOTTOM", QuickJoinToastButton, "BOTTOM", 0, -4)
+QuickJoinToastButton:SetNormalTexture("friends")
+-- Blizzard's buttons in the column: channels and the
+-- two voice toggles (shown with voice) down from its top, the menu at its
+-- foot; their art as FloatingChatFrame.xml's
+for _, n in ipairs({ "ChatFrameChannelButton", "ChatFrameToggleVoiceDeafenButton",
+    "ChatFrameToggleVoiceMuteButton", "ChatFrameMenuButton" }) do
+    local b = new("Button", ChatFrame1.buttonFrame, n)
+    b.w, b.h = 26, 26
+    b:SetNormalTexture(n .. "-up")
+    b:SetPushedTexture(n .. "-down")
+    b:SetHighlightTexture("hilight")
+    b.Icon = new("Texture", b)
+end
+ChatFrameChannelButton:SetPoint("TOP", ChatFrame1.buttonFrame, "TOP")
+ChatFrameToggleVoiceDeafenButton:SetPoint("TOP", ChatFrameChannelButton, "BOTTOM")
+ChatFrameToggleVoiceMuteButton:SetPoint("TOP", ChatFrameToggleVoiceDeafenButton, "BOTTOM")
+ChatFrameToggleVoiceDeafenButton.shown, ChatFrameToggleVoiceMuteButton.shown = false, false
+ChatFrameMenuButton:SetPoint("BOTTOM", ChatFrame1.buttonFrame, "BOTTOM")
 
 -- ------------------------------------------------------------ modern
 CastingBarFrame = new("Frame", UIParent, "CastingBarFrame")
@@ -4229,9 +4320,20 @@ if stripsPass then
         for _, k in ipairs(TAB_ART) do
             if t[k].shown then table.insert(lit, k) end
         end
-        local m = t.medalluin
-        return "blizzard=" .. (#lit > 0 and table.concat(lit, ",") or "none") .. " selected="
-            .. tostring(m and m.selected[1].shown)
+        local c = t.Text.textColor
+        local slot = ""
+        if t.medalluinSlot and f.isDocked and next(t.points) then
+            local sr, hr = resolve(t.medalluinSlot), resolve(ns.chat.head)
+            slot = string.format(" slot=%.1f high, %.1f over the hairline, text=%s", sr[4] - sr[2], hr[4] - sr[4],
+                tostring(t.Text.points.CENTER and t.Text.points.CENTER[1] == t.medalluinSlot))
+        end
+        local faced = "-"
+        for _, g in ipairs({ t:GetRegions() }) do
+            if g.all == t.medalluinSlot and t.medalluinSlot then faced = "slot" end
+        end
+        return "regions=" .. select("#", t:GetRegions()) .. " face=" .. faced .. slot .. string.format(" alpha=%g", t:GetAlpha()) .. " blizzard=" .. (#lit > 0 and table.concat(lit, ",") or "none") .. " selected="
+            .. tostring(t.medalluin and t.mark.shown)
+            .. (c and string.format(" text=%.2f,%.2f,%.2f", c[1], c[2], c[3]) or "")
     end
     local function chatState(tag)
         local r = ChatFrame1:GetEffectiveScale() / chat.panel:GetEffectiveScale()
@@ -4241,22 +4343,60 @@ if stripsPass then
         screen("ChatFrame2", ChatFrame2, art(ChatFrame2) .. " " .. tab(ChatFrame2))
         screen("ChatFrame3", ChatFrame3, art(ChatFrame3) .. " " .. tab(ChatFrame3))
         screen("editBox", ChatFrame1.editBox)
-        -- the toast at the top of the button column: inside the
-        -- panel, clear of the messages
-        local t, c, a, p = resolve(QuickJoinToastButton), resolve(ChatFrame1.buttonFrame), resolve(chat.area),
-            resolve(chat.panel)
-        screen("friends", QuickJoinToastButton, string.format("inPanel=%s inColumn=%s leftOfArea=%s centred=%.1f",
-            tostring(t[1] >= p[1] and t[2] >= p[2]), tostring(t[2] <= c[2] + 0.01 and t[4] <= c[4]),
-            tostring(t[3] <= a[1] + 0.01), (t[1] + t[3]) / 2 - (c[1] + c[3]) / 2))
+        -- the head: Blizzard's buttons at the tab row's right end, each
+        -- with its glyph and its own art's alpha, the column's art gone
+        local hairline = "-"
+        for _, g in ipairs({ chat.head:GetRegions() }) do
+            if g.h == 1 then hairline = "1px" end
+        end
+        screen("head", chat.head, "column art=" .. tostring(ChatFrame1ButtonFrameBackground.shown) .. " hairline=" .. hairline)
+        screen("  cog", chat.cog, string.format("lit=%s strata=%s level=%s over the chat=%s regions=%d",
+            tostring(chat.cog.highlightLocked), tostring(chat.cog.strata), tostring(chat.cog.level),
+            tostring(chat.cog.level > ChatFrame1:GetFrameLevel()), select("#", chat.cog:GetRegions())))
+        screen("  drawer", chat.drawer, string.format("shown=%s strata=%s level=%s regions=%d", tostring(chat.drawer.shown),
+            tostring(chat.drawer.strata), tostring(chat.drawer.level), select("#", chat.drawer:GetRegions())))
+        for _, n in ipairs({ "ChatFrameMenuButton", "QuickJoinToastButton", "ChatFrameChannelButton",
+            "ChatFrameToggleVoiceDeafenButton", "ChatFrameToggleVoiceMuteButton" }) do
+            local b = _G[n]
+            local g, own = b.medalluinGlyph, {}
+            for _, t in ipairs({ b:GetNormalTexture(), b:GetPushedTexture(), b.Icon, b.FriendsButton }) do
+                table.insert(own, string.format("%g", t:GetAlpha()))
+            end
+            if b.shown then
+                screen("  " .. n, b, string.format("glyph=%s %s art=%s drawer=%s",
+                    g and g.texture:match("[^\\]+$") or "-", g and string.format("%.1fx%.1f", g.w, g.h) or "",
+                    table.concat(own, ","), tostring(b.parent == chat.drawer)))
+            else
+                print("  " .. n, "hidden")
+            end
+        end
+        screen("  alerts", ChatAlertFrame, "moves=" .. ChatAlertFrame.moves)
+        local d, first = resolve(GENERAL_CHAT_DOCK), resolve(chat.cog)
+        local ys = {}
+        for i = 1, GENERAL_CHAT_DOCK:GetNumPoints() do
+            local point, _, _, _, y = GENERAL_CHAT_DOCK:GetPoint(i)
+            ys[point] = y
+        end
+        screen("  dock", GENERAL_CHAT_DOCK, string.format("clear of the cog=%.1f fitted=%d clamp=%s y=%s/%s",
+            first[1] - d[3], tabsFitted, table.concat({ ChatFrame1:GetClampRectInsets() }, ","),
+            tostring(ys.BOTTOMLEFT), tostring(ys.BOTTOMRIGHT)))
+        local dv = resolve(chat.divider)
+        print("  divider", string.format("%.1f high, %.1f clear of the dock, %.1f before the cog, foot %.1f over the hairline",
+            dv[4] - dv[2], dv[1] - d[3], first[1] - dv[3], resolve(chat.head)[4] - dv[4]))
+        print("  friend count", string.format("alpha=%g", QuickJoinToastButton.FriendCount:GetAlpha()))
     end
     if not chat then
         print("chat none")
         screen("ChatFrame1", ChatFrame1, art(ChatFrame1) .. " " .. tab(ChatFrame1))
     else
         local b = chat.box
-        screen("chatBox", b, string.format("strata=%s dress=%s", tostring(b.strata), tostring(chat.dress:IsShown())))
+        screen("chatBox", b, string.format("strata=%s dress=%s rule=%s", tostring(b.strata),
+            tostring(chat.dress:IsShown()), resolve(b)[4] - resolve(chat.dress.rule)[4]))
         screen("chatPanel", chat.panel)
         chatState("chat")
+        -- the cog opens the drawer
+        chat.cog.scripts.OnClick(chat.cog)
+        chatState("chat drawer")
         -- Blizzard's passes: its saved layout puts the frame back, a fade
         -- shows the background, the edit box takes focus, the tab changes
         ChatFrame1:ClearAllPoints()
@@ -4266,6 +4406,14 @@ if stripsPass then
         ChatFrame1.editBox.focusLeft:SetShown(true)
         ChatAlertFrame:ClearAllPoints()
         alertAnchor()
+        QuickJoinToastButton:ClearAllPoints()
+        toastAnchor()
+        ChatFrame1:SetClampRectInsets(-35, 35, 38, -50)
+        dockAnchor()
+        ChatFrameMenuButton:ClearAllPoints()
+        ChatFrameMenuButton:SetPoint("BOTTOM", ChatFrame1.buttonFrame, "BOTTOM")
+        ChatFrameChannelButton:SetNormalAtlas("voicechat-channellist-icon-headphone-on")
+        ChatFrame1ButtonFrameBackground:Show()
         selectedChat = ChatFrame2
         FCFTab_UpdateColors(ChatFrame1Tab, false)
         FCFTab_UpdateColors(ChatFrame2Tab, true)
@@ -4274,6 +4422,13 @@ if stripsPass then
         FCF_UnDockFrame(ChatFrame2)
         FCF_DockFrame(ChatFrame3)
         chatState("chat redocked")
+        -- voice on: its two toggles join the head, keeping their own art
+        ChatFrameToggleVoiceDeafenButton:Show()
+        ChatFrameToggleVoiceMuteButton:Show()
+        chatState("chat voice")
+        ChatFrameToggleVoiceDeafenButton:Hide()
+        ChatFrameToggleVoiceMuteButton:Hide()
+        chatState("chat voice off")
         screen("ChatFrame2EditBox", ChatFrame2.editBox)
         -- the box's backing: only while it is typed in
         local function lit(box) return tostring(box.medalluin and box.medalluin[1].shown) end
@@ -4285,9 +4440,13 @@ if stripsPass then
         print("editBox backing", "rest=" .. rest, "typing=" .. typing, "after=" .. lit(b1))
         local temp = FCF_OpenTemporaryWindow()
         print("whisper", art(temp), tab(temp))
+        print("undocked clamp", table.concat({ ChatFrame2:GetClampRectInsets() }, ","),
+            "docked", table.concat({ temp:GetClampRectInsets() }, ","))
         -- the console at a 1080-high UI: Blizzard's pieces need less room
         ns.console:SetScale(1)
         chatState("chat rescaled")
+        chat.cog.scripts.OnClick(chat.cog)
+        chatState("chat drawer shut")
     end
 
     -- the timeless buffs above the medallion; a right click cancels one

@@ -52,7 +52,7 @@ read_globals = {
     "UnitCastingDuration", "UnitChannelDuration", "ActionButton_UpdateCooldownNumberHidden",
     -- the chat (strips/chat.lua) and the player's buffs (strips/buffs.lua)
     "ChatFrame1", "CHAT_FRAMES", "CHAT_FRAME_TEXTURES", "NUM_CHAT_WINDOWS", "GENERAL_CHAT_DOCK",
-    "FCFDock_GetSelectedWindow", "FCFTab_UpdateColors", "FCF_DockFrame", "FCF_UnDockFrame",
+    "FCFDock_GetSelectedWindow", "FCFDock_UpdateTabs", "FCFTab_UpdateColors", "FCF_DockFrame", "FCF_UnDockFrame",
     "C_UnitAuras", "C_LossOfControl",
     -- the side panel (strips/side.lua): the meter and the loot log
     "C_DamageMeter", "C_StringUtil", "C_DurationUtil", "AbbreviateLargeNumbers", "SecondsToClock", "GetClassAtlas", "STANDARD_TEXT_FONT",

@@ -5,7 +5,7 @@
 -- Mirrored piece for piece: the same art, size and place on its strip; the
 -- button column on the OUTER edge (the right), the scroll bar on the inner
 -- edge, the tabs running inward from over the column. The tabs are the
--- chat's (ns.TabSlices), in the views' order from the outer end: Loot
+-- chat panel's old ones (ns.TabSlices), in the views' order from the outer end: Loot
 -- outermost, then Meter, then Auras.
 --
 -- A view hands the panel its tab label, the option that switches it, its

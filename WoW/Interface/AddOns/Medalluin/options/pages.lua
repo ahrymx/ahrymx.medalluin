@@ -477,9 +477,9 @@ function ns.OptionPages()
         {
             id = "chat", name = "Chat", intro = "Shared by every profile.",
             master = Check("chat", "Chat box",
-                "Blizzard's chat in a box on top of the micro menu, with the chat buttons in a column at its "
-                .. "left, the timeless buffs under it, and the quest tracker's full view above it. Untick it to "
-                .. "keep the chat where Edit Mode puts it, or to use a chat addon.", true),
+                "Blizzard's chat in a box on top of the micro menu, with the chat buttons beside its tabs, "
+                .. "the timeless buffs and the edit box under it, and the quest tracker's full view above it. "
+                .. "Untick it to keep the chat where Edit Mode puts it, or to use a chat addon.", true),
             groups = {},
         },
         {

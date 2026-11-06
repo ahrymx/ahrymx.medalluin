@@ -125,6 +125,14 @@ def glyph(kind, x, y):
     if kind == "view-full":     # a column down the screen's left
         return P("M1,2 L19,2 L19,18 L1,18 Z M2.6,3.6 L17.4,3.6 L17.4,16.4 L2.6,16.4 Z M4.2,5.2 L9,5.2 L9,14.8 "
                  "L4.2,14.8 Z", "evenodd")
+    # the chat box's head (strips/chat.lua)
+    if kind == "chat":          # a speech bubble, its tail at the lower left
+        return P("M3,2.5 L17,2.5 C18.4,2.5 19,3.1 19,4.5 L19,12.5 C19,13.9 18.4,14.5 17,14.5 L9,14.5 L4,18.5 "
+                 "L5,14.5 L3,14.5 C1.6,14.5 1,13.9 1,12.5 L1,4.5 C1,3.1 1.6,2.5 3,2.5 Z")
+    if kind == "channels":      # a speaker, and its sound
+        return P("M1.5,7 L5.5,7 L11,2 L11,18 L5.5,13 L1.5,13 Z"
+                 "M13,6.6 C14.6,8.2 14.6,11.8 13,13.4 L14.4,14.8 C16.8,12.4 16.8,7.6 14.4,5.2 Z"
+                 "M15.6,3.8 C19.2,7.2 19.2,12.8 15.6,16.2 L17,17.6 C21.4,13.4 21.4,6.6 17,2.4 Z")
     # the character window's tabs (character/window.lua)
     if kind == "character":     # head and shoulders
         return P("M6,6.5 a4,4.5 0 1,0 8,0 a4,4.5 0 1,0 -8,0 Z M1.5,19 C1.5,13 5,11.5 10,11.5 C15,11.5 18.5,13 18.5,19 Z")
@@ -315,9 +323,10 @@ def render(kind):
 # ----------------------------------------------------------------- layer3
 GLYPHS = ["spellbook", "talents", "quests", "social", "guild", "lfg", "map", "menu", "help",
           "profession", "achievement", "housing", "collections", "journal", "store", "legacy", "misc"]
-# the character window's tabs, its controls, and the quest tracker's footer
+# the character window's tabs, its controls, the quest tracker's footer and the chat box's head
 TABS = ["character", "reputation", "currency", "skills", "pvp", "statistics",
-        "chevron-down", "chevron-up", "close", "questlog", "sort", "view-minimal", "view-full"]
+        "chevron-down", "chevron-up", "close", "questlog", "sort", "view-minimal", "view-full",
+        "chat", "channels"]
 
 
 def part(name, inner, size=32):

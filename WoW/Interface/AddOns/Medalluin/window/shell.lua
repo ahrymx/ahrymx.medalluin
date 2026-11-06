@@ -66,26 +66,33 @@ ns.window = { width = WIDTH - 2 * PAD, pad = PAD, band = BAND }
 
 -- ------------------------------------------------------------ buttons
 -- As the bags window's: a gold edge, an ink well, a white glow under the
--- mouse; one of a set marked when it is in use.
-local function Button(parent, width, click, tip, template)
-    local b = CreateFrame("Button", nil, parent, template)
-    b:SetSize(width, TAB)
+-- mouse; one of a set marked when it is in use. Drawn on b, over b or over
+-- another region to (a chat tab's slim box inside its taller frame).
+local function Face(b, to)
+    to = to or b
     local edge = b:CreateTexture(nil, "BACKGROUND", nil, 1)
-    edge:SetAllPoints()
+    edge:SetAllPoints(to)
     edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
     local well = b:CreateTexture(nil, "BACKGROUND", nil, 2)
-    well:SetPoint("TOPLEFT", 1, -1)
-    well:SetPoint("BOTTOMRIGHT", -1, 1)
+    well:SetPoint("TOPLEFT", to, "TOPLEFT", 1, -1)
+    well:SetPoint("BOTTOMRIGHT", to, "BOTTOMRIGHT", -1, 1)
     well:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 1)
     b.mark = b:CreateTexture(nil, "BACKGROUND", nil, 3)
-    b.mark:SetPoint("TOPLEFT", 1, -1)
-    b.mark:SetPoint("BOTTOMRIGHT", -1, 1)
+    b.mark:SetPoint("TOPLEFT", to, "TOPLEFT", 1, -1)
+    b.mark:SetPoint("BOTTOMRIGHT", to, "BOTTOMRIGHT", -1, 1)
     b.mark:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.45)
     b.mark:Hide()
     local glow = b:CreateTexture(nil, "HIGHLIGHT")
-    glow:SetPoint("TOPLEFT", 1, -1)
-    glow:SetPoint("BOTTOMRIGHT", -1, 1)
+    glow:SetPoint("TOPLEFT", to, "TOPLEFT", 1, -1)
+    glow:SetPoint("BOTTOMRIGHT", to, "BOTTOMRIGHT", -1, 1)
     glow:SetColorTexture(1, 1, 1, 0.12)
+end
+ns.window.Face = Face           -- the chat's tabs wear it too (strips/chat.lua)
+
+local function Button(parent, width, click, tip, template)
+    local b = CreateFrame("Button", nil, parent, template)
+    b:SetSize(width, TAB)
+    Face(b)
     b.label = ns.Text(b, 12)
     b.label:SetPoint("CENTER")
     if click then b:SetScript("OnClick", click) end
@@ -148,9 +155,10 @@ ns.window.Corners = Corners
 -- (strips/chat.lua, quests/tracker.lua): the windows' gold trim and
 -- corners, the ink fading from solid at the left to a tenth at the right
 -- so it can stand open over the world (the trim drawn as four lines, so
--- nothing shows through it), and the medallion's margin under its rule.
+-- nothing shows through it), and the medallion's margin under its rule:
+-- band high (the windows' own when not given).
 local FADE = { 1, 0.10 }
-local function Dress(parent)
+local function Dress(parent, band)
     local dress = CreateFrame("Frame", nil, parent)
     dress:SetAllPoints()
     dress:SetFrameLevel(parent:GetFrameLevel())
@@ -177,9 +185,9 @@ local function Dress(parent)
     local bandRule = dress:CreateTexture(nil, "ARTWORK")
     bandRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
     bandRule:SetHeight(1)
-    bandRule:SetPoint("BOTTOMLEFT", PAD, BAND)
-    bandRule:SetPoint("BOTTOMRIGHT", -PAD, BAND)
-    dress.ink = ink
+    bandRule:SetPoint("BOTTOMLEFT", PAD, band or BAND)
+    bandRule:SetPoint("BOTTOMRIGHT", -PAD, band or BAND)
+    dress.ink, dress.rule = ink, bandRule
     return dress
 end
 ns.window.Dress = Dress
