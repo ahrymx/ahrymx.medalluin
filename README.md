@@ -15,21 +15,21 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 ## 📸 Showcase
 
 ### Full Screen Interface
-![Full Interface](showcase/2026-11-02_07-51-37.png)
+![The character window, the spellbook, the central console and both corner strips](showcase/2026-11-06_20-43-28.png)
 
-### Overhead Console
-![Central Console & Action Bars](showcase/2026-11-02_07-53-58.png)
+### Settings & Simulated Frames
+![The Medalluin settings window, with simulated party, raid, boss, arena and overhead frames](showcase/2026-11-06_20-45-24.png)
+
+### Chat, Quests & Talents
+| Chat & Quest Tracker | Talents |
+|:---:|:---:|
+| ![The chat box with the quest tracker's full view above it](showcase/2026-11-06_20-45-51.png) | ![The talents window over the right strip](showcase/2026-11-06_21-34-01.png) |
+
+### Side Panel
+![The side panel's damage meter, its tabs beside the backpack medallion](showcase/2026-11-06_21-33-35.png)
 
 ### Classic Console
-![Bags Window](showcase/2026-11-02_07-53-41.png)
-
-### Chat & Resource Panels
-| Chat | Resource Panels |
-|:---:|:---:|
-| ![Console Unit Frames](showcase/2026-11-02_06-49-20.png) | ![Party & Group Widgets](showcase/2026-11-02_06-49-23.png) |
-
-### Alternative Console Profile
-![Action Bars](showcase/2026-11-02_06-49-14.png)
+![The console with its minimap bay](showcase/2026-11-02_07-53-41.png)
 
 ---
 
@@ -84,7 +84,32 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 - **Dynamic LFG Queue Eye**: The queue status eye automatically replaces the character medallion on the left strip whenever you are in queue for a dungeon, raid, or battleground.
 - **Dynamic Vehicle Exit Seat**: When operating a vehicle or on an early-landing taxi, a custom crimson-and-gold ejection seat replaces the backpack medallion on the right strip.
 - **Minimap Addon Drawer**: Neatly collects minimap icons (DBM, Details, RaiderIO, Bagnon, etc.) into a collapsible drawer next to the action bar to keep your minimap clean.
-- **Side Panel Integration**: Integrated side strip supporting embedded damage meters (Details/Recount), timeless logs, and aura trackers.
+- **Side Panel Integration**: Integrated side strip supporting embedded damage meters (Details/Recount), timeless logs, and aura trackers (with automatic combat hand-off to WoW's native Cooldown Manager Tracked Buff Bars).
+
+---
+
+## 🧩 Companion Addons
+
+Companion addons live alongside Medalluin under the **Medalluin** category in the game's AddOn List and have their own documentation and licenses:
+
+| Companion Addon | Description | Documentation & License |
+|:---|:---|:---|
+| **[`mdlui_Tooltips`](WoW/Interface/AddOns/mdlui_Tooltips/README.md)** | Full ornamented tooltip reskin for items, spells, units, auras, quests, mail, and world objects on both WoW Forever (`16001`) and Retail WoW (`120105`). Based on [PrettyTooltip](https://github.com/FallenShard/PrettyTooltip) by FallenShard. | [README](WoW/Interface/AddOns/mdlui_Tooltips/README.md) · [MIT License](WoW/Interface/AddOns/mdlui_Tooltips/LICENSE) |
+
+---
+
+## 🤝 Recommended Addons
+
+Medalluin pairs well with these addons by other authors. They are not part of Medalluin: install each one separately from CurseForge.
+
+| Addon | What it adds | Clients |
+|:---|:---|:---|
+| **[PlateSCT](https://www.curseforge.com/wow/addons/platesct)** | Scrolling damage and healing numbers above enemy nameplates or in movable screen areas, with three display styles and clutter filters. | Forever · Retail |
+| **[Shadowflare](https://www.curseforge.com/wow/addons/shadowflare)** | On-screen alerts for spell procs across all classes: when your next spell is instant, faster, free, or usable. | Forever |
+| **[MF Nameplates](https://www.curseforge.com/wow/addons/mf-nameplates)** | Customizable nameplates with a live visual designer for arranging their elements. | Forever · Retail |
+| **[Node Sight](https://www.curseforge.com/wow/addons/node-sight)** | Each herb's and ore's own icon on the minimap, with an optional arrow to the nearest node and sparkles on the ones in front of you. | Forever |
+| **[LootOptimizer Forever](https://www.curseforge.com/wow/addons/lootoptimizer-forever)** | Frees bag space when your bags are full by swapping your least valuable item for new loot, and compares gear upgrades for you and your alts. | Forever |
+| **[Keep or Toss: Forever](https://www.curseforge.com/wow/addons/keep-or-toss-forever)** | A tooltip section saying whether an item is useful to your character and why, and marking items new to WoW Forever. | Forever |
 
 ---
 
@@ -103,7 +128,7 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 
 ## ⚠️ Known Limitations
 
-- **Side Panel Auras in Combat**: Due to Blizzard's combat aura API restrictions (`RequiresUnitAuraAccess` and secret values in `C_UnitAuras` / `UNIT_AURA`), addon code is blocked from querying newly applied auras while in combat. Existing pre-combat buffs and debuffs remain visible in the side panel's **Auras** tab and continue counting down during combat, while newly gained auras are populated once combat ends.
+- **Side Panel Auras in Combat**: Due to Blizzard's combat aura API restrictions (`RequiresUnitAuraAccess` and secret values in `C_UnitAuras` / `UNIT_AURA`), addon code is blocked from querying newly applied auras while in combat. To work around this natively, the **Auras** tab automatically switches in combat to display WoW's native Cooldown Manager **Tracked Buff Bars** (`BuffBarCooldownViewer`), and restores the standard Buffs/Debuffs list when combat ends.
 
 ---
 
