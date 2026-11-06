@@ -645,7 +645,7 @@ function GameTooltip:GetOwner() return self.owner end
 function GameTooltip:ClearLines()
     if self.scripts.OnTooltipCleared then self.scripts.OnTooltipCleared(self) end
 end
--- the spec ns.Tip handed over, as its parts' roles: what mdlui_PrettyTooltip draws
+-- the spec ns.Tip handed over, as its parts' roles: what mdlui_Tooltips draws
 function tipSpec()
     local s = Medalluin_TooltipSpec and Medalluin_TooltipSpec(GameTooltip)
     if not s then return "spec=none" end

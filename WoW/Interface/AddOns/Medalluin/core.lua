@@ -201,7 +201,7 @@ end
 
 -- ---------------------------------------------------------- tooltips
 -- Medalluin's own tooltips, the ones no game data is behind: one spec,
--- written into GameTooltip as plain lines, and handed to mdlui_PrettyTooltip
+-- written into GameTooltip as plain lines, and handed to mdlui_Tooltips
 -- (mdlui/Medalluin.lua), which draws it as a panel instead.
 --   spec = { title, color = {r, g, b} (the title's), wrap (the title's),
 --     { "body", text, color },          -- a line, wrapped; white unless coloured

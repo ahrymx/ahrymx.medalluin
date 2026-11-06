@@ -109,19 +109,19 @@ read_globals = {
     "ObjectiveTrackerFrame", "QuestWatchFrame", "WatchFrame",
 }
 -- the saved variables, the slash command, the reset popup's key and the
--- tooltip spec mdlui_PrettyTooltip reads (core.lua)
+-- tooltip spec mdlui_Tooltips reads (core.lua)
 globals = { "_G", "Medalluin_TooltipSpec", "MedalluinDB", "MedalluinCharDB", "SLASH_MEDALLUIN1", "SLASH_MEDALLUIN2", "SLASH_MDLUI1", "SlashCmdList",
     "StaticPopupDialogs" }
 
--- PrettyTooltip companion addon settings
-files["WoW/Interface/AddOns/mdlui_PrettyTooltip/**/*.lua"] = {
+-- mdlui_Tooltips companion addon settings
+files["WoW/Interface/AddOns/mdlui_Tooltips/**/*.lua"] = {
     max_line_length = false,
     ignore = { "542" },
     globals = {
-        "PrettyTooltipDB",
-        "PrettyTooltipCaptures",
-        "SLASH_PRETTYTOOLTIP1",
-        "SLASH_PRETTYTOOLTIP2",
+        "mdlui_TooltipsDB",
+        "mdlui_TooltipsCaptures",
+        "SLASH_MDLUI_TOOLTIPS1",
+        "SLASH_MDLUI_TOOLTIPS2",
         SlashCmdList = { other_fields = true },
         ColorPickerFrame = { other_fields = true },
     },

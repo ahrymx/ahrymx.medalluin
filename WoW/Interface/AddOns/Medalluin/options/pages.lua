@@ -660,25 +660,25 @@ function ns.OptionPages()
         },
         {
             id = "tooltips", name = "Tooltips (ext)",
-            intro = "Provided by the optional mdlui_PrettyTooltip companion addon. "
-                .. "Enable mdlui_PrettyTooltip in your AddOns list to reskin tooltips "
+            intro = "Provided by the optional mdlui_Tooltips companion addon. "
+                .. "Enable mdlui_Tooltips in your AddOns list to reskin tooltips "
                 .. "and open its style editor and options.",
-            enabled = function() return SlashCmdList and SlashCmdList.PRETTYTOOLTIP ~= nil end,
+            enabled = function() return SlashCmdList and SlashCmdList.MDLUI_TOOLTIPS ~= nil end,
             groups = {
-                Group("mdlui_PrettyTooltip",
+                Group("mdlui_Tooltips",
                     Button("Open style editor", function()
-                        if SlashCmdList and SlashCmdList.PRETTYTOOLTIP then
+                        if SlashCmdList and SlashCmdList.MDLUI_TOOLTIPS then
                             if ns.CloseOptions then ns.CloseOptions() end
-                            SlashCmdList.PRETTYTOOLTIP("")
+                            SlashCmdList.MDLUI_TOOLTIPS("")
                         end
-                    end, "Closes this window and opens PrettyTooltip's live style editor (/ptip)."),
+                    end, "Closes this window and opens mdlui_Tooltips' live style editor (/mdltip)."),
                     Button("Tooltip options", function()
-                        if SlashCmdList and SlashCmdList.PRETTYTOOLTIP then
+                        if SlashCmdList and SlashCmdList.MDLUI_TOOLTIPS then
                             if ns.CloseOptions then ns.CloseOptions() end
-                            SlashCmdList.PRETTYTOOLTIP("options")
+                            SlashCmdList.MDLUI_TOOLTIPS("options")
                         end
-                    end, "Closes this window and opens PrettyTooltip's options in the game's AddOns settings "
-                        .. "(/ptip options).")),
+                    end, "Closes this window and opens mdlui_Tooltips' options in the game's AddOns settings "
+                        .. "(/mdltip options).")),
             },
         },
     }
