@@ -41,7 +41,6 @@ local _, ns = ...
 
 local L = ns.stripLayout
 local PARTS = ns.media .. "strips\\"
-local CAP = L.tabCap / L.tabTex
 local PAD, RULE, TABS = 8, 6, 24    -- the box's edge, the gap over the margin's rule, the tabs' height
 local SHORTER = 3                   -- the margin, less than the windows' (the edit box's height)
 local SLIM, FOOT = 18, 3            -- a tab's box, and its foot over the hairline
@@ -224,28 +223,6 @@ local function Place()
 end
 
 -- ------------------------------------------------------------------ tabs
--- Three slices of a tab texture over the tab's whole face, the middle
--- stretched: the side panel's tabs (side.lua).
-local function Slices(tab, file, layer, sub)
-    local l = tab:CreateTexture(nil, layer, nil, sub)
-    local m = tab:CreateTexture(nil, layer, nil, sub)
-    local r = tab:CreateTexture(nil, layer, nil, sub)
-    for _, t in ipairs({ l, m, r }) do t:SetTexture(PARTS .. file) end
-    l:SetPoint("TOPLEFT")
-    l:SetPoint("BOTTOMLEFT")
-    l:SetWidth(L.tabCap)
-    l:SetTexCoord(0, CAP, 0, 1)
-    r:SetPoint("TOPRIGHT")
-    r:SetPoint("BOTTOMRIGHT")
-    r:SetWidth(L.tabCap)
-    r:SetTexCoord(1 - CAP, 1, 0, 1)
-    m:SetPoint("TOPLEFT", l, "TOPRIGHT")
-    m:SetPoint("BOTTOMRIGHT", r, "BOTTOMLEFT")
-    m:SetTexCoord(CAP, 1 - CAP, 0, 1)
-    return { l, m, r }
-end
-ns.TabSlices = Slices
-
 local TAB_ART = { "Left", "Middle", "Right", "ActiveLeft", "ActiveMiddle", "ActiveRight",
     "HighlightLeft", "HighlightMiddle", "HighlightRight" }
 

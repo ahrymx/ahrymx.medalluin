@@ -929,6 +929,7 @@ function Region:EnableMouse(on)
     if inCombat then self.mouseInCombat = true end
 end
 function Region:IsMouseEnabled() return self.mouse ~= false end
+function Region:EnableMouseWheel(on) self.wheel = on and true or false end
 -- A secure wrap: the snippet runs before the frame's own script, with the
 -- frame as self and the header as owner, in the restricted environment's
 -- few functions.
@@ -3566,12 +3567,14 @@ if sidePass then
         for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
     end
     local p = side.panel
-    local tex = p:GetRegions()
-    screen("sidePanel", p, string.format("strata=%s texture=%s coords=%.3f,%.3f,%.3f,%.3f", tostring(p.strata),
-        tostring(tex.texture):match("[^\\]+$"), tex.coords[1], tex.coords[2], tex.coords[3], tex.coords[4]))
-    -- the mirror of the chat panel about the screen's middle (1920 wide)
+    local ink = side.dress.ink.gradient
+    screen("sidePanel", p, string.format("strata=%s ink=%s %.2f>%.2f rule=%s", tostring(p.strata), ink[1],
+        ink[2][4], ink[3][4], tostring(side.dress.rule.points.BOTTOMLEFT[4])))
+    screen("side area", side.area, "wheel=" .. tostring(side.area.wheel))
+    screen("side row", side.row)
+    -- the mirror of the chat box about the screen's middle (1920 wide)
     if ns.chat then
-        local cl, ct, cr, cb = rect(ns.chat.panel)
+        local cl, ct, cr, cb = rect(ns.chat.box)
         local sl, st, sr, sb = rect(p)
         print("mirror", string.format("left=%.1f right=%.1f top=%.1f bottom=%.1f", sl - (1920 - cr),
             sr - (1920 - cl), st - ct, sb - cb))
@@ -3582,26 +3585,28 @@ if sidePass then
         local list = {}
         for _, v in ipairs(side.views) do
             if v.tab and v.tab.shown then
-                local l, _, r = rect(v.tab)
-                table.insert(list, string.format("%s@%.0f-%.0f%s", v.tab.label.text, l, r,
-                    v.tab.selected[1].shown and "*" or ""))
+                local l, _, r, b = rect(v.tab)
+                local c = v.tab.label.textColor
+                table.insert(list, string.format("%s@%.0f-%.0f,%.0f(%.2f)%s", v.tab.label.text, l, r, b,
+                    c and c[1] or -1, v.tab.mark.shown and "*" or ""))
             end
         end
-        print("tabs", p.shown and "panel" or "panel hidden", #list > 0 and table.concat(list, " ") or "none")
+        print("tabs", p.shown and "panel" or "panel hidden", string.format("h=%d", p:GetHeight()),
+            #list > 0 and table.concat(list, " ") or "none")
     end
     local function column(v)
         local list = {}
         for _, b in ipairs(v.paint) do
             local l, t, r, bt = rect(b)
             table.insert(list, string.format("%s%s%s@%.0f,%.0f", b.glyph.texture:match("side%-(.*)$"),
-                b.well.texture:match("on$") and "+" or "", b.glyph.vertex and string.format("(%.2f,%.2f,%.2f)",
+                b.mark.shown and "+" or "", b.glyph.vertex and string.format("(%.2f,%.2f,%.2f)",
                 b.glyph.vertex[1], b.glyph.vertex[2], b.glyph.vertex[3]) or "", (l + r) / 2, (t + bt) / 2))
         end
         print("column " .. v.key, v.column.shown and "shown" or "hidden", table.concat(list, " "))
     end
     -- the scroll bar: its track, and the thumb when there is more than shows
     local track, bar
-    for _, r in ipairs(p.all_) do
+    for _, r in ipairs(side.area.all_) do
         if r.kind == "Texture" and r.w == 8 then track = r elseif r.kind == "Texture" and r.w == 6 then bar = r end
     end
     screen("track", track)
@@ -3705,7 +3710,7 @@ if sidePass then
     page.settings.lootMoney:Set(true)
     -- the wheel: three lines down, then past the end
     thumb("loot")
-    p.scripts.OnMouseWheel(p, -3)
+    side.area.scripts.OnMouseWheel(side.area, -3)
     lootState("loot scrolled")
     -- a row passes the wheel on to the panel
     for _, f in ipairs(L.body.all_) do
@@ -3715,12 +3720,12 @@ if sidePass then
         end
     end
     print("loot scrolled from a row", L.Thumb())
-    p.scripts.OnMouseWheel(p, 1)
+    side.area.scripts.OnMouseWheel(side.area, 1)
     thumb("loot scrolled")
-    p.scripts.OnMouseWheel(p, -50)
+    side.area.scripts.OnMouseWheel(side.area, -50)
     print("loot scrolled to the end", L.Thumb())
     thumb("loot at the end")
-    p.scripts.OnMouseWheel(p, 99)
+    side.area.scripts.OnMouseWheel(side.area, 99)
     -- a chat line can be secret in combat: left to the chat
     fire("CHAT_MSG_LOOT", secret(), "")
     -- clear: the history's old rolls do not come back with its next update
@@ -3811,10 +3816,10 @@ if sidePass then
         click(M, 3)
         -- the wheel: ten sources, eight rows
         thumb("meter")
-        p.scripts.OnMouseWheel(p, -1)
+        side.area.scripts.OnMouseWheel(side.area, -1)
         meterState("meter scrolled one")
         thumb("meter scrolled one")
-        p.scripts.OnMouseWheel(p, -10)
+        side.area.scripts.OnMouseWheel(side.area, -10)
         print("meter scrolled to the end", M.Thumb())
         -- the clock ticks on its own; the bars only when told, and at most
         -- four times a second
@@ -3993,13 +3998,13 @@ if sidePass then
         AL.all_[1].all_[5].scripts.OnMouseWheel(AL.all_[1].all_[5], -2)
         aurasState("auras scrolled two")
         thumb("auras")
-        p.scripts.OnMouseWheel(p, -50)
+        side.area.scripts.OnMouseWheel(side.area, -50)
         print("auras scrolled to the end", A.Thumb())
         -- the list shrinks under the scroll: back to what it can show
         click(A, 2)
         print("auras scrolled, timeless off", A.Thumb())
         click(A, 2)
-        p.scripts.OnMouseWheel(p, 99)
+        side.area.scripts.OnMouseWheel(side.area, 99)
         -- in combat: every time secret; the client's order
         local before = secretsUsed
         inCombat = true

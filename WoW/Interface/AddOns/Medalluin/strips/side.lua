@@ -2,11 +2,19 @@
 -- holding Medalluin's own views instead of Blizzard's chat: the Loot log
 -- (loot.lua), the Meter (meter.lua) and the Auras (auras.lua).
 --
--- Mirrored piece for piece: the same art, size and place on its strip; the
--- button column on the OUTER edge (the right), the scroll bar on the inner
--- edge, the tabs running inward from over the column. The tabs are the
--- chat panel's old ones (ns.TabSlices), in the views' order from the outer end: Loot
--- outermost, then Meter, then Auras.
+-- In a box as the chat's is (ns.window.Dress, its ink solid at the
+-- screen's edge here), standing on the strip:
+--
+--   |  the view's list         [o]    <- the body; the button column on
+--   |                          [o]       the OUTER edge (the right), the
+--   |                          [o]       scroll bar on the inner edge
+--   ---------------------------------
+--          [Auras][Meter][Loot]  (bag)   <- the margin: the tabs, beside
+--                                           the backpack's medallion
+--
+-- The tabs run inward from the medallion in the views' order: Loot
+-- outermost, then Meter, then Auras. They and the column's buttons wear
+-- the windows' box (ns.window.Face), a view's button marked while it is lit.
 --
 -- A view hands the panel its tab label, the option that switches it, its
 -- column buttons (top down, and one at the foot), and draws itself into a
@@ -27,7 +35,11 @@ local PARTS = ns.media .. "strips\\"
 local COLUMN = L.chatPad + L.chatColumn / 2     -- the column's centre, from the panel's outer edge
 local INNER = L.chatPad + L.chatColumn + 5      -- the body's outer edge, the same
 local PITCH = 30                                -- column buttons, top down
-local BUTTON, WELL = 24, 32                     -- a button, and its 32x32 art centred on it
+local BUTTON, GLYPH = 24, 28                    -- a button's box, and its glyph's 32x32 art in it
+local PAD, RULE, TABS = 8, 6, 24                -- as the chat box's (chat.lua)
+local SLIM = 18                                 -- a tab's box, as the chat's
+local SHORTER = 3                               -- the margin, as the chat's
+local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 
 local views = {}
@@ -47,7 +59,7 @@ function ns.PlainText(parent, size)
     return fs
 end
 
-local panel, track, thumb
+local panel, area, row, track, thumb
 local current
 
 local function On(view)
@@ -85,7 +97,7 @@ end
 -- ------------------------------------------------------- column buttons
 local function Paint(b)
     local spec = b.spec
-    b.well:SetTexture(PARTS .. (spec.lit() and "side-well-on" or "side-well"))
+    b.mark:SetShown(spec.lit() and true or false)
     b.glyph:SetTexture(PARTS .. spec.glyph())
     if spec.tint then b.glyph:SetVertexColor(spec.tint()) end
 end
@@ -99,19 +111,11 @@ local function Button(view, spec, y, from)
     local b = CreateFrame("Button", nil, view.column)
     b.spec = spec
     b:SetSize(BUTTON, BUTTON)
-    b:SetPoint("CENTER", panel, from, -COLUMN, y)
-    b.well = b:CreateTexture(nil, "BACKGROUND")
-    b.well:SetSize(WELL, WELL)
-    b.well:SetPoint("CENTER")
+    b:SetPoint("CENTER", area, from, -COLUMN, y)
+    ns.window.Face(b)
     b.glyph = b:CreateTexture(nil, "ARTWORK")
-    b.glyph:SetSize(WELL, WELL)
+    b.glyph:SetSize(GLYPH, GLYPH)
     b.glyph:SetPoint("CENTER")
-    local glow = b:CreateTexture(nil, "HIGHLIGHT")
-    glow:SetSize(WELL, WELL)
-    glow:SetPoint("CENTER")
-    glow:SetTexture(PARTS .. "side-well-on")
-    glow:SetBlendMode("ADD")
-    glow:SetAlpha(0.35)
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     b:SetScript("OnClick", function(self, mouse)
         self.spec.click(mouse)
@@ -127,8 +131,8 @@ end
 
 -- ----------------------------------------------------------------- tabs
 local function Selected(view, on)
-    for _, t in ipairs(view.tab.selected) do t:SetShown(on) end
-    view.tab.label:SetTextColor(unpack(on and { 1, 0.82, 0 } or { 0.78, 0.67, 0.31 }))
+    view.tab.mark:SetShown(on)
+    view.tab.label:SetTextColor(unpack(on and GOLD or ns.colors.dim))
 end
 
 local function Select(view)
@@ -158,9 +162,9 @@ local function Arrange()
             if on then
                 v.tab:ClearAllPoints()
                 if prev then
-                    v.tab:SetPoint("BOTTOMRIGHT", prev.tab, "BOTTOMLEFT", -1, 0)
+                    v.tab:SetPoint("RIGHT", prev.tab, "LEFT", 1, 0)
                 else
-                    v.tab:SetPoint("BOTTOMRIGHT", panel, "TOPRIGHT", -INNER, 0)
+                    v.tab:SetPoint("RIGHT", row, "RIGHT", 0, 0)
                 end
                 prev, first = v, first or v
                 if v.key == ns.db.sideTab then pick = v end
@@ -172,19 +176,12 @@ local function Arrange()
 end
 
 local function Tab(view)
-    local tab = CreateFrame("Button", nil, panel)
-    ns.TabSlices(tab, "tab", "BACKGROUND", 1)
-    local glow = ns.TabSlices(tab, "tab", "HIGHLIGHT", 1)
-    for _, t in ipairs(glow) do
-        t:SetBlendMode("ADD")
-        t:SetAlpha(0.35)
-    end
-    tab.selected = ns.TabSlices(tab, "tab-selected", "BACKGROUND", 2)
-    -- the label sits in the tab's shape, below its open top (TAB_TOP)
+    local tab = CreateFrame("Button", nil, row)
+    ns.window.Face(tab)
     tab.label = ns.Text(tab, 11)
-    tab.label:SetPoint("CENTER", 0, -4)
+    tab.label:SetPoint("CENTER")
     tab.label:SetText(view.label)
-    tab:SetSize(math.max(L.tabTex, math.floor(tab.label:GetStringWidth() + 28)), 32)
+    tab:SetSize(math.max(L.tabTex, math.floor(tab.label:GetStringWidth() + 28)), SLIM)
     tab:SetScript("OnClick", function() Select(view) end)
     view.tab = tab
 end
@@ -212,35 +209,45 @@ end
 
 local function Build()
     local strip = ns.strips[1]
+    local width = L.chatLeft + L.chatWidth
+    local margin = ns.window.band - SHORTER
+    local foot = margin + RULE                  -- the body's foot, over the margin's rule
+    local tall = L.chatHeight + TABS            -- the chat's messages and tab row: the same box
     panel = CreateFrame("Frame", "MedalluinSide", strip)
     panel:SetFrameStrata("BACKGROUND")
-    panel:SetSize(L.chatWidth, L.chatHeight)
-    panel:SetPoint("BOTTOMRIGHT", strip, "BOTTOMRIGHT", -L.chatLeft, L.stripHeight)
-    local tex = panel:CreateTexture(nil, "BACKGROUND")
-    tex:SetAllPoints()
-    tex:SetTexture(ns.media .. "chat")
-    tex:SetTexCoord(L.chatWidth / L.chatTexWidth, 0, 0, L.chatHeight / L.chatTexHeight)
-    panel:EnableMouseWheel(true)
-    panel:SetScript("OnMouseWheel", function(_, delta) Wheel(delta) end)
+    panel:SetWidth(width)
+    panel:SetHeight(foot + tall + PAD)
+    panel:SetPoint("BOTTOMRIGHT", strip, "BOTTOMRIGHT", 0, L.stripHeight)
+    local dress = ns.window.Dress(panel, margin, true)
+    -- the body's room, the old panel's: the column at its right
+    area = CreateFrame("Frame", nil, panel)
+    area:SetPoint("BOTTOMRIGHT", -PAD, foot)
+    area:SetSize(width - 2 * PAD, tall)
+    area:EnableMouseWheel(true)
+    area:SetScript("OnMouseWheel", function(_, delta) Wheel(delta) end)
+    -- the tabs' row beside the medallion, under the margin's rule
+    row = CreateFrame("Frame", nil, panel)
+    row:SetPoint("BOTTOMRIGHT", -(L.chatLeft + PAD / 2), 2)
+    row:SetSize(width - PAD - L.chatLeft - PAD / 2, margin - 4)
 
     -- the scroll bar's track, where the chat's is on the other side
-    track = panel:CreateTexture(nil, "BORDER")
+    track = area:CreateTexture(nil, "BORDER")
     track:SetColorTexture(0, 0, 0, 0.35)
-    track:SetSize(8, L.chatHeight - 12)
-    track:SetPoint("TOPLEFT", panel, "TOPLEFT", 3, -6)
-    thumb = panel:CreateTexture(nil, "ARTWORK")
+    track:SetSize(8, tall - 12)
+    track:SetPoint("TOPLEFT", area, "TOPLEFT", 3, -6)
+    thumb = area:CreateTexture(nil, "ARTWORK")
     thumb:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.8)
     thumb:SetWidth(6)
 
-    ns.side.panel = panel
+    ns.side.panel, ns.side.area, ns.side.row, ns.side.dress = panel, area, row, dress
     for _, v in ipairs(views) do
         v.available = v.Available() and true or false
         if v.available then
-            v.body = CreateFrame("Frame", nil, panel)
-            v.body:SetPoint("TOPLEFT", panel, "TOPLEFT", L.chatRight, -4)
-            v.body:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -INNER, 4)
-            v.body:SetSize(L.chatWidth - L.chatRight - INNER, L.chatHeight - 8)
-            v.column = CreateFrame("Frame", nil, panel)
+            v.body = CreateFrame("Frame", nil, area)
+            v.body:SetPoint("TOPLEFT", area, "TOPLEFT", L.chatRight, -4)
+            v.body:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -INNER, 4)
+            v.body:SetSize(width - 2 * PAD - L.chatRight - INNER, tall - 8)
+            v.column = CreateFrame("Frame", nil, area)
             v.column:SetAllPoints()
             v.paint = {}
             for i, spec in ipairs(v.buttons) do Button(v, spec, -16 - (i - 1) * PITCH, "TOPRIGHT") end

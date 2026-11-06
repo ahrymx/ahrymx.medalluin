@@ -158,9 +158,10 @@ ns.window.Corners = Corners
 -- corners, the ink fading from solid at the left to a tenth at the right
 -- so it can stand open over the world (the trim drawn as four lines, so
 -- nothing shows through it), and the medallion's margin under its rule:
--- band high (the windows' own when not given).
+-- band high (the windows' own when not given). Mirrored (the side panel,
+-- strips/side.lua), the ink is solid at the right instead.
 local FADE = { 1, 0.10 }
-local function Dress(parent, band)
+local function Dress(parent, band, mirrored)
     local dress = CreateFrame("Frame", nil, parent)
     dress:SetAllPoints()
     dress:SetFrameLevel(parent:GetFrameLevel())
@@ -170,8 +171,10 @@ local function Dress(parent, band)
     ink:SetPoint("BOTTOMRIGHT", -1, 1)
     if ink.SetGradient and CreateColor then
         ink:SetColorTexture(1, 1, 1, 1)
-        ink:SetGradient("HORIZONTAL", CreateColor(tint[1], tint[2], tint[3], FADE[1]),
-            CreateColor(tint[1], tint[2], tint[3], FADE[2]))
+        local from, to = FADE[1], FADE[2]
+        if mirrored then from, to = to, from end
+        ink:SetGradient("HORIZONTAL", CreateColor(tint[1], tint[2], tint[3], from),
+            CreateColor(tint[1], tint[2], tint[3], to))
     else
         ink:SetColorTexture(tint[1], tint[2], tint[3], (FADE[1] + FADE[2]) / 2)
     end
