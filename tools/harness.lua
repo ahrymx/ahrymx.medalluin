@@ -983,6 +983,27 @@ function harnessNextFrame()
     if soon and soon.shown and soon.scripts.OnUpdate then soon.scripts.OnUpdate(soon, 0) end
 end
 function IsInGroup() return grouped end
+-- the group's leader: the second member, so the player's frame has none
+harnessLeader = "party2"
+-- (on "modern", a unit the pass names answers with a secret)
+function UnitIsGroupLeader(u)
+    if modern and u == harnessSecretLeader then return secret() end
+    return grouped and u == harnessLeader
+end
+-- each console button's crown: worn or not, and where
+function HarnessCrowns(tag)
+    local o = {}
+    for _, u in ipairs({ "player", "target", "party1", "party2", "party3", "party4" }) do
+        local b = harnessNS.units[u]
+        local f = b and b.leaderFrame
+        if f then
+            local p, rel, rp, x, y = f:GetPoint(1)
+            table.insert(o, string.format("%s=%s@%s:%s:%s:%s,%s", u, f.shown and "crown" or "-", tostring(p),
+                rel == b and "self" or rel and (rel.name or "?") or "-", tostring(rp), tostring(x), tostring(y)))
+        end
+    end
+    print(tag, table.concat(o, " "))
+end
 -- a raid: none, unless the widgets pass makes one (widgets/raid.lua)
 raidRoster = {}
 function IsInRaid() return #raidRoster > 0 end
@@ -2093,7 +2114,8 @@ if questPass then
         { title = "A Threat Within", level = 5, questID = 103, objectives = {} },
         { title = "Westfall", isHeader = true },
         { title = "The Defias Brotherhood", level = 18, questID = 201,
-            objectives = { o("Defias Messenger: 0/1"), o("Report to Gryan", true) } },
+            objectives = { o("Defias Messenger: 0/1"),
+                o("Report to Gryan Stoutmantle at the Sentinel Hill tower, on the road south of Moonbrook", true) } },
         { title = "Westfall Stew", level = 14, questID = 202, failed = true, objectives = { o("Stringy meat: 2/3") } },
         { title = "Red Leather Bandanas", level = 15, questID = 203, objectives = { o("Bandana: 6/15") } },
         { title = "Black Temple", isHeader = true },
@@ -2599,6 +2621,7 @@ stateTick()
 for _, b in pairs(ns.units) do
     if (UnitExists(b.unit) or b.stub) and b.scripts.OnShow then b.scripts.OnShow(b) end
 end
+if savedSimParty then HarnessCrowns("crowns, simulated") end
 
 -- The settings window's controls, as page.settings[key]: Set works the
 -- control as a player would (a checkbox clicked, a dropdown opened and its
@@ -4571,8 +4594,20 @@ if args[2] == "widgets" or args[3] == "widgets" then
 
     harnessHolds["group:party"] = grouped
     state("login")
+    HarnessCrowns("  crowns")
     S.partyLayout:Set("widget")
     state("party layout: widget")
+    HarnessCrowns("  crowns")
+    -- the lead passes to the first member: no roster change comes with it
+    harnessLeader = "party1"
+    fire("PARTY_LEADER_CHANGED")
+    HarnessCrowns("  crowns, lead passed")
+    -- a secret answer wears no crown
+    harnessLeader, harnessSecretLeader = nil, "party1"
+    fire("PARTY_LEADER_CHANGED")
+    HarnessCrowns("  crowns, secret")
+    harnessLeader, harnessSecretLeader = "party2", nil
+    fire("PARTY_LEADER_CHANGED")
     -- the tab is the grip
     harnessDropAt = { "TOPLEFT", "TOPLEFT", 300.4, -200.6 }
     local tab = ns.partyWidget.tabs[1]
@@ -4700,6 +4735,21 @@ if args[2] == "widgets" or args[3] == "widgets" then
     fire("GROUP_ROSTER_UPDATE")
     state("raid in groups 1 and 3")
     raid("cells")
+    -- the raid's leader in group 3: its cell's crown
+    harnessLeader = "raid5"
+    fire("PARTY_LEADER_CHANGED")
+    local crowned = {}
+    for _, h in ipairs(ns.raidHeaders) do
+        for _, b in ipairs(h.all_ or {}) do
+            if made[b] and b.shown and b.leaderFrame.shown then
+                local p, _, rp, x, y = b.leaderFrame:GetPoint(1)
+                table.insert(crowned, b.unit .. "@" .. p .. ":" .. rp .. ":" .. x .. "," .. y)
+            end
+        end
+    end
+    print("  raid crowns", table.concat(crowned, " "))
+    harnessLeader = "party2"
+    fire("PARTY_LEADER_CHANGED")
     -- group 5 fills in combat: its column waits
     inCombat = true
     raidRoster[8] = { "H", 5 }
@@ -5359,6 +5409,7 @@ local function RowPass()
     for i, bg in ipairs(ns.partyRowBackings) do out("row backing " .. i, bg, "shown=" .. shown(bg)) end
     stateTick()
     members("row")
+    HarnessCrowns("row crowns")
     -- which way each member faces: the row mirrors across its centre, as
     -- the console's windows do (ns.PartySide)
     local function faces(tag)
@@ -5689,7 +5740,12 @@ local function EditorPass()
         t.buffs = { cols = 2 }
         return t
     end
-    ns.SetOption("editParty", plus(wasEdits))
+    -- the console's crown moved and made bigger: in the widget, it is its
+    -- own size in its own place (a stale snapshot would put it back on the
+    -- console's corner)
+    local console = plus(wasEdits)
+    console.leader = { size = 22, h = "inner", v = "middle", x = 30, y = 0 }
+    ns.SetOption("editParty", console)
     ns.SetOption("editPartyWidget", plus(wasWidgetEdits))
     local function buffs2(tag)
         local r = ns.units.party2.buffWidgets
@@ -5705,11 +5761,19 @@ local function EditorPass()
     print("  party scope", w.body.scope.text)
     choose("partyWidget", "cell")
     piece("party1 in widget", ns.units.party1, "role")
+    piece("party1 in widget", ns.units.party1, "leader")
+    -- then the widget's instead: on the console, its own
+    ns.SetOption("editParty", plus(wasEdits))
+    local widget = plus(wasWidgetEdits)
+    widget.leader = { size = 18, h = "inner", v = "middle", x = 30, y = 0 }
+    ns.SetOption("editPartyWidget", widget)
+    piece("party1 in widget, its own edit", ns.units.party1, "leader")
     print("  party1 cell", n(ns.units.party1.w) .. "x" .. n(ns.units.party1.h), "buttons=" .. #E.byId.partyWidget.buttons())
     ns.SetOption("partyLayout", "console")
     ns.OpenEditor()
     window("layout console")
     piece("party1 on console", ns.units.party1, "role")
+    piece("party1 on console", ns.units.party1, "leader")
     buffs2("on console")
     ns.SetOption("editParty", wasEdits)
     ns.SetOption("editPartyWidget", wasWidgetEdits)
@@ -7870,6 +7934,7 @@ if characterPass then
                 local d = r.data
                 local bit = string.rep(".", d.depth or 0) .. d.label
                 if d.header then bit = "[" .. bit .. " " .. r.sign.text .. "]" end
+                if r.fill.gradient then bit = bit .. " fade" end    -- the quest tracker's alone
                 if d.icon then bit = bit .. "{" .. tostring(d.icon) .. "}" end
                 if r.bar.shown then
                     bit = bit .. string.format(" <%s %s/%s>", r.bar.text.text, tostring(r.bar.bar.value),
@@ -9310,6 +9375,32 @@ if questPass then
         where(f), "parent=" .. tostring(f.parent == ns.strips[-1]))
     state("quests.login")
     rows("quests.level")
+    -- a heading's band: full at the left, clear at the right
+    local fill = list.rows[1].fill
+    local g = fill.gradient
+    print("quests.heading", g and string.format("%s %.2f>%.2f", g[1], g[2][4], g[3][4]) or ("flat "
+        .. tostring(fill.color and fill.color[4])))
+    -- the shade: as tall as what shows, up under the pointer, away after
+    local shade = T.shade
+    local sg = shade.fill.gradient
+    local function shaded(tag)
+        print(tag, "h=" .. shade.h, string.format("alpha=%.2f", shade:GetAlpha()),
+            sg and string.format("%s %.2f>%.2f", sg[1], sg[2][4], sg[3][4]) or "flat")
+    end
+    local function tick(n)
+        for _ = 1, n do f.scripts.OnUpdate(f, 0.05) end
+    end
+    shaded("quests.shade")
+    mouseOver = shade
+    tick(1)
+    shaded("quests.shade, pointer over")
+    tick(3)
+    shaded("quests.shade, a moment on")
+    mouseOver = false
+    tick(1)
+    shaded("quests.shade, pointer gone")
+    tick(4)
+    shaded("quests.shade, gone")
     items("quests.items")
 
     -- 2. Questie ready: its set, its items, its distances
@@ -9346,6 +9437,7 @@ if questPass then
     frame()
     state("quests.minimised")
     rows("quests.minimised")
+    print("quests.minimised shade", "h=" .. T.shade.h)
     items("quests.minimised items")
     T.fold.scripts.OnClick(T.fold, "LeftButton")
     frame()

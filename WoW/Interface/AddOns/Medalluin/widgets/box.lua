@@ -209,7 +209,7 @@ end
 -- ------------------------------------------------------------ the cells
 -- A unit cell, the suite's one rectangle: health, a seam, power under it;
 -- the name top left, the level bottom left, the health's value bottom
--- right. units.lua draws it
+-- right, a leader's crown on the top edge's left end. units.lua draws it
 -- (ns.UpdateUnitButton) as it draws the console's frames, and auras.lua its
 -- auras (ns.AttachAuras gives it them).
 function ns.WidgetCell(b, width, height)
@@ -240,6 +240,8 @@ function ns.WidgetCell(b, width, height)
     b.levelText = ns.Text(text, 9)
     b.levelText:SetPoint("BOTTOMLEFT", 4, 3)
     b.levelText:SetWordWrap(false)
+    ns.LeaderIcon(b, 12, b.health:GetFrameLevel() + 3)
+    b.leaderFrame:SetPoint("CENTER", b, "TOPLEFT", 8, 0)
     return b
 end
 
@@ -274,6 +276,14 @@ end
 local events = CreateFrame("Frame")
 for event in pairs(ns.unitEvents) do pcall(events.RegisterEvent, events, event) end
 events:RegisterEvent("UNIT_AURA")
+-- a new leader: the crown of every cell watching a unit
+for _, e in ipairs({ "PARTY_LEADER_CHANGED", "GROUP_ROSTER_UPDATE" }) do
+    ns.On(e, function()
+        for _, list in pairs(watched) do
+            for b in pairs(list) do ns.UpdateLeader(b) end
+        end
+    end)
+end
 events:SetScript("OnEvent", function(_, event, unit)
     local list = unit and watched[unit]
     if not list then return end

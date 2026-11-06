@@ -266,10 +266,40 @@ local function UpdateRole(self)
     end
 end
 
+-- The group's leader wears a crown; a simulated member by its stub's word.
+-- The editor's Shown is the crown's alpha, so the two never cross.
+local function UpdateLeader(self)
+    local f = self.leaderFrame
+    if not f then return end
+    local on
+    if self.stub then
+        on = self.stub.leader
+    elseif UnitIsGroupLeader then
+        on = UnitIsGroupLeader(self.unit)
+    end
+    f:SetShown(not ns.IsSecret(on) and on and true or false)
+end
+ns.UpdateLeader = UpdateLeader
+
+-- A button's crown (hidden until its unit leads), over the frame's level.
+function ns.LeaderIcon(b, size, level)
+    local f = CreateFrame("Frame", nil, b)
+    f:SetSize(size, size)
+    f:SetFrameLevel(level)
+    local t = f:CreateTexture(nil, "ARTWORK")
+    t:SetAllPoints()
+    t:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
+    f.icon = t
+    f:Hide()
+    b.leaderFrame = f
+    return f
+end
+
 local function UpdateAll(self)
     if not UnitExists(self.unit) and not self.stub then return end
     UpdateName(self)
     UpdateLevel(self)
+    UpdateLeader(self)
     UpdateHealth(self)
     UpdatePower(self)
     UpdateRole(self)
@@ -279,7 +309,7 @@ ns.UpdateUnitButton = UpdateAll
 
 local STUBS = {
     party1 = { name = "Party 1", class = "PRIEST", role = "HEALER", powerType = 0, health = 85, maxHealth = 100,
-        power = 80, maxPower = 100 },
+        power = 80, maxPower = 100, leader = true },
     party2 = { name = "Party 2", class = "MAGE", role = "DAMAGER", powerType = 0, health = 92, maxHealth = 100,
         power = 100, maxPower = 100 },
     party3 = { name = "Party 3", class = "WARRIOR", role = "TANK", powerType = 1, health = 78, maxHealth = 100,
@@ -453,6 +483,14 @@ local function PartyLevel(b, side, inset)
     b.levelText:SetPoint(outer, b.power, outer, -side * inset, 0)
 end
 
+-- The crown on the top edge's outer end, inset from it: over the role
+-- icon on the bottom one.
+local function PartyLeader(b, side, inset)
+    local outer = side == 1 and "RIGHT" or "LEFT"
+    b.leaderFrame:ClearAllPoints()
+    b.leaderFrame:SetPoint("CENTER", b, "TOP" .. outer, -side * inset, 0)
+end
+
 local function Spawn(unit)
     local window, side = unpack(ns.slots[unit])
     local isParty = window ~= "unit"
@@ -527,6 +565,10 @@ local function Spawn(unit)
         -- the level on the power bar's outer end, clear of its value
         b.levelText = ns.Text(text, style.powerSize)
         b.levelText:SetPoint(outer, b.power, outer, -side * style.textInset, 0)
+
+        -- the crown on the top edge's outer end
+        ns.LeaderIcon(b, 16, ns.levels.text + 2)
+        b.leaderFrame:SetPoint("CENTER", b, "TOP" .. outer, -side * 14, 0)
     else
         b.name:SetPoint(inner, text, inner, side * style.textInset, 0)
         b.name:SetJustifyH(outer)
@@ -558,6 +600,10 @@ local function Spawn(unit)
         b.roleFrame = rf
         b.roleIcon = ri
         rf:Hide()
+
+        -- the crown over it, on the top edge
+        ns.LeaderIcon(b, 14, ns.levels.art + 2)
+        PartyLeader(b, side, 8)
 
         -- Ready check & role check status widget in the middle of the frame
         local sw = CreateFrame("Frame", nil, b)
@@ -784,11 +830,12 @@ local function ConsoleParty(b)
     b.value:ClearAllPoints()
     b.value:SetPoint(inner, b.text, inner, side * PARTY_VALUE_INSET, 0)
     PartyLevel(b, side, PARTY_LEVEL_INSET)
+    PartyLeader(b, side, 8)
     if b.pet then b.pet.health:SetReverseFill(side == 1) end
     if ns.LayBuffs then ns.LayBuffs(b, side) end
     -- what the editor changed goes back on (editor.lua)
     if ns.editor then
-        ns.editor.Relaid(b, "name", "level", "role", "value", "buffs")
+        ns.editor.Relaid(b, "name", "level", "role", "leader", "value", "buffs")
         ns.ApplyEdits(b)
     end
 end
@@ -879,6 +926,7 @@ function ns.RelayoutUnits()
             b.value:SetPoint(inner, b.health, inner, side * 6, 0)
             -- under the name's outer end, the role icon outside both
             PartyLevel(b, side, 22)
+            PartyLeader(b, side, 10)
             if b.pet then
                 -- hung under its owner by the row (ns.LayoutPet), facing as it does
                 b.pet.side = side
@@ -886,7 +934,7 @@ function ns.RelayoutUnits()
             end
             if ns.LayBuffs then ns.LayBuffs(b, side) end
             if ns.editor then
-                ns.editor.Relaid(b, "name", "level", "role", "value", "buffs")
+                ns.editor.Relaid(b, "name", "level", "role", "leader", "value", "buffs")
                 ns.ApplyEdits(b)
             end
         end
@@ -1105,6 +1153,13 @@ end
 ns.On("READY_CHECK", OnReadyCheck)
 ns.On("READY_CHECK_CONFIRM", OnReadyCheckConfirm)
 ns.On("READY_CHECK_FINISHED", OnReadyCheckFinished)
+
+-- a new leader: every console button's crown (the widget cells': box.lua)
+for _, e in ipairs({ "PARTY_LEADER_CHANGED", "GROUP_ROSTER_UPDATE" }) do
+    ns.On(e, function()
+        for _, b in pairs(ns.units) do UpdateLeader(b) end
+    end)
+end
 ns.On("ROLE_POLL_BEGIN", OnRolePollBegin)
 ns.On("ROLE_POLL_UPDATE", OnRolePollUpdate)
 ns.On("PLAYER_REGEN_DISABLED", ClearCheckStatus)

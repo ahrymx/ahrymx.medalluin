@@ -34,7 +34,7 @@ read_globals = {
     "UnitPowerType", "UnitLevel", "UnitXP", "UnitXPMax", "GetXPExhaustion", "GetMaxPlayerLevel",
     "GetWatchedFactionInfo", "C_Reputation", "BreakUpLargeNumbers", "GameTooltip_Hide",
     "UnitFrame_OnEnter", "UnitFrame_OnLeave", "hooksecurefunc", "GetTime",
-    "UnitHasIncomingResurrection", "UnitGroupRolesAssigned", "CheckInteractDistance", "UnitInRange", "UnitIsVisible", "GetReadyCheckStatus",
+    "UnitHasIncomingResurrection", "UnitGroupRolesAssigned", "UnitIsGroupLeader", "CheckInteractDistance", "UnitInRange", "UnitIsVisible", "GetReadyCheckStatus",
     "GetActionCooldown", "HasAction", "IsUsableAction", "IsActionInRange", "UnitCanAttack", "MultiCastActionBarFrame", "MultiCastSummonSpellButton", "MultiCastRecallSpellButton",
     "MultiCastFlyoutFrame", "MultiCastFlyoutFrameCloseButton", "MultiCastFlyoutFrame_ToggleFlyout",
     "MultiCastFlyoutFrameOpenButton_Show", "MultiCastRecallSpellButton_Update", "ChangeMultiCastActionPage",

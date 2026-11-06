@@ -8,6 +8,8 @@
 --       { label, depth, icon, value, bar = { min, max, cur, color, text },
 --         selected, click(button), enter(row), dim, color }   an entry
 --     list:Draw()      again, at the same scroll (after the body's height changes)
+--     list.fade = true  headings fade out to the right (the quest tracker's,
+--                       over the world), where the client has gradients
 --
 --   ns.character.Details(foot, ticks, nothing, lines) -> details
 --     details:Set{ title, sub, bar, text, lines }   (nil hides the lot; empty says so)
@@ -95,7 +97,7 @@ local function Row(list)
     return r
 end
 
-local function Paint(r, d)
+local function Paint(r, d, list)
     r.data = d
     local depth = d.depth or 0
     local x = 6 + depth * INDENT
@@ -110,7 +112,14 @@ local function Paint(r, d)
     r.label:SetPoint("LEFT", x, 0)
     r.label:SetText(d.label or "")
     if d.header then
-        r.fill:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], depth == 0 and 0.30 or 0.15)
+        local a = depth == 0 and 0.30 or 0.15
+        if list.fade and r.fill.SetGradient and CreateColor then
+            r.fill:SetColorTexture(1, 1, 1, 1)
+            r.fill:SetGradient("HORIZONTAL", CreateColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], a),
+                CreateColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0))
+        else
+            r.fill:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], a)
+        end
         r.label:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
         r.sign:SetText(d.collapsed and "+" or "-")
     else
@@ -153,7 +162,7 @@ function List:Draw()
         end
         local d = self.data[self.offset + i]
         r:SetShown(d ~= nil)
-        if d then Paint(r, d) end
+        if d then Paint(r, d, self) end
     end
     for i = shown + 1, #self.rows do self.rows[i]:Hide() end
     local total = #self.data

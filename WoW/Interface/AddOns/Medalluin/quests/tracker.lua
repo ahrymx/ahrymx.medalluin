@@ -1,7 +1,8 @@
 -- The quest tracker: the tracked quests, on the left of the screen over the
 -- chat panel, as wide as the character window and as tall as the screen
 -- leaves it. Nothing behind it: the world shows through, and only its rows
--- and buttons take the mouse.
+-- and buttons take the mouse. With the pointer over what it shows, a shade
+-- comes up behind that, dark at the left and clear at the right.
 --
 --   ------------ Quests ------------
 --   [Sort: Level] [-]
@@ -38,9 +39,14 @@ local WIDTH = L.chatLeft + L.chatWidth   -- the character window's width
 local PAD, HEAD, CONTROL = 8, 14, 20
 local TOP = PAD + HEAD + 6 + CONTROL + 6 -- the list's top, under the heading and the controls
 local ITEM = 20
+local ROW = 22                          -- a list row (character/list.lua)
+local SHADE, FADE = 0.6, 6              -- the shade's darkest, and how fast it comes and goes (per second)
+-- an objective's room on its row: the body less the row's inset, its
+-- label's indent at depth 2 and its right margin (character/list.lua)
+local LINE = WIDTH - PAD - 6 - (6 + 2 * 12) - 24
 local SORTS = { level = "Level", zone = "Zone", distance = "Distance" }
 
-local frame, list, layer, sortButton, foldButton
+local frame, list, layer, sortButton, foldButton, measure, shade
 local quests = {}
 local drawn                             -- the rows' shape as last laid out
 local dirty
@@ -128,6 +134,26 @@ local function Click(q, button)
     end
 end
 
+-- A long objective as the lines it takes, a row each, broken between words
+-- (a word longer than a line keeps its own, cut).
+local function Wrap(text)
+    measure:SetText(text)
+    if measure:GetStringWidth() <= LINE then return { text } end
+    local lines, line = {}, nil
+    for word in text:gmatch("%S+") do
+        local try = line and (line .. " " .. word) or word
+        measure:SetText(try)
+        if line and measure:GetStringWidth() > LINE then
+            table.insert(lines, line)
+            line = word
+        else
+            line = try
+        end
+    end
+    table.insert(lines, line)
+    return lines
+end
+
 local Refresh
 
 local function Rows()
@@ -151,7 +177,9 @@ local function Rows()
                     click = function(button) Click(q, button) end,
                     enter = function(row) Tip(row, q) end })
                 for _, o in ipairs(q.objectives) do
-                    table.insert(rows, { label = o.text, depth = 2, dim = o.done })
+                    for _, line in ipairs(Wrap(o.text)) do
+                        table.insert(rows, { label = line, depth = 2, dim = o.done })
+                    end
                 end
             end
         end
@@ -256,6 +284,16 @@ function Refresh()
     end
     list:Set(rows)
     list.body:SetShown(not ns.db.questsMinimised)      -- not even "No quests"
+    -- the shade over what shows: the heading and controls, and the rows
+    -- (one for "No quests tracked."), down to the last
+    local n = 0
+    if not ns.db.questsMinimised then
+        for _, r in ipairs(list.rows) do
+            if r:IsShown() then n = n + 1 end
+        end
+        n = math.max(n, 1)
+    end
+    shade:SetHeight(TOP + n * ROW + PAD)
     sortButton.label:SetText("Sort: " .. SORTS[Sort()])
     foldButton.label:SetText(ns.db.questsMinimised and "+" or "-")
     if InCombatLockdown() then
@@ -281,6 +319,24 @@ local function Build()
     local above = L.stripHeight + (_G.MedalluinChat and L.chatHeight or 0)
     frame:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", 0, above)
     frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+
+    -- the shade: a frame of its own, so its size is what the pointer is over
+    shade = CreateFrame("Frame", nil, frame)
+    shade:SetPoint("TOPLEFT")
+    shade:SetPoint("TOPRIGHT")
+    shade:SetHeight(TOP)
+    shade:SetFrameLevel(frame:GetFrameLevel())
+    shade:SetAlpha(0)
+    local ink = ns.colors.ink
+    shade.fill = shade:CreateTexture(nil, "BACKGROUND")
+    shade.fill:SetAllPoints()
+    if shade.fill.SetGradient and CreateColor then
+        shade.fill:SetColorTexture(1, 1, 1, 1)
+        shade.fill:SetGradient("HORIZONTAL", CreateColor(ink[1], ink[2], ink[3], SHADE),
+            CreateColor(ink[1], ink[2], ink[3], 0))
+    else
+        shade.fill:SetColorTexture(ink[1], ink[2], ink[3], SHADE / 2)
+    end
 
     local head = ns.window.Ornament(frame, "Quests")
     head:SetPoint("TOPLEFT", PAD, -PAD)
@@ -314,6 +370,12 @@ local function Build()
     body:SetPoint("TOPLEFT", 0, -TOP)
     body:SetPoint("BOTTOMRIGHT", -PAD, PAD)
     list = ns.character.List(body, "No quests tracked.")
+    list.fade = true
+    -- the rows' font, unseen, to measure an objective's lines
+    measure = ns.Text(frame, 12)
+    measure:SetPoint("TOPLEFT")
+    measure:SetWordWrap(false)
+    measure:SetAlpha(0)
     -- the wheel scrolls over the rows only (the empty space keeps the
     -- camera's), and not in combat (the items stand where the rows were)
     list:EnableMouseWheel(false)
@@ -331,12 +393,20 @@ local function Build()
     layer:SetAllPoints(frame)
     layer.buttons = {}
     ns.quests = { frame = frame, list = list, layer = layer, sort = sortButton, fold = foldButton,
-        Refresh = Refresh }
+        shade = shade, Refresh = Refresh }
 
     -- one refresh a frame, however many events; a change held in combat
     -- stays dirty until the first frame after it (and a tracker hidden in
     -- combat sends its items away then, through OnHide)
-    frame:SetScript("OnUpdate", function() if dirty and not InCombatLockdown() then Refresh() end end)
+    frame:SetScript("OnUpdate", function(_, elapsed)
+        if dirty and not InCombatLockdown() then Refresh() end
+        -- the shade eases toward the pointer's answer
+        local want, now = shade:IsMouseOver() and 1 or 0, shade:GetAlpha()
+        if now ~= want then
+            local step = (elapsed or 0) * FADE
+            shade:SetAlpha(want > now and math.min(want, now + step) or math.max(want, now - step))
+        end
+    end)
     Q.Listen(function()
         dirty = true
         if InCombatLockdown() then Refresh() end    -- counts change in place

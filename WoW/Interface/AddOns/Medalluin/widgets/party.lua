@@ -70,6 +70,9 @@ function ns.LayoutPartyWidget()
             -- the level bottom left, under the name, clear of the role icon
             b.levelText:ClearAllPoints()
             b.levelText:SetPoint("BOTTOMLEFT", b.health, "BOTTOMLEFT", 22, 3)
+            -- the crown on the top edge, over the role icon
+            b.leaderFrame:ClearAllPoints()
+            b.leaderFrame:SetPoint("CENTER", b, "TOPLEFT", 10, 0)
 
             -- the pet's strip: its name left, its value right
             local pet = b.pet
@@ -88,7 +91,7 @@ function ns.LayoutPartyWidget()
             ns.LayBuffs(b, -1)
             b.inWidget = true
             -- what the editor changed goes back on (editor.lua)
-            ns.editor.Relaid(b, "name", "level", "role", "value", "buffs")
+            ns.editor.Relaid(b, "name", "level", "role", "leader", "value", "buffs")
             ns.ApplyEdits(b)
         end
     end)
