@@ -2356,14 +2356,35 @@ local talentWorld
 if talentPass then
     talentWorld = { calls = {}, active = 1, groups = 1 }
     local T = talentWorld
-    -- id, group, x, y, ranks, the talents it opens, locked by tier
+    -- id, group, x, y, ranks, the talents it opens, locked by tier, a group
+    -- listed before its tree's (Shamanistic Focus: the tree's deepest, so
+    -- Enhancement is the tallest and the trees' scale is the height's)
     local NODES = {
         { 1, 11, 0, 0, 5, { 3 } }, { 2, 11, 600, 0, 3 }, { 3, 11, 0, 600, 1 }, { 4, 11, 1200, 1800, 1, nil, true },
         { 5, 12, 3000, 0, 5, { 6 } }, { 6, 12, 3600, 600, 2 },
-        { 7, 13, 6000, 0, 5 },
+        { 7, 13, 6000, 0, 5 }, { 8, 12, 3000, 3600, 1, nil, true, 99 },
     }
     local NAMES = { "Convection", "Concussion", "Call of Flame", "Elemental Mastery", "Ancestral Knowledge",
-        "Shield Specialization", "Improved Healing Wave" }
+        "Shield Specialization", "Improved Healing Wave", "Shamanistic Focus" }
+    -- each rank's tooltip: Concussion's ranks differ in a number, Convection's
+    -- in their words, Ancestral Knowledge has only its first; the rest have
+    -- none, and read their spell's description
+    local RANKS = {
+        [20] = function(r)
+            return "Increases the damage of your Shock spells by " .. ({ "33", "66.5", "100" })[r] .. "% for 10 sec. Stacks up to " .. r .. "."
+        end,
+        [50] = function(r) return r == 1 and "Increases your maximum Mana by 1%." or nil end,
+        [10] = function(r) return r == 1 and "Reduces the mana cost of your spells by 2%." or
+            ("Reduces the mana cost of your spells by " .. 2 * r .. "% and their threat.") end,
+    }
+    NEXT_RANK_COLON = "Next rank:"
+    C_TooltipInfo = { GetTraitEntry = function(entry, rank)
+        local f = RANKS[entry]
+        if not (f and f(rank)) then return nil end
+        return { lines = { { leftText = NAMES[entry / 10] }, { leftText = "Rank " .. rank }, { leftText = f(rank) },
+            { leftText = "Next rank:" },
+            { leftText = (f(math.min(rank + 1, 3)) or f(rank)) .. " A longer line than the rank's own." } } }
+    end }
     local byID = {}
     for _, n in ipairs(NODES) do byID[n[1]] = n end
     T.committed = { [1] = { [1] = 5 }, [2] = {} }
@@ -2400,7 +2421,7 @@ if talentPass then
             return out
         end,
         GetTreeCurrencyInfo = function(config) return { { quantity = T.points - spent(config) } } end,
-        GetTreeNodes = function() return { 1, 2, 3, 4, 5, 6, 7 } end,
+        GetTreeNodes = function() return { 1, 2, 3, 4, 5, 6, 7, 8 } end,
         GetNodeInfo = function(config, id)
             local d = byID[id]
             local r = rank(config, id)
@@ -2410,7 +2431,8 @@ if talentPass then
             end
             local available = not d[7]
             local ok = meets(config, id)
-            return { ID = id, posX = d[3], posY = d[4], groupIDs = { d[2] }, entryIDs = { id * 10 },
+            return { ID = id, posX = d[3], posY = d[4], groupIDs = d[8] and { d[8], d[2] } or { d[2] },
+                entryIDs = { id * 10 },
                 activeEntry = r > 0 and { entryID = id * 10, rank = r } or nil, ranksPurchased = r,
                 maxRanks = d[5], isVisible = true, isAvailable = available, meetsEdgeRequirements = ok,
                 canPurchaseRank = available and ok and r < d[5] and T.points - spent(config) > 0,
@@ -8941,6 +8963,25 @@ if talentPass then
         end
     end
 
+    -- a talent's tooltip, as its lines
+    local function tip(tag, name)
+        local lines = {}
+        local set, add = GameTooltip.SetText, GameTooltip.AddLine
+        GameTooltip.SetText = function(_, t, r) lines = { t .. string.format("(%.2f)", r or 1) } end
+        GameTooltip.AddLine = function(_, t) table.insert(lines, t) end
+        local b = node(name)
+        b.scripts.OnEnter(b)
+        GameTooltip.SetText, GameTooltip.AddLine = set, add
+        print(tag, table.concat(lines, " | "))
+    end
+    -- the points' row: where it, its text and its buttons stand
+    local function row(tag)
+        local p = W.Current()
+        local strip = p.points.parent
+        print(tag, where(strip), "h=" .. strip.h, "body=" .. tostring(strip.parent == p.body),
+            "reset=" .. where(p.reset), "points=" .. where(p.points), "apply=" .. where(p.apply))
+    end
+
     -- 1. at login: a tab per tree, in the trees' order
     state("talents.login")
     print("talents.anchor", where(w), "parent=" .. tostring(w.parent == ns.strips[1]))
@@ -8957,6 +8998,10 @@ if talentPass then
     click("Concussion")
     tree("talents.staged")
     foot("talents.staged")
+    row("talents.row")
+    tip("talents.tip", "Concussion")
+    tip("talents.tip words", "Convection")
+    tip("talents.tip spell", "Elemental Mastery")
     -- a right-click takes it back; a locked talent stages nothing
     click("Concussion", "RightButton")
     click("Elemental Mastery")
@@ -8981,6 +9026,14 @@ if talentPass then
     frame()
     tree("talents.enhancement")
     tabs("talents.tabs")
+    -- Enhancement's deepest talent stands inside the page
+    do
+        local p, low = W.Current(), 0
+        for _, b in ipairs(p.nodes) do
+            if b.shown and b.node then low = math.max(low, -b.points.CENTER[4] + 36 / 2) end
+        end
+        print("talents.inside", "lowest=" .. low, "body=" .. p.body.h, tostring(low <= p.body.h))
+    end
 
     -- 5. Secondary: not learned, then learned; it reads, and Activate
     local sec = W.Current().specs[2]

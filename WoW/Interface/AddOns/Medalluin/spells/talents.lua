@@ -5,19 +5,20 @@
 --
 --   [tree][tree][tree]                                      [v] [x]
 --   ---------------------------------------------------------------
+--   [Reset]        12 points available  ·  Elemental 5      [Apply]
 --        [o]     [o]                (a tree's talents, where the
 --         |                          tree puts them, with the
 --        [o] 2/5 [o]     [o]         lines between them)
 --   ...
 --   ---------------------------------------------------------------
---   the chosen talent's name, rank and description
---   12 points left                                  [Reset] [Apply]
+--   the chosen talent's name, rank and what each rank gives
 --   ---------------------------------------------------------------
 --   (backpack)   [Primary] [Secondary]  [Activate]
 --
 -- A tab per tree, the game's own icons. A click spends a rank, a right-click
 -- takes one back: both only staged, until Apply commits them (Reset
--- forgets them). The margin views the Primary or the Secondary talents;
+-- forgets them). A talent's tooltip and the details say what each rank
+-- gives: "by 33% / 66% / 100%", the rank it is at in green. The margin views the Primary or the Secondary talents;
 -- the one not in use reads only, and Activate switches to it (a cast).
 --
 -- Nothing here is secure: the window opens and reads in combat, where the
@@ -32,7 +33,7 @@ local GOLD_D = { 0.541, 0.439, 0.204 }
 local LIT = { 0.4, 0.85, 0.35 }         -- ranks still to spend where they can be
 local TREES = 3
 local ICON, MARGIN = 36, 10             -- a talent's icon, the room round the tree
-local STRIP = 26                        -- the points' line under the details
+local STRIP = 26                        -- the points' row over the tree
 
 local W = ns.Window{
     name = "MedalluinTalents", side = 1, detailsKey = "talentsDetails",
@@ -110,16 +111,90 @@ local function Lock(node)
     return nil
 end
 
+-- ------------------------------------------------------------ the ranks
+-- What a talent gives at a rank: the description its tooltip writes for
+-- that rank, before the next rank's. Nil when the game cannot say.
+local NUMBER = "%d+%.?%d*"
+local function AtRank(entry, rank)
+    local data = entry and C_TooltipInfo and C_TooltipInfo.GetTraitEntry
+        and C_TooltipInfo.GetTraitEntry(entry, rank)
+    local DESCRIPTION = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.SpellDescription
+    local next1 = TOOLTIP_TALENT_NEXT_RANK and TOOLTIP_TALENT_NEXT_RANK:gsub("%%s", "")
+    local best
+    for i, line in ipairs(data and data.lines or {}) do
+        local text = type(line.leftText) == "string" and line.leftText or ""
+        if (next1 and next1 ~= "" and text:find(next1, 1, true))
+            or (NEXT_RANK_COLON and text == NEXT_RANK_COLON) then break end
+        if i > 1 and DESCRIPTION and line.type == DESCRIPTION then return text end
+        if i > 1 and (not best or #text > #best) then best = text end
+    end
+    return best ~= "" and best or nil
+end
+
+-- a number as a description writes it, without a sentence's full stop
+local function Number(n)
+    local bare = n:gsub("%.$", "")
+    return bare, n:sub(#bare + 1)
+end
+
+-- Each rank's description as one: where the ranks differ only in their
+-- numbers, the numbers side by side ("by 33% / 66% / 100%"), the rank at
+-- in green; otherwise a line per rank.
+local function Ranks(texts, at)
+    if #texts < 2 then return texts[1] end
+    local shape, numbers = texts[1]:gsub(NUMBER, "#"), {}
+    for r, t in ipairs(texts) do
+        if t:gsub(NUMBER, "#") ~= shape then
+            local lines = {}
+            for i, line in ipairs(texts) do
+                local c = i == at and "|cff66d959" or "|cffb3a88c"
+                table.insert(lines, format("%sRank %d:|r %s", c, i, line))
+            end
+            return table.concat(lines, "\n")
+        end
+        numbers[r] = {}
+        for n in t:gmatch(NUMBER) do table.insert(numbers[r], (Number(n))) end
+    end
+    local k = 0
+    return (texts[1]:gsub(NUMBER, function(n)
+        k = k + 1
+        local _, stop = Number(n)
+        local list, same = {}, true
+        for r = 1, #texts do
+            list[r] = numbers[r][k]
+            same = same and list[r] == list[1]
+        end
+        if same then return n end
+        if list[at] then list[at] = "|cff66d959" .. list[at] .. "|r" end
+        return table.concat(list, " / ") .. stop
+    end))
+end
+
+-- a talent's description, every rank's, or its spell's when the game
+-- cannot say one rank's
+local function Describe(n)
+    local node, texts = n.node, {}
+    for r = 1, node.maxRanks do
+        local t = AtRank(n.talent.entry, r)
+        if not t then texts = {}; break end
+        texts[r] = t
+    end
+    return Ranks(texts, node.ranksPurchased)
+        or (n.talent.spell and C_Spell.GetSpellDescription(n.talent.spell)) or ""
+end
+
 -- --------------------------------------------------------------- talents
+-- The talent's own name over its rank and every rank's description: the
+-- game's own tooltip for a talent heads it with "Passive".
 local function Tooltip(owner, n)
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-    if n.talent.entry and GameTooltip.SetTraitEntry then
-        GameTooltip:SetTraitEntry(n.talent.entry, n.node.ranksPurchased)
-    elseif n.talent.spell then
-        GameTooltip:SetSpellByID(n.talent.spell)
-    else
-        GameTooltip:SetText(n.talent.name)
-    end
+    GameTooltip:SetText(n.talent.name, GOLD[1], GOLD[2], GOLD[3])
+    local dim = ns.colors.dim
+    GameTooltip:AddLine(format("Rank %d/%d", n.node.ranksPurchased, n.node.maxRanks), dim[1], dim[2], dim[3])
+    local text = Describe(n)
+    if text ~= "" then GameTooltip:AddLine(text, 1, 1, 1, true) end
+    local lock = Lock(n.node)
+    if lock then GameTooltip:AddLine(lock, 1, 0.3, 0.25, true) end
     GameTooltip:Show()
 end
 
@@ -169,25 +244,31 @@ local function Edge(p, i)
     return l
 end
 
--- A tree's talents where the tree puts them. One scale for the three, the
--- largest filling the page, so a tier stands at one height on every tab;
--- each tree centred across the page, from its top.
-local function Draw(p, config, group)
+-- A tree's talents where the tree puts them, under the points' row. One
+-- scale for the three, the largest filling the page, so a tier stands at
+-- one height on every tab; each tree centred across the page, from its top.
+-- A tree is every talent in its group, wherever the group stands among the
+-- talent's groups.
+local function Draw(p, config, group, groups)
     local span = { x = 0, y = 0 }
     local box, list = {}, {}
     for _, id in ipairs(C_Traits.GetTreeNodes(Tree(config)) or {}) do
         local node = C_Traits.GetNodeInfo(config, id)
-        local g = node and node.isVisible and node.groupIDs and node.groupIDs[1]
-        if g then
-            local b = box[g] or { x0 = math.huge, x1 = -math.huge, y0 = math.huge, y1 = -math.huge }
-            b.x0, b.x1 = math.min(b.x0, node.posX), math.max(b.x1, node.posX)
-            b.y0, b.y1 = math.min(b.y0, node.posY), math.max(b.y1, node.posY)
-            box[g] = b
-            span.x, span.y = math.max(span.x, b.x1 - b.x0), math.max(span.y, b.y1 - b.y0)
+        if node and node.isVisible then
+            for _, g in ipairs(groups) do
+                if InGroup(node, g.groupID) then
+                    local b = box[g.groupID] or { x0 = math.huge, x1 = -math.huge, y0 = math.huge, y1 = -math.huge }
+                    b.x0, b.x1 = math.min(b.x0, node.posX), math.max(b.x1, node.posX)
+                    b.y0, b.y1 = math.min(b.y0, node.posY), math.max(b.y1, node.posY)
+                    box[g.groupID] = b
+                    span.x, span.y = math.max(span.x, b.x1 - b.x0), math.max(span.y, b.y1 - b.y0)
+                end
+            end
             if InGroup(node, group.groupID) then table.insert(list, node) end
         end
     end
-    local width, height = W.width - 2 * MARGIN - ICON, (p.body:GetHeight() or 0) - 2 * MARGIN - ICON
+    local width = W.width - 2 * MARGIN - ICON
+    local height = (p.body:GetHeight() or 0) - STRIP - 2 * MARGIN - ICON
     local scale = math.min(span.x > 0 and width / span.x or 1, span.y > 0 and height / span.y or 1)
     local own = box[group.groupID] or { x0 = 0, x1 = 0, y0 = 0 }
     local x0, y0 = own.x0, own.y0
@@ -200,7 +281,7 @@ local function Draw(p, config, group)
         byID[node.ID] = b
         b:ClearAllPoints()
         b:SetPoint("CENTER", p.body, "TOPLEFT", left + (node.posX - x0) * scale,
-            -(MARGIN + ICON / 2 + (node.posY - y0) * scale))
+            -(STRIP + MARGIN + ICON / 2 + (node.posY - y0) * scale))
         b.icon:SetTexture(b.talent.icon)
         local maxed = node.ranksPurchased >= node.maxRanks
         local open = maxed or node.ranksPurchased > 0 or (node.isAvailable and node.meetsEdgeRequirements)
@@ -241,22 +322,20 @@ local function Refresh(p)
     local groups = Groups()
     local group = groups[p.tree]
     if not (config and group) then return end
-    local byID = Draw(p, config, group)
+    local byID = Draw(p, config, group, groups)
     local chosen = p.chosen and byID[p.chosen]
     if chosen then
         local node, t = chosen.node, chosen.talent
-        local text = t.spell and C_Spell.GetSpellDescription(t.spell) or ""
         local lock = Lock(node)
         p.details:Set({ title = t.name, sub = format("Rank %d/%d", node.ranksPurchased, node.maxRanks)
-            .. (lock and ("  ·  " .. lock) or ""), text = text })
+            .. (lock and ("  ·  " .. lock) or ""), text = Describe(chosen) })
     else
         p.details:Set(nil)
     end
-    -- the points: left to spend, and in each tree
+    -- the points: left to spend, and in this tree (the tabs' tips say each)
     local spent = Spent(config, groups)
-    local trees = {}
-    for _, g in ipairs(groups) do table.insert(trees, format("%s %d", g.displayName, spent[g.groupID] or 0)) end
-    p.points:SetText(format("%d |4point:points; left  ·  %s", Left(config), table.concat(trees, "  ·  ")))
+    p.points:SetText(format("%d |4point:points; available  ·  %s %d", Left(config), group.displayName,
+        spent[group.groupID] or 0))
     local staged = C_Traits.ConfigHasStagedChanges(config)
     p.apply:SetShown(staged)
     p.reset:SetShown(staged)
@@ -304,16 +383,14 @@ local function Margin(p, band)
     p.activate:SetPoint("LEFT", prev, "RIGHT", 12, 0)
 end
 
-local function Foot(p, foot)
-    p.details = ns.character.Details(foot, nil, "Choose a talent to read it.", 4)
-    -- the points' line, under the details
-    local strip = CreateFrame("Frame", nil, foot)
-    strip:SetPoint("BOTTOMLEFT")
-    strip:SetPoint("BOTTOMRIGHT")
+-- the points' row over the tree: [Reset]  points available  [Apply]
+local function Points(p, body)
+    local strip = CreateFrame("Frame", nil, body)
+    strip:SetPoint("TOPLEFT")
+    strip:SetPoint("TOPRIGHT")
     strip:SetHeight(STRIP)
     p.points = ns.Text(strip, 12)
-    p.points:SetPoint("LEFT", 4, 0)
-    p.points:SetJustifyH("LEFT")
+    p.points:SetPoint("CENTER", 0, 0)
     p.points:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
     p.apply = ns.window.Button(strip, 64, function()
         if not Editable() then return end
@@ -321,15 +398,19 @@ local function Foot(p, foot)
     end, function() return InCombatLockdown() and "Not in combat." or "Learn the talents chosen." end)
     p.apply.label:SetText("Apply")
     p.apply:SetHeight(STRIP - 2)
-    p.apply:SetPoint("RIGHT", 0, 0)
+    p.apply:SetPoint("RIGHT", -4, 0)
     p.reset = ns.window.Button(strip, 64, function()
         C_Traits.RollbackConfig(Config())
         W.Refresh()
     end, function() return "Forget the talents chosen." end)
     p.reset.label:SetText("Reset")
     p.reset:SetHeight(STRIP - 2)
-    p.reset:SetPoint("RIGHT", p.apply, "LEFT", -4, 0)
-    p.footHeight = p.details.height + STRIP
+    p.reset:SetPoint("LEFT", 4, 0)
+end
+
+local function Foot(p, foot)
+    p.details = ns.character.Details(foot, nil, "Choose a talent to read it.", 4)
+    p.footHeight = p.details.height
 end
 
 -- ------------------------------------------------------------------ pages
@@ -349,6 +430,7 @@ for i = 1, TREES do
         return true
     end
     function p.Build(body, foot, band)
+        Points(p, body)
         Foot(p, foot)
         Margin(p, band)
     end
