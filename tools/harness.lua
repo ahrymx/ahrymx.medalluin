@@ -72,6 +72,25 @@ local savedNoBags = args[3] == "nobags"
 local characterPass = args[2] == "character"
 local characterRetail = characterPass and args[3] == "retail"
 local savedNoCharacter = characterPass and args[3] == "nochar"
+-- "spellbook" (with "modern": Forever's book; "modern retail": retail, where
+-- it is not built) plays the spellbook window (spells/): Blizzard's
+-- player-spells frame loaded on demand and followed, a tab per skill line and
+-- the pet's coming and going, the pages, and the secure layer through combat.
+local spellPass = args[2] == "spellbook"
+local spellRetail = spellPass and args[3] == "retail"
+-- "talents" (with "modern": Forever's; "modern retail": not built) plays the
+-- talents window (spells/talents.lua) over a stubbed tree of three groups:
+-- staging, Apply and Reset, the Primary and Secondary talents, combat, and
+-- the frame it shares with the spellbook.
+local talentPass = args[2] == "talents"
+local talentRetail = talentPass and args[3] == "retail"
+-- "professions" (with "modern": Forever's; "modern retail": not built) plays
+-- the professions window (professions/) over stubbed professions: the
+-- overview's cards and their spells, a tab per profession that crafts, the
+-- recipes, Create, the filters, a profession learned, combat, and one window
+-- on the right strip.
+local profPass = args[2] == "professions"
+local profRetail = profPass and args[3] == "retail"
 local barOff = args[3] == "nobar"
 local savedRows = tonumber((args[3] or ""):match("^rows(%d)$"))
 local savedBare = args[3] == "bare"
@@ -301,6 +320,15 @@ function Region:CreateTexture(_, layer, _, sub)
     return t
 end
 function Region:CreateFontString() return new("FontString", self) end
+-- a line: its two ends, each a point on a region
+function Region:CreateLine(_, layer)
+    local l = new("Line", self)
+    l.layer = layer
+    function l:SetStartPoint(point, rel, x, y) self.from = { point, rel, x or 0, y or 0 } end
+    function l:SetEndPoint(point, rel, x, y) self.to = { point, rel, x or 0, y or 0 } end
+    function l:SetThickness(t) self.thickness = t end
+    return l
+end
 local events = {}
 -- registering one already registered changes nothing, as in WoW
 local function listening(f, e)
@@ -2034,6 +2062,401 @@ if characterPass then
         table.insert(charWorld.popups, which .. ":" .. tostring(a))
         charWorld.popup = { which = which, data = data }
         return {}
+    end
+end
+
+-- ------------------------------------------------------------ the spellbook
+-- Forever's book: General and three specialisations' skill lines, a pet that
+-- comes and goes, Blizzard's player-spells frame loaded on demand. Only for
+-- the spellbook pass; on retail the micro menu has no spellbook button.
+local bookWorld
+if spellPass or talentPass or profPass then
+    bookWorld = { calls = {}, pet = 0, loaded = false }
+    if spellRetail or talentRetail or profRetail then SpellbookMicroButton = nil end
+    Enum = Enum or {}
+    Enum.SpellBookSpellBank = { Player = 0, Pet = 1 }
+    Enum.SpellBookItemType = { None = 0, Spell = 1, FutureSpell = 2, PetAction = 3, Flyout = 4 }
+    local S, P, F, X = 1, 2, 3, 4      -- spell, passive, future spell, flyout
+    local lines = {
+        { name = "General", iconID = 101, spells = { { "Attack", S }, { "Hearthstone", S }, { "Teleports", X } } },
+        { name = "Elemental", iconID = 102, spells = { { "Lightning Bolt", S, "Rank 4" }, { "Earth Shock", S, "Rank 2" },
+            { "Searing Totem", S, "Rank 1" }, { "Elemental Focus", P }, { "Chain Lightning", F, 32 } } },
+        { name = "Enhancement", iconID = 103, spells = { { "Rockbiter Weapon", S, "Rank 3" }, { "Lightning Shield", S } } },
+        { name = "Restoration", iconID = 104, spells = { { "Healing Wave", S, "Rank 5" } } },
+    }
+    local items, offset = {}, 0
+    for i, l in ipairs(lines) do
+        l.itemIndexOffset, l.numSpellBookItems, l.shouldHide = offset, #l.spells, false
+        for j, sp in ipairs(l.spells) do
+            local id = i * 100 + j
+            items[offset + j] = { actionID = id, spellID = sp[2] ~= X and id or nil,
+                itemType = sp[2] == X and 4 or sp[2] == F and 2 or 1, name = sp[1], subName = sp[2] == S and sp[3] or "",
+                iconID = 1000 + id, isPassive = sp[2] == P, isOffSpec = false, skillLineIndex = i, level = sp[2] == F and sp[3] }
+        end
+        offset = offset + #l.spells
+    end
+    local pets = { { actionID = 901, spellID = 901, itemType = 3, name = "Bite", subName = "", iconID = 1901,
+        isPassive = false }, { actionID = 902, spellID = 902, itemType = 3, name = "Growl", subName = "",
+        iconID = 1902, isPassive = false } }
+    bookWorld.lines, bookWorld.items = lines, items
+    C_SpellBook = {
+        GetNumSpellBookSkillLines = function() return #lines end,
+        GetSpellBookSkillLineInfo = function(i) return lines[i] end,
+        GetSpellBookItemInfo = function(slot, bank)
+            if bank == 1 then return slot <= bookWorld.pet and pets[slot] or nil end
+            return items[slot]
+        end,
+        GetSpellBookItemLevelLearned = function(slot) return items[slot] and items[slot].level or 0 end,
+        GetSpellBookItemDescription = function(slot, bank)
+            local i = bank == 1 and pets[slot] or items[slot]
+            return i and ("About " .. i.name .. ".")
+        end,
+        HasPetSpells = function() if bookWorld.pet > 0 then return bookWorld.pet, "PET" end end,
+        PickupSpellBookItem = function(slot, bank) table.insert(bookWorld.calls, "pickup " .. slot .. "/" .. bank) end,
+    }
+    function GetPetIcon() return 132599 end
+    -- the next frame's timers, run by the pass's frame()
+    bookWorld.timers = {}
+    C_Timer = { After = function(_, fn) table.insert(bookWorld.timers, fn) end }
+    function bookWorld.Tick()
+        local now = bookWorld.timers
+        bookWorld.timers = {}
+        for _, fn in ipairs(now) do fn() end
+    end
+    C_AddOns.IsAddOnLoaded = function(name) return name == "Blizzard_PlayerSpells" and bookWorld.loaded end
+    function ShowUIPanel(f) f:Show() end
+    function HideUIPanel(f) f:Hide() end
+    -- Blizzard_PlayerSpells, loaded when the book is first asked for: one
+    -- frame, a tab each for the book and the talents (Camelot's, without
+    -- the tab row); the tab shows its page and hides the other
+    PlayerSpellsUtil = { FrameTabs = { ClassSpecializations = 1, ClassTalents = 2, SpellBook = 3 } }
+    function bookWorld.Load()
+        local f = new("Frame", UIParent, "PlayerSpellsFrame")
+        PlayerSpellsFrame = f
+        f.shown = false
+        f.SpellBookFrame = new("Frame", f)
+        f.TalentsFrame = new("Frame", f)
+        f.TalentsFrame.shown = false
+        f.tab = 3
+        function f:GetTab() return self.tab end
+        function f:IsFrameTabActive(tab) return self.tab == tab end
+        -- bookWorld.stale: a turn that shows the new page and leaves the
+        -- other one marked shown, as the in-game N seemed to
+        function f:SetTab(tab)
+            self.tab = tab
+            if bookWorld.stale then
+                (tab == 2 and self.TalentsFrame or self.SpellBookFrame):Show()
+                return
+            end
+            self.TalentsFrame:SetShown(tab == 2)
+            self.SpellBookFrame:SetShown(tab == 3)
+        end
+        function f:TrySetTab(tab)
+            if self.minimized and tab ~= 3 then
+                local shown = self:IsShown()
+                if shown then HideUIPanel(self) end
+                self:SetTab(tab)
+                if shown then ShowUIPanel(self) end
+                self.minimized = false
+                return true
+            end
+            self:SetTab(tab)
+            return true
+        end
+        bookWorld.loaded = true
+        for _, h in ipairs(events.ADDON_LOADED or {}) do h.scripts.OnEvent(h, "ADDON_LOADED", "Blizzard_PlayerSpells") end
+    end
+    -- Forever's own toggle (PlayerSpellsUtil.lua): turn the tab, then show.
+    -- With another panel open (bookWorld.others) the panel manager minimises
+    -- the frame as it shows, and minimised it can show only the book; a
+    -- tab turned on a minimised frame maximises it (ForceMaximize).
+    function PlayerSpellsUtil.TogglePlayerSpellsFrame(tab)
+        if not bookWorld.loaded then bookWorld.Load() end
+        local f = PlayerSpellsFrame
+        if f:IsShown() and (not tab or f:IsFrameTabActive(tab)) then HideUIPanel(f) return true end
+        if tab then f:TrySetTab(tab) end
+        if f:IsShown() then return true end
+        bookWorld.Panel(f)
+        return true
+    end
+    function PlayerSpellsUtil.OpenToClassTalentsTab()
+        if not bookWorld.loaded then bookWorld.Load() end
+        PlayerSpellsFrame:TrySetTab(2)
+        bookWorld.Panel(PlayerSpellsFrame)
+    end
+    -- ShowUIPanel's EvaluateAutoMinimize
+    function bookWorld.Panel(f)
+        ShowUIPanel(f)
+        if bookWorld.others and not f.minimized then
+            f.minimized = true
+            if f.tab ~= 3 then
+                f:Hide()
+                f:SetTab(3)
+                f:Show()
+            end
+        end
+    end
+    -- PlayerSpellsUtil's toggles: open, then turn the tab; again on the
+    -- open tab, close
+    function bookWorld.Toggle(page)
+        if not bookWorld.loaded then bookWorld.Load() end
+        local f = PlayerSpellsFrame
+        local tab = page == "talents" and 2 or 3
+        if f:IsShown() and f.tab == tab then HideUIPanel(f) return end
+        if not f:IsShown() then ShowUIPanel(f) end
+        f:SetTab(tab)
+    end
+end
+
+-- ------------------------------------------------------------ the talents
+-- One tree of three groups (Forever's old trees side by side), a config per
+-- spec group: Primary with Elemental's first talent learned, Secondary
+-- empty. Ranks are staged, then committed or rolled back.
+local talentWorld
+if talentPass then
+    talentWorld = { calls = {}, active = 1, groups = 1 }
+    local T = talentWorld
+    -- id, group, x, y, ranks, the talents it opens, locked by tier
+    local NODES = {
+        { 1, 11, 0, 0, 5, { 3 } }, { 2, 11, 600, 0, 3 }, { 3, 11, 0, 600, 1 }, { 4, 11, 1200, 1800, 1, nil, true },
+        { 5, 12, 3000, 0, 5, { 6 } }, { 6, 12, 3600, 600, 2 },
+        { 7, 13, 6000, 0, 5 },
+    }
+    local NAMES = { "Convection", "Concussion", "Call of Flame", "Elemental Mastery", "Ancestral Knowledge",
+        "Shield Specialization", "Improved Healing Wave" }
+    local byID = {}
+    for _, n in ipairs(NODES) do byID[n[1]] = n end
+    T.committed = { [1] = { [1] = 5 }, [2] = {} }
+    T.staged = { [1] = {}, [2] = {} }
+    T.points = 12
+    local function rank(config, id) return (T.committed[config][id] or 0) + (T.staged[config][id] or 0) end
+    local function spent(config, group)
+        local n = 0
+        for _, d in ipairs(NODES) do
+            if not group or d[2] == group then n = n + rank(config, d[1]) end
+        end
+        return n
+    end
+    local function meets(config, id)
+        for _, d in ipairs(NODES) do
+            for _, to in ipairs(d[6] or {}) do
+                if to == id and rank(config, d[1]) < d[5] then return false end
+            end
+        end
+        return true
+    end
+    C_Traits = {
+        GetConfigInfo = function(config) return { ID = config, treeIDs = { 500 } } end,
+        GetGroupDisplayInfoByTreeID = function()
+            return { { groupID = 12, orderIndex = 2, displayName = "Enhancement", icon = 136051 },
+                { groupID = 11, orderIndex = 1, displayName = "Elemental", icon = 136048 },
+                { groupID = 13, orderIndex = 3, displayName = "Restoration", icon = 136052 } }
+        end,
+        GetGroupCurrencyInfo = function(config, ids)
+            local out = {}
+            for _, g in ipairs(ids) do
+                table.insert(out, { traitNodeGroupID = g, currencyInfos = { { spent = spent(config, g) } } })
+            end
+            return out
+        end,
+        GetTreeCurrencyInfo = function(config) return { { quantity = T.points - spent(config) } } end,
+        GetTreeNodes = function() return { 1, 2, 3, 4, 5, 6, 7 } end,
+        GetNodeInfo = function(config, id)
+            local d = byID[id]
+            local r = rank(config, id)
+            local edges = {}
+            for _, to in ipairs(d[6] or {}) do
+                table.insert(edges, { targetNode = to, type = 0, visualStyle = 1, isActive = r >= d[5] })
+            end
+            local available = not d[7]
+            local ok = meets(config, id)
+            return { ID = id, posX = d[3], posY = d[4], groupIDs = { d[2] }, entryIDs = { id * 10 },
+                activeEntry = r > 0 and { entryID = id * 10, rank = r } or nil, ranksPurchased = r,
+                maxRanks = d[5], isVisible = true, isAvailable = available, meetsEdgeRequirements = ok,
+                canPurchaseRank = available and ok and r < d[5] and T.points - spent(config) > 0,
+                canRefundRank = (T.staged[config][id] or 0) > 0, visibleEdges = edges }
+        end,
+        GetEntryInfo = function(_, entry) return { definitionID = entry } end,
+        GetDefinitionInfo = function(def) return { spellID = def, overrideName = "", overrideIcon = 0 } end,
+        PurchaseRank = function(config, id)
+            local info = C_Traits.GetNodeInfo(config, id)
+            table.insert(T.calls, "purchase " .. config .. "/" .. id)
+            if not info.canPurchaseRank then return false end
+            T.staged[config][id] = (T.staged[config][id] or 0) + 1
+            return true
+        end,
+        RefundRank = function(config, id)
+            table.insert(T.calls, "refund " .. config .. "/" .. id)
+            if (T.staged[config][id] or 0) == 0 then return false end
+            T.staged[config][id] = T.staged[config][id] - 1
+            return true
+        end,
+        ConfigHasStagedChanges = function(config)
+            for _, n in pairs(T.staged[config]) do
+                if n > 0 then return true end
+            end
+            return false
+        end,
+        RollbackConfig = function(config)
+            table.insert(T.calls, "rollback " .. config)
+            T.staged[config] = {}
+            return true
+        end,
+    }
+    C_ClassTalents = {
+        CommitConfig = function(saved)
+            local config = T.active
+            table.insert(T.calls, "commit " .. tostring(saved) .. " (config " .. config .. ")")
+            for id, n in pairs(T.staged[config]) do T.committed[config][id] = (T.committed[config][id] or 0) + n end
+            T.staged[config] = {}
+            return true
+        end,
+    }
+    C_SpecializationInfo = C_SpecializationInfo or {}
+    C_SpecializationInfo.GetActiveSpecGroup = function() return T.active end
+    C_SpecializationInfo.GetCombatConfigIDForSpecGroup = function(g) return g <= T.groups and g or nil end
+    C_SpecializationInfo.SetActiveSpecGroup = function(g) table.insert(T.calls, "activate " .. g) end
+    function GetNumSpecGroups() return T.groups end
+    C_Spell.GetSpellName = function(id) return NAMES[id / 10] end
+    C_Spell.GetSpellTexture = function(id) return 2000 + id end
+    C_Spell.GetSpellDescription = function(id) return "About " .. NAMES[id / 10] .. "." end
+end
+
+-- -------------------------------------------------------- the professions
+-- Blacksmithing and Mining, Fishing and Cooking learned (First Aid comes
+-- later); Blizzard's ProfessionsFrame loaded on demand, its book a page.
+local profWorld
+if profPass then
+    profWorld = { calls = {}, open = 0, makeable = false, filter = nil, loaded = false }
+    local P = profWorld
+    -- index -> name, icon, rank, max, spells, offset, skill line, modifier
+    P.info = {
+        { "Blacksmithing", 136241, 142, 150, 1, 50, 164, 0 },
+        { "Mining", 136248, 120, 150, 2, 52, 186, 5 },
+        { "First Aid", 135966, 60, 75, 1, 59, 129, 0 },
+        { "Fishing", 136245, 60, 75, 1, 55, 356, 0 },
+        { "Cooking", 133971, 80, 150, 1, 57, 185, 0 },
+    }
+    P.learned = { 1, 2, nil, 4, 5 }       -- prof1, prof2, first aid, fishing, cooking
+    function GetProfessions() return P.learned[1], P.learned[2], P.learned[3], P.learned[4], P.learned[5] end
+    function GetProfessionInfo(i) return unpack(P.info[i]) end
+    -- the professions' spells, in the book after the specialisations'
+    local spells = { [51] = { 2018, "Blacksmithing" }, [53] = { 2656, "Smelting" }, [54] = { 2580, "Find Minerals" },
+        [56] = { 7620, "Fishing" }, [58] = { 2550, "Cooking" }, [60] = { 3273, "First Aid" } }
+    local crafts = { [2018] = true, [2656] = true, [2550] = true, [3273] = true }
+    local book = C_SpellBook.GetSpellBookItemInfo
+    C_SpellBook.GetSpellBookItemInfo = function(slot, bank)
+        local s = bank == 0 and spells[slot]
+        if s then return { actionID = s[1], spellID = s[1], itemType = 1, name = s[2], iconID = 3000 + slot,
+            isPassive = false, subName = "" } end
+        return book(slot, bank)
+    end
+    -- each profession's recipes: id, name, category, difficulty, reagents { item, need }
+    P.recipes = {
+        [164] = { { 2662, "Copper Chain Pants", 1, 2, { { 2840, 4 } } },
+            { 2663, "Copper Bracers", 1, 3, { { 2840, 2 } } },
+            { 3115, "Rough Sharpening Stone", 2, 0, { { 2835, 1 } } },
+            { 7408, "Heavy Copper Maul", 1, 1, { { 2840, 12 }, { 2880, 1 } } } },
+        [186] = { { 2657, "Smelt Copper", 3, 2, { { 2770, 1 } } } },
+        [185] = { { 2538, "Charred Wolf Meat", 4, 3, { { 2672, 1 } } } },
+        [129] = { { 3275, "Linen Bandage", 5, 0, { { 2589, 1 } } } },
+    }
+    local CATS = { "Armor", "Materials", "Smelting", "Meat", "Bandages" }
+    local ITEMS = { [2840] = "Copper Bar", [2835] = "Rough Stone", [2880] = "Weak Flux", [2770] = "Copper Ore",
+        [2672] = "Stringy Wolf Meat", [2589] = "Linen Cloth" }
+    P.bags = { [2840] = 10, [2835] = 3, [2770] = 5, [2672] = 0, [2589] = 7 }
+    local byID = {}
+    for _, list in pairs(P.recipes) do
+        for _, r in ipairs(list) do byID[r[1]] = r end
+    end
+    C_Item = C_Item or {}
+    C_Item.GetItemCount = function(id) return P.bags[id] or 0 end
+    C_Item.GetItemNameByID = function(id) return ITEMS[id] end
+    local function count(id)
+        local n = math.huge
+        for _, g in ipairs(byID[id][5]) do n = math.min(n, math.floor((P.bags[g[1]] or 0) / g[2])) end
+        return n
+    end
+    C_TradeSkillUI = {
+        CanTradeSkillShowCraftingUI = function(spell) return crafts[spell] or false end,
+        GetBaseProfessionInfo = function() return { professionID = P.open } end,
+        IsDataSourceChanging = function() return false end,
+        OpenTradeSkill = function(line)
+            table.insert(P.calls, "open " .. line)
+            return true
+        end,
+        GetFilteredRecipeIDs = function()
+            local out = {}
+            for _, r in ipairs(P.recipes[P.open] or {}) do
+                if (not P.makeable or count(r[1]) > 0)
+                    and (not P.filter or r[2]:lower():find(P.filter:lower(), 1, true)) then
+                    table.insert(out, r[1])
+                end
+            end
+            return out
+        end,
+        GetRecipeInfo = function(id)
+            local r = byID[id]
+            return { recipeID = id, name = r[2], icon = 4000 + id % 100, categoryID = r[3],
+                relativeDifficulty = r[4], learned = true }
+        end,
+        GetCategoryInfo = function(cat) return { categoryID = cat, name = CATS[cat] } end,
+        GetCraftableCount = count,
+        GetRecipeSchematic = function(id)
+            local slots = {}
+            for _, g in ipairs(byID[id][5]) do
+                table.insert(slots, { reagents = { { itemID = g[1] } }, quantityRequired = g[2], required = true })
+            end
+            return { recipeID = id, quantityMax = id == 3115 and 2 or 1, reagentSlotSchematics = slots }
+        end,
+        GetRecipeCooldown = function(id) return id == 7408 and 3600 or nil end,
+        CraftRecipe = function(id, n) table.insert(P.calls, "craft " .. id .. " x" .. n) end,
+        SetOnlyShowMakeableRecipes = function(on) P.makeable = on end,
+        GetOnlyShowMakeableRecipes = function() return P.makeable end,
+        SetRecipeItemNameFilter = function(text) P.filter = text end,
+    }
+    local loaded = C_AddOns.IsAddOnLoaded
+    C_AddOns.IsAddOnLoaded = function(name)
+        if name == "Blizzard_Professions" then return P.loaded end
+        return loaded(name)
+    end
+    function SecondsToTime(s) return format("%d min", s / 60) end
+    StaticPopup_Show = function(which, a1, _, data)
+        table.insert(P.calls, "popup " .. which .. " " .. tostring(a1) .. " " .. tostring(data))
+    end
+    -- Blizzard_Professions: the frame, its book and crafting pages
+    function P.Load()
+        local f = new("Frame", UIParent, "ProfessionsFrame")
+        ProfessionsFrame = f
+        f.shown = false
+        f.BookPage = new("Frame", f)
+        f.CraftingPage = new("Frame", f)
+        f.CraftingPage.shown = false
+        P.loaded = true
+        for _, h in ipairs(events.ADDON_LOADED or {}) do h.scripts.OnEvent(h, "ADDON_LOADED", "Blizzard_Professions") end
+    end
+    -- ToggleProfessionsBook: the frame, on its book the first time
+    function P.Toggle()
+        if not P.loaded then
+            P.Load()
+            ProfessionsFrame.BookPage:Show()
+            ProfessionsFrame.CraftingPage:Hide()
+            ShowUIPanel(ProfessionsFrame)
+            return
+        end
+        if ProfessionsFrame:IsShown() then HideUIPanel(ProfessionsFrame) else ShowUIPanel(ProfessionsFrame) end
+    end
+    -- a profession's list opened (its spell, OpenTradeSkill): TRADE_SKILL_SHOW,
+    -- and Blizzard turns to its crafting page
+    function P.Show(line)
+        if not P.loaded then P.Load() end
+        P.open = line
+        local f = ProfessionsFrame
+        f.BookPage:Hide()
+        f.CraftingPage:Show()
+        ShowUIPanel(f)
+        for _, h in ipairs(events.TRADE_SKILL_SHOW or {}) do h.scripts.OnEvent(h, "TRADE_SKILL_SHOW") end
+        for _, h in ipairs(events.TRADE_SKILL_LIST_UPDATE or {}) do h.scripts.OnEvent(h, "TRADE_SKILL_LIST_UPDATE") end
     end
 end
 
@@ -8031,4 +8454,658 @@ if args[2] == "unitrow" or args[3] == "unitrow" then
     ns.OverheadFadeIn = fadeIn
     ns.UpdateOverhead()
     state("after the runaway")
+end
+
+-- ------------------------------------------------------------ the spellbook
+if spellPass then
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local B = ns.spellbook
+    local w = _G.MedalluinSpellbook
+    print("book", "window=" .. tostring(w ~= nil and B.layer ~= nil), "setting=" .. tostring(ns.db.spellbook))
+    if not (w and B.layer) then return end
+    local layer = B.layer
+    local function where(r)
+        local point, p = next(r.points)
+        if not point then return "nowhere" end
+        return string.format("%s %s %s %d,%d", point, p[1] and (p[1].name or (p[1] == r.parent and "parent")
+            or "?") or "-", p[2] or "-", p[3] or 0, p[4] or 0)
+    end
+    local function frame()
+        bookWorld.Tick()
+        if w.shown and w.scripts.OnUpdate then w.scripts.OnUpdate(w, 0) end
+    end
+    local function state(tag)
+        local p = B.Current()
+        print(tag, "shown=" .. tostring(w.shown), "blizzard=" .. tostring(PlayerSpellsFrame
+            and PlayerSpellsFrame.shown), "page=" .. (p and p.key or "none"),
+            "layer=" .. tostring(layer.shown) .. "/" .. tostring(layer.stateDrivers
+            and layer.stateDrivers.visibility or "-"))
+    end
+    local function tabs(tag)
+        local list = {}
+        for _, p in ipairs(B.pages) do
+            if p.tab and p.tab.shown then
+                table.insert(list, (p.label ~= "" and p.label or p.key) .. "=" .. tostring(p.tab.icon.texture)
+                    .. (p.tab.mark.shown and "*" or "") .. "@" .. p.tab.w)
+            end
+        end
+        print(tag, table.concat(list, " "))
+    end
+    local function cells(tag)
+        local p = B.Current()
+        local list = {}
+        for i, c in ipairs(p.cells) do
+            if c.shown then
+                local b = layer.buttons[i]
+                local arm = b and b.shown and b.item == c.item
+                    and ((b.attrs.type or "none") .. ":" .. tostring(b.attrs.spell)) or "unarmed"
+                table.insert(list, string.format("%s(%s,%.1f%s)[%s]", c.name.text, c.sub.text, c.icon.alpha or 1,
+                    c.mark.shown and ",chosen" or "", arm))
+            end
+        end
+        print(tag, "pager=" .. p.pager.text.text, string.format("prev=%.1f next=%.1f", p.pager.prev.alpha or 1,
+            p.pager.next.alpha or 1), table.concat(list, " "))
+    end
+    local function details(tag)
+        local p = B.Current()
+        local texts = {}
+        for _, r in ipairs(p.foot.all_ or {}) do
+            if r.kind == "FontString" and r.shown ~= false and r.text and r.text ~= "" then
+                table.insert(texts, r.text)
+            end
+        end
+        print(tag, table.concat(texts, " | "))
+    end
+    local function pageOf(key)
+        for _, p in ipairs(B.pages) do
+            if p.key == key then return p end
+        end
+    end
+
+    -- 1. at login: Blizzard's book not loaded, nothing parked, ours closed
+    state("book.login")
+    print("book.anchor", where(w), "parent=" .. tostring(w.parent == ns.strips[1]),
+        "medal=" .. where(w.medal), "medalUV=" .. table.concat(w.medal.all_[1].coords or {}, ","))
+    print("book.layer", "parent=" .. tostring(layer.parent == ns.strips[1]), "over=" .. tostring(layer.all == w))
+    tabs("book.tabs")
+
+    -- 2. the key loads Blizzard_PlayerSpells: its frame is parked and followed
+    bookWorld.Toggle("spellbook")
+    frame()
+    print("book.loaded", "parked=" .. tostring(PlayerSpellsFrame.parent == ns.hidden))
+    -- the first show: Blizzard's own toggle opens before it turns the tab
+    state("book.open")
+    print("book.backpack", tostring(MainMenuBarBackpackButton.strata) .. "/" .. tostring(MainMenuBarBackpackButton.level))
+    tabs("book.tabs")
+    cells("book.general")
+
+    -- 3. a click casts through the layer and chooses the spell
+    local b = layer.buttons[1]
+    b.scripts.PostClick(b, "LeftButton")
+    cells("book.chosen")
+    details("book.details")
+
+    -- 4. the next tab
+    local elem = pageOf("line2")
+    elem.tab.scripts.OnClick(elem.tab)
+    frame()
+    state("book.elemental")
+    cells("book.elemental")
+    details("book.elemental details")
+
+    -- 5. a short screen: fewer rows, the pager turns
+    local height = UIParent.GetHeight
+    UIParent.GetHeight = function() return 240 end
+    w:SetHeight(240)
+    elem.body.h = 2 * 40 + 4
+    elem.Refresh()
+    cells("book.short")
+    elem.body.scripts.OnMouseWheel(elem.body, -1)
+    cells("book.short next")
+    elem.pager.next.scripts.OnClick(elem.pager.next)
+    cells("book.short past end")
+    elem.pager.prev.scripts.OnClick(elem.pager.prev)
+    cells("book.short back")
+    elem.pager.next.scripts.OnClick(elem.pager.next)
+    UIParent.GetHeight = height
+    -- on page 2 when the window grows back: one page, and it is the first
+    elem.body.h = 10 * 40
+    elem.Refresh()
+    cells("book.tall again")
+
+    -- 6. a pet comes: a fifth tab, the row shared out again
+    bookWorld.pet = 2
+    fire("UNIT_PET", "player")
+    tabs("book.pet tabs")
+    local pet = pageOf("pet")
+    pet.tab.scripts.OnClick(pet.tab)
+    frame()
+    cells("book.pet")
+    -- and goes, while its page is open: back to the first
+    bookWorld.pet = 0
+    fire("UNIT_PET", "player")
+    frame()
+    tabs("book.pet gone")
+    state("book.pet gone")
+
+    -- 7. combat: the layer goes, the page still turns but nothing is re-armed
+    local function combat(on)
+        harnessHolds.combat = on or nil
+        inCombat = on
+        stateTick()
+        if not on then fire("PLAYER_REGEN_ENABLED") end
+    end
+    elem.tab.scripts.OnClick(elem.tab)
+    frame()
+    combat(true)
+    state("book.combat")
+    local gen = pageOf("line1")
+    gen.tab.scripts.OnClick(gen.tab)
+    frame()
+    cells("book.combat general")
+    gen.cells[2].scripts.OnClick(gen.cells[2])
+    cells("book.combat chosen")
+    layer.buttons[1].scripts.OnDragStart(layer.buttons[1])
+    print("book.combat drag", table.concat(bookWorld.calls, ","))
+    combat(false)
+    state("book.after combat")
+    cells("book.after combat")
+    layer.buttons[1].scripts.OnDragStart(layer.buttons[1])
+    print("book.drag", table.concat(bookWorld.calls, ","))
+
+    -- 8. the talents' tab: Blizzard's frame comes back under UIParent and
+    -- our book closes; N with the book open, then N from closed with the
+    -- book the last tab (the frame shows before it turns its tab)
+    local function held(tag)
+        state(tag)
+        print(tag .. " frame", "parent=" .. (PlayerSpellsFrame.parent == ns.hidden and "hidden"
+            or PlayerSpellsFrame.parent == UIParent and "UIParent" or "?"),
+            "talents=" .. tostring(PlayerSpellsFrame.TalentsFrame.shown))
+    end
+    bookWorld.Toggle("talents")
+    frame()
+    held("book.talents")
+    bookWorld.Toggle("talents")
+    frame()
+    held("book.talents closed")
+    bookWorld.Toggle("spellbook")
+    frame()
+    bookWorld.Toggle("spellbook")
+    held("book.book closed")
+    local opened = {}
+    hooksecurefunc(w, "Show", function() table.insert(opened, "book") end)
+    bookWorld.Toggle("talents")
+    frame()
+    held("book.N from closed")
+    print("book.N from closed", "ours opened=" .. #opened)
+    bookWorld.Toggle("spellbook")
+    frame()
+    held("book.again")
+    -- in combat the frame cannot be moved: the talents wait for its end
+    combat(true)
+    bookWorld.Toggle("talents")
+    frame()
+    held("book.combat talents")
+    combat(false)
+    held("book.after combat talents")
+    bookWorld.Toggle("spellbook")
+    frame()
+    held("book.back to book")
+    -- 8b. a tab turn that leaves the book's page marked shown: the tab is
+    -- the record, so N still opens the talents and closes ours
+    bookWorld.stale = true
+    bookWorld.Toggle("talents")
+    frame()
+    held("book.stale talents")
+    bookWorld.Toggle("spellbook")
+    frame()
+    held("book.stale book")
+    bookWorld.stale = false
+    -- 9. the close button
+    w.close.scripts.OnClick(w.close)
+    state("book.closed")
+    print("book.backpack", tostring(MainMenuBarBackpackButton.strata) .. "/" .. tostring(MainMenuBarBackpackButton.level))
+end
+
+-- -------------------------------------------------------------- the talents
+if talentPass then
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local T = talentWorld
+    local W = ns.talents
+    local w = _G.MedalluinTalents
+    print("talents", "window=" .. tostring(w ~= nil), "setting=" .. tostring(ns.db.talents))
+    if not w then return end
+    local book = _G.MedalluinSpellbook
+    local function frame()
+        bookWorld.Tick()
+        if w.shown and w.scripts.OnUpdate then w.scripts.OnUpdate(w, 0) end
+    end
+    local function where(r)
+        local point, p = next(r.points)
+        if not point then return "nowhere" end
+        return string.format("%s %s %s %d,%d", point, p[1] and (p[1].name or (p[1] == r.parent and "parent")
+            or "?") or "-", p[2] or "-", p[3] or 0, p[4] or 0)
+    end
+    local function state(tag)
+        local p = W.Current()
+        print(tag, "shown=" .. tostring(w.shown), "book=" .. tostring(book and book.shown),
+            "blizzard=" .. tostring(PlayerSpellsFrame and PlayerSpellsFrame.shown),
+            "parked=" .. tostring(PlayerSpellsFrame and PlayerSpellsFrame.parent == ns.hidden),
+            "page=" .. (p and p.key or "none"))
+    end
+    local function tabs(tag)
+        local list = {}
+        for _, p in ipairs(W.pages) do
+            if p.tab and p.tab.shown then
+                table.insert(list, p.label .. "=" .. tostring(p.tab.icon.texture) .. (p.tab.mark.shown and "*" or "")
+                    .. "@" .. p.tab.w .. "[" .. p.tip .. "]")
+            end
+        end
+        print(tag, table.concat(list, " "))
+    end
+    local function c3(c) return c and string.format("%.2f", c[1]) or "-" end
+    local function tree(tag)
+        local p = W.Current()
+        local list = {}
+        for _, b in ipairs(p.nodes) do
+            if b.shown and b.node then
+                local pt = b.points.CENTER
+                table.insert(list, string.format("%s@%d,%d %s%s edge=%s", b.talent.name, pt[3], -pt[4], b.rank.text,
+                    b.icon.desaturated and " dim" or "", c3(b.edge.color)))
+            end
+        end
+        print(tag, "body=" .. p.body.w .. "x" .. p.body.h, table.concat(list, " | "))
+        local lines = {}
+        for _, l in ipairs(p.edges) do
+            if l.shown then
+                table.insert(lines, l.from[2].talent.name .. ">" .. l.to[2].talent.name .. "(" .. c3(l.color) .. ")")
+            end
+        end
+        print(tag .. " lines", table.concat(lines, " "))
+    end
+    local function foot(tag)
+        local p = W.Current()
+        local d = p.details
+        print(tag, d.nothing.shown and ("nothing: " .. d.nothing.text) or (d.title.text .. " | " .. d.sub.text
+            .. " | " .. d.text.text), "points=" .. p.points.text,
+            "apply=" .. tostring(p.apply.shown) .. string.format("(%.1f)", p.apply.alpha or 1),
+            "reset=" .. tostring(p.reset.shown))
+        local specs = {}
+        for _, b in ipairs(p.specs) do
+            table.insert(specs, b.label.text .. (b.mark.shown and "*" or "") .. "(" .. c3(b.label.textColor)
+                .. string.format(",%.1f)", b.alpha or 1))
+        end
+        print(tag .. " margin", table.concat(specs, " "), "activate=" .. tostring(p.activate.shown)
+            .. string.format("(%.1f)", p.activate.alpha or 1), "calls=" .. table.concat(T.calls, ","))
+    end
+    local function node(name)
+        for _, b in ipairs(W.Current().nodes) do
+            if b.shown and b.talent.name == name then return b end
+        end
+    end
+    local function click(name, button)
+        local b = node(name)
+        b.scripts.OnClick(b, button or "LeftButton")
+        frame()
+    end
+    local function pageOf(key)
+        for _, p in ipairs(W.pages) do
+            if p.key == key then return p end
+        end
+    end
+
+    -- 1. at login: a tab per tree, in the trees' order
+    state("talents.login")
+    print("talents.anchor", where(w), "parent=" .. tostring(w.parent == ns.strips[1]))
+    tabs("talents.tabs")
+
+    -- 2. N opens Blizzard's frame on its talents tab: ours shows, parked
+    bookWorld.Toggle("talents")
+    frame()
+    state("talents.open")
+    tree("talents.elemental")
+    foot("talents.foot")
+
+    -- 3. a click stages a rank; the details read the talent
+    click("Concussion")
+    tree("talents.staged")
+    foot("talents.staged")
+    -- a right-click takes it back; a locked talent stages nothing
+    click("Concussion", "RightButton")
+    click("Elemental Mastery")
+    foot("talents.locked")
+    -- two ranks, then Reset
+    click("Concussion")
+    click("Concussion")
+    W.Current().reset.scripts.OnClick(W.Current().reset)
+    frame()
+    foot("talents.reset")
+    -- a rank, then Apply
+    click("Concussion")
+    W.Current().apply.scripts.OnClick(W.Current().apply)
+    fire("TRAIT_CONFIG_UPDATED", 1)
+    frame()
+    tree("talents.applied")
+    foot("talents.applied")
+
+    -- 4. the next tree
+    local enh = pageOf("tree2")
+    enh.tab.scripts.OnClick(enh.tab)
+    frame()
+    tree("talents.enhancement")
+    tabs("talents.tabs")
+
+    -- 5. Secondary: not learned, then learned; it reads, and Activate
+    local sec = W.Current().specs[2]
+    sec.scripts.OnClick(sec)
+    frame()
+    foot("talents.no secondary")
+    click("Ancestral Knowledge")
+    click("Ancestral Knowledge", "RightButton")
+    foot("talents.no secondary click")
+    T.groups = 2
+    sec.scripts.OnClick(sec)
+    frame()
+    tree("talents.secondary")
+    foot("talents.secondary")
+    click("Ancestral Knowledge")
+    foot("talents.secondary click")
+    W.Current().activate.scripts.OnClick(W.Current().activate)
+    T.active = 2
+    fire("ACTIVE_TALENT_GROUP_CHANGED", 2, 1)
+    frame()
+    foot("talents.activated")
+    local prim = W.Current().specs[1]
+    prim.scripts.OnClick(prim)
+    frame()
+    foot("talents.primary viewed")
+
+    -- 6. combat: it reads, and changes nothing
+    T.active = 1
+    fire("ACTIVE_TALENT_GROUP_CHANGED", 1, 2)
+    frame()
+    -- the spec changed elsewhere: the window turns to the one in use
+    prim.scripts.OnClick(prim)
+    frame()
+    T.active = 2
+    fire("ACTIVE_TALENT_GROUP_CHANGED", 2, 1)
+    frame()
+    foot("talents.swapped elsewhere")
+    T.active = 1
+    fire("ACTIVE_TALENT_GROUP_CHANGED", 1, 2)
+    frame()
+    inCombat = true
+    fire("PLAYER_REGEN_DISABLED")
+    frame()
+    click("Ancestral Knowledge")
+    foot("talents.combat")
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    frame()
+    foot("talents.after combat")
+
+    -- 7. the book takes the frame, and the talents take it back
+    bookWorld.Toggle("spellbook")
+    frame()
+    state("talents.book")
+    bookWorld.Toggle("talents")
+    frame()
+    state("talents.again")
+    w.close.scripts.OnClick(w.close)
+    frame()
+    state("talents.closed")
+
+    -- 8. Forever's own N with another panel open (the parked character
+    -- frame): Blizzard minimises the frame onto the book; ours turns it back
+    bookWorld.others = true
+    PlayerSpellsUtil.TogglePlayerSpellsFrame(PlayerSpellsUtil.FrameTabs.ClassTalents)
+    frame()
+    state("talents.N minimised")
+    PlayerSpellsUtil.TogglePlayerSpellsFrame(PlayerSpellsUtil.FrameTabs.ClassTalents)
+    frame()
+    state("talents.N again")
+    -- the book's own toggle is left on the book
+    PlayerSpellsUtil.TogglePlayerSpellsFrame(PlayerSpellsUtil.FrameTabs.SpellBook)
+    frame()
+    state("talents.P minimised")
+    HideUIPanel(PlayerSpellsFrame)
+    PlayerSpellsUtil.OpenToClassTalentsTab()
+    frame()
+    state("talents.opened to")
+    HideUIPanel(PlayerSpellsFrame)
+    frame()
+    bookWorld.others = false
+end
+
+if profPass then
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local P = profWorld
+    local W = ns.professions
+    local w = _G.MedalluinProfessions
+    print("prof", "window=" .. tostring(w ~= nil), "setting=" .. tostring(ns.db.professions))
+    if not w then return end
+    local layer = W.layer
+    local book = _G.MedalluinSpellbook
+    local function frame()
+        bookWorld.Tick()
+        if w.shown and w.scripts.OnUpdate then w.scripts.OnUpdate(w, 0) end
+    end
+    local function where(r)
+        local point, p = next(r.points)
+        if not point then return "nowhere" end
+        return string.format("%s %s %s %d,%d", point, p[1] and (p[1].name or (p[1] == r.parent and "parent")
+            or "?") or "-", p[2] or "-", p[3] or 0, p[4] or 0)
+    end
+    local function state(tag)
+        local p = W.Current()
+        print(tag, "shown=" .. tostring(w.shown), "book=" .. tostring(book and book.shown),
+            "blizzard=" .. tostring(ProfessionsFrame and ProfessionsFrame.shown),
+            "parked=" .. tostring(ProfessionsFrame and ProfessionsFrame.parent == ns.hidden),
+            "spells=" .. tostring(PlayerSpellsFrame and PlayerSpellsFrame.shown),
+            "page=" .. (p and p.key or "none"), "layer=" .. tostring(layer.shown))
+    end
+    local function tabs(tag)
+        local list = {}
+        for _, p in ipairs(W.pages) do
+            if p.tab and p.tab.shown then
+                table.insert(list, p.label .. "=" .. tostring(p.tab.icon.texture):gsub(".*\\", "")
+                    .. (p.tab.mark.shown and "*" or "") .. "@" .. p.tab.w)
+            end
+        end
+        print(tag, table.concat(list, " "))
+    end
+    local function c3(c) return c and string.format("%.2f,%.2f,%.2f", c[1], c[2], c[3]) or "-" end
+    local function pageOf(key)
+        for _, p in ipairs(W.pages) do
+            if p.key == key then return p end
+        end
+    end
+    local function cards(tag)
+        for i, c in ipairs(pageOf("overview").cards) do
+            if c.shown then
+                local spells = {}
+                for _, sp in ipairs(c.spells) do
+                    if sp.shown then table.insert(spells, sp.slot .. "@" .. sp.points.TOPRIGHT[3]) end
+                end
+                print(tag .. i, c.name.text, c.icon.desaturated and "dim" or "lit",
+                    c.bar.shown and c.bar.text.text or ("none: " .. c.none.text),
+                    "spells=" .. table.concat(spells, ","), "unlearn=" .. tostring(c.unlearn.shown))
+            end
+        end
+        local secure = {}
+        for _, b in ipairs(layer.buttons) do
+            if b.shown then
+                table.insert(secure, b.attrs.type .. ":" .. tostring(b.attrs.spell)
+                    .. (b.all == b.cell and "" or "!"))
+            end
+        end
+        print(tag .. " layer", "parent=" .. tostring(layer.parent == ns.strips[1]),
+            "driver=" .. tostring(layer.stateDrivers and layer.stateDrivers.visibility), table.concat(secure, " "))
+    end
+    local function rows(tag)
+        local p = W.Current()
+        local list = {}
+        for _, r in ipairs(p.list.rows) do
+            if r.shown then
+                table.insert(list, (r.data.header and (r.sign.text .. r.label.text)
+                    or (r.label.text .. "(" .. c3(r.label.textColor) .. ")" .. (r.value.shown and r.value.text or "")
+                    .. (r.mark.shown and "*" or ""))))
+            end
+        end
+        print(tag, #list > 0 and table.concat(list, " | ") or ("empty: " .. p.list.empty.text))
+    end
+    local function foot(tag)
+        local p = W.Current()
+        local d = p.details
+        print(tag, d.nothing.shown and ("nothing: " .. d.nothing.text)
+            or (d.title.text .. " | " .. d.sub.text .. " | " .. d.text.text:gsub("\n", "; ")),
+            "tick=" .. tostring(d.ticks[1].on), "count=" .. p.counter.text,
+            string.format("create=%.1f all=%.1f", p.create.alpha or 1, p.createAll.alpha or 1),
+            "calls=" .. table.concat(P.calls, ","))
+    end
+    local function row(label)
+        for _, r in ipairs(W.Current().list.rows) do
+            if r.shown and r.label.text == label then
+                r.scripts.OnClick(r, "LeftButton")
+                frame()
+                return
+            end
+        end
+        print("no row " .. label)
+    end
+    local function click(b)
+        b.scripts.OnClick(b, "LeftButton")
+        frame()
+    end
+
+    -- 1. at login: Overview and a tab per profession that crafts (Fishing none)
+    state("prof.login")
+    print("prof.anchor", where(w), "parent=" .. tostring(w.parent == ns.strips[1]))
+    tabs("prof.tabs")
+
+    -- 2. the key loads Blizzard_Professions on its book: parked, Overview
+    P.Toggle()
+    frame()
+    state("prof.open")
+    cards("prof.card")
+    -- a spell's secure button casts; Unlearn asks Blizzard's question
+    click(pageOf("overview").cards[2].unlearn)
+    print("prof.unlearn", table.concat(P.calls, ","))
+    P.calls = {}
+
+    -- 3. Blacksmithing's tab opens it: the crafting page follows
+    local smith = pageOf("craft1")
+    click(smith.tab)
+    print("prof.opened", table.concat(P.calls, ","))
+    P.calls = {}
+    rows("prof.waiting")
+    P.Show(164)
+    frame()
+    state("prof.smith")
+    rows("prof.rows")
+    foot("prof.none chosen")
+
+    -- 4. a recipe chosen: its reagents; the count, Create, Create all
+    row("Copper Chain Pants")
+    rows("prof.chosen")
+    foot("prof.pants")
+    click(smith.create)
+    for _ = 1, 3 do click(smith.more) end
+    foot("prof.count 4")
+    click(smith.createAll)
+    foot("prof.created")
+    P.calls = {}
+    row("Heavy Copper Maul")
+    foot("prof.maul")
+    click(smith.create)
+    print("prof.no craft", table.concat(P.calls, ","))
+    row("Rough Sharpening Stone")
+    foot("prof.stone")
+
+    -- 5. the filters: Have materials, the search, a heading folded
+    click(smith.details.ticks[1])
+    rows("prof.makeable")
+    click(smith.details.ticks[1])
+    smith.search:SetText("copper")
+    smith.search.scripts.OnTextChanged(smith.search)
+    rows("prof.search")
+    smith.search:SetText("")
+    smith.search.scripts.OnTextChanged(smith.search)
+    row("Armor")
+    rows("prof.folded")
+    row("Armor")
+
+    -- 6. Cooking's spell cast: Blizzard opens it, the window follows
+    P.Show(185)
+    frame()
+    state("prof.cooking")
+    tabs("prof.tabs")
+    rows("prof.cooking")
+    -- Overview turns our page alone
+    click(pageOf("overview").tab)
+    state("prof.overview")
+
+    -- 7. First Aid learned: a fifth tab, the others narrower
+    P.learned[3] = 3
+    fire("SKILL_LINES_CHANGED")
+    frame()
+    tabs("prof.first aid")
+    cards("prof.card")
+    -- Mining forgotten: its card says how to learn one, its tab goes
+    P.learned[2] = nil
+    fire("SKILL_LINES_CHANGED")
+    frame()
+    tabs("prof.no mining")
+    cards("prof.card")
+    P.learned[2] = 2
+    fire("SKILL_LINES_CHANGED")
+    frame()
+
+    -- 8. combat: the list waits, Create does nothing, the layer goes
+    click(pageOf("craft1").tab)
+    P.Show(164)
+    frame()
+    inCombat = true
+    fire("PLAYER_REGEN_DISABLED")
+    frame()
+    P.calls = {}
+    row("Copper Chain Pants")
+    rows("prof.combat")
+    foot("prof.combat")
+    click(smith.create)
+    click(smith.createAll)
+    click(pageOf("craft2").tab)
+    rows("prof.combat mining")
+    print("prof.combat calls", table.concat(P.calls, ","))
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    frame()
+    print("prof.after combat calls", table.concat(P.calls, ","))
+    P.Show(186)
+    frame()
+    state("prof.after combat")
+    rows("prof.mining")
+
+    -- 9. one window on the right strip: the book closes ours, ours the book
+    bookWorld.Toggle("spellbook")
+    frame()
+    state("prof.book")
+    P.Toggle()
+    frame()
+    state("prof.again")
+    w.close.scripts.OnClick(w.close)
+    frame()
+    state("prof.closed")
+    -- reopened on its book (its Overview tab) with Blacksmithing still open
+    ProfessionsFrame.BookPage:Show()
+    ProfessionsFrame.CraftingPage:Hide()
+    P.Toggle()
+    frame()
+    state("prof.book again")
 end

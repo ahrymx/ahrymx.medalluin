@@ -80,6 +80,12 @@ local DEFAULTS = {
     bagsPoint = false,      -- where the window was dragged to: { point, relativePoint, x, y } (not on the page)
     character = true,       -- Medalluin's character window instead of Blizzard's
     characterDetails = true, -- its pages' details open (the window's chevron sets it too)
+    spellbook = true,       -- Medalluin's spellbook instead of Blizzard's (Forever)
+    spellbookDetails = true, -- its pages' details open (the window's chevron sets it too)
+    talents = true,         -- Medalluin's talents instead of Blizzard's (Forever)
+    talentsDetails = true,  -- its trees' details open (the window's chevron sets it too)
+    professions = true,     -- Medalluin's professions instead of Blizzard's (Forever)
+    professionsDetails = true, -- its recipes' details open (the window's chevron sets it too)
     optionsPoint = false,   -- where the settings window was dragged to, the same way (options/window.lua)
     editorPoint = false,    -- and the unit-frame editor's (options/editor.lua)
     editCanvasPoint = false, -- and its edit-mode canvas (options/canvas.lua)
@@ -458,6 +464,9 @@ local PAGES = {
     side = "side/general", meter = "side/meter", loot = "side/loot", auras = "side/auras",
     bags = "bags", bag = "bags", inventory = "bags",
     character = "character", char = "character",
+    spellbook = "spellbook", spells = "spellbook", book = "spellbook",
+    talents = "talents", talent = "talents",
+    professions = "professions", profession = "professions", prof = "professions", craft = "professions",
     tooltip = "tooltips", tooltips = "tooltips",
 }
 

@@ -589,6 +589,44 @@ function ns.OptionPages()
             },
         },
         {
+            id = "spellbook", name = "Spellbook", intro = "Forever only. Shared by every profile.",
+            master = Check("spellbook", "Spellbook window",
+                "Your spells, a tab for General and each specialisation (and your pet's), in one window standing "
+                .. "on the side panel. Cast and drag them out of combat; in combat it reads. Untick it to keep the "
+                .. "game's spellbook.", true),
+            groups = {
+                Group("Window",
+                    Check("spellbookDetails", "Details",
+                        "The chosen spell's rank and description, under the spells. The window's arrow folds it too.")),
+            },
+        },
+        {
+            id = "talents", name = "Talents", intro = "Forever only. Shared by every profile.",
+            master = Check("talents", "Talents window",
+                "Your talents, a tab for each tree, in one window standing on the side panel. Spend points, then "
+                .. "Apply; switch between your Primary and Secondary talents in its margin. In combat it reads. "
+                .. "Untick it to keep the game's talents.", true),
+            groups = {
+                Group("Window",
+                    Check("talentsDetails", "Details",
+                        "The chosen talent's rank and description, and the points left, under the tree. The "
+                        .. "window's arrow folds it too.")),
+            },
+        },
+        {
+            id = "professions", name = "Professions", intro = "Forever only. Shared by every profile.",
+            master = Check("professions", "Professions window",
+                "Your professions in one window standing on the side panel: an overview, and a tab for each "
+                .. "profession that crafts, with its recipes and Create. Crafting and the overview's spells work "
+                .. "out of combat. Untick it to keep the game's professions.", true),
+            groups = {
+                Group("Window",
+                    Check("professionsDetails", "Details",
+                        "The chosen recipe's reagents, had and needed, under the recipes. The window's arrow folds "
+                        .. "it too.")),
+            },
+        },
+        {
             id = "tooltips", name = "Tooltips (ext)",
             intro = "Provided by the optional mdlui_PrettyTooltip companion addon. "
                 .. "Enable mdlui_PrettyTooltip in your AddOns list to reskin tooltips "

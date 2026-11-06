@@ -2,7 +2,7 @@
 ## Title: Medalluin
 ## Notes: The console (player, target, party, XP, minimap), an optional action bar on it, the corner strips (micro menu, bags, stats), and over them the chat and a side panel of loot, a meter and your auras; and a bags window.
 ## Author: ahrymx
-## Version: 0.7.1
+## Version: 0.8.0
 ## Category: Medalluin
 ## Category-enUS: Medalluin
 ## Group: Medalluin
@@ -60,6 +60,7 @@ strips\loot.lua
 strips\meter.lua
 strips\auras.lua
 inventory\bags.lua
+window\shell.lua
 character\window.lua
 character\list.lua
 character\stats.lua
@@ -71,6 +72,11 @@ character\currency.lua
 character\skills.lua
 character\pvp.lua
 character\statistics.lua
+spells\frame.lua
+spells\spellbook.lua
+spells\talents.lua
+professions\window.lua
+professions\crafting.lua
 keybind.lua
 diag.lua
 

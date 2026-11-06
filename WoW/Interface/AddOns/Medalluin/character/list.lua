@@ -6,7 +6,7 @@
 --     list:Set(rows)   draws them; each row is
 --       { header = true, label, collapsed, depth, click() }   a heading: ± at its right
 --       { label, depth, icon, value, bar = { min, max, cur, color, text },
---         selected, click(button), enter(row), dim }          an entry
+--         selected, click(button), enter(row), dim, color }   an entry
 --     list:Draw()      again, at the same scroll (after the body's height changes)
 --
 --   ns.character.Details(foot, ticks, nothing, lines) -> details
@@ -115,7 +115,7 @@ local function Paint(r, d)
         r.sign:SetText(d.collapsed and "+" or "-")
     else
         r.fill:SetColorTexture(0, 0, 0, 0)
-        r.label:SetTextColor(unpack(d.dim and ns.colors.dim or ns.colors.text))
+        r.label:SetTextColor(unpack(d.color or d.dim and ns.colors.dim or ns.colors.text))
         r.sign:SetText("")
     end
     r.mark:SetShown(d.selected and true or false)
