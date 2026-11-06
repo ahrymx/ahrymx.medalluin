@@ -92,6 +92,8 @@ local DEFAULTS = {
     questsMinimised = false, -- the tracker folded to its heading (not on the page: a click on its heading)
     questsView = "full",    -- "full": the screen's height at its left; "minimal": a box to move and size
     questsPlace = false,    -- the minimal view's place, size and scale: { point, relative, x, y, w, h, scale }
+    questsFullMouseover = false, questsFullCombat = false,       -- each view hidden until the pointer is
+    questsMinimalMouseover = false, questsMinimalCombat = false, -- over it, and in combat
     optionsPoint = false,   -- where the settings window was dragged to, the same way (options/window.lua)
     editorPoint = false,    -- and the unit-frame editor's (options/editor.lua)
     editCanvasPoint = false, -- and its edit-mode canvas (options/canvas.lua)

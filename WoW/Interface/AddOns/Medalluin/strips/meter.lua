@@ -121,6 +121,8 @@ local function Fill(r, src, rate)
         r:SetStatusBarColor(DIM[1] * ns.mute, DIM[2] * ns.mute, DIM[3] * ns.mute, 0.85)
     end
     local spec, class = src.specIconID, src.classFilename
+    -- the spec's icon is a secret in combat, not to be tested: the class's then
+    if ns.IsSecret(spec) then spec = nil end
     if spec and spec ~= 0 then
         r.icon:SetTexture(spec)
         r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)

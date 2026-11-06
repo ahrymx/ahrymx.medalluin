@@ -1559,7 +1559,7 @@ if modern then
                 local amount = src[3] * (sessionType == 0 and 3 or 1)
                 top = math.max(top, amount)
                 table.insert(out, { name = inCombat and secret() or src[1], classFilename = src[2],
-                    specIconID = src[4], totalAmount = v(amount), amountPerSecond = v(amount / 100),
+                    specIconID = v(src[4]), totalAmount = v(amount), amountPerSecond = v(amount / 100),
                     isLocalPlayer = src[1] == "Ahrymx" })
             end
             return { combatSources = out, maxAmount = v(top), totalAmount = v(0), durationSeconds = v(102) }
@@ -10046,4 +10046,55 @@ if questPass then
     ns.chat = chat
     T.Layout()
     view("quests.chat again")
+
+    -- each view hidden on its own options: until the pointer is over it, and
+    -- in combat (the secure items by the game's driver, the rest taking no mouse)
+    local function hidden(tag)
+        tick(10)
+        print(tag, string.format("alpha=%.2f items=%.2f", f:GetAlpha(), layer:GetAlpha()),
+            "items shown=" .. tostring(layer.shown),
+            "driver=" .. tostring(layer.stateDrivers and layer.stateDrivers.visibility),
+            "head mouse=" .. tostring(T.head.mouse), "footer mouse=" .. tostring(T.gear.mouse),
+            "row mouse=" .. tostring(list.rows[1] and list.rows[1].mouse))
+    end
+    local function combat(on)
+        inCombat = on
+        harnessHolds.combat = on or nil
+        fire(on and "PLAYER_REGEN_DISABLED" or "PLAYER_REGEN_ENABLED")
+        stateTick()
+    end
+    hidden("quests.hide none")
+    ns.SetOption("questsFullMouseover", true)
+    hidden("quests.hide mouseover away")
+    mouseOver = f
+    hidden("quests.hide mouseover over")
+    mouseOver = false
+    ns.SetOption("questsFullMouseover", false)
+    ns.SetOption("questsFullCombat", true)
+    hidden("quests.hide combat, out of it")
+    combat(true)
+    hidden("quests.hide combat, in it")
+    combat(false)
+    hidden("quests.hide combat, after it")
+    -- turned off in combat: it waits for combat's end, and the items come
+    -- back then, before the driver's next update
+    combat(true)
+    ns.SetOption("questsFullCombat", false)
+    inCombat, harnessHolds.combat = false, nil
+    fire("PLAYER_REGEN_ENABLED")
+    hidden("quests.hide combat, turned off in it")
+    ns.SetOption("questsFullCombat", true)
+    -- the minimal view: its own options, not the full view's
+    T.view.scripts.OnClick(T.view, "LeftButton")
+    frame()
+    combat(true)
+    hidden("quests.hide minimal, in combat")
+    combat(false)
+    ns.SetOption("questsMinimalMouseover", true)
+    hidden("quests.hide minimal mouseover")
+    ns.SetOption("questsMinimalMouseover", false)
+    ns.SetOption("questsFullCombat", false)
+    T.view.scripts.OnClick(T.view, "LeftButton")
+    frame()
+    hidden("quests.hide off again")
 end

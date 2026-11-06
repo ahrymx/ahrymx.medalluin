@@ -82,6 +82,9 @@ local dirty
 
 -- ---------------------------------------------------------------- order
 local function Full() return ns.db.questsView ~= "minimal" end
+-- what the view in use hides, each view its own options: "Mouseover" (all of
+-- it until the pointer is over it) and "Combat"
+local function Hides(what) return ns.db[(Full() and "questsFull" or "questsMinimal") .. what] end
 
 -- an objective's room on its row: the frame less the body's margin, the
 -- row's inset, its label's indent at depth 2 and its right margin
@@ -416,6 +419,13 @@ local function Layout()
         end
     end
     if chat then chat.Reach(full) end
+    -- the items are secure: hidden in combat by the game's own driver
+    if Hides("Combat") then
+        RegisterStateDriver(layer, "visibility", "[combat] hide; show")
+    else
+        UnregisterStateDriver(layer, "visibility")
+        layer:Show()
+    end
     -- The full view's foot: in the chat box, a rule over the chat's tabs;
     -- without one, a frame of its own with the medallion's margin, and the
     -- timeless buffs in it. The minimal view's footer is at its foot.
@@ -461,6 +471,24 @@ local function Rescale(delta)
 end
 
 -- ------------------------------------------------------------------ build
+-- Whether the tracker takes the mouse: not while it is hidden in combat, so
+-- what is behind it gets the clicks. None of these is protected.
+local touchable = true
+local function Touch(on)
+    if on == touchable then return end
+    touchable = on
+    head:EnableMouse(on)
+    grip:EnableMouse(on)
+    for _, b in ipairs({ footer:GetChildren() }) do b:EnableMouse(on) end
+    for _, r in ipairs(list.rows) do r:EnableMouse(on) end
+end
+
+-- an alpha eased toward want, FADE a second
+local function Ease(now, want, elapsed)
+    local step = (elapsed or 0) * FADE
+    return want > now and math.min(want, now + step) or math.max(want, now - step)
+end
+
 local function Build()
     local strip = ns.strips[-1]
     frame = CreateFrame("Frame", "MedalluinQuests", strip)
@@ -652,9 +680,16 @@ local function Build()
         if dirty and not InCombatLockdown() then Refresh() end
         -- the minimal view's shade eases toward the pointer's answer
         local want, now = not Full() and shade:IsMouseOver() and 1 or 0, shade:GetAlpha()
+        if now ~= want then shade:SetAlpha(Ease(now, want, elapsed)) end
+        -- hidden as the view's options say: in combat, taking no mouse
+        -- then, or until the pointer is over it (the items with it)
+        local away = Hides("Combat") and InCombatLockdown()
+        Touch(not away)
+        want, now = (away or Hides("Mouseover") and not frame:IsMouseOver()) and 0 or 1, frame:GetAlpha()
         if now ~= want then
-            local step = (elapsed or 0) * FADE
-            shade:SetAlpha(want > now and math.min(want, now + step) or math.max(want, now - step))
+            local alpha = Ease(now, want, elapsed)
+            frame:SetAlpha(alpha)
+            layer:SetAlpha(alpha)
         end
     end)
     Q.Listen(function()
@@ -664,6 +699,10 @@ local function Build()
     ns.OnSetting("questsSort", Dirty)
     ns.OnSetting("questsView", Layout)
     ns.OnSetting("questsPlace", Layout)
+    for _, key in ipairs({ "questsFullMouseover", "questsFullCombat", "questsMinimalMouseover",
+        "questsMinimalCombat" }) do
+        ns.OnSetting(key, Layout)
+    end
     -- how far each quest is changes as you move: measured again every few
     -- seconds while Questie is there
     C_Timer.NewTicker(5, function() if Q.Questie() then Dirty() end end)
