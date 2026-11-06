@@ -1,19 +1,19 @@
 -- The quest tracker: the tracked quests, on the left of the screen. Two
 -- views (questsView):
 --
---   full     the character window's place: on the strip, up to the
---            screen's top. Its frame too (the gold trim and corners), but
---            its ink fades from solid at the left to a tenth at the right,
---            so it can stay open. The strip's medallion stands over its
---            foot, in a margin of its own, and the chat panel moves in
---            above that, in a section of its own (strips/chat.lua's Home).
+--   full     in the chat box (strips/chat.lua), above the chat's tabs, up
+--            to the screen's top: the box reaches up for it, and comes
+--            back down to the chat when the tracker goes minimal. With the
+--            chat panel off it stands on the strip in a frame of its own,
+--            the same (ns.window.Dress), the medallion's margin at its
+--            foot and the timeless buffs in it.
 --   minimal  a box of its own: dragged by its heading, sized by the grip
 --            in its corner, scaled with Ctrl and the wheel over its heading
 --            (questsPlace). Nothing behind it but a shade that comes up
 --            while the pointer is over it.
 --
 -- Only its rows and buttons take the mouse: the world takes the rest. The
--- full view is in the BACKGROUND strata, as the chat panel was: the strip
+-- full view is in the BACKGROUND strata, as the chat box is: the strip
 -- and its medallion draw over it, the chat and its tabs too.
 --
 --   ------------ Quests ------------           <- a click folds it all
@@ -23,10 +23,10 @@
 --   + Elwynn Forest  2                         (folded)
 --   [cog][log]             [sort][fold][view]  <- the list's footer, no rule
 --   --------------------------------           (the minimal view's grip)
---   [General][Trade]                       <- full view: the chat
---   the chat's messages
+--   [General][Trade]                       <- full view: the chat box
+--   the chat's messages                       under it (strips/chat.lua)
 --   --------------------------------
---   (medallion)  [buff][buff]              <- the timeless buffs (strips/buffs.lua)
+--   (medallion)  [buff][buff]
 --
 -- The footer's buttons are glyphs: the cog opens the Quests settings, the
 -- book the quest log (Blizzard's, on its own key); the sort cycles, the
@@ -68,15 +68,13 @@ local ITEM = 20
 local VALUE = 60                        -- a row's value column, the distance (character/list.lua)
 local COLUMN = ITEM + 8                 -- the items' column, short of it
 local SHADE, FADE = 0.6, 6              -- the shade's darkest, and how fast it comes and goes (per second)
-local INK = { 1, 0.10 }                 -- the full view's ink, at the left and at the right
 local RULE = 6                          -- the gap each side of a rule
-local TABS = 24                         -- the chat's tabs, standing on top of its section
 local HEIGHT, LEAST = 400, { 320, 160 } -- the minimal view's first height, and its least size
 local SCALES = { 0.6, 1.5, 0.05 }       -- its scale: least, most, a step of the wheel
 local SORTS = { level = "Level", zone = "Zone", distance = "Distance" }
 
 local frame, list, layer, sortButton, foldAll, viewButton, head, grip, footer, ink, measure, shade
-local dress, section, chatRule
+local dress, chatRule
 local wide = WIDTH                      -- the width the rows have now
 local quests = {}
 local drawn                             -- the rows' shape as last laid out
@@ -396,11 +394,18 @@ local function Layout()
     frame:SetFrameStrata(strata)
     layer:SetFrameStrata(strata)
     layer:SetFrameLevel(frame:GetFrameLevel() + 10)
+    -- the chat box (strips/chat.lua, built before us at login), when the
+    -- chat panel is on: the full view stands in it, above its tabs
+    local chat = ns.chat
     if full then
         wide = WIDTH
         frame:SetWidth(wide)
         frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
-        frame:SetPoint("BOTTOMLEFT", ns.strips[-1], "BOTTOMLEFT", 0, L.stripHeight)
+        if chat then
+            frame:SetPoint("BOTTOMLEFT", chat.box, "BOTTOMLEFT", 0, chat.top)
+        else
+            frame:SetPoint("BOTTOMLEFT", ns.strips[-1], "BOTTOMLEFT", 0, L.stripHeight)
+        end
     else
         wide = at.w or WIDTH
         frame:SetSize(wide, at.h or HEIGHT)
@@ -410,30 +415,21 @@ local function Layout()
             frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
         end
     end
-    dress:SetShown(full)
-    -- the full view, from its foot: the medallion's margin, the chat (when
-    -- the chat panel is on) under its tabs, the footer. The minimal view's
-    -- footer is at its foot, and the chat at home on the strip.
-    local chat = full and ns.db.chat
+    if chat then chat.Reach(full) end
+    -- The full view's foot: in the chat box, a rule over the chat's tabs;
+    -- without one, a frame of its own with the medallion's margin, and the
+    -- timeless buffs in it. The minimal view's footer is at its foot.
+    dress:SetShown(full and not chat)
+    chatRule:SetShown(full and chat and true or false)
     local lift = PAD
-    if full then
+    if full and chat then
+        lift = RULE + 1 + RULE
+    elseif full then
         lift = ns.window.band + RULE
-        if chat then
-            section:SetPoint("BOTTOMLEFT", PAD, lift)
-            section:SetPoint("BOTTOMRIGHT", -PAD, lift)
-            lift = lift + L.chatHeight + TABS + RULE
-            chatRule:SetPoint("BOTTOMLEFT", PAD, lift)
-            chatRule:SetPoint("BOTTOMRIGHT", -PAD, lift)
-            lift = lift + 1 + RULE
-        end
     end
-    chatRule:SetShown(chat and true or false)
-    if ns.chat then ns.chat.Home(chat and section or nil) end     -- built before us, at login
-    -- the timeless buffs along the margin
-    if full then
-        ns.BuffRow({ x = L.chatLeft + PAD, y = ns.stripArt.height - L.stripHeight - ns.window.band / 2 })
-    else
-        ns.BuffRow()
+    if not chat then
+        ns.BuffRow(full and { x = L.chatLeft + PAD, y = ns.stripArt.height - L.stripHeight - ns.window.band / 2 }
+            or nil)
     end
     footer:ClearAllPoints()
     footer:SetPoint("BOTTOMLEFT", PAD, lift)
@@ -475,46 +471,19 @@ local function Build()
     frame:SetResizable(true)
     if frame.SetResizeBounds then frame:SetResizeBounds(LEAST[1], LEAST[2]) end
     frame:SetClampedToScreen(true)
+    -- over the chat box, when the full view stands in it
+    if ns.chat then frame:SetFrameLevel(ns.chat.box:GetFrameLevel() + 2) end
     local tint = ns.colors.ink
 
-    -- the full view's frame: the character window's gold trim and
-    -- corners, its ink fading from solid at the left to a tenth at the
-    -- right (the trim drawn as four lines, so nothing shows through)
-    dress = CreateFrame("Frame", nil, frame)
-    dress:SetAllPoints()
-    dress:SetFrameLevel(frame:GetFrameLevel())
-    ink = dress:CreateTexture(nil, "BACKGROUND", nil, 1)
-    ink:SetPoint("TOPLEFT", 1, -1)
-    ink:SetPoint("BOTTOMRIGHT", -1, 1)
-    if ink.SetGradient and CreateColor then
-        ink:SetColorTexture(1, 1, 1, 1)
-        ink:SetGradient("HORIZONTAL", CreateColor(tint[1], tint[2], tint[3], INK[1]),
-            CreateColor(tint[1], tint[2], tint[3], INK[2]))
-    else
-        ink:SetColorTexture(tint[1], tint[2], tint[3], (INK[1] + INK[2]) / 2)
-    end
-    for _, edge in ipairs({ { "TOPLEFT", "TOPRIGHT", "SetHeight" }, { "BOTTOMLEFT", "BOTTOMRIGHT", "SetHeight" },
-        { "TOPLEFT", "BOTTOMLEFT", "SetWidth" }, { "TOPRIGHT", "BOTTOMRIGHT", "SetWidth" } }) do
-        local t = dress:CreateTexture(nil, "BACKGROUND", nil, 2)
-        t:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
-        t:SetPoint(edge[1])
-        t:SetPoint(edge[2])
-        t[edge[3]](t, 1)
-    end
-    ns.window.Corners(dress, 3, 12)
-    -- the medallion's margin: its rule; beside the medallion, the timeless
-    -- buffs (strips/buffs.lua), or nothing
-    local bandRule = dress:CreateTexture(nil, "ARTWORK")
-    bandRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
-    bandRule:SetHeight(1)
-    bandRule:SetPoint("BOTTOMLEFT", PAD, ns.window.band)
-    bandRule:SetPoint("BOTTOMRIGHT", -PAD, ns.window.band)
-    -- the chat's section, and the rule over its tabs
-    section = CreateFrame("Frame", nil, dress)
-    section:SetHeight(L.chatHeight)
-    chatRule = dress:CreateTexture(nil, "ARTWORK")
+    -- the full view's frame when there is no chat box to stand in
+    -- (window/shell.lua), and the rule over the chat's tabs when there is
+    dress = ns.window.Dress(frame)
+    ink = dress.ink
+    chatRule = frame:CreateTexture(nil, "ARTWORK")
     chatRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
     chatRule:SetHeight(1)
+    chatRule:SetPoint("BOTTOMLEFT", PAD, RULE)
+    chatRule:SetPoint("BOTTOMRIGHT", -PAD, RULE)
 
     -- the minimal view's shade: a frame of its own, so its size is what the
     -- pointer is over
@@ -677,7 +646,7 @@ local function Build()
     layer.buttons = {}
     ns.quests = { frame = frame, list = list, layer = layer, sort = sortButton, foldAll = foldAll,
         view = viewButton, head = head, grip = grip, footer = footer, ink = ink, shade = shade, top = TOP,
-        dress = dress, section = section, chatRule = chatRule, gear = gear, book = book,
+        dress = dress, chatRule = chatRule, gear = gear, book = book,
         Refresh = Refresh, Layout = Layout }
 
     -- one refresh a frame, however many events; a change held in combat

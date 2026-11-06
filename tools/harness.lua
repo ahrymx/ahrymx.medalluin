@@ -4253,9 +4253,9 @@ if stripsPass then
         print("chat none")
         screen("ChatFrame1", ChatFrame1, art(ChatFrame1) .. " " .. tab(ChatFrame1))
     else
-        local p, t = chat.panel, chat.panel:GetRegions()
-        screen("chatPanel", p, string.format("strata=%s texture=%s coords=%.3f,%.3f", tostring(p.strata),
-            tostring(t.texture):match("[^\\]+$"), t.coords[2], t.coords[4]))
+        local b = chat.box
+        screen("chatBox", b, string.format("strata=%s dress=%s", tostring(b.strata), tostring(chat.dress:IsShown())))
+        screen("chatPanel", chat.panel)
         chatState("chat")
         -- Blizzard's passes: its saved layout puts the frame back, a fade
         -- shows the background, the edit box takes focus, the tab changes
@@ -9665,9 +9665,10 @@ if questPass then
         end
         print(tag .. " buffs", #icons > 0 and table.concat(icons, " ") or "none")
         if ns.chat then
-            print(tag .. " chat", where(ns.chat.panel), "size=" .. tostring(ns.chat.panel.w) .. "x"
-                .. tostring(ns.chat.panel.h), "art=" .. tostring(ns.chat.art.shown), "rule=" .. tostring(T.chatRule.shown),
-                "section=" .. where(T.section), "messages=" .. where(ChatFrame1))
+            local box = ns.chat.box
+            print(tag .. " chat", "box=" .. where(box), "h=" .. tostring(box.h), "level=" .. box:GetFrameLevel()
+                .. "<" .. f:GetFrameLevel(), "panel=" .. where(ns.chat.panel), "rule=" .. tostring(T.chatRule.shown)
+                .. " " .. where(T.chatRule))
         end
     end
     view("quests.full")
@@ -9819,10 +9820,17 @@ if questPass then
     tick(4)
     shaded("quests.full shade")
     mouseOver = false
-    -- with the chat panel off, the footer comes down to the margin
-    ns.db.chat = false
+    -- with no chat box (the chat panel off), the full view is a frame of
+    -- its own on the strip, the margin and the buffs at its foot; and back
+    local chat = ns.chat
+    ns.chat = nil
     T.Layout()
     view("quests.no chat")
-    ns.db.chat = true
+    T.view.scripts.OnClick(T.view, "LeftButton")
+    frame()
+    view("quests.no chat minimal")
+    T.view.scripts.OnClick(T.view, "LeftButton")
+    ns.chat = chat
     T.Layout()
+    view("quests.chat again")
 end

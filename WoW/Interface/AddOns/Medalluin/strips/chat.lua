@@ -1,7 +1,16 @@
--- The chat panel, on the left strip: Blizzard's own chat, sitting on the
--- micro menu between the portrait's medallion and the strip's top inner
--- corner. The panel is Medalluin's art (art/strips/gen_strips.py), fixed in
--- size; its foot is the strip's gold edge, which draws over it.
+-- The chat box, on the left strip: Blizzard's own chat, in a box standing
+-- on the micro menu, from the screen's edge as wide as the character
+-- window. The box wears the windows' trim over an ink that fades to the
+-- right (ns.window.Dress); from its foot up:
+--
+--   (medallion)  [buff][buff]          <- the margin: the timeless buffs
+--   ---------------------------------
+--   the messages (the panel)
+--   [General][Trade]                   <- the tabs, on the panel's top
+--
+-- The quest tracker's full view stands in the same box, above the tabs:
+-- the box reaches up to the screen's top for it (Reach), and comes down
+-- to the chat again when the tracker goes minimal.
 --
 -- Nothing of the chat is replaced. The docked chat frames (they all follow
 -- ChatFrame1) are anchored into the panel and their backgrounds and borders
@@ -21,8 +30,9 @@
 -- Blizzard's; only its tab keeps the panel's look. Edit Mode's chat frame
 -- position no longer applies: the panel puts it back.
 --
--- The panel is under everything: BACKGROUND strata, so the chat (MEDIUM),
--- the friends toast and the dock (LOW) all draw over it.
+-- The box is under everything: BACKGROUND strata, so the strip and its
+-- medallion, the chat (MEDIUM), the friends toast and the dock (LOW) all
+-- draw over it.
 --
 -- Built at login, and only when the Chat panel option is on (settings.lua).
 local _, ns = ...
@@ -31,6 +41,7 @@ local L = ns.stripLayout
 local PARTS = ns.media .. "strips\\"
 local CAP = L.tabCap / L.tabTex
 local GAP = 5                   -- Blizzard's column stands this far left of the chat frame
+local PAD, RULE, TABS = 8, 6, 24    -- the box's edge, the gap over the margin's rule, the tabs' height
 
 -- A Blizzard region taken out of sight, and kept out: Blizzard's code shows
 -- them again (a chat frame's fade-in, a tab's selection, the edit box's
@@ -57,7 +68,7 @@ local function Back(region, shown)
     end
 end
 
-local panel, area, edit, art
+local chatBox, panel, area, edit
 local placing = false
 
 -- Where the messages and the edit box go, in the panel, from the scale of
@@ -243,33 +254,35 @@ end
 -- ----------------------------------------------------------------- build
 local function Build()
     local strip = ns.strips[-1]
-    panel = CreateFrame("Frame", "MedalluinChat", strip)
-    panel:SetFrameStrata("BACKGROUND")
-    art = panel:CreateTexture(nil, "BACKGROUND")
-    art:SetAllPoints()
-    art:SetTexture(ns.media .. "chat")
-    art:SetTexCoord(0, L.chatWidth / L.chatTexWidth, 0, L.chatHeight / L.chatTexHeight)
+    local band = ns.window.band
+    local foot = band + RULE                    -- the panel's foot, over the margin's rule
+    local top = foot + L.chatHeight + TABS      -- the tabs' top
+    chatBox = CreateFrame("Frame", "MedalluinChat", strip)
+    chatBox:SetFrameStrata("BACKGROUND")
+    chatBox:SetWidth(L.chatLeft + L.chatWidth)
+    local dress = ns.window.Dress(chatBox)
+    panel = CreateFrame("Frame", nil, chatBox)
+    panel:SetPoint("BOTTOMLEFT", PAD, foot)
+    panel:SetPoint("BOTTOMRIGHT", -PAD, foot)
+    panel:SetHeight(L.chatHeight)
     area = CreateFrame("Frame", nil, panel)
     edit = CreateFrame("Frame", nil, panel)
-    ns.chat = { panel = panel, area = area, edit = edit, art = art }
+    ns.chat = { box = chatBox, dress = dress, panel = panel, area = area, edit = edit, top = top }
 
-    -- The panel's home is the strip, on the micro menu. The quest tracker's
-    -- full view stands there instead, and takes the chat into a section of
-    -- its own (Home(section)), where the tracker's own background is the
-    -- panel's; Home() brings it back. What is in the panel is anchored to
-    -- it, so it follows.
-    function ns.chat.Home(host)
-        panel:ClearAllPoints()
-        if host then
-            panel:SetPoint("TOPLEFT", host, "TOPLEFT")
-            panel:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT")
+    -- The box up to the screen's top, the quest tracker's full view in it
+    -- above the tabs; or down to the chat alone.
+    function ns.chat.Reach(up)
+        chatBox:ClearAllPoints()
+        chatBox:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", 0, L.stripHeight)
+        if up then
+            chatBox:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
         else
-            panel:SetSize(L.chatWidth, L.chatHeight)
-            panel:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", L.chatLeft, L.stripHeight)
+            chatBox:SetHeight(top + PAD)
         end
-        art:SetShown(not host)
     end
-    ns.chat.Home()
+    ns.chat.Reach(false)
+    -- the timeless buffs along the margin, beside the medallion
+    ns.BuffRow({ x = L.chatLeft + PAD, y = ns.stripArt.height - L.stripHeight - band / 2 })
 
     Measure()
     Place()

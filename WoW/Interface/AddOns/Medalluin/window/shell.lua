@@ -144,6 +144,46 @@ local function Corners(f, inset, size)
 end
 ns.window.Corners = Corners
 
+-- The chat box's frame, and the quest tracker's when there is no chat box
+-- (strips/chat.lua, quests/tracker.lua): the windows' gold trim and
+-- corners, the ink fading from solid at the left to a tenth at the right
+-- so it can stand open over the world (the trim drawn as four lines, so
+-- nothing shows through it), and the medallion's margin under its rule.
+local FADE = { 1, 0.10 }
+local function Dress(parent)
+    local dress = CreateFrame("Frame", nil, parent)
+    dress:SetAllPoints()
+    dress:SetFrameLevel(parent:GetFrameLevel())
+    local tint = ns.colors.ink
+    local ink = dress:CreateTexture(nil, "BACKGROUND", nil, 1)
+    ink:SetPoint("TOPLEFT", 1, -1)
+    ink:SetPoint("BOTTOMRIGHT", -1, 1)
+    if ink.SetGradient and CreateColor then
+        ink:SetColorTexture(1, 1, 1, 1)
+        ink:SetGradient("HORIZONTAL", CreateColor(tint[1], tint[2], tint[3], FADE[1]),
+            CreateColor(tint[1], tint[2], tint[3], FADE[2]))
+    else
+        ink:SetColorTexture(tint[1], tint[2], tint[3], (FADE[1] + FADE[2]) / 2)
+    end
+    for _, edge in ipairs({ { "TOPLEFT", "TOPRIGHT", "SetHeight" }, { "BOTTOMLEFT", "BOTTOMRIGHT", "SetHeight" },
+        { "TOPLEFT", "BOTTOMLEFT", "SetWidth" }, { "TOPRIGHT", "BOTTOMRIGHT", "SetWidth" } }) do
+        local t = dress:CreateTexture(nil, "BACKGROUND", nil, 2)
+        t:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+        t:SetPoint(edge[1])
+        t:SetPoint(edge[2])
+        t[edge[3]](t, 1)
+    end
+    Corners(dress, 3, 12)
+    local bandRule = dress:CreateTexture(nil, "ARTWORK")
+    bandRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    bandRule:SetHeight(1)
+    bandRule:SetPoint("BOTTOMLEFT", PAD, BAND)
+    bandRule:SetPoint("BOTTOMRIGHT", -PAD, BAND)
+    dress.ink = ink
+    return dress
+end
+ns.window.Dress = Dress
+
 -- a control's glyph, centred in its button
 local function Glyph(b, name)
     b.icon = b:CreateTexture(nil, "ARTWORK")

@@ -476,9 +476,10 @@ function ns.OptionPages()
         },
         {
             id = "chat", name = "Chat", intro = "Shared by every profile.",
-            master = Check("chat", "Chat panel",
-                "Blizzard's chat in a panel on top of the micro menu, with the chat buttons in a column at its "
-                .. "left. Untick it to keep the chat where Edit Mode puts it, or to use a chat addon.", true),
+            master = Check("chat", "Chat box",
+                "Blizzard's chat in a box on top of the micro menu, with the chat buttons in a column at its "
+                .. "left, the timeless buffs under it, and the quest tracker's full view above it. Untick it to "
+                .. "keep the chat where Edit Mode puts it, or to use a chat addon.", true),
             groups = {},
         },
         {
@@ -636,7 +637,7 @@ function ns.OptionPages()
                 Group("Tracker",
                     Choice("questsView", "View", {
                         { "full", "Full", "The character window's place, on the strip up to the screen's top, "
-                            .. "fading to a tenth at the right. The chat moves in, at its foot." },
+                            .. "fading to a tenth at the right, over the chat." },
                         { "minimal", "Minimal", "A box of its own: drag its heading, size it by its corner, "
                             .. "Ctrl-wheel over its heading to scale it." },
                     }, "How the tracker stands. Its own button changes it too."),

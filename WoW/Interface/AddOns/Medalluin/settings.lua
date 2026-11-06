@@ -56,7 +56,7 @@ local DEFAULTS = {
     visibility = 1,         -- Bar 1 visibility: see VISIBILITY
     extraVisibility = 1,    -- Extra bar(s) visibility (action bars 2 and 3): see VISIBILITY
     drawer = 1,             -- which way the minimap button drawer opens: see DRAWER
-    chat = true,            -- the chat in a panel on the left strip
+    chat = true,            -- the chat in a box on the left strip, the quest tracker over it
     side = true,            -- the chat panel's mirror on the right strip: the meter, the loot, the auras
     sideAuras = true,       -- its Auras tab
     sideMeter = true,       -- its Meter tab
@@ -86,7 +86,7 @@ local DEFAULTS = {
     talentsDetails = true,  -- its trees' details open (the window's chevron sets it too)
     professions = true,     -- Medalluin's professions instead of Blizzard's (Forever)
     professionsDetails = true, -- its recipes' details open (the window's chevron sets it too)
-    quests = true,          -- Medalluin's quest tracker on the left; its full view holds the chat
+    quests = true,          -- Medalluin's quest tracker on the left; its full view stands in the chat box
     questsSort = "level",   -- "level", "zone" or "distance" (Questie's; the tracker's button sets it too)
     questsFolded = false,   -- the zone headings folded: { [zone] = true } (not on the page)
     questsMinimised = false, -- the tracker folded to its heading (not on the page: a click on its heading)
