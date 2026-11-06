@@ -2140,6 +2140,9 @@ if questPass then
     function Region:SetCooldown(start, duration) self.start, self.duration = start, duration end
     function Region:Clear() self.start, self.duration = nil, nil end
     function ChatEdit_InsertLink(link) called("link " .. link) end
+    -- Blizzard's tracker: protected when the pass says
+    ObjectiveTrackerFrame = new("Frame", UIParent, "ObjectiveTrackerFrame")
+    function ObjectiveTrackerFrame:IsProtected() return W.protected or false end
     -- Questie's stub: ready when the pass says, tracking its own set
     if questieStub or questieBroken then
         local Z = { ready = {}, updates = {}, broken = questieBroken, tracked = { [101] = true, [103] = true, [201] = true, [301] = true },
@@ -9299,7 +9302,10 @@ if questPass then
     end
     local Z = W.questie
 
-    -- 1. at login: the frame's place, the game's tracked quests by level
+    -- 1. at login: the frame's place, the game's tracked quests by level,
+    -- Blizzard's tracker gone
+    local blizzard = ObjectiveTrackerFrame
+    print("quests.blizzard", "shown=" .. tostring(blizzard.shown), "parent=" .. tostring(blizzard.parent == UIParent))
     print("quests.frame", "width=" .. f.w, "strata=" .. tostring(f.strata), "mouse=" .. tostring(f.mouse),
         where(f), "parent=" .. tostring(f.parent == ns.strips[-1]))
     state("quests.login")
@@ -9403,6 +9409,18 @@ if questPass then
     frame()
     state("quests.character closed")
     items("quests.character closed items")
+
+    -- 7b. Blizzard's tracker shows itself again: hidden at once, and when
+    -- it is protected, in combat, at combat's end
+    blizzard:Show()
+    print("quests.blizzard again", "shown=" .. tostring(blizzard.shown))
+    W.protected, inCombat = true, true
+    blizzard:Show()
+    print("quests.blizzard combat", "shown=" .. tostring(blizzard.shown))
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    print("quests.blizzard after combat", "shown=" .. tostring(blizzard.shown))
+    W.protected = false
 
     -- 8. a shorter screen: the wheel over a row scrolls, and the items follow
     list.body.h = 22 * 4

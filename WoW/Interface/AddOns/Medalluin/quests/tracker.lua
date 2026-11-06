@@ -27,7 +27,7 @@
 --
 -- The data is quests/source.lua's: the game's quest log, and Questie's
 -- when it is there. The tracker hides while the character window stands
--- over it.
+-- over it. Blizzard's own quest tracker is hidden while this one is on.
 local _, ns = ...
 
 local L = ns.stripLayout
@@ -356,9 +356,28 @@ local function Build()
     Refresh()
 end
 
+-- Blizzard's tracker, hidden: and again each time it shows itself (its own
+-- updates, Questie letting it go). Hidden, never reparented, as Questie
+-- hides it on Forever: a protected one waits for combat's end.
+local function HideBlizzard()
+    local f = ObjectiveTrackerFrame or QuestWatchFrame or WatchFrame
+    if not f then return end
+    local function Away()
+        if not f:IsShown() then return end
+        if InCombatLockdown() and f:IsProtected() then
+            ns.OutOfCombat(Away)
+            return
+        end
+        f:Hide()
+    end
+    f:HookScript("OnShow", Away)
+    Away()
+end
+
 local function Start()
     if not ns.db.quests or not (C_QuestLog and C_QuestLog.GetInfo) or not ns.strips[-1] then return end
     Build()
+    HideBlizzard()
 end
 
 ns.On("PLAYER_LOGIN", Start)
