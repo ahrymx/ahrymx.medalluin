@@ -14,6 +14,8 @@ ns.colors = {
     rested = { 0.541, 0.439, 0.204 },   -- #8a7034
     rep = { 0.643, 0.545, 0.310 },      -- #a48b4f
     dead = { 0.35, 0.35, 0.35 },
+    white = { 1, 1, 1 },
+    grey = { 0.7, 0.7, 0.7 },
 }
 -- Blizzard's class and reaction colours are brighter than the art; mute them.
 ns.mute = 0.8
@@ -195,4 +197,59 @@ function ns.Text(parent, size)
     fs:SetShadowColor(0, 0, 0, 1)
     fs:SetTextColor(unpack(ns.colors.text))
     return fs
+end
+
+-- ---------------------------------------------------------- tooltips
+-- Medalluin's own tooltips, the ones no game data is behind: one spec,
+-- written into GameTooltip as plain lines, and handed to mdlui_PrettyTooltip
+-- (mdlui/Medalluin.lua), which draws it as a panel instead.
+--   spec = { title, color = {r, g, b} (the title's), wrap (the title's),
+--     { "body", text, color },          -- a line, wrapped; white unless coloured
+--     { "row", label, value, inline },  -- two columns, or "label: value"
+--     { "bar", value, max, text, color },  -- the text here; a bar in the panel
+--     { "item", icon, text, right },    -- "text  right"; an icon row in the panel
+--     { "hint", text },                 -- dim; the panel's footer
+--     { "warn", text } }                -- red
+-- A part may be false, for one left out.
+local WHITE, HINT, WARN = ns.colors.white, ns.colors.dim, { 1, 0.3, 0.25 }
+local live = {}
+
+local function Line(text, c, wrap)
+    c = c or WHITE
+    GameTooltip:AddLine(text, c[1], c[2], c[3], wrap)
+end
+
+local fill = {
+    body = function(p) Line(p[2], p[3], true) end,
+    row = function(p)
+        if p[4] then Line(p[2] .. ": " .. p[3]) else GameTooltip:AddDoubleLine(p[2], p[3], 1, 1, 1, 1, 1, 1) end
+    end,
+    bar = function(p) Line(p[4]) end,
+    item = function(p) Line(p[4] and format("%s  %s", p[3], p[4]) or p[3]) end,
+    hint = function(p) Line(p[2], HINT) end,
+    warn = function(p) Line(p[2], WARN, true) end,
+}
+
+function ns.Tip(owner, anchor, spec)
+    GameTooltip:SetOwner(owner, anchor)
+    local c = spec.color
+    GameTooltip:SetText(spec.title, c and c[1], c and c[2], c and c[3], c and 1, spec.wrap)
+    for _, p in ipairs(spec) do
+        if p then fill[p[1]](p) end
+    end
+    spec.owner = owner
+    live[GameTooltip] = spec
+    GameTooltip:Show()
+end
+
+-- a SetOwner or ClearLines from anyone else ends it
+if GameTooltip then
+    GameTooltip:HookScript("OnTooltipCleared", function(self) live[self] = nil end)
+end
+
+-- The spec GameTooltip shows, while its owner is still the one it was
+-- written for: the companion's only way in.
+function Medalluin_TooltipSpec(tooltip)
+    local spec = live[tooltip]
+    if spec and tooltip:GetOwner() == spec.owner then return spec end
 end

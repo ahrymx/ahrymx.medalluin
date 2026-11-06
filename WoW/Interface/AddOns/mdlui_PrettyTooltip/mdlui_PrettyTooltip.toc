@@ -4,7 +4,7 @@
 ## Author: FallenShard
 ## X-License: MIT
 ## X-Curse-Project-ID: 1720719
-## Version: 0.9.0
+## Version: 0.10.0
 ## X-Upstream-Version: 1.3.7
 ## Category: Medalluin
 ## Category-enUS: Medalluin
@@ -53,6 +53,7 @@ Tooltips\PetAction.lua
 Tooltips\Minimap.lua
 Tooltips\FlightPath.lua
 Tooltips\Mail.lua
+mdlui\Medalluin.lua
 UI\Options.lua
 UI\Samples.lua
 UI\EditorSkin.lua

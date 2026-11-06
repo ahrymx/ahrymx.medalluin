@@ -187,15 +187,11 @@ end
 -- The talent's own name over its rank and every rank's description: the
 -- game's own tooltip for a talent heads it with "Passive".
 local function Tooltip(owner, n)
-    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-    GameTooltip:SetText(n.talent.name, GOLD[1], GOLD[2], GOLD[3])
-    local dim = ns.colors.dim
-    GameTooltip:AddLine(format("Rank %d/%d", n.node.ranksPurchased, n.node.maxRanks), dim[1], dim[2], dim[3])
-    local text = Describe(n)
-    if text ~= "" then GameTooltip:AddLine(text, 1, 1, 1, true) end
-    local lock = Lock(n.node)
-    if lock then GameTooltip:AddLine(lock, 1, 0.3, 0.25, true) end
-    GameTooltip:Show()
+    local text, lock = Describe(n), Lock(n.node)
+    ns.Tip(owner, "ANCHOR_RIGHT", { title = n.talent.name, color = GOLD,
+        { "body", format("Rank %d/%d", n.node.ranksPurchased, n.node.maxRanks), ns.colors.dim },
+        text ~= "" and { "body", text } or false,
+        lock and { "warn", lock } or false })
 end
 
 local function Click(p, b, button)

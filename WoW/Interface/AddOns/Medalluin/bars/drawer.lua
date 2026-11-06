@@ -175,14 +175,12 @@ function ns.BuildDrawer(tray)
         if open then Scan() else Layout() end
     end)
     toggle:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Minimap buttons")
         local n = 0
         for _, b in ipairs(buttons) do
             if b:IsShown() then n = n + 1 end
         end
-        GameTooltip:AddLine(n > 0 and (n .. (n == 1 and " button" or " buttons")) or "None yet", 1, 1, 1)
-        GameTooltip:Show()
+        ns.Tip(self, "ANCHOR_TOP", { title = "Minimap buttons",
+            { "body", n > 0 and (n .. (n == 1 and " button" or " buttons")) or "None yet" } })
     end)
     toggle:SetScript("OnLeave", GameTooltip_Hide)
 

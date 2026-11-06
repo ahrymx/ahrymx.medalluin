@@ -506,10 +506,8 @@ local function Spawn(unit)
     b:RegisterForClicks("AnyUp")
     b:SetScript("OnEnter", function(self)
         if self.stub and not UnitExists(self.unit) then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(self.stub.name, 1, 1, 1)
-            GameTooltip:AddLine("Simulated party member", 0.7, 0.7, 0.7)
-            GameTooltip:Show()
+            ns.Tip(self, "ANCHOR_RIGHT", { title = self.stub.name, color = ns.colors.white,
+                { "body", "Simulated party member", ns.colors.grey } })
         elseif UnitFrame_OnEnter then
             UnitFrame_OnEnter(self)
         end
@@ -749,10 +747,8 @@ local function SpawnPet(parentBtn, unit, side)
 
     pet:SetScript("OnEnter", function(self)
         if self.stub and not UnitExists(self.unit) then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(self.stub.name, 1, 1, 1)
-            GameTooltip:AddLine("Simulated party pet", 0.7, 0.7, 0.7)
-            GameTooltip:Show()
+            ns.Tip(self, "ANCHOR_RIGHT", { title = self.stub.name, color = ns.colors.white,
+                { "body", "Simulated party pet", ns.colors.grey } })
         elseif UnitFrame_OnEnter then
             UnitFrame_OnEnter(self)
         end

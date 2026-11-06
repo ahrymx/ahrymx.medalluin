@@ -27,12 +27,9 @@ glow:SetAllPoints()
 ns.minimapButton = button
 
 local function Tip(self)
-    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-    GameTooltip:SetText("Medalluin")
-    GameTooltip:AddLine("Left click: settings", 1, 1, 1)
-    GameTooltip:AddLine("Right click: simulate party frames ("
-        .. (ns.db.simParty and "on" or "off") .. ")", 1, 1, 1)
-    GameTooltip:Show()
+    ns.Tip(self, "ANCHOR_LEFT", { title = "Medalluin",
+        { "row", "Left click", "settings", true },
+        { "row", "Right click", "simulate party frames (" .. (ns.db.simParty and "on" or "off") .. ")", true } })
 end
 
 button:SetScript("OnClick", function(self, mouse)

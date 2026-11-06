@@ -20,11 +20,7 @@ local function Stat(onClick, onEnter)
     b.text = ns.Text(b, SIZE)
     b.text:SetPoint("CENTER")
     b:SetScript("OnClick", onClick)
-    b:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        onEnter()
-        GameTooltip:Show()
-    end)
+    b:SetScript("OnEnter", function(self) ns.Tip(self, "ANCHOR_TOP", onEnter()) end)
     b:SetScript("OnLeave", GameTooltip_Hide)
     table.insert(stats, b)
     return b
@@ -77,8 +73,7 @@ local bags = Stat(function()
     if ToggleAllBags then ToggleAllBags() else OpenAllBags() end
 end, function()
     local used, total = BagCount()
-    GameTooltip:SetText(BAGSLOTTEXT or "Bags")
-    GameTooltip:AddLine(format("%d / %d slots used", used, total), 1, 1, 1)
+    return { title = BAGSLOTTEXT or "Bags", { "bar", used, total, format("%d / %d slots used", used, total) } }
 end)
 
 local function UpdateBags()
@@ -103,13 +98,10 @@ local durability = Stat(function()
     ToggleCharacter("PaperDollFrame")
 end, function()
     local low, slot = Lowest()
-    GameTooltip:SetText(DURABILITY or "Durability")
-    if slot then
-        GameTooltip:AddLine(format("%s  %d%%", GetInventoryItemLink("player", slot) or "",
-            math.floor(low * 100)), 1, 1, 1)
-    else
-        GameTooltip:AddLine("Nothing is damaged.", 1, 1, 1)
-    end
+    return { title = DURABILITY or "Durability", slot
+        and { "item", GetInventoryItemTexture and GetInventoryItemTexture("player", slot),
+            GetInventoryItemLink("player", slot) or "", format("%d%%", math.floor(low * 100)) }
+        or { "body", "Nothing is damaged." } }
 end)
 
 local function UpdateDurability()
@@ -128,13 +120,12 @@ local clock = Stat(function()
     if not TimeManager_Toggle and LoadAddOn then pcall(LoadAddOn, "Blizzard_TimeManager") end
     if TimeManager_Toggle then TimeManager_Toggle() end
 end, function()
-    GameTooltip:SetText(TIMEMANAGER_TITLE or "Clock")
+    local spec = { title = TIMEMANAGER_TITLE or "Clock" }
     if GameTime_GetLocalTime and GameTime_GetGameTime then
-        GameTooltip:AddDoubleLine(TIMEMANAGER_TOOLTIP_LOCALTIME or "Local time", GameTime_GetLocalTime(true),
-            1, 1, 1, 1, 1, 1)
-        GameTooltip:AddDoubleLine(TIMEMANAGER_TOOLTIP_REALMTIME or "Realm time", GameTime_GetGameTime(true),
-            1, 1, 1, 1, 1, 1)
+        spec[1] = { "row", TIMEMANAGER_TOOLTIP_LOCALTIME or "Local time", GameTime_GetLocalTime(true) }
+        spec[2] = { "row", TIMEMANAGER_TOOLTIP_REALMTIME or "Realm time", GameTime_GetGameTime(true) }
     end
+    return spec
 end)
 
 local elapsed = 1

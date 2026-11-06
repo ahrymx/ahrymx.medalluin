@@ -97,9 +97,7 @@ local function Button(parent, width, click, tip, template)
     b.label:SetPoint("CENTER")
     if click then b:SetScript("OnClick", click) end
     b:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(tip(), 1, 1, 1, 1, true)
-        GameTooltip:Show()
+        ns.Tip(self, "ANCHOR_TOP", { title = tip(), color = ns.colors.white, wrap = true })
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     return b

@@ -92,10 +92,7 @@ end
 
 local function Tip(b)
     local title, line = b.spec.tip()
-    GameTooltip:SetOwner(b, "ANCHOR_LEFT")
-    GameTooltip:SetText(title)
-    if line then GameTooltip:AddLine(line, 1, 1, 1, true) end
-    GameTooltip:Show()
+    ns.Tip(b, "ANCHOR_LEFT", { title = title, line and { "body", line } or false })
 end
 
 local function Button(view, spec, y, from)

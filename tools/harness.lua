@@ -636,6 +636,27 @@ do
 end
 MinimapCluster = new("Frame", UIParent, "MinimapCluster")
 GameTooltip = new("Frame", UIParent, "GameTooltip")
+-- an owner, and the clear every SetOwner fires (core.lua's ns.Tip hooks it)
+function GameTooltip:SetOwner(owner)
+    self.owner = owner
+    if self.scripts.OnTooltipCleared then self.scripts.OnTooltipCleared(self) end
+end
+function GameTooltip:GetOwner() return self.owner end
+function GameTooltip:ClearLines()
+    if self.scripts.OnTooltipCleared then self.scripts.OnTooltipCleared(self) end
+end
+-- the spec ns.Tip handed over, as its parts' roles: what mdlui_PrettyTooltip draws
+function tipSpec()
+    local s = Medalluin_TooltipSpec and Medalluin_TooltipSpec(GameTooltip)
+    if not s then return "spec=none" end
+    local parts = {}
+    for _, p in ipairs(s) do
+        if p and p[1] == "bar" then table.insert(parts, string.format("bar %s/%s", tostring(p[2]), tostring(p[3])))
+        elseif p and p[1] == "item" then table.insert(parts, "item icon=" .. tostring(p[2]) .. " right=" .. p[4])
+        elseif p then table.insert(parts, p[1]) end
+    end
+    return "spec=" .. tostring(s.title) .. " [" .. table.concat(parts, ",") .. "]"
+end
 PlayerFrame, TargetFrame = new("Frame", UIParent), new("Frame", UIParent)
 -- Blizzard's buff and debuff rows, top right (Forever and retail)
 BuffFrame, DebuffFrame = new("Frame", UIParent, "BuffFrame"), new("Frame", UIParent, "DebuffFrame")
@@ -3019,7 +3040,7 @@ if barPass then
         local function tip(tag)
             lines = {}
             mb.scripts.OnEnter(mb)
-            print(tag, GameTooltip.text, table.concat(lines, " | "))
+            print(tag, GameTooltip.text, table.concat(lines, " | "), tipSpec())
         end
         tip("minimapButton tip")
         page.opened = nil
@@ -4300,6 +4321,35 @@ if stripsPass then
             screen("stat", f.parent, string.format("%q", f.text))
         end
     end
+    -- their tooltips, handed to the companion as specs; and the lines they
+    -- still write into the game's tooltip
+    local lines
+    local set, add, double = GameTooltip.SetText, GameTooltip.AddLine, GameTooltip.AddDoubleLine
+    GameTooltip.SetText = function(_, t) lines = { t } end
+    GameTooltip.AddLine = function(_, t) table.insert(lines, t) end
+    GameTooltip.AddDoubleLine = function(_, l, r) table.insert(lines, l .. " = " .. r) end
+    XP = XP or "Experience"
+    GameTime_GetLocalTime = GameTime_GetLocalTime or function() return "9:15 PM" end
+    GameTime_GetGameTime = GameTime_GetGameTime or function() return "8:15 PM" end
+    GetInventoryItemLink = GetInventoryItemLink or function(_, slot) return "[Item " .. slot .. "]" end
+    GetInventoryItemTexture = GetInventoryItemTexture or function(_, slot) return "slot" .. slot end
+    for _, f in ipairs(all) do
+        if f.kind == "FontString" and f.parent and f.parent.parent == ns.strips[1] and f.text
+            and f.parent.scripts.OnEnter then
+            f.parent.scripts.OnEnter(f.parent)
+            print("stat tip", table.concat(lines, " | "), tipSpec())
+        end
+    end
+    -- a SetOwner from anyone else ends it; so does an owner changed under it
+    GameTooltip:ClearLines()
+    print("stat tip cleared", tipSpec())
+    ns.xpBar.hit.scripts.OnEnter(ns.xpBar.hit)
+    print("xp tip", table.concat(lines, " | "), tipSpec())
+    GameTooltip.owner = UIParent
+    print("xp tip other owner", tipSpec())
+    ns.repBar.hit.scripts.OnEnter(ns.repBar.hit)
+    print("rep tip", table.concat(lines, " | "), tipSpec())
+    GameTooltip.SetText, GameTooltip.AddLine, GameTooltip.AddDoubleLine = set, add, double
 
     -- the chat panel: the art, where the messages and the edit box go, and
     -- Blizzard's art hidden on a docked window and kept hidden
@@ -4447,6 +4497,8 @@ if stripsPass then
         chatState("chat rescaled")
         chat.cog.scripts.OnClick(chat.cog)
         chatState("chat drawer shut")
+        chat.cog.scripts.OnEnter(chat.cog)
+        print("chat cog tip", tipSpec())
     end
 
     -- the timeless buffs above the medallion; a right click cancels one
@@ -9153,11 +9205,13 @@ if talentPass then
         local lines = {}
         local set, add = GameTooltip.SetText, GameTooltip.AddLine
         GameTooltip.SetText = function(_, t, r) lines = { t .. string.format("(%.2f)", r or 1) } end
-        GameTooltip.AddLine = function(_, t) table.insert(lines, t) end
+        GameTooltip.AddLine = function(_, t, r)
+            table.insert(lines, t .. ((r or 1) ~= 1 and string.format("(%.2f)", r) or ""))
+        end
         local b = node(name)
         b.scripts.OnEnter(b)
         GameTooltip.SetText, GameTooltip.AddLine = set, add
-        print(tag, table.concat(lines, " | "))
+        print(tag, table.concat(lines, " | "), tipSpec())
     end
     -- the points' row: where it, its text and its buttons stand
     local function row(tag)

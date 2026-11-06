@@ -88,35 +88,28 @@ local function UpdateRep()
 end
 
 xp.hit:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOP")
     if AtMaxLevel() then
-        GameTooltip:SetText(LEVEL .. " " .. UnitLevel("player"))
-    else
-        local cur, max = UnitXP("player"), UnitXPMax("player")
-        GameTooltip:SetText(XP)
-        GameTooltip:AddLine(format("%s / %s (%d%%)", BreakUpLargeNumbers(cur), BreakUpLargeNumbers(max),
-            max > 0 and math.floor(cur / max * 100) or 0), 1, 1, 1)
-        local restedXP = GetXPExhaustion()
-        if restedXP then
-            GameTooltip:AddLine(format("Rested: %s", BreakUpLargeNumbers(restedXP)), 1, 1, 1)
-        end
+        ns.Tip(self, "ANCHOR_TOP", { title = LEVEL .. " " .. UnitLevel("player") })
+        return
     end
-    GameTooltip:Show()
+    local cur, max = UnitXP("player"), UnitXPMax("player")
+    local restedXP = GetXPExhaustion()
+    ns.Tip(self, "ANCHOR_TOP", { title = XP,
+        { "bar", cur, max, format("%s / %s (%d%%)", BreakUpLargeNumbers(cur), BreakUpLargeNumbers(max),
+            max > 0 and math.floor(cur / max * 100) or 0), ns.colors.xp },
+        restedXP and { "row", "Rested", BreakUpLargeNumbers(restedXP), true } or false })
 end)
 
 rep.hit:SetScript("OnEnter", function(self)
     local name, standing, value, span = Watched()
-    GameTooltip:SetOwner(self, "ANCHOR_TOP")
     if not name then
-        GameTooltip:SetText(REPUTATION)
-        GameTooltip:AddLine("No faction watched.", 1, 1, 1)
-    else
-        GameTooltip:SetText(name)
-        local label = _G["FACTION_STANDING_LABEL" .. (standing or 4)] or ""
-        GameTooltip:AddLine(format("%s  %s / %s", label,
-            BreakUpLargeNumbers(value), BreakUpLargeNumbers(span)), 1, 1, 1)
+        ns.Tip(self, "ANCHOR_TOP", { title = REPUTATION, { "body", "No faction watched." } })
+        return
     end
-    GameTooltip:Show()
+    local label = _G["FACTION_STANDING_LABEL" .. (standing or 4)] or ""
+    ns.Tip(self, "ANCHOR_TOP", { title = name,
+        { "bar", value, span, format("%s  %s / %s", label, BreakUpLargeNumbers(value), BreakUpLargeNumbers(span)),
+            ns.colors.rep } })
 end)
 
 -- the cast bars, above the halves and below the art

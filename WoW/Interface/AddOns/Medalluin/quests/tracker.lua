@@ -537,15 +537,11 @@ local function Build()
         end
     end)
     head:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Quests", GOLD[1], GOLD[2], GOLD[3])
-        GameTooltip:AddLine(ns.db.questsMinimised and "Click: show the quests." or "Click: fold the tracker to "
-            .. "this heading.", 1, 1, 1, true)
-        if not Full() then
-            GameTooltip:AddLine("Drag: move it.  Ctrl-wheel: its size.  The corner's grip: its shape.", 1, 1, 1, true)
-        end
-        GameTooltip:AddLine("Not in combat.", 0.7, 0.66, 0.55)
-        GameTooltip:Show()
+        ns.Tip(self, "ANCHOR_RIGHT", { title = "Quests", color = GOLD,
+            { "body", ns.db.questsMinimised and "Click: show the quests."
+                or "Click: fold the tracker to this heading." },
+            not Full() and { "body", "Drag: move it.  Ctrl-wheel: its size.  The corner's grip: its shape." } or false,
+            { "hint", "Not in combat." } })
     end)
     head:SetScript("OnLeave", function() GameTooltip:Hide() end)
 

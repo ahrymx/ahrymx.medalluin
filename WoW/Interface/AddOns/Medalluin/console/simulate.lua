@@ -98,9 +98,7 @@ end
 
 local function Tip(b)
     if not b.tip then return end
-    GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
-    GameTooltip:SetText(b.tip(), 1, 1, 1, 1, true)
-    GameTooltip:Show()
+    ns.Tip(b, "ANCHOR_RIGHT", { title = b.tip(), color = ns.colors.white, wrap = true })
 end
 
 -- A plain button in the console's colours: an inked well with a gold edge,

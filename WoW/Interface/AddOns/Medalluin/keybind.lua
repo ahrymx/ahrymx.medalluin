@@ -124,11 +124,9 @@ local function Tip()
     if not command then return end
     local keys = Keys(command)
     for i, key in ipairs(keys) do keys[i] = KeyText(key) end
-    GameTooltip:SetOwner(binder, "ANCHOR_TOP")
-    GameTooltip:SetText(label)
-    GameTooltip:AddLine(#keys > 0 and table.concat(keys, ", ") or "Not bound", 1, 1, 1)
-    GameTooltip:AddLine("Press a key to bind it. Esc removes its keys.", 0.7, 0.66, 0.55)
-    GameTooltip:Show()
+    ns.Tip(binder, "ANCHOR_TOP", { title = label,
+        { "body", #keys > 0 and table.concat(keys, ", ") or "Not bound" },
+        { "hint", "Press a key to bind it. Esc removes its keys." } })
 end
 
 local function Press(key)

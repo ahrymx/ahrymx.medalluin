@@ -97,10 +97,8 @@ local function Tab(box)
         Remember(box)
     end)
     tab:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(self.label:GetText(), 1, 1, 1)
-        GameTooltip:AddLine("Drag to move. Not in combat.", 0.7, 0.66, 0.55)
-        GameTooltip:Show()
+        ns.Tip(self, "ANCHOR_TOP", { title = self.label:GetText(), color = ns.colors.white,
+            { "hint", "Drag to move. Not in combat." } })
     end)
     tab:SetScript("OnLeave", function() GameTooltip:Hide() end)
     return tab
@@ -306,10 +304,8 @@ function ns.WidgetUnit(parent, name, unit, width, height, auras)
     ns.EditableCell(b, auras)
     b:SetScript("OnEnter", function(self)
         if self.stub then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(self.stub.name, 1, 1, 1)
-            GameTooltip:AddLine("Simulated", 0.7, 0.7, 0.7)
-            GameTooltip:Show()
+            ns.Tip(self, "ANCHOR_RIGHT", { title = self.stub.name, color = ns.colors.white,
+                { "body", "Simulated", ns.colors.grey } })
         elseif UnitFrame_OnEnter then
             UnitFrame_OnEnter(self)
         end

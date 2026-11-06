@@ -108,8 +108,9 @@ read_globals = {
     "GetDifficultyColor", "GetQuestDifficultyColor", "QuestieLoader", "C_QuestLog", "ShowUIPanel",
     "ObjectiveTrackerFrame", "QuestWatchFrame", "WatchFrame",
 }
--- the saved variables, the slash command and the reset popup's key
-globals = { "_G", "MedalluinDB", "MedalluinCharDB", "SLASH_MEDALLUIN1", "SLASH_MEDALLUIN2", "SLASH_MDLUI1", "SlashCmdList",
+-- the saved variables, the slash command, the reset popup's key and the
+-- tooltip spec mdlui_PrettyTooltip reads (core.lua)
+globals = { "_G", "Medalluin_TooltipSpec", "MedalluinDB", "MedalluinCharDB", "SLASH_MEDALLUIN1", "SLASH_MEDALLUIN2", "SLASH_MDLUI1", "SlashCmdList",
     "StaticPopupDialogs" }
 
 -- PrettyTooltip companion addon settings

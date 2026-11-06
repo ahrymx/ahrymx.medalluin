@@ -81,10 +81,7 @@ end
 -- The game's tooltip: the title in gold, then the text, wrapped.
 function UI.Tip(owner, title, text)
     if not GameTooltip then return end
-    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-    GameTooltip:SetText(title, C.goldBright[1], C.goldBright[2], C.goldBright[3])
-    if text then GameTooltip:AddLine(text, 1, 1, 1, true) end
-    GameTooltip:Show()
+    ns.Tip(owner, "ANCHOR_RIGHT", { title = title, color = C.goldBright, text and { "body", text } or false })
 end
 local function Untip() if GameTooltip then GameTooltip:Hide() end end
 
