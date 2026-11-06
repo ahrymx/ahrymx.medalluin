@@ -43,8 +43,18 @@ local function Record(id)
     return m and Try(m.data.GetQuest, id)
 end
 
+-- Questie keeps the tracked set only while its own tracker is on. Off, it
+-- no longer hears the quest log's track box (its watch hooks return early),
+-- so its set goes stale and the game's watch is the truth.
+local function Keeps()
+    local Q_ = _G.Questie
+    local db = type(Q_) == "table" and type(Q_.db) == "table" and Q_.db
+    local profile = db and type(db.profile) == "table" and db.profile
+    return profile and profile.trackerEnabled and Questie() or nil
+end
+
 local function Tracked(id)
-    local m = Questie()
+    local m = Keeps()
     if m then
         local on = Try(m.tracker.IsTrackedByQuestie, id)
         if on ~= nil then return on and true or false end
@@ -129,10 +139,10 @@ function Q.Focus(quest)
     return true
 end
 
--- No longer tracked: Questie's untrack when Questie tracks it, the game's
--- watch otherwise.
+-- No longer tracked: Questie's untrack when Questie keeps the set and tracks
+-- it, the game's watch otherwise.
 function Q.Untrack(quest)
-    local m = Questie()
+    local m = Keeps()
     if m and Try(m.tracker.IsTrackedByQuestie, quest.id) then
         Try(m.tracker.UntrackQuestId, m.tracker, quest.id)
     elseif C_QuestLog.GetQuestWatchType(quest.id) ~= nil then

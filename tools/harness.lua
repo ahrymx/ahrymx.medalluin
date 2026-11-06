@@ -2312,7 +2312,7 @@ if questPass then
             function(q) return nil, nil, nil, Z.far[q.id] end) }
         local modules = { QuestieTracker = tracker, TrackerUtils = utils, TrackerData = data, DistanceUtils = distance }
         QuestieLoader = { ImportModule = function(_, name) return modules[name] end }
-        Questie = { API = { isReady = false,
+        Questie = { db = { profile = { trackerEnabled = true } }, API = { isReady = false,
             RegisterOnReady = function(fn) table.insert(Z.ready, fn) end,
             RegisterForQuestUpdates = function(fn) table.insert(Z.updates, fn) end } }
         function Z.Ready()
@@ -9847,6 +9847,22 @@ if questPass then
         Z.Redrawn()
         frame()
         rows("quests.questie redrawn")
+    end
+    -- Questie's own tracker off: it no longer hears the quest log's track
+    -- box, so its set is stale (102 ticked again, never in it) and the
+    -- game's watch decides; the untrack is the game's too, even of a
+    -- quest Questie's set still holds (101)
+    if Z and not Z.broken then
+        Questie.db.profile.trackerEnabled = false
+        fire("QUEST_WATCH_LIST_CHANGED")
+        frame()
+        rows("quests.questie off")
+        row("The Fargodeep Mine", "RightButton")
+        calls("quests.questie off untrack")
+        W.watched[101], Z.tracked[101] = true, true
+        Questie.db.profile.trackerEnabled = true
+        fire("QUEST_WATCH_LIST_CHANGED")
+        frame()
     end
     if Z then Z.far[101] = 1 end
     for _, fn in ipairs(W.tickers) do fn() end
