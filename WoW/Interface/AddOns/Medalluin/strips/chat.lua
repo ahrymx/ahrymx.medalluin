@@ -57,7 +57,7 @@ local function Back(region, shown)
     end
 end
 
-local panel, area, edit
+local panel, area, edit, art
 local placing = false
 
 -- Where the messages and the edit box go, in the panel, from the scale of
@@ -245,15 +245,31 @@ local function Build()
     local strip = ns.strips[-1]
     panel = CreateFrame("Frame", "MedalluinChat", strip)
     panel:SetFrameStrata("BACKGROUND")
-    panel:SetSize(L.chatWidth, L.chatHeight)
-    panel:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", L.chatLeft, L.stripHeight)
-    local tex = panel:CreateTexture(nil, "BACKGROUND")
-    tex:SetAllPoints()
-    tex:SetTexture(ns.media .. "chat")
-    tex:SetTexCoord(0, L.chatWidth / L.chatTexWidth, 0, L.chatHeight / L.chatTexHeight)
+    art = panel:CreateTexture(nil, "BACKGROUND")
+    art:SetAllPoints()
+    art:SetTexture(ns.media .. "chat")
+    art:SetTexCoord(0, L.chatWidth / L.chatTexWidth, 0, L.chatHeight / L.chatTexHeight)
     area = CreateFrame("Frame", nil, panel)
     edit = CreateFrame("Frame", nil, panel)
-    ns.chat = { panel = panel, area = area, edit = edit }
+    ns.chat = { panel = panel, area = area, edit = edit, art = art }
+
+    -- The panel's home is the strip, on the micro menu. The quest tracker's
+    -- full view stands there instead, and takes the chat into a section of
+    -- its own (Home(section)), where the tracker's own background is the
+    -- panel's; Home() brings it back. What is in the panel is anchored to
+    -- it, so it follows.
+    function ns.chat.Home(host)
+        panel:ClearAllPoints()
+        if host then
+            panel:SetPoint("TOPLEFT", host, "TOPLEFT")
+            panel:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT")
+        else
+            panel:SetSize(L.chatWidth, L.chatHeight)
+            panel:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", L.chatLeft, L.stripHeight)
+        end
+        art:SetShown(not host)
+    end
+    ns.chat.Home()
 
     Measure()
     Place()

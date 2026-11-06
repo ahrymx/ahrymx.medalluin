@@ -629,16 +629,24 @@ function ns.OptionPages()
         {
             id = "quests", name = "Quests", intro = "Shared by every profile.",
             master = Check("quests", "Quest tracker",
-                "Your tracked quests on the left of the screen, over the chat panel: by zone, each zone folding, "
-                .. "with a button for a quest's item. Reads Questie's tracked quests when Questie is loaded; "
+                "Your tracked quests on the left of the screen: by zone, each zone folding, with a button for a "
+                .. "quest's item. Reads Questie's tracked quests, and how far each is, when Questie is loaded; "
                 .. "Questie's own tracker is left to Questie's options.", true),
             groups = {
                 Group("Tracker",
+                    Choice("questsView", "View", {
+                        { "full", "Full", "The character window's place, on the strip up to the screen's top, "
+                            .. "fading to a tenth at the right. The chat moves in, at its foot." },
+                        { "minimal", "Minimal", "A box of its own: drag its heading, size it by its corner, "
+                            .. "Ctrl-wheel over its heading to scale it." },
+                    }, "How the tracker stands. Its own button changes it too."),
                     Choice("questsSort", "Sort", {
                         { "level", "Level", "The lowest quests first, and the zones by their lowest quest." },
                         { "zone", "Zone", "The zone you are in first, then the rest by name." },
                         { "distance", "Distance", "The nearest objective first. Needs Questie; level without it." },
-                    }, "How the quests are ordered. The tracker's own button changes it too.")),
+                    }, "How the quests are ordered. The tracker's own button changes it too."),
+                    Button("Reset the minimal view", function() ns.SetOption("questsPlace", false) end,
+                        "The minimal view back to the top left, at its first size and scale.")),
             },
         },
         {

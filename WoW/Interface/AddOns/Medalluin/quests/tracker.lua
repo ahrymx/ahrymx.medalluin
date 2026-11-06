@@ -1,30 +1,49 @@
--- The quest tracker: the tracked quests, on the left of the screen over the
--- chat panel, as wide as the character window and as tall as the screen
--- leaves it. Nothing behind it: the world shows through, and only its rows
--- and buttons take the mouse. With the pointer over what it shows, a shade
--- comes up behind that, dark at the left and clear at the right.
+-- The quest tracker: the tracked quests, on the left of the screen. Two
+-- views (questsView):
 --
---   ------------ Quests ------------
---   [Sort: Level] [-]
---   - Elwynn Forest
---     [10] The Fargodeep Mine                       [item]
---          Kobold Laborer slain: 4/10
---   + Westfall                                     (folded)
+--   full     the character window's place: on the strip, up to the
+--            screen's top. Its frame too (the gold trim and corners), but
+--            its ink fades from solid at the left to a tenth at the right,
+--            so it can stay open. The strip's medallion stands over its
+--            foot, in a margin of its own, and the chat panel moves in
+--            above that, in a section of its own (strips/chat.lua's Home).
+--   minimal  a box of its own: dragged by its heading, sized by the grip
+--            in its corner, scaled with Ctrl and the wheel over its heading
+--            (questsPlace). Nothing behind it but a shade that comes up
+--            while the pointer is over it.
 --
--- A zone heading folds (remembered). The sort orders the quests inside
--- each zone, and the zones by their first quest: Level, Zone (the one you
--- are in first) or Distance (the nearest objective, from Questie, offered
--- only while Questie can measure it). [-] folds the whole tracker to its
--- heading. A quest's colour is its difficulty.
+-- Only its rows and buttons take the mouse: the world takes the rest. The
+-- full view is in the BACKGROUND strata, as the chat panel was: the strip
+-- and its medallion draw over it, the chat and its tabs too.
+--
+--   ------------ Quests ------------           <- a click folds it all
+--   - Westfall  3                              (your zone, brighter)
+--     [12] Testing the Wells          [item]  140 yd
+--          0/1 Jansen Stead Water Sample
+--   + Elwynn Forest  2                         (folded)
+--   --------------------------------
+--   [Sort: Level] [Fold all] [Minimal]      (the minimal view's grip)
+--   --------------------------------
+--   [General][Trade]                       <- full view: the chat
+--   the chat's messages
+--   --------------------------------
+--   (medallion)  [buff][buff] ----<>----   <- the timeless buffs (strips/buffs.lua)
+--
+-- A zone heading folds (remembered), and counts its quests. The sort orders
+-- the quests inside each zone, and the zones by their first quest: Level,
+-- Zone (the one you are in first) or Distance (the nearest objective, from
+-- Questie, offered only while Questie can measure it). With Questie, each
+-- quest says how far its nearest objective is. A quest's colour is its
+-- difficulty.
 --
 -- A quest: a click opens it in the quest log, Shift links it, Alt focuses
 -- it with Questie's arrow, a right click stops tracking it.
 --
--- A quest's usable item is a secure button at the right of its row, in a
--- layer on the strip, and it works in combat. So in combat the rows keep
--- their places: counts and colours change where they stand, a quest added
--- or finished waits for combat's end, and a fold, a sort or a scroll does
--- nothing.
+-- A quest's usable item is a secure button in a column short of the
+-- distance, in a layer on the strip, and it works in combat. So in combat
+-- the rows keep their places: counts and colours change where they stand, a
+-- quest added or finished waits for combat's end, and a fold, a sort, a
+-- scroll, the view, a drag, the grip and the scale do nothing.
 --
 -- The data is quests/source.lua's: the game's quest log, and Questie's
 -- when it is there. The tracker hides while the character window stands
@@ -34,24 +53,39 @@ local _, ns = ...
 local L = ns.stripLayout
 local Q = ns.questSource
 local GOLD = { 0.941, 0.831, 0.533 }
+local GOLD_D = { 0.541, 0.439, 0.204 }
 local GREEN = "|cff40c040"
+local DIM = "|cff8c8473"
 local WIDTH = L.chatLeft + L.chatWidth   -- the character window's width
 local PAD, HEAD, CONTROL = 8, 14, 20
-local TOP = PAD + HEAD + 6 + CONTROL + 6 -- the list's top, under the heading and the controls
+local TOP = PAD + HEAD + 6              -- the list's top, under the heading
+local FOOT = 6 + 1 + 6 + CONTROL        -- the footer: a gap, its rule, a gap and its buttons
 local ITEM = 20
-local ROW = 22                          -- a list row (character/list.lua)
+local VALUE = 60                        -- a row's value column, the distance (character/list.lua)
+local COLUMN = ITEM + 8                 -- the items' column, short of it
 local SHADE, FADE = 0.6, 6              -- the shade's darkest, and how fast it comes and goes (per second)
--- an objective's room on its row: the body less the row's inset, its
--- label's indent at depth 2 and its right margin (character/list.lua)
-local LINE = WIDTH - PAD - 6 - (6 + 2 * 12) - 24
+local INK = { 1, 0.10 }                 -- the full view's ink, at the left and at the right
+local RULE = 6                          -- the gap each side of a rule
+local TABS = 24                         -- the chat's tabs, standing on top of its section
+local HEIGHT, LEAST = 400, { 320, 160 } -- the minimal view's first height, and its least size
+local SCALES = { 0.6, 1.5, 0.05 }       -- its scale: least, most, a step of the wheel
 local SORTS = { level = "Level", zone = "Zone", distance = "Distance" }
 
-local frame, list, layer, sortButton, foldButton, measure, shade
+local frame, list, layer, sortButton, foldAll, viewButton, head, grip, footer, rule, ink, measure, shade
+local dress, section, chatRule, divider
+local wide = WIDTH                      -- the width the rows have now
 local quests = {}
 local drawn                             -- the rows' shape as last laid out
 local dirty
 
 -- ---------------------------------------------------------------- order
+local function Full() return ns.db.questsView ~= "minimal" end
+
+-- an objective's room on its row: the frame less the body's margin, the
+-- row's inset, its label's indent at depth 2 and its right margin
+-- (character/list.lua)
+local function Line() return wide - PAD - 6 - (6 + 2 * 12) - 24 end
+
 local function Sort()
     local sort = ns.db.questsSort
     if sort == "distance" and not Q.CanMeasure() then sort = "level" end
@@ -137,13 +171,14 @@ end
 -- A long objective as the lines it takes, a row each, broken between words
 -- (a word longer than a line keeps its own, cut).
 local function Wrap(text)
+    local room = Line()
     measure:SetText(text)
-    if measure:GetStringWidth() <= LINE then return { text } end
+    if measure:GetStringWidth() <= room then return { text } end
     local lines, line = {}, nil
     for word in text:gmatch("%S+") do
         local try = line and (line .. " " .. word) or word
         measure:SetText(try)
-        if line and measure:GetStringWidth() > LINE then
+        if line and measure:GetStringWidth() > room then
             table.insert(lines, line)
             line = word
         else
@@ -154,14 +189,22 @@ local function Wrap(text)
     return lines
 end
 
+-- how far, in yards
+local function Yards(far)
+    if far >= 1000 then return format("%.1fk yd", far / 1000) end
+    return format("%d yd", far)
+end
+
 local Refresh
 
 local function Rows()
     local rows = {}
     if ns.db.questsMinimised then return rows end
     local folded = ns.db.questsFolded or {}
+    local here = GetRealZoneText and GetRealZoneText()
     for _, z in ipairs(Zones()) do
-        table.insert(rows, { header = true, label = z.name, collapsed = folded[z.name], click = function()
+        table.insert(rows, { header = true, label = z.name .. "  " .. DIM .. #z.quests .. "|r",
+            collapsed = folded[z.name], bright = z.name == here, click = function()
             if InCombatLockdown() then return end
             local f = ns.db.questsFolded or {}
             f[z.name] = not f[z.name] or nil
@@ -173,7 +216,8 @@ local function Rows()
                 local state = q.state == 1 and (" " .. GREEN .. "(Complete)|r")
                     or q.state == -1 and " |cffe04040(Failed)|r" or ""
                 table.insert(rows, { label = format("[%d] %s", q.level, q.title) .. state, depth = 1,
-                    color = Colour(q), quest = q, item = q.item,
+                    color = Colour(q), quest = q, item = q.item, value = q.far and Yards(q.far) or "",
+                    inset = VALUE + COLUMN,
                     click = function(button) Click(q, button) end,
                     enter = function(row) Tip(row, q) end })
                 for _, o in ipairs(q.objectives) do
@@ -243,8 +287,8 @@ local function Paint(b)
     if enable == 1 and duration > 0 then b.cooldown:SetCooldown(start, duration) else b.cooldown:Clear() end
 end
 
--- Out of combat only: a button at the right of each shown quest with an
--- item, the rest away.
+-- Out of combat only: a button in the items' column of each shown quest
+-- with an item, the rest away.
 local function Place()
     local n = 0
     local row = list.rows[1] and list.rows[1]:GetHeight() or 22
@@ -257,7 +301,8 @@ local function Place()
                 b:SetAttribute("item", "item:" .. b.item)
                 b.icon:SetTexture(C_Item.GetItemIconByID(b.item))
                 b:ClearAllPoints()
-                b:SetPoint("TOPRIGHT", layer, "TOPRIGHT", -6, -(TOP + (i - 1) * row + (row - ITEM) / 2))
+                b:SetPoint("TOPRIGHT", layer, "TOPRIGHT", -(PAD + 6 + VALUE + (COLUMN - ITEM) / 2),
+                    -(TOP + (i - 1) * row + (row - ITEM) / 2))
                 b:Show()
                 Paint(b)
             end
@@ -272,30 +317,38 @@ local function Place()
 end
 
 -- --------------------------------------------------------------- refresh
+-- any zone open, of the ones there are
+local function AnyOpen()
+    local folded = ns.db.questsFolded or {}
+    for _, z in ipairs(Zones()) do
+        if not folded[z.name] then return true end
+    end
+    return false
+end
+
 function Refresh()
     dirty = false
     if not frame then return end
-    quests = Q.Read(ns.db.questsSort == "distance")     -- asked again, though it failed last time
+    -- Questie asked how far every quest is, whenever it is there (asked
+    -- again, though it failed last time)
+    quests = Q.Read(Q.Questie() ~= nil)
     local rows = Rows()
     local shape = Shape(rows)
     if InCombatLockdown() and shape ~= drawn then
         dirty = true                     -- waits for combat's end
         return
     end
+    local minimised = ns.db.questsMinimised
     list:Set(rows)
-    list.body:SetShown(not ns.db.questsMinimised)      -- not even "No quests"
-    -- the shade over what shows: the heading and controls, and the rows
-    -- (one for "No quests tracked."), down to the last
-    local n = 0
-    if not ns.db.questsMinimised then
-        for _, r in ipairs(list.rows) do
-            if r:IsShown() then n = n + 1 end
-        end
-        n = math.max(n, 1)
-    end
-    shade:SetHeight(TOP + n * ROW + PAD)
+    list.body:SetShown(not minimised)  -- not even "No quests"
+    footer:SetShown(not minimised)
+    rule:SetShown(not minimised)
+    grip:SetShown(not Full() and not minimised)
+    -- the minimal view's shade: the box, or its heading while it is folded
+    shade:SetHeight(minimised and TOP or frame:GetHeight() or TOP)
     sortButton.label:SetText("Sort: " .. SORTS[Sort()])
-    foldButton.label:SetText(ns.db.questsMinimised and "+" or "-")
+    foldAll.label:SetText(AnyOpen() and "Fold all" or "Open all")
+    viewButton.label:SetText(Full() and "Minimal" or "Full")
     if InCombatLockdown() then
         for _, b in ipairs(layer.buttons) do
             if b:IsShown() and b.item then Paint(b) end
@@ -308,6 +361,101 @@ end
 
 local function Dirty() dirty = true end
 
+-- ----------------------------------------------------------------- views
+-- The view's place, size, scale and strata; the footer's place. Out of
+-- combat only: the items' secure layer stands on the frame.
+local function Layout()
+    if InCombatLockdown() then
+        ns.OutOfCombat(Layout)
+        return
+    end
+    local full = Full()
+    local at = ns.db.questsPlace or {}
+    local scale = full and 1 or at.scale or 1
+    frame:ClearAllPoints()
+    frame:SetScale(scale)
+    layer:SetScale(scale)
+    local strata = full and "BACKGROUND" or "LOW"
+    frame:SetFrameStrata(strata)
+    layer:SetFrameStrata(strata)
+    layer:SetFrameLevel(frame:GetFrameLevel() + 10)
+    if full then
+        wide = WIDTH
+        frame:SetWidth(wide)
+        frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+        frame:SetPoint("BOTTOMLEFT", ns.strips[-1], "BOTTOMLEFT", 0, L.stripHeight)
+    else
+        wide = at.w or WIDTH
+        frame:SetSize(wide, at.h or HEIGHT)
+        if at.point then
+            frame:SetPoint(at.point, UIParent, at.relative, at.x, at.y)
+        else
+            frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+        end
+    end
+    dress:SetShown(full)
+    -- the full view, from its foot: the medallion's margin, the chat (when
+    -- the chat panel is on) under its tabs, the footer. The minimal view's
+    -- footer is at its foot, and the chat at home on the strip.
+    local chat = full and ns.db.chat
+    local lift = PAD
+    if full then
+        lift = ns.window.band + RULE
+        if chat then
+            section:SetPoint("BOTTOMLEFT", PAD, lift)
+            section:SetPoint("BOTTOMRIGHT", -PAD, lift)
+            lift = lift + L.chatHeight + TABS + RULE
+            chatRule:SetPoint("BOTTOMLEFT", PAD, lift)
+            chatRule:SetPoint("BOTTOMRIGHT", -PAD, lift)
+            lift = lift + 1 + RULE
+        end
+    end
+    chatRule:SetShown(chat and true or false)
+    if ns.chat then ns.chat.Home(chat and section or nil) end     -- built before us, at login
+    -- the timeless buffs along the margin, the divider after the last
+    if full then
+        ns.BuffRow({ x = L.chatLeft + PAD, y = ns.stripArt.height - L.stripHeight - ns.window.band / 2,
+            Placed = function(last)
+                divider:ClearAllPoints()
+                divider:SetPoint("RIGHT", dress, "BOTTOMRIGHT", -PAD, ns.window.band / 2)
+                if last then
+                    divider:SetPoint("LEFT", last, "RIGHT", RULE, 0)
+                else
+                    divider:SetPoint("LEFT", dress, "BOTTOMLEFT", L.chatLeft + PAD, ns.window.band / 2)
+                end
+            end })
+    else
+        ns.BuffRow()
+    end
+    footer:ClearAllPoints()
+    footer:SetPoint("BOTTOMLEFT", PAD, lift)
+    footer:SetPoint("BOTTOMRIGHT", -PAD, lift)
+    list.body:SetPoint("BOTTOMRIGHT", -PAD, lift + FOOT)
+    Refresh()
+end
+
+-- Where the minimal view is, kept: its anchor as the game left it after a
+-- drag or the grip, its size and its scale.
+local function Keep(changes)
+    local point, _, relative, x, y = frame:GetPoint()
+    local at = ns.db.questsPlace or {}
+    local keep = { point = point, relative = relative, x = x, y = y, w = at.w, h = at.h, scale = at.scale }
+    for k, v in pairs(changes or {}) do keep[k] = v end
+    ns.SetOption("questsPlace", keep)
+end
+
+local function Rescale(delta)
+    local at = ns.db.questsPlace or {}
+    local old = at.scale or 1
+    local new = math.max(SCALES[1], math.min(SCALES[2], old + delta * SCALES[3]))
+    new = math.floor(new / SCALES[3] + 0.5) * SCALES[3]
+    if math.abs(new - old) < 0.001 then return end
+    -- the anchor stays where it is on the screen: its offsets are in the
+    -- frame's own units, which the scale changes
+    local point, _, relative, x, y = frame:GetPoint()
+    Keep({ point = point, relative = relative, x = (x or 0) * old / new, y = (y or 0) * old / new, scale = new })
+end
+
 -- ------------------------------------------------------------------ build
 local function Build()
     local strip = ns.strips[-1]
@@ -315,35 +463,125 @@ local function Build()
     frame:SetIgnoreParentAlpha(true)
     frame:SetFrameStrata("LOW")
     frame:EnableMouse(false)
-    frame:SetWidth(WIDTH)
-    local above = L.stripHeight + (_G.MedalluinChat and L.chatHeight or 0)
-    frame:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", 0, above)
-    frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+    frame:SetMovable(true)
+    frame:SetResizable(true)
+    if frame.SetResizeBounds then frame:SetResizeBounds(LEAST[1], LEAST[2]) end
+    frame:SetClampedToScreen(true)
+    local tint = ns.colors.ink
 
-    -- the shade: a frame of its own, so its size is what the pointer is over
+    -- the full view's frame: the character window's gold trim and
+    -- corners, its ink fading from solid at the left to a tenth at the
+    -- right (the trim drawn as four lines, so nothing shows through)
+    dress = CreateFrame("Frame", nil, frame)
+    dress:SetAllPoints()
+    dress:SetFrameLevel(frame:GetFrameLevel())
+    ink = dress:CreateTexture(nil, "BACKGROUND", nil, 1)
+    ink:SetPoint("TOPLEFT", 1, -1)
+    ink:SetPoint("BOTTOMRIGHT", -1, 1)
+    if ink.SetGradient and CreateColor then
+        ink:SetColorTexture(1, 1, 1, 1)
+        ink:SetGradient("HORIZONTAL", CreateColor(tint[1], tint[2], tint[3], INK[1]),
+            CreateColor(tint[1], tint[2], tint[3], INK[2]))
+    else
+        ink:SetColorTexture(tint[1], tint[2], tint[3], (INK[1] + INK[2]) / 2)
+    end
+    for _, edge in ipairs({ { "TOPLEFT", "TOPRIGHT", "SetHeight" }, { "BOTTOMLEFT", "BOTTOMRIGHT", "SetHeight" },
+        { "TOPLEFT", "BOTTOMLEFT", "SetWidth" }, { "TOPRIGHT", "BOTTOMRIGHT", "SetWidth" } }) do
+        local t = dress:CreateTexture(nil, "BACKGROUND", nil, 2)
+        t:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+        t:SetPoint(edge[1])
+        t:SetPoint(edge[2])
+        t[edge[3]](t, 1)
+    end
+    ns.window.Corners(dress, 3, 12)
+    -- the medallion's margin: its rule, and a divider beside the medallion
+    local bandRule = dress:CreateTexture(nil, "ARTWORK")
+    bandRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    bandRule:SetHeight(1)
+    bandRule:SetPoint("BOTTOMLEFT", PAD, ns.window.band)
+    bandRule:SetPoint("BOTTOMRIGHT", -PAD, ns.window.band)
+    divider = ns.window.Ornament(dress)
+    divider:SetPoint("RIGHT", dress, "BOTTOMRIGHT", -PAD, ns.window.band / 2)
+    -- the chat's section, and the rule over its tabs
+    section = CreateFrame("Frame", nil, dress)
+    section:SetHeight(L.chatHeight)
+    chatRule = dress:CreateTexture(nil, "ARTWORK")
+    chatRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    chatRule:SetHeight(1)
+
+    -- the minimal view's shade: a frame of its own, so its size is what the
+    -- pointer is over
     shade = CreateFrame("Frame", nil, frame)
     shade:SetPoint("TOPLEFT")
     shade:SetPoint("TOPRIGHT")
     shade:SetHeight(TOP)
     shade:SetFrameLevel(frame:GetFrameLevel())
     shade:SetAlpha(0)
-    local ink = ns.colors.ink
     shade.fill = shade:CreateTexture(nil, "BACKGROUND")
     shade.fill:SetAllPoints()
     if shade.fill.SetGradient and CreateColor then
         shade.fill:SetColorTexture(1, 1, 1, 1)
-        shade.fill:SetGradient("HORIZONTAL", CreateColor(ink[1], ink[2], ink[3], SHADE),
-            CreateColor(ink[1], ink[2], ink[3], 0))
+        shade.fill:SetGradient("HORIZONTAL", CreateColor(tint[1], tint[2], tint[3], SHADE),
+            CreateColor(tint[1], tint[2], tint[3], 0))
     else
-        shade.fill:SetColorTexture(ink[1], ink[2], ink[3], SHADE / 2)
+        shade.fill:SetColorTexture(tint[1], tint[2], tint[3], SHADE / 2)
     end
 
-    local head = ns.window.Ornament(frame, "Quests")
-    head:SetPoint("TOPLEFT", PAD, -PAD)
-    head:SetPoint("TOPRIGHT", -PAD, -PAD)
-    head.mid:SetFont(ns.font, HEAD, "")
+    -- the heading: a click folds the tracker to it; in the minimal view a
+    -- drag moves the box and Ctrl with the wheel scales it
+    head = CreateFrame("Button", nil, frame)
+    head:SetPoint("TOPLEFT", PAD, -(PAD - 2))
+    head:SetPoint("TOPRIGHT", -PAD, -(PAD - 2))
+    head:SetHeight(HEAD + 4)
+    head:RegisterForClicks("LeftButtonUp")
+    head:RegisterForDrag("LeftButton")
+    local ornament = ns.window.Ornament(head, "Quests")
+    ornament:SetPoint("LEFT")
+    ornament:SetPoint("RIGHT")
+    ornament.mid:SetFont(ns.font, HEAD, "")
+    head:SetScript("OnClick", function()
+        if InCombatLockdown() then return end
+        ns.db.questsMinimised = not ns.db.questsMinimised
+        Refresh()
+    end)
+    head:SetScript("OnDragStart", function()
+        if Full() or InCombatLockdown() then return end
+        frame:StartMoving()
+    end)
+    head:SetScript("OnDragStop", function()
+        frame:StopMovingOrSizing()
+        if not Full() then Keep() end
+    end)
+    head:EnableMouseWheel(true)
+    head:SetScript("OnMouseWheel", function(_, delta)
+        if IsControlKeyDown() then
+            if not Full() and not InCombatLockdown() then Rescale(delta) end
+        else
+            list:Scroll(-delta)
+        end
+    end)
+    head:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Quests", GOLD[1], GOLD[2], GOLD[3])
+        GameTooltip:AddLine(ns.db.questsMinimised and "Click: show the quests." or "Click: fold the tracker to "
+            .. "this heading.", 1, 1, 1, true)
+        if not Full() then
+            GameTooltip:AddLine("Drag: move it.  Ctrl-wheel: its size.  The corner's grip: its shape.", 1, 1, 1, true)
+        end
+        GameTooltip:AddLine("Not in combat.", 0.7, 0.66, 0.55)
+        GameTooltip:Show()
+    end)
+    head:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    sortButton = ns.window.Button(frame, 110, function()
+    -- the footer: the sort, every zone folded or opened, the other view
+    footer = CreateFrame("Frame", nil, frame)
+    footer:SetHeight(CONTROL)
+    rule = frame:CreateTexture(nil, "ARTWORK")
+    rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    rule:SetHeight(1)
+    rule:SetPoint("BOTTOMLEFT", footer, "TOPLEFT", 0, 6)
+    rule:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", 0, 6)
+    sortButton = ns.window.Button(footer, 110, function()
         if InCombatLockdown() then return end
         local order = { "level", "zone", "distance" }
         local at = 1
@@ -357,18 +595,51 @@ local function Build()
             .. (Q.CanMeasure() and ", or by the nearest objective." or ". Questie adds by distance.")
     end)
     sortButton:SetHeight(CONTROL)
-    sortButton:SetPoint("TOPLEFT", PAD, -(PAD + HEAD + 6))
-    foldButton = ns.window.Button(frame, CONTROL, function()
+    sortButton:SetPoint("LEFT")
+    foldAll = ns.window.Button(footer, 80, function()
         if InCombatLockdown() then return end
-        ns.db.questsMinimised = not ns.db.questsMinimised
+        local f = false
+        if AnyOpen() then
+            f = {}
+            for _, z in ipairs(Zones()) do f[z.name] = true end
+        end
+        ns.db.questsFolded = f
         Refresh()
-    end, function() return ns.db.questsMinimised and "Show the quests." or "Fold the tracker to its heading." end)
-    foldButton:SetHeight(CONTROL)
-    foldButton:SetPoint("LEFT", sortButton, "RIGHT", 4, 0)
+    end, function() return AnyOpen() and "Fold every zone." or "Open every zone." end)
+    foldAll:SetHeight(CONTROL)
+    foldAll:SetPoint("LEFT", sortButton, "RIGHT", 4, 0)
+    viewButton = ns.window.Button(footer, 70, function()
+        if InCombatLockdown() then return end
+        ns.SetOption("questsView", Full() and "minimal" or "full")
+    end, function()
+        return Full() and "A box of its own, to move and size."
+            or "The character window's place, with the chat at its foot."
+    end)
+    viewButton:SetHeight(CONTROL)
+    viewButton:SetPoint("LEFT", foldAll, "RIGHT", 4, 0)
+
+    -- the minimal view's grip, in its corner
+    grip = CreateFrame("Button", nil, frame)
+    grip:SetSize(14, 14)
+    grip:SetPoint("BOTTOMRIGHT", -2, 2)
+    for _, part in ipairs({ { 14, 2 }, { 2, 14 } }) do
+        local t = grip:CreateTexture(nil, "ARTWORK")
+        t:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.8)
+        t:SetSize(part[1], part[2])
+        t:SetPoint("BOTTOMRIGHT")
+    end
+    grip:SetScript("OnMouseDown", function()
+        if Full() or InCombatLockdown() then return end
+        frame:StartSizing("BOTTOMRIGHT")
+    end)
+    grip:SetScript("OnMouseUp", function()
+        frame:StopMovingOrSizing()
+        if not Full() then Keep({ w = frame:GetWidth(), h = frame:GetHeight() }) end
+    end)
 
     local body = CreateFrame("Frame", nil, frame)
     body:SetPoint("TOPLEFT", 0, -TOP)
-    body:SetPoint("BOTTOMRIGHT", -PAD, PAD)
+    body:SetPoint("BOTTOMRIGHT", -PAD, PAD + FOOT)
     list = ns.character.List(body, "No quests tracked.")
     list.fade = true
     -- the rows' font, unseen, to measure an objective's lines
@@ -392,16 +663,18 @@ local function Build()
     layer:SetIgnoreParentAlpha(true)
     layer:SetAllPoints(frame)
     layer.buttons = {}
-    ns.quests = { frame = frame, list = list, layer = layer, sort = sortButton, fold = foldButton,
-        shade = shade, Refresh = Refresh }
+    ns.quests = { frame = frame, list = list, layer = layer, sort = sortButton, foldAll = foldAll,
+        view = viewButton, head = head, grip = grip, footer = footer, ink = ink, shade = shade, top = TOP,
+        dress = dress, section = section, chatRule = chatRule, divider = divider,
+        Refresh = Refresh, Layout = Layout }
 
     -- one refresh a frame, however many events; a change held in combat
     -- stays dirty until the first frame after it (and a tracker hidden in
     -- combat sends its items away then, through OnHide)
     frame:SetScript("OnUpdate", function(_, elapsed)
         if dirty and not InCombatLockdown() then Refresh() end
-        -- the shade eases toward the pointer's answer
-        local want, now = shade:IsMouseOver() and 1 or 0, shade:GetAlpha()
+        -- the minimal view's shade eases toward the pointer's answer
+        local want, now = not Full() and shade:IsMouseOver() and 1 or 0, shade:GetAlpha()
         if now ~= want then
             local step = (elapsed or 0) * FADE
             shade:SetAlpha(want > now and math.min(want, now + step) or math.max(want, now - step))
@@ -412,8 +685,11 @@ local function Build()
         if InCombatLockdown() then Refresh() end    -- counts change in place
     end)
     ns.OnSetting("questsSort", Dirty)
-    -- Distance changes as you move: measured again every few seconds
-    C_Timer.NewTicker(5, function() if ns.db.questsSort == "distance" then Dirty() end end)
+    ns.OnSetting("questsView", Layout)
+    ns.OnSetting("questsPlace", Layout)
+    -- how far each quest is changes as you move: measured again every few
+    -- seconds while Questie is there
+    C_Timer.NewTicker(5, function() if Q.Questie() then Dirty() end end)
 
     -- under the character window
     local character = ns.character.window
@@ -423,7 +699,7 @@ local function Build()
     end
     frame:HookScript("OnShow", Dirty)
     frame:HookScript("OnHide", function() ns.OutOfCombat(Place) end)
-    Refresh()
+    Layout()
 end
 
 -- Blizzard's tracker, hidden: and again each time it shows itself (its own

@@ -2,6 +2,12 @@
 -- an expiry), in a column above the portrait's medallion. Buffs that run
 -- out stay in Blizzard's buff frame until the user decides where they go.
 --
+-- The quest tracker's full view stands where the column would, with an
+-- empty row beside the medallion: it asks for the buffs there instead, left
+-- to right (ns.BuffRow{ x, y, Placed(last) }: the first icon's left edge
+-- from the screen's, the row's middle from the strip art's top; Placed is
+-- told the last icon shown, or nil), and ns.BuffRow() gives the column back.
+--
 -- Which buffs are timeless can be secret in combat (Forever and retail:
 -- DoesAuraHaveExpirationTime is restricted with the rest of the aura API),
 -- so a buff is sorted when it arrives if the client allows, and otherwise
@@ -19,6 +25,7 @@ local ICON, GAP = 26, 4
 local known = {}        -- auraInstanceID -> { icon, count } if timeless, false if timed
 local unsorted = false  -- a buff could not be sorted in combat: read them all after it
 local buttons = {}
+local row               -- the quest tracker's row, while it asks for one
 
 -- true for a timeless buff, false for a timed one, nil if the client will not say
 local function Timeless(aura)
@@ -91,7 +98,8 @@ local function Button(i)
     return btn
 end
 
--- Up from the medallion's ring, oldest at the bottom.
+-- Up from the medallion's ring, oldest at the bottom; or along the
+-- tracker's row, oldest at the left.
 local function Layout()
     local ids = {}
     for id, buff in pairs(known) do
@@ -105,7 +113,11 @@ local function Layout()
         btn.id = id
         btn.icon:SetTexture(buff.icon)
         btn.count:SetText(buff.count)
-        ns.OnStrip(btn, -1, well.x, top - ICON / 2 - (i - 1) * (ICON + GAP))
+        if row then
+            ns.OnStrip(btn, -1, row.x + ICON / 2 + (i - 1) * (ICON + GAP), row.y)
+        else
+            ns.OnStrip(btn, -1, well.x, top - ICON / 2 - (i - 1) * (ICON + GAP))
+        end
         btn:Show()
     end
     for i = #ids + 1, #buttons do
@@ -113,6 +125,12 @@ local function Layout()
         buttons[i]:Hide()
     end
     ns.buffs = buttons
+    if row and row.Placed then row.Placed(buttons[#ids]) end
+end
+
+function ns.BuffRow(spec)
+    row = spec
+    Layout()
 end
 
 local function Scan()

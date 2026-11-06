@@ -4,9 +4,11 @@
 --
 --   ns.character.List(body) -> list
 --     list:Set(rows)   draws them; each row is
---       { header = true, label, collapsed, depth, click() }   a heading: ± at its right
+--       { header = true, label, collapsed, depth, click(), bright }   a heading: ± at its
+--                                                     right; bright, a stronger band
 --       { label, depth, icon, value, bar = { min, max, cur, color, text },
---         selected, click(button), enter(row), dim, color }   an entry
+--         selected, click(button), enter(row), dim, color, inset }   an entry; inset,
+--                                                     how far short of the right its label stops
 --     list:Draw()      again, at the same scroll (after the body's height changes)
 --     list.fade = true  headings fade out to the right (the quest tracker's,
 --                       over the world), where the client has gradients
@@ -112,7 +114,7 @@ local function Paint(r, d, list)
     r.label:SetPoint("LEFT", x, 0)
     r.label:SetText(d.label or "")
     if d.header then
-        local a = depth == 0 and 0.30 or 0.15
+        local a = d.bright and 0.55 or depth == 0 and 0.30 or 0.15
         if list.fade and r.fill.SetGradient and CreateColor then
             r.fill:SetColorTexture(1, 1, 1, 1)
             r.fill:SetGradient("HORIZONTAL", CreateColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], a),
@@ -135,7 +137,7 @@ local function Paint(r, d, list)
     if d.bar then r.bar:Fill(d.bar) end
     r.value:SetShown(d.bar == nil and d.value ~= nil)
     r.value:SetText(d.value or "")
-    r.label:SetPoint("RIGHT", r, "RIGHT", d.bar and -(BAR_W + 10) or d.value and -60 or -24, 0)
+    r.label:SetPoint("RIGHT", r, "RIGHT", d.inset and -d.inset or d.bar and -(BAR_W + 10) or d.value and -60 or -24, 0)
 end
 
 -- ----------------------------------------------------------------- list

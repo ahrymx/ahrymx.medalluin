@@ -537,7 +537,15 @@ end
 -- a drag: StartMoving takes the frame, StopMovingOrSizing leaves it where
 -- harnessDropAt says, on UIParent, as the game re-anchors a moved frame
 function Region:StartMoving() self.isMoving = true end
+-- the grip: StartSizing takes the corner, StopMovingOrSizing leaves the
+-- size harnessSizeTo says
+function Region:StartSizing(point) self.isSizing = point end
 function Region:StopMovingOrSizing()
+    if self.isSizing then
+        self.isSizing = nil
+        if harnessSizeTo then self:SetSize(harnessSizeTo[1], harnessSizeTo[2]) end
+        return
+    end
     if not self.isMoving then return end
     self.isMoving = nil
     local at = harnessDropAt or { "TOPLEFT", "TOPLEFT", 0, 0 }
@@ -2169,7 +2177,7 @@ if questPass then
     -- Questie's stub: ready when the pass says, tracking its own set
     if questieStub or questieBroken then
         local Z = { ready = {}, updates = {}, broken = questieBroken, tracked = { [101] = true, [103] = true, [201] = true, [301] = true },
-            items = { [201] = 6001 }, far = { [101] = 300, [103] = 50, [201] = 900, [301] = 10 } }
+            items = { [201] = 6001 }, far = { [101] = 300, [103] = 50, [201] = 1500, [301] = 10 } }
         W.questie = Z
         local function call(name, fn)
             return function(...)
@@ -9392,17 +9400,22 @@ if questPass then
     end
     local function c3(c) return c and string.format("%.2f,%.2f,%.2f", c[1], c[2], c[3]) or "-" end
     local function state(tag)
-        print(tag, "shown=" .. tostring(f.shown), "sort=" .. T.sort.label.text, "fold=" .. T.fold.label.text,
-            "body=" .. tostring(list.body.shown), "empty=" .. tostring(list.empty.shown), "offset=" .. list.offset)
+        print(tag, "shown=" .. tostring(f.shown), "sort=" .. T.sort.label.text,
+            "minimised=" .. tostring(ns.db.questsMinimised), "all=" .. T.foldAll.label.text,
+            "view=" .. T.view.label.text, "body=" .. tostring(list.body.shown), "foot=" .. tostring(T.footer.shown),
+            "empty=" .. tostring(list.empty.shown), "offset=" .. list.offset)
     end
+    local function plain(t) return (t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
     local function rows(tag)
         local out = {}
         for _, r in ipairs(list.rows) do
             if r.shown then
                 local d = r.data
-                table.insert(out, d.header and (r.sign.text .. r.label.text)
-                    or (string.rep(">", d.depth or 0) .. r.label.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-                        .. (d.quest and ("(" .. c3(r.label.textColor) .. ")") or (d.dim and "(dim)" or ""))))
+                table.insert(out, d.header and (r.sign.text .. plain(r.label.text) .. (d.bright and "(bright)" or "")
+                    .. (r.fill.gradient and string.format(" a=%.2f", r.fill.gradient[2][4]) or ""))
+                    or (string.rep(">", d.depth or 0) .. plain(r.label.text)
+                        .. (d.quest and ("(" .. c3(r.label.textColor) .. ")") or (d.dim and "(dim)" or ""))
+                        .. (d.quest and r.value.text ~= "" and (" @" .. r.value.text) or "")))
             end
         end
         print(tag, #out > 0 and table.concat(out, " | ") or "none")
@@ -9413,7 +9426,7 @@ if questPass then
         for i, b in ipairs(layer.buttons) do
             if b.shown then
                 local p = b.points.TOPRIGHT
-                local at = (-p[4] - 54 - 1) / 22 + 1
+                local at = (-p[4] - T.top - 1) / 22 + 1
                 local r = list.rows[at]
                 table.insert(out, string.format("%d:%s %s,%d row%s=%s n=%s%s%s", i, b.attrs.type, tostring(b.attrs.item),
                     p[3], at, r and r.data and r.data.quest and r.data.quest.id or "?", b.count.text or "",
@@ -9504,13 +9517,13 @@ if questPass then
     print("quests.saved folds", tostring(ns.db.questsFolded and ns.db.questsFolded.Westfall))
     row("Westfall")
     frame()
-    T.fold.scripts.OnClick(T.fold, "LeftButton")
+    T.head.scripts.OnClick(T.head, "LeftButton")
     frame()
     state("quests.minimised")
     rows("quests.minimised")
     print("quests.minimised shade", "h=" .. T.shade.h)
     items("quests.minimised items")
-    T.fold.scripts.OnClick(T.fold, "LeftButton")
+    T.head.scripts.OnClick(T.head, "LeftButton")
     frame()
     state("quests.restored")
 
@@ -9549,7 +9562,8 @@ if questPass then
     frame()
     rows("quests.combat removed")
     T.sort.scripts.OnClick(T.sort, "LeftButton")
-    T.fold.scripts.OnClick(T.fold, "LeftButton")
+    T.head.scripts.OnClick(T.head, "LeftButton")
+    T.foldAll.scripts.OnClick(T.foldAll, "LeftButton")
     list:Scroll(2)
     row("Elwynn Forest")
     frame()
@@ -9626,4 +9640,176 @@ if questPass then
         state("quests.mended")
         rows("quests.mended")
     end
+
+    -- 10. the views. The full one: the ink, fading to the right; the footer
+    -- above the medallion's lip, the list down to its rule
+    ns.db.questsSort = "level"
+    T.Refresh()
+    -- what the margin's divider starts after: a buff (by its place in the
+    -- row), or the margin's own edge
+    local function divider()
+        local p = T.divider.points.LEFT
+        for i, b in ipairs(ns.buffs or {}) do
+            if p[1] == b then return "buff " .. i .. " +" .. p[3] end
+        end
+        return p[2] .. " " .. p[3] .. "," .. p[4]
+    end
+    local function view(tag)
+        local ink = T.ink
+        local g = ink.gradient
+        print(tag, "strata=" .. tostring(f.strata) .. "/" .. tostring(layer.strata),
+            string.format("scale=%.2f/%.2f", f:GetScale(), layer:GetScale()), "size=" .. tostring(f.w) .. "x" .. tostring(f.h),
+            where(f), "dress=" .. tostring(T.dress.shown) .. (g and string.format(" %.2f>%.2f", g[2][4], g[3][4]) or ""),
+            "grip=" .. tostring(T.grip.shown), "foot=" .. where(T.footer), "body=" .. where(list.body))
+        local icons = {}
+        for _, b in ipairs(ns.buffs or {}) do
+            if b.shown then icons[#icons + 1] = tostring(b.icon.texture) .. "@" .. where(b) end
+        end
+        print(tag .. " buffs", #icons > 0 and table.concat(icons, " ") or "none",
+            "divider=" .. divider())
+        if ns.chat then
+            print(tag .. " chat", where(ns.chat.panel), "size=" .. tostring(ns.chat.panel.w) .. "x"
+                .. tostring(ns.chat.panel.h), "art=" .. tostring(ns.chat.art.shown), "rule=" .. tostring(T.chatRule.shown),
+                "section=" .. where(T.section), "messages=" .. where(ChatFrame1))
+        end
+    end
+    view("quests.full")
+    -- the Defias Brotherhood's report, as the lines it wraps to
+    local function wrapped(tag)
+        local out, on = {}, false
+        for _, d in ipairs(list.data) do
+            if d.quest then on = d.quest.id == 201 elseif on and d.dim then table.insert(out, d.label) end
+        end
+        print(tag, #out .. " lines", table.concat(out, " / "))
+    end
+    wrapped("quests.full wrap")
+    -- no timeless buffs: the divider from the margin's edge, and back
+    local had = {}
+    for i = #buffs, 1, -1 do table.insert(had, 1, table.remove(buffs, i)) end
+    local function auras()
+        for _, u in ipairs(events.UNIT_AURA or {}) do
+            u.scripts.OnEvent(u, "UNIT_AURA", "player", { isFullUpdate = true })
+        end
+    end
+    auras()
+    view("quests.no buffs")
+    for _, b in ipairs(had) do table.insert(buffs, b) end
+    auras()
+    -- every quest's title stops short of the item column, item or not
+    local edges = {}
+    for _, r in ipairs(list.rows) do
+        if r.shown and r.data.quest then edges[#edges + 1] = tostring(r.label.points.RIGHT[3]) end
+    end
+    print("quests.title edges", table.concat(edges, " "))
+    -- the full view does not move
+    T.head.scripts.OnDragStart(T.head)
+    print("quests.full drag", "moving=" .. tostring(f.isMoving))
+    T.head.scripts.OnDragStop(T.head)
+    -- every zone folded, then every zone open
+    T.foldAll.scripts.OnClick(T.foldAll, "LeftButton")
+    frame()
+    state("quests.fold all")
+    rows("quests.fold all")
+    T.foldAll.scripts.OnClick(T.foldAll, "LeftButton")
+    frame()
+    state("quests.open all")
+    print("quests.open all saved", tostring(ns.db.questsFolded))
+    -- the minimal view: its button, its first place and size
+    T.view.scripts.OnClick(T.view, "LeftButton")
+    frame()
+    state("quests.minimal")
+    view("quests.minimal")
+    -- its shade comes up under the pointer; the box's height
+    mouseOver = T.shade
+    tick(4)
+    shaded("quests.minimal shade")
+    mouseOver = false
+    tick(5)
+    -- a drag by the heading: kept where it was dropped
+    harnessDropAt = { "TOPLEFT", "BOTTOMLEFT", 120, 700 }
+    T.head.scripts.OnDragStart(T.head)
+    T.head.scripts.OnDragStop(T.head)
+    harnessDropAt = nil
+    local function place(tag)
+        local at = ns.db.questsPlace
+        print(tag, at and string.format("%s>%s %d,%d %sx%s scale=%s", at.point, at.relative, at.x, at.y,
+            tostring(at.w), tostring(at.h), tostring(at.scale)) or "none")
+    end
+    place("quests.dragged")
+    view("quests.dragged")
+    -- the grip: a narrower box, and the long objective wraps to it
+    harnessSizeTo = { 340, 300 }
+    T.grip.scripts.OnMouseDown(T.grip, "LeftButton")
+    T.grip.scripts.OnMouseUp(T.grip, "LeftButton")
+    harnessSizeTo = nil
+    frame()
+    place("quests.sized")
+    view("quests.sized")
+    wrapped("quests.sized wrap")
+    items("quests.sized items")
+    -- Ctrl-wheel scales, the anchor staying put on the screen; a plain
+    -- wheel scrolls
+    modsDown.CTRL = true
+    T.head.scripts.OnMouseWheel(T.head, 1)
+    place("quests.scaled")
+    view("quests.scaled")
+    for _ = 1, 30 do T.head.scripts.OnMouseWheel(T.head, 1) end
+    place("quests.scaled most")
+    for _ = 1, 30 do T.head.scripts.OnMouseWheel(T.head, -1) end
+    place("quests.scaled least")
+    modsDown.CTRL = nil
+    list.body.h = 22 * 4
+    T.Refresh()
+    T.head.scripts.OnMouseWheel(T.head, -1)
+    frame()
+    state("quests.heading wheel")
+    list:Scroll(-5)
+    list.body.h = 22 * 12
+    -- in combat: the view, a drag, the grip and the scale change nothing
+    inCombat = true
+    fire("PLAYER_REGEN_DISABLED")
+    T.view.scripts.OnClick(T.view, "LeftButton")
+    T.head.scripts.OnDragStart(T.head)
+    print("quests.combat drag", "moving=" .. tostring(f.isMoving))
+    T.head.scripts.OnDragStop(T.head)
+    harnessSizeTo = { 500, 500 }
+    T.grip.scripts.OnMouseDown(T.grip, "LeftButton")
+    T.grip.scripts.OnMouseUp(T.grip, "LeftButton")
+    harnessSizeTo = nil
+    modsDown.CTRL = true
+    T.head.scripts.OnMouseWheel(T.head, 1)
+    modsDown.CTRL = nil
+    frame()
+    print("quests.combat view", tostring(ns.db.questsView))
+    place("quests.combat place")
+    view("quests.combat view")
+    -- the options page in combat: the view waits for regen
+    ns.SetOption("questsView", "full")
+    frame()
+    view("quests.combat option")
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    frame()
+    view("quests.regen option")
+    ns.SetOption("questsView", "minimal")
+    frame()
+    -- the options' Reset, then the full view again
+    ns.SetOption("questsPlace", false)
+    frame()
+    place("quests.reset")
+    view("quests.reset")
+    T.view.scripts.OnClick(T.view, "LeftButton")
+    frame()
+    state("quests.full again")
+    view("quests.full again")
+    mouseOver = T.shade
+    tick(4)
+    shaded("quests.full shade")
+    mouseOver = false
+    -- with the chat panel off, the footer comes down to the margin
+    ns.db.chat = false
+    T.Layout()
+    view("quests.no chat")
+    ns.db.chat = true
+    T.Layout()
 end
