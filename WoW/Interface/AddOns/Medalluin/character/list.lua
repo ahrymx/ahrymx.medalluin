@@ -9,9 +9,21 @@
 --       { label, depth, icon, value, bar = { min, max, cur, color, text },
 --         selected, click(button), enter(row), dim, color, inset }   an entry; inset,
 --                                                     how far short of the right its label stops
+--     an entry may also have (the quest tracker's):
+--       font = { path, size }   its label's, Medalluin's at 12 without
+--       pad                     a gap before what follows, past its depth's indent
+--       badge = { atlas, file, tint, size }   a mark before its label: the
+--                               atlas where the client has it, else the file
+--                               (tinted); size square
+--       lead = "bullet" | "mid" | "last" | "pass" | "blank", leadWidth
+--                               before the label: a dot, a tree's branch (├ └),
+--                               its stem going on past a wrapped line (│), or room
+--       group                   rows with the same group light together under
+--                               the pointer, the row's own glow then off
 --     list:Draw()      again, at the same scroll (after the body's height changes)
 --     list.fade = true  headings fade out to the right (the quest tracker's,
 --                       over the world), where the client has gradients
+--     list.row          a row's height (22)
 --
 --   ns.character.Details(foot, ticks, nothing, lines) -> details
 --     details:Set{ title, sub, bar, text, lines }   (nil hides the lot; empty says so)
@@ -23,6 +35,7 @@
 local _, ns = ...
 
 local ROW, INDENT, BAR_W, BAR_H, ICON = 22, 12, 150, 16, 18
+local LEAD, STEM, DOT = 12, 1, 4        -- a lead's room, its stem's width, a bullet's size
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 
@@ -71,11 +84,24 @@ local function Row(list)
     r.mark = r:CreateTexture(nil, "BACKGROUND", nil, 2)
     r.mark:SetAllPoints()
     r.mark:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.35)
-    local glow = r:CreateTexture(nil, "HIGHLIGHT")
-    glow:SetAllPoints()
-    glow:SetColorTexture(1, 1, 1, 0.06)
+    r.glow = r:CreateTexture(nil, "HIGHLIGHT")
+    r.glow:SetAllPoints()
+    r.glow:SetColorTexture(1, 1, 1, 0.06)
+    -- the group's light, the glow's colour, on every row of it
+    r.lit = r:CreateTexture(nil, "BACKGROUND", nil, 3)
+    r.lit:SetAllPoints()
+    r.lit:SetColorTexture(1, 1, 1, 0.06)
+    r.lit:Hide()
     r.icon = r:CreateTexture(nil, "ARTWORK")
     r.icon:SetSize(ICON, ICON)
+    r.badge = r:CreateTexture(nil, "ARTWORK")
+    -- a lead: a dot, or a stem down the row and a branch across to the label
+    r.dot = r:CreateTexture(nil, "ARTWORK")
+    r.dot:SetSize(DOT, DOT)
+    r.stem = r:CreateTexture(nil, "ARTWORK")
+    r.stem:SetWidth(STEM)
+    r.branch = r:CreateTexture(nil, "ARTWORK")
+    r.branch:SetHeight(STEM)
     r.label = ns.Text(r, 12)
     r.label:SetJustifyH("LEFT")
     r.label:SetWordWrap(false)
@@ -91,18 +117,62 @@ local function Row(list)
         if self.data and self.data.click then self.data.click(button) end
     end)
     r:SetScript("OnEnter", function(self)
+        list:Light(self.data and self.data.group)
         if self.data and self.data.enter then self.data.enter(self) end
     end)
-    r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    r:SetScript("OnLeave", function()
+        list:Light(nil)
+        GameTooltip:Hide()
+    end)
     r:EnableMouseWheel(true)
     r:SetScript("OnMouseWheel", function(_, delta) list:Scroll(-delta) end)
     return r
 end
 
+-- The mark before a label: the atlas where the client has one, its own
+-- colours; else the file, tinted.
+local function Badge(t, b)
+    local atlas = b.atlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(b.atlas) and b.atlas
+    if atlas then
+        t:SetAtlas(atlas)
+        t:SetVertexColor(1, 1, 1)
+    else
+        t:SetTexture(b.file)
+        t:SetTexCoord(0, 1, 0, 1)
+        local c = b.tint or { 1, 1, 1 }
+        t:SetVertexColor(c[1], c[2], c[3])
+    end
+    t:SetDesaturated(not atlas and b.tint ~= nil)
+end
+
+-- The lead at x, w wide, in the label's colour: a dot, or a stem (the
+-- whole row, or down to the middle for the last) and a branch from it.
+local function Lead(r, d, x, w, c)
+    local kind = d.lead
+    local mid = x + math.floor(w / 2) - 2
+    r.dot:SetShown(kind == "bullet")
+    r.stem:SetShown(kind == "mid" or kind == "last" or kind == "pass")
+    r.branch:SetShown(kind == "mid" or kind == "last")
+    for _, t in ipairs({ r.dot, r.stem, r.branch }) do t:SetColorTexture(c[1], c[2], c[3], 0.6) end
+    r.dot:ClearAllPoints()
+    r.dot:SetPoint("CENTER", r, "LEFT", mid, 0)
+    r.stem:ClearAllPoints()
+    r.stem:SetPoint("TOPLEFT", mid, 0)
+    r.stem:SetPoint("BOTTOMLEFT", mid, kind == "last" and r:GetHeight() / 2 or 0)
+    r.branch:ClearAllPoints()
+    r.branch:SetPoint("LEFT", r, "LEFT", mid, 0)
+    r.branch:SetPoint("RIGHT", r, "LEFT", x + w - 2, 0)
+end
+
 local function Paint(r, d, list)
     r.data = d
     local depth = d.depth or 0
-    local x = 6 + depth * INDENT
+    local x = 6 + depth * INDENT + (d.pad or 0)
+    local font = d.font or { ns.font, 12 }
+    if r.font ~= font[1] .. font[2] then
+        r.label:SetFont(font[1], font[2], "")
+        r.font = font[1] .. font[2]
+    end
     r.icon:SetShown(d.icon ~= nil)
     if d.icon then
         r.icon:SetTexture(d.icon)
@@ -110,6 +180,20 @@ local function Paint(r, d, list)
         r.icon:SetPoint("LEFT", x, 0)
         x = x + ICON + 4
     end
+    r.badge:SetShown(d.badge ~= nil)
+    if d.badge then
+        local size = d.badge.size or ICON
+        Badge(r.badge, d.badge)
+        r.badge:SetSize(size, size)
+        r.badge:ClearAllPoints()
+        r.badge:SetPoint("LEFT", x, 0)
+        x = x + size + 4
+    end
+    local lead = d.lead and d.leadWidth or LEAD
+    Lead(r, d, x, lead, d.dim and ns.colors.dim or d.color or ns.colors.text)
+    if d.lead then x = x + lead end
+    r.glow:SetShown(d.group == nil)
+    r.lit:SetShown(d.group ~= nil and d.group == list.lit)
     r.label:ClearAllPoints()
     r.label:SetPoint("LEFT", x, 0)
     r.label:SetText(d.label or "")
@@ -143,7 +227,15 @@ end
 -- ----------------------------------------------------------------- list
 local List = {}
 
-function List:Shown() return math.max(1, math.floor((self.body:GetHeight() or 0) / ROW)) end
+function List:Shown() return math.max(1, math.floor((self.body:GetHeight() or 0) / self.row)) end
+
+-- the rows of a group lit together (nil: none)
+function List:Light(group)
+    self.lit = group
+    for _, r in ipairs(self.rows) do
+        r.lit:SetShown(group ~= nil and r.data ~= nil and r.data.group == group)
+    end
+end
 
 function List:Scroll(lines)
     local most = math.max(0, #self.data - self:Shown())
@@ -158,10 +250,12 @@ function List:Draw()
         local r = self.rows[i]
         if not r then
             r = Row(self)
-            r:SetPoint("TOPLEFT", 0, -(i - 1) * ROW)
-            r:SetPoint("TOPRIGHT", -6, -(i - 1) * ROW)
             self.rows[i] = r
         end
+        r:SetHeight(self.row)
+        r:ClearAllPoints()
+        r:SetPoint("TOPLEFT", 0, -(i - 1) * self.row)
+        r:SetPoint("TOPRIGHT", -6, -(i - 1) * self.row)
         local d = self.data[self.offset + i]
         r:SetShown(d ~= nil)
         if d then Paint(r, d, self) end
@@ -171,7 +265,7 @@ function List:Draw()
     self.empty:SetShown(total == 0)
     self.track:SetShown(total > shown)
     if total > shown then
-        local h = shown * ROW
+        local h = shown * self.row
         local size = math.max(12, h * shown / total)
         self.thumb:SetHeight(size)
         self.thumb:ClearAllPoints()
@@ -188,7 +282,7 @@ function ns.character.List(body, empty)
     local list = CreateFrame("Frame", nil, body)
     list:SetAllPoints()
     for k, v in pairs(List) do list[k] = v end
-    list.body, list.rows, list.data, list.offset = body, {}, {}, 0
+    list.body, list.rows, list.data, list.offset, list.row = body, {}, {}, 0, ROW
     list:EnableMouseWheel(true)
     list:SetScript("OnMouseWheel", function(self, delta) self:Scroll(-delta) end)
     list.track = list:CreateTexture(nil, "ARTWORK")

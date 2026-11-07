@@ -94,6 +94,9 @@ local DEFAULTS = {
     questsPlace = false,    -- the minimal view's place, size and scale: { point, relative, x, y, w, h, scale }
     questsFullMouseover = false, questsFullCombat = false,       -- each view hidden until the pointer is
     questsMinimalMouseover = false, questsMinimalCombat = false, -- over it, and in combat
+    questsTree = false,     -- objectives on a tree's branches, the finished risen to the top; bulleted otherwise
+    questsTitleFont = "marcellus", questsTitleSize = 12,         -- ns.Fonts()'s keys, and points
+    questsObjectiveFont = "marcellus", questsObjectiveSize = 12,
     optionsPoint = false,   -- where the settings window was dragged to, the same way (options/window.lua)
     editorPoint = false,    -- and the unit-frame editor's (options/editor.lua)
     editCanvasPoint = false, -- and its edit-mode canvas (options/canvas.lua)

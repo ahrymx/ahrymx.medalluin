@@ -190,6 +190,49 @@ function ns.Mute(region)
     if region and region.SetVertexColor then region:SetVertexColor(1, 1, 1, 0) end
 end
 
+-- The fonts a reader may choose for text they read at length (the quest
+-- tracker's): Medalluin's own, the four every client ships, then those
+-- other addons register with LibSharedMedia, asked each time (they load
+-- after us). Each { key, name, path }; a key is kept in the settings.
+local FONTS = {
+    { "marcellus", "Marcellus SC", ns.font },
+    { "friz", "Friz Quadrata", "Fonts\\FRIZQT__.TTF" },
+    { "arialn", "Arial Narrow", "Fonts\\ARIALN.TTF" },
+    { "morpheus", "Morpheus", "Fonts\\MORPHEUS.TTF" },
+    { "skurri", "Skurri", "Fonts\\SKURRI.TTF" },
+}
+local function Shared()
+    return LibStub and LibStub("LibSharedMedia-3.0", true)
+end
+
+function ns.Fonts()
+    local out = {}
+    for _, f in ipairs(FONTS) do table.insert(out, f) end
+    local lsm = Shared()
+    if lsm then
+        local mine = {}
+        for _, f in ipairs(FONTS) do mine[f[3]:lower()] = true end
+        for _, name in ipairs(lsm:List("font") or {}) do
+            local path = lsm:Fetch("font", name, true)
+            if path and not mine[path:lower()] then
+                mine[path:lower()] = true
+                table.insert(out, { "lsm:" .. name, name, path })
+            end
+        end
+    end
+    return out
+end
+
+-- A font key's file: Medalluin's own for a key no longer there (a shared
+-- font whose addon is gone).
+function ns.FontPath(key)
+    for _, f in ipairs(FONTS) do
+        if f[1] == key then return f[3] end
+    end
+    local name, lsm = type(key) == "string" and key:match("^lsm:(.+)$"), Shared()
+    return name and lsm and lsm:Fetch("font", name, true) or ns.font
+end
+
 function ns.Text(parent, size)
     local fs = parent:CreateFontString(nil, "OVERLAY")
     fs:SetFont(ns.font, size, "")

@@ -2233,9 +2233,9 @@ if questPass then
         { title = "The Fargodeep Mine", level = 10, questID = 101, objectives = { o("Kobold Laborer slain: 4/10") } },
         { title = "Princess Must Die!", level = 12, questID = 102, complete = true,
             objectives = { o("Princess slain: 1/1", true) } },
-        { title = "A Threat Within", level = 5, questID = 103, objectives = {} },
+        { title = "A Threat Within", level = 5, questID = 103, frequency = 1, objectives = {} },
         { title = "Westfall", isHeader = true },
-        { title = "The Defias Brotherhood", level = 18, questID = 201,
+        { title = "The Defias Brotherhood", level = 18, questID = 201, suggestedGroup = 5,
             objectives = { o("Defias Messenger: 0/1"),
                 o("Report to Gryan Stoutmantle at the Sentinel Hill tower, on the road south of Moonbrook", true) } },
         { title = "Westfall Stew", level = 14, questID = 202, failed = true, objectives = { o("Stringy meat: 2/3") } },
@@ -2246,6 +2246,7 @@ if questPass then
     }
     W.watched = { [101] = true, [102] = true, [201] = true, [202] = true, [203] = true, [301] = true, [302] = true }
     W.special = { [2] = 5001, [3] = 5002, [10] = 5003 }   -- by log index; 5002 not once complete
+    W.tags = { [301] = { tagID = 62 }, [203] = { tagID = 0, isElite = true } }   -- a raid's, an elite
     W.bags = { [5001] = 3, [5003] = 1, [6001] = 0 }
     local function byId(id)
         for _, e in ipairs(W.log) do if e.questID == id then return e end end
@@ -2260,6 +2261,7 @@ if questPass then
         GetQuestObjectives = function(id) return byId(id).objectives end,
         GetQuestWatchType = function(id) return W.watched[id] and 0 or nil end,
         RemoveQuestWatch = function(id) W.watched[id] = nil; called("unwatch " .. id) end,
+        GetQuestTagInfo = function(id) return W.tags[id] end,
         SetSelectedQuest = function(id) called("select " .. id) end,
     }
     function GetQuestLogSpecialItemInfo(i)
@@ -2978,6 +2980,43 @@ if barPass then
     range.button.scripts.OnClick(range.button)
     range.button.scripts.OnClick(range.button)
     print("menu again closes", "shown=" .. tostring(menu.shown))
+    -- a font's list: each in its own font, asked as it opens (a shared one
+    -- registered since), and past sixteen in columns
+    ns.OpenOptions("quests")
+    local fontChoice = ns.optionControls.questsTitleFont
+    local stub = LibStub
+    local shared = { names = {} }
+    for i = 1, 14 do table.insert(shared.names, "Shared " .. i) end
+    table.insert(shared.names, "Marcellus Again")
+    function shared:List() return self.names end
+    function shared:Fetch(_, name)
+        return name == "Marcellus Again" and ns.font or "Fonts\\" .. name:gsub(" ", "") .. ".ttf"
+    end
+    LibStub = function(major) if major == "LibSharedMedia-3.0" then return shared end end
+    local function fonts(tag)
+        fontChoice.button.scripts.OnClick(fontChoice.button)
+        local out = {}
+        for _, row in ipairs(menu.rows) do
+            if row.shown then
+                local p = row.points.TOPLEFT
+                table.insert(out, string.format("%s%s(%s)@%d,%d", row.mark.shown and "*" or "", row.text.text,
+                    tostring(row.text.font[1]):match("[^\\]+$"), p[3], p[4]))
+            end
+        end
+        print(tag, "size=" .. menu.w .. "x" .. menu.h, table.concat(out, " "))
+        fontChoice.button.scripts.OnClick(fontChoice.button)
+    end
+    fonts("menu fonts")
+    for _, row in ipairs(menu.rows) do
+        if row.value == "lsm:Shared 3" then row.scripts.OnClick(row) end
+    end
+    print("menu font chosen", tostring(ns.db.questsTitleFont), "shows=" .. shows(fontChoice))
+    LibStub = stub
+    ns.RefreshOptions()
+    print("menu font gone", "shows=" .. shows(fontChoice), "path=" .. ns.FontPath(ns.db.questsTitleFont))
+    page.settings.questsTitleFont:Set("marcellus")
+    menu:SetSize(0, 0)
+    fonts("menu fonts plain")
     page.settings.partyRange:Set(40)
     partyLayoutMenu("medallion")
     -- the colour swatch: the game's picker, turned, then cancelled
@@ -9631,6 +9670,7 @@ if questPass then
             "empty=" .. tostring(list.empty.shown), "offset=" .. list.offset)
     end
     local function plain(t) return (t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+    local LEADS = { bullet = "* ", mid = "|- ", last = "`- ", pass = "|  ", blank = "   " }
     local function rows(tag)
         local out = {}
         for _, r in ipairs(list.rows) do
@@ -9638,7 +9678,8 @@ if questPass then
                 local d = r.data
                 table.insert(out, d.header and (r.sign.text .. plain(r.label.text) .. (d.bright and "(bright)" or "")
                     .. (r.fill.gradient and string.format(" a=%.2f", r.fill.gradient[2][4]) or ""))
-                    or (string.rep(">", d.depth or 0) .. plain(r.label.text)
+                    or (string.rep(">", d.depth or 0) .. (r.badge.shown and ("{" .. tostring(r.badge.atlas) .. "} ") or "")
+                        .. (LEADS[d.lead] or "") .. plain(r.label.text)
                         .. (d.quest and ("(" .. c3(r.label.textColor) .. ")") or (d.dim and "(dim)" or ""))
                         .. (d.quest and r.value.text ~= "" and (" @" .. r.value.text) or "")))
             end
@@ -9651,7 +9692,7 @@ if questPass then
         for i, b in ipairs(layer.buttons) do
             if b.shown then
                 local p = b.points.TOPRIGHT
-                local at = (-p[4] - T.top - 1) / 22 + 1
+                local at = (-p[4] - T.top - (list.row - 20) / 2) / list.row + 1
                 local r = list.rows[at]
                 table.insert(out, string.format("%d:%s %s,%d row%s=%s n=%s%s%s", i, b.attrs.type, tostring(b.attrs.item),
                     p[3], at, r and r.data and r.data.quest and r.data.quest.id or "?", b.count.text or "",
@@ -10141,4 +10182,125 @@ if questPass then
     T.view.scripts.OnClick(T.view, "LeftButton")
     frame()
     hidden("quests.hide off again")
+
+    -- 12. reading. The pointer over an objective lights its quest and all
+    -- its objectives, its own glow off; away, none
+    T.Refresh()
+    local function lit(tag)
+        local out = {}
+        for i, r in ipairs(list.rows) do
+            if r.shown and r.lit.shown then table.insert(out, i .. ":" .. plain(r.label.text):sub(1, 12)) end
+        end
+        local glows = 0
+        for _, r in ipairs(list.rows) do if r.shown and r.glow.shown then glows = glows + 1 end end
+        print(tag, #out > 0 and table.concat(out, " ") or "none", "glows=" .. glows)
+    end
+    local over
+    for _, r in ipairs(list.rows) do
+        if r.shown and r.label.text:find("Defias Messenger", 1, true) then over = r end
+    end
+    over.scripts.OnEnter(over)
+    lit("quests.lit")
+    print("quests.lit tip", "owner=" .. tostring(GameTooltip.owner == over))
+    over.scripts.OnClick(over, "LeftButton")
+    calls("quests.lit click")
+    -- the rows drawn again under it (a scroll): the light keeps to its quest
+    list:Scroll(1)
+    lit("quests.lit scrolled")
+    list:Scroll(-1)
+    over.scripts.OnLeave(over)
+    lit("quests.unlit")
+    -- one quest's rows, shown or scrolled past: its lead and words
+    local function quest(tag, id)
+        local out = {}
+        for _, d in ipairs(list.data) do
+            if d.group == id then
+                table.insert(out, (d.badge and ("{" .. d.badge.atlas .. "} ") or "") .. (LEADS[d.lead] or "")
+                    .. plain(d.label) .. (d.dim and "(dim)" or ""))
+            end
+        end
+        print(tag, table.concat(out, " | "))
+    end
+    -- each lead as drawn: the dot, the stem (to the middle on the last), the
+    -- branch to the words, and where the words start
+    local function leads(tag)
+        local seen, out = {}, {}
+        for _, r in ipairs(list.rows) do
+            local kind = r.shown and r.data.lead
+            if kind and not seen[kind] then
+                seen[kind] = true
+                local st, sb, b = r.stem.points.TOPLEFT, r.stem.points.BOTTOMLEFT, r.branch.points
+                table.insert(out, string.format("%s dot=%s stem=%s branch=%s label=%d", kind,
+                    r.dot.shown and tostring(r.dot.points.CENTER[3]) or "-",
+                    r.stem.shown and (st[3] .. ":" .. st[4] .. ">" .. sb[4]) or "-",
+                    r.branch.shown and (b.LEFT[3] .. ">" .. b.RIGHT[3]) or "-", r.label.points.LEFT[3]))
+            end
+        end
+        print(tag, table.concat(out, " | "))
+    end
+    quest("quests.bullets 201", 201)
+    leads("quests.bullet leads")
+    -- the tree: the finished objectives risen, on its branches
+    ns.SetOption("questsTree", true)
+    frame()
+    rows("quests.tree")
+    quest("quests.tree 201", 201)
+    list:Scroll(8)
+    leads("quests.tree leads")
+    list:Scroll(-8)
+    -- a daily's marks, blue: its ! and, once it is done, its ?
+    W.byId(101).frequency = 1
+    fire("QUEST_LOG_UPDATE")
+    frame()
+    rows("quests.daily")
+    W.byId(101).complete = true
+    fire("QUEST_LOG_UPDATE")
+    frame()
+    rows("quests.daily ready")
+    W.byId(101).complete, W.byId(101).frequency = nil, nil
+    -- the marks without the client's atlases: the gossip window's, tinted
+    local atlases = C_Texture.GetAtlasInfo
+    C_Texture.GetAtlasInfo = function() end
+    T.Refresh()
+    local marks = {}
+    for _, r in ipairs(list.rows) do
+        if r.shown and r.badge.shown then
+            table.insert(marks, string.format("%s %s %s%s", tostring(r.data.quest.id), tostring(r.badge.texture):match("[^\\]+$"),
+                c3(r.badge.vertex), r.badge.desaturated and " desat" or ""))
+        end
+    end
+    print("quests.marks filed", table.concat(marks, " | "))
+    C_Texture.GetAtlasInfo = atlases
+    -- the fonts and sizes: every row as tall as the larger, the marks and
+    -- the items with them; in combat, waiting for its end
+    local function type_(tag)
+        local q, o
+        for _, r in ipairs(list.rows) do
+            if r.shown and r.data.quest and not q then q = r end
+            if r.shown and r.data.lead and not o then o = r end
+        end
+        print(tag, "row=" .. list.row, "h=" .. tostring(q.h), "title=" .. tostring(q.label.font[1]):match("[^\\]+$")
+            .. "/" .. q.label.font[2], "objective=" .. tostring(o.label.font[1]):match("[^\\]+$") .. "/" .. o.label.font[2],
+            "mark=" .. tostring(q.badge.w), "wrap=" .. tostring(T.measure.font[1]):match("[^\\]+$") .. "/"
+            .. T.measure.font[2])
+    end
+    type_("quests.type")
+    combat(true)
+    ns.SetOption("questsTitleSize", 18)
+    frame()
+    -- a quest's count changing then redraws in place: the size still waits
+    fire("QUEST_LOG_UPDATE")
+    type_("quests.type combat")
+    combat(false)
+    frame()
+    type_("quests.type after combat")
+    ns.SetOption("questsObjectiveFont", "friz")
+    ns.SetOption("questsObjectiveSize", 20)
+    frame()
+    type_("quests.type objectives")
+    rows("quests.type rows")
+    items("quests.type items")
+    ns.SetOption("questsObjectiveFont", "lsm:Gone")
+    frame()
+    type_("quests.type font gone")
 end

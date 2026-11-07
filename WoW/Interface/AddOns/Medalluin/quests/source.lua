@@ -84,6 +84,23 @@ function Q.CanMeasure()
     return not unmeasured and m and m.distance and m.distance.GetNearestSpawnForQuest and true or false
 end
 
+-- What sort of quest: "dungeon" (a dungeon's or a raid's), "group" (for a
+-- group, or elite), or nothing. The tag is the game's: C_QuestLog's where
+-- the client has it, the global's otherwise.
+-- raid, dungeon, heroic, raid 10 and 25
+local INSTANCE = { [62] = true, [81] = true, [85] = true, [88] = true, [89] = true }
+local function Kind(id, info)
+    local tag, elite
+    if C_QuestLog.GetQuestTagInfo then
+        local t = C_QuestLog.GetQuestTagInfo(id)
+        tag, elite = t and t.tagID, t and t.isElite
+    elseif GetQuestTagInfo then
+        tag = GetQuestTagInfo(id)
+    end
+    if INSTANCE[tag] then return "dungeon" end
+    if tag == 1 or elite or (info.suggestedGroup or 0) > 1 then return "group" end
+end
+
 local function Distance(id)
     local m, record = Questie(), Record(id)
     if not (m and m.distance and record) then return end
@@ -92,7 +109,8 @@ local function Distance(id)
 end
 
 -- The tracked quests, in the log's order: { id, index, title, level, zone,
--- state (1 complete, -1 failed, 0), objectives { text, done }, item, far }.
+-- state (1 complete, -1 failed, 0), objectives { text, done }, item, far,
+-- daily (daily or weekly), kind (Kind's) }.
 function Q.Read(measure)
     local out, zone, measured = {}, nil, false
     for index = 1, C_QuestLog.GetNumQuestLogEntries() do
@@ -108,7 +126,7 @@ function Q.Read(measure)
             end
             table.insert(out, { id = id, index = index, title = info.title, level = info.level or 0,
                 zone = zone or "Other", state = state, objectives = objectives, item = Item(index, id, state),
-                far = measure and Distance(id) or nil })
+                far = measure and Distance(id) or nil, daily = (info.frequency or 0) > 0, kind = Kind(id, info) })
             measured = measured or out[#out].far ~= nil
         end
     end

@@ -104,7 +104,7 @@ read_globals = {
     "PlayerSpellsFrame", "PlayerSpellsUtil", "SpellbookMicroButton", "GetPetIcon", "C_Traits", "C_ClassTalents",
     "GetNumSpecGroups", "GetProfessions", "GetProfessionInfo", "ProfessionsFrame", "C_TradeSkillUI", "Professions", "SecondsToTime",
     -- the quest tracker (quests/); Questie is read, never written
-    "GetQuestLink", "GetQuestLogSpecialItemInfo", "QuestMapFrame_OpenToQuestDetails", "QuestLogFrame",
+    "GetQuestLink", "GetQuestLogSpecialItemInfo", "GetQuestTagInfo", "QuestMapFrame_OpenToQuestDetails", "QuestLogFrame",
     "GetDifficultyColor", "GetQuestDifficultyColor", "QuestieLoader", "C_QuestLog", "ShowUIPanel",
     "ObjectiveTrackerFrame", "QuestWatchFrame", "WatchFrame",
 }

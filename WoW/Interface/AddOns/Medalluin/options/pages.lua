@@ -37,6 +37,30 @@ local function Editor(id, label)
         .. "texts say. Also /mdlui edit.")
 end
 
+-- A font for reading (ns.Fonts()): its choices asked as the list opens,
+-- since other addons register theirs after us; each drawn in itself. A
+-- shared font chosen whose addon is gone stays listed, saying so (the text
+-- is Medalluin's own meanwhile).
+local function FontChoice(key, label, tip)
+    local spec = { kind = "choice", key = key, label = label, tip = tip }
+    function spec.list()
+        local out, chosen, there = {}, ns.db and ns.db[key], false
+        for _, f in ipairs(ns.Fonts()) do
+            table.insert(out, { f[1], f[2], nil, f[3] })
+            there = there or f[1] == chosen
+        end
+        local name = not there and type(chosen) == "string" and chosen:match("^lsm:(.+)$")
+        if name then table.insert(out, { chosen, name .. " (not loaded)", nil, ns.font }) end
+        return out
+    end
+    spec.choices = spec.list()
+    return spec
+end
+local function Points(key, label, tip)
+    return { kind = "slider", key = key, label = label, min = 9, max = 20, step = 1, tip = tip,
+        text = function(v) return string.format("%d pt", v) end }
+end
+
 local function Group(title, ...)
     return { title = title, items = { ... } }
 end
@@ -648,6 +672,18 @@ function ns.OptionPages()
                     }, "How the quests are ordered. The tracker's own button changes it too."),
                     Button("Reset the minimal view", function() ns.SetOption("questsPlace", false) end,
                         "The minimal view back to the top left, at its first size and scale.")),
+                Group("Text",
+                    Choice("questsTree", "Objectives", {
+                        { false, "Bullets", "Each objective under its quest, bulleted, in the quest log's order." },
+                        { true, "Tree", "On the branches of a tree, the finished ones risen to the top and "
+                            .. "dimmed, what is left at the foot." },
+                    }, "How a quest's objectives are drawn under it."),
+                    FontChoice("questsTitleFont", "Title font", "The quests' titles. Fonts other addons share "
+                        .. "(LibSharedMedia) are listed too."),
+                    Points("questsTitleSize", "Title size", "The quests' titles, and their marks with them."),
+                    FontChoice("questsObjectiveFont", "Objective font", "The objectives under each quest."),
+                    Points("questsObjectiveSize", "Objective size", "The objectives under each quest. Every row "
+                        .. "is as tall as the larger of the two sizes needs.")),
                 Group("Full view", Check("questsFullMouseover", "Only on mouseover",
                         "Hidden until the pointer is over the tracker's column."),
                     Check("questsFullCombat", "Hidden in combat",

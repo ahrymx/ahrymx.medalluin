@@ -244,6 +244,7 @@ end
 -- closes it.
 local menu, catcher
 local ROW_H = 20
+local MENU_ROWS = 16                    -- a list's rows before it flows into another column
 
 local function Menu()
     if menu then return menu end
@@ -269,8 +270,6 @@ local function Row(i)
     if row then return row end
     row = CreateFrame("Button", nil, menu)
     row:SetHeight(ROW_H)
-    row:SetPoint("TOPLEFT", 3, -3 - (i - 1) * ROW_H)
-    row:SetPoint("TOPRIGHT", -3, -3 - (i - 1) * ROW_H)
     row.lit = Fill(row, "BACKGROUND", C.hover, 1)
     row.lit:SetAllPoints()
     row.lit:Hide()
@@ -279,6 +278,7 @@ local function Row(i)
     row.mark:SetSize(14, 14)
     row.mark:SetPoint("LEFT", 4, 0)
     row.text = UI.Plain(row, 12)
+    menu.font = menu.font or { row.text:GetFont() }
     row.text:SetPoint("LEFT", 22, 0)
     row.text:SetPoint("RIGHT", -6, 0)
     row.text:SetJustifyH("LEFT")
@@ -316,6 +316,8 @@ function UI.OpenMenu(owner, spec)
         return
     end
     menu.owner, menu.spec = owner, spec
+    -- choices that change while the game runs (fonts other addons share)
+    if spec.list then spec.choices = spec.list() end
     local width = owner:GetWidth()
     for i, choice in ipairs(spec.choices) do
         local row = Row(i)
@@ -323,6 +325,8 @@ function UI.OpenMenu(owner, spec)
         local tip = choice[3]
         if type(tip) == "function" then tip = tip() end
         row.value, row.label, row.tip = choice[1], choice[2], tip
+        -- a font's choice drawn in that font
+        row.text:SetFont(choice[4] or menu.font[1], menu.font[2], menu.font[3])
         row.text:SetText(choice[2])
         local on = Get(spec) == choice[1]
         row.mark:SetShown(on)
@@ -332,7 +336,17 @@ function UI.OpenMenu(owner, spec)
         row:Show()
     end
     for i = #spec.choices + 1, #menu.rows do menu.rows[i]:Hide() end
-    menu:SetSize(width, #spec.choices * ROW_H + 6)
+    -- a long list flows into columns, each MENU_ROWS deep
+    local n = #spec.choices
+    local columns = math.max(1, math.ceil(n / MENU_ROWS))
+    local deep = math.min(n, MENU_ROWS)
+    for i = 1, n do
+        local row, col, at = menu.rows[i], math.floor((i - 1) / MENU_ROWS), (i - 1) % MENU_ROWS
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", 3 + col * width, -3 - at * ROW_H)
+        row:SetWidth(width - 6)
+    end
+    menu:SetSize(columns * width, deep * ROW_H + 6)
     menu:ClearAllPoints()
     menu:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -2)
     catcher:Show()
@@ -344,6 +358,7 @@ UI.CHOICE_H = 40
 
 local function ChoiceLabel(spec)
     local value = Get(spec)
+    if spec.list then spec.choices = spec.list() end
     for _, choice in ipairs(spec.choices) do
         if choice[1] == value then return choice[2] end
     end

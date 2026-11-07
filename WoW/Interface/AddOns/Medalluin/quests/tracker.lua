@@ -18,8 +18,8 @@
 --
 --   ------------ Quests ------------           <- a click folds it all
 --   - Westfall  3                              (your zone, brighter)
---     [12] Testing the Wells          [item]  140 yd
---          0/1 Jansen Stead Water Sample
+--     ! [12] Testing the Wells        [item]  140 yd
+--         • 0/1 Jansen Stead Water Sample
 --   + Elwynn Forest  2                         (folded)
 --   [cog][log]             [sort][fold][view]  <- the list's footer, no rule
 --   --------------------------------           (the minimal view's grip)
@@ -39,6 +39,18 @@
 -- quest says how far its nearest objective is. A quest's colour is its
 -- difficulty.
 --
+-- A quest's mark, before its level: ? once it can be handed in, else its
+-- kind's: a dungeon's, a group's (or elite), or the plain !. A daily's !
+-- and ? are blue. The game's own quest art: its atlas where the client
+-- has one, else the gossip window's, tinted.
+--
+-- Its objectives under it, bulleted; or, as a tree (questsTree), on the
+-- branches of one (├ └), the finished ones risen to the top. The quest
+-- and its objectives light together under the pointer, and each of them
+-- clicks as the quest does. The titles and the objectives each have their
+-- font and size (questsTitleFont, questsTitleSize, and the objectives');
+-- every row is as tall as the larger needs.
+--
 -- A quest: a click opens it in the quest log, Shift links it, Alt focuses
 -- it with Questie's arrow, a right click stops tracking it.
 --
@@ -57,7 +69,6 @@ local L = ns.stripLayout
 local Q = ns.questSource
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
-local GREEN = "|cff40c040"
 local DIM = "|cff8c8473"
 local WIDTH = L.chatLeft + L.chatWidth   -- the character window's width
 local PAD, HEAD, CONTROL, GLYPH = 8, 14, 22, 16
@@ -72,6 +83,17 @@ local RULE = 6                          -- the gap each side of a rule
 local HEIGHT, LEAST = 400, { 320, 160 } -- the minimal view's first height, and its least size
 local SCALES = { 0.6, 1.5, 0.05 }       -- its scale: least, most, a step of the wheel
 local SORTS = { level = "Level", zone = "Zone", distance = "Distance" }
+local BLUE, RED = { 0.35, 0.65, 1 }, { 1, 0.45, 0.25 }
+local GOSSIP = "Interface\\GossipFrame\\"
+local MARKS = {
+    ready = { atlas = "QuestTurnin", file = GOSSIP .. "ActiveQuestIcon" },
+    dailyReady = { atlas = "QuestRepeatableTurnin", file = GOSSIP .. "ActiveQuestIcon", tint = BLUE },
+    daily = { atlas = "QuestDaily", file = GOSSIP .. "AvailableQuestIcon", tint = BLUE },
+    dungeon = { atlas = "Dungeon", file = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull" },
+    group = { atlas = "socialqueuing-icon-group", file = GOSSIP .. "AvailableQuestIcon", tint = RED },
+    quest = { atlas = "QuestNormal", file = GOSSIP .. "AvailableQuestIcon" },
+}
+local LEAD = 12                         -- an objective's bullet or branch (character/list.lua)
 
 local frame, list, layer, sortButton, foldAll, viewButton, head, grip, footer, ink, measure, shade
 local dress, chatRule
@@ -86,10 +108,19 @@ local function Full() return ns.db.questsView ~= "minimal" end
 -- it until the pointer is over it) and "Combat"
 local function Hides(what) return ns.db[(Full() and "questsFull" or "questsMinimal") .. what] end
 
+-- the titles' font and the objectives': { path, size }
+local function Font(which)
+    return { ns.FontPath(ns.db["quests" .. which .. "Font"]), ns.db["quests" .. which .. "Size"] or 12 }
+end
+-- a row's height: the larger font's, and room around it
+local function Height() return math.max(12, Font("Title")[2], Font("Objective")[2]) + 10 end
+-- a mark's size, square: the title's, a little larger, short of the row
+local function Size() return math.min(Font("Title")[2] + 2, Height() - 4) end
+
 -- an objective's room on its row: the frame less the body's margin, the
--- row's inset, its label's indent at depth 2 and its right margin
--- (character/list.lua)
-local function Line() return wide - PAD - 6 - (6 + 2 * 12) - 24 end
+-- row's inset, its label's indent at depth 1, the quest's mark, its lead
+-- and its right margin (character/list.lua)
+local function Line() return wide - PAD - 6 - (6 + 12 + Size() + 4 + LEAD) - 24 end
 
 local function Sort()
     local sort = ns.db.questsSort
@@ -177,6 +208,8 @@ end
 -- (a word longer than a line keeps its own, cut).
 local function Wrap(text)
     local room = Line()
+    local font = Font("Objective")
+    measure:SetFont(font[1], font[2], "")
     measure:SetText(text)
     if measure:GetStringWidth() <= room then return { text } end
     local lines, line = {}, nil
@@ -217,8 +250,36 @@ local function Glyph(b, name)
     b.glyph = name
 end
 
+local function Mark(q)
+    local m = q.state == 1 and (q.daily and MARKS.dailyReady or MARKS.ready)
+        or q.daily and MARKS.daily or MARKS[q.kind or "quest"] or MARKS.quest
+    return { atlas = m.atlas, file = m.file, tint = m.tint, size = Size() }
+end
+
+-- A quest's objectives in their order: the log's, or the tree's (the
+-- finished first, each kept in the log's order).
+local function Objectives(q)
+    if not ns.db.questsTree then return q.objectives end
+    local out = {}
+    for _, done in ipairs({ true, false }) do
+        for _, o in ipairs(q.objectives) do
+            if (o.done and true or false) == done then table.insert(out, o) end
+        end
+    end
+    return out
+end
+
+-- An objective's lead, line j of it: a bullet on its first; in the tree a
+-- branch, and its stem on past a wrapped line while more come under it.
+local function Lead(j, last)
+    if not ns.db.questsTree then return j == 1 and "bullet" or "blank" end
+    if j == 1 then return last and "last" or "mid" end
+    return last and "blank" or "pass"
+end
+
 local function Rows()
     local rows = {}
+    local title, objective, pad = Font("Title"), Font("Objective"), Size() + 4
     if ns.db.questsMinimised then return rows end
     local folded = ns.db.questsFolded or {}
     local here = GetRealZoneText and GetRealZoneText()
@@ -233,16 +294,18 @@ local function Rows()
         end })
         if not folded[z.name] then
             for _, q in ipairs(z.quests) do
-                local state = q.state == 1 and (" " .. GREEN .. "(Complete)|r")
-                    or q.state == -1 and " |cffe04040(Failed)|r" or ""
+                local state = q.state == -1 and " |cffe04040(Failed)|r" or ""
+                local click, enter = function(button) Click(q, button) end, function(row) Tip(row, q) end
                 table.insert(rows, { label = format("[%d] %s", q.level, q.title) .. state, depth = 1,
                     color = Colour(q), quest = q, item = q.item, value = q.far and Yards(q.far) or "",
-                    inset = VALUE + COLUMN,
-                    click = function(button) Click(q, button) end,
-                    enter = function(row) Tip(row, q) end })
-                for _, o in ipairs(q.objectives) do
-                    for _, line in ipairs(Wrap(o.text)) do
-                        table.insert(rows, { label = line, depth = 2, dim = o.done })
+                    inset = VALUE + COLUMN, font = title, badge = Mark(q), group = q.id,
+                    click = click, enter = enter })
+                local objectives = Objectives(q)
+                for i, o in ipairs(objectives) do
+                    for j, line in ipairs(Wrap(o.text)) do
+                        table.insert(rows, { label = line, depth = 1, pad = pad, lead = Lead(j, i == #objectives),
+                            leadWidth = LEAD, dim = o.done, font = objective, group = q.id,
+                            click = click, enter = enter })
                     end
                 end
             end
@@ -254,7 +317,7 @@ end
 -- What decides where everything stands: a heading, a quest and its item,
 -- an objective, in order, and the scroll.
 local function Shape(rows)
-    local parts = { list.offset }
+    local parts = { list.offset, Height() }
     for _, d in ipairs(rows) do
         table.insert(parts, d.header and ("h" .. d.label .. (d.collapsed and "+" or ""))
             or d.quest and ("q" .. d.quest.id .. ":" .. tostring(d.item)) or "o")
@@ -358,6 +421,7 @@ function Refresh()
         dirty = true                     -- waits for combat's end
         return
     end
+    list.row = Height()
     local minimised = ns.db.questsMinimised
     list:Set(rows)
     list.body:SetShown(not minimised)  -- not even "No quests"
@@ -671,7 +735,7 @@ local function Build()
     layer.buttons = {}
     ns.quests = { frame = frame, list = list, layer = layer, sort = sortButton, foldAll = foldAll,
         view = viewButton, head = head, grip = grip, footer = footer, ink = ink, shade = shade, top = TOP,
-        dress = dress, chatRule = chatRule, gear = gear, book = book,
+        dress = dress, chatRule = chatRule, gear = gear, book = book, measure = measure,
         Refresh = Refresh, Layout = Layout }
 
     -- one refresh a frame, however many events; a change held in combat
@@ -699,7 +763,10 @@ local function Build()
         dirty = true
         if InCombatLockdown() then Refresh() end    -- counts change in place
     end)
-    ns.OnSetting("questsSort", Dirty)
+    for _, key in ipairs({ "questsSort", "questsTree", "questsTitleFont", "questsTitleSize", "questsObjectiveFont",
+        "questsObjectiveSize" }) do
+        ns.OnSetting(key, Dirty)
+    end
     ns.OnSetting("questsView", Layout)
     ns.OnSetting("questsPlace", Layout)
     for _, key in ipairs({ "questsFullMouseover", "questsFullCombat", "questsMinimalMouseover",
