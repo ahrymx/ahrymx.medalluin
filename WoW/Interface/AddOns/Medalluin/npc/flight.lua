@@ -33,6 +33,7 @@ local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local RED = { 1, 0.3, 0.25 }
 local BAND = 0.6                                -- the NPC box's head and foot, at their edge
+local BODY = 0.94                               -- the list: as dark as a window's body (the spellbook's)
 local ICONS = {
     CURRENT = "Interface\\TaxiFrame\\UI-Taxi-Icon-Green",
     REACHABLE = "Interface\\TaxiFrame\\UI-Taxi-Icon-White",
@@ -343,7 +344,7 @@ local function Build()
     list:SetPoint("TOPRIGHT", map, "BOTTOMRIGHT")
     local back = list:CreateTexture(nil, "BACKGROUND")
     back:SetAllPoints()
-    back:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], BAND)
+    back:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], BODY)
     scroll = CreateFrame("ScrollFrame", nil, list)
     scroll:SetPoint("TOPLEFT", PAD, -PAD)
     scroll:SetPoint("BOTTOMRIGHT", -PAD, PAD)

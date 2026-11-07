@@ -806,6 +806,10 @@ for p = 1, 3 do
 end
 ActionButton("MultiCastSummonSpellButton", MultiCastActionBarFrame, 150)
 ActionButton("MultiCastRecallSpellButton", MultiCastActionBarFrame, 151)
+-- MultiCastSpellButton's $parentHighlight: the totem bar's ring, always drawn
+for _, n in ipairs({ "MultiCastSummonSpellButton", "MultiCastRecallSpellButton" }) do
+    _G[n .. "Highlight"] = new("Texture", _G[n], nil)
+end
 MultiCastFlyoutFrame = new("Frame", MultiCastActionBarFrame, "MultiCastFlyoutFrame")
 MultiCastFlyoutFrame.shown, MultiCastFlyoutFrame.w = false, 32
 MultiCastFlyoutFrame.top = new("Texture", MultiCastFlyoutFrame, nil)
@@ -814,6 +818,7 @@ MultiCastFlyoutFrame.buttons = {}
 for i = 1, 3 do
     local b = new("CheckButton", MultiCastFlyoutFrame, "MultiCastFlyoutButton" .. i)
     b.w, b.h = 24, 24
+    b.icon = new("Texture", b, nil)
     MultiCastFlyoutFrame.buttons[i] = b
 end
 MultiCastFlyoutFrameCloseButton = new("Button", MultiCastFlyoutFrame, "MultiCastFlyoutFrameCloseButton")
@@ -829,6 +834,11 @@ function MultiCastFlyoutFrame_ToggleFlyout(self, _, parent)
     self.top:SetTexCoord(0, 1, 0.1, 0.2)
     self.middle:SetTexCoord(0, 1, 0.3, 0.4)
     MultiCastFlyoutFrameCloseButton.normalTexture:SetTexCoord(0, 1, 0.5, 0.6)
+    -- an element's: the first clears the slot (a piece of the totem bar), the rest are totems, whole
+    for i, b in ipairs(self.buttons) do
+        b.spellId = i == 1 and 0 or 8070 + i
+        if i == 1 then b.icon:SetTexCoord(0.1, 0.3, 0.5, 0.7) else b.icon:SetTexCoord(0, 1, 0, 1) end
+    end
 end
 function MultiCastFlyoutFrameOpenButton_Show(self, _, parent)
     self.normalTexture:SetTexCoord(0, 1, 0.7, 0.8)
@@ -7863,7 +7873,9 @@ if savedSimParty then
             "overlay=" .. tostring(MultiCastActionButton1.overlayTex.alpha),
             "pageParent=" .. tostring(MultiCastActionPage1.parent == ns.overhead),
             -- a button stays in its page, so a hidden page hides its four
-            "inPage=" .. tostring(MultiCastActionButton5.parent == MultiCastActionPage2))
+            "inPage=" .. tostring(MultiCastActionButton5.parent == MultiCastActionPage2),
+            "rings=" .. tostring(MultiCastSummonSpellButtonHighlight.alpha) .. ","
+                .. tostring(MultiCastRecallSpellButtonHighlight.alpha))
         -- an element not learned yet, and no summon spell: the row closes up
         MultiCastActionButton4:Hide()
         MultiCastSummonSpellButton:Hide()
@@ -7897,6 +7909,9 @@ if savedSimParty then
             "first=" .. at(fly.buttons[1], "TOP"), "close=" .. at(c, "BOTTOM"), "cap=" .. at(fly.top, "BOTTOM"),
             "top=" .. tc(fly.top), "middle=" .. tc(fly.middle), "closeTc=" .. tc(c.normalTexture),
             "under=" .. tostring(under))
+        local icons = {}
+        for _, b in ipairs(fly.buttons) do table.insert(icons, b.icon.coords[1] .. "-" .. b.icon.coords[2]) end
+        print("overhead.shaman.flyout icons", table.concat(icons, " "))
         print("overhead.shaman.arrow", arrow.TOP and "below" or "above", "bottom=" .. tostring(arrow.BOTTOM ~= nil),
             "tc=" .. tc(MultiCastFlyoutFrameOpenButton.normalTexture))
         MultiCastFlyoutFrame_ToggleFlyout(fly, "slot", el)
@@ -12381,6 +12396,10 @@ if npcPass then
     local fart, ftitle
     for _, t in ipairs(fmap.all_) do if t.kind == "Texture" and t.layer == "ARTWORK" then fart = t end end
     for _, t in ipairs(fstrip.all_) do if t.kind == "FontString" then ftitle = t end end
+    -- the list's ground: as dark as a window's body
+    for _, t in ipairs(flist.all_) do
+        if t.kind == "Texture" and t.layer == "BACKGROUND" then print("npc flight list ink", "alpha=" .. t.color[4]) end
+    end
     local function fstate(tag)
         local p = fl.points.BOTTOMLEFT
         print(tag, "flight=" .. tostring(fl.shown), "box=" .. tostring(box.shown), "h=" .. tostring(fl.h),

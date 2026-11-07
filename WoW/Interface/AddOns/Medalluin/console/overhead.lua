@@ -512,6 +512,9 @@ local function FlyoutDown(flyout)
     local prev
     for _, b in ipairs(flyout.buttons or {}) do
         if b:IsShown() then
+            -- a spell's icon cut past its own square border, as the bar's are;
+            -- the empty slot's art (spellId 0, a piece of the totem bar) left whole
+            if b.icon and b.spellId and b.spellId ~= 0 then b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
             b:ClearAllPoints()
             if prev then b:SetPoint("TOP", prev, "BOTTOM", 0, -2) else b:SetPoint("TOP", flyout, "TOP", 0, -4) end
             prev = b
@@ -565,6 +568,11 @@ local function AdoptTotems()
     for _, btn in ipairs({ MultiCastSummonSpellButton, MultiCastRecallSpellButton }) do
         Adopt(btn, {})
         totems[btn] = true
+        -- the totem bar's ring round a summon or recall (always drawn, never
+        -- touched by Blizzard's code): the gold edge stands for it, as the
+        -- elements' overlayTex
+        local ring = _G[btn:GetName() .. "Highlight"]
+        if ring then ring:SetAlpha(0) end
     end
     local flyout = MultiCastFlyoutFrame
     if flyout then
