@@ -105,6 +105,7 @@ local DEFAULTS = {
     questsMinimalMouseover = false, questsMinimalCombat = false, -- over it, and in combat
     questsTree = false,     -- objectives on a tree's branches, the finished risen to the top; bulleted otherwise
     npcWindows = true,      -- gossip, the quest pages and the vendor in a box on the chat box (npc/window.lua)
+    npcSpace = true,        -- Space presses a quest page's Accept, Continue or Complete Quest
     trainerFilter = false,  -- the trainer's type shown: "available", "unavailable" or "used"; Available if unset
     questsTitleFont = "marcellus", questsTitleSize = 12,         -- ns.Fonts()'s keys, and points
     questsObjectiveFont = "marcellus", questsObjectiveSize = 12,

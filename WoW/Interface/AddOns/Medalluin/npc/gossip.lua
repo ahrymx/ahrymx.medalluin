@@ -11,6 +11,9 @@
 --   [icon] I would like to train.
 --                                        [Goodbye]
 --
+-- The quests and options are numbered, and the keys 1 to 0, - and = pick
+-- them (npc/window.lua, the keys).
+--
 -- Everything is asked of C_GossipInfo; a click picks the quest or option
 -- there, and the game answers with the next page (a quest's opens the
 -- quest pages, npc/quest.lua).
@@ -55,7 +58,7 @@ end
 local function Close() G.CloseGossip() end
 
 ns.npc.Page{
-    key = "gossip", frame = "GossipFrame",
+    key = "gossip", frame = "GossipFrame", keys = true,
     Blocks = Blocks,
     Foot = function() return { { label = "Goodbye", click = Close } } end,
     Close = Close,

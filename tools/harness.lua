@@ -1160,6 +1160,17 @@ bindingSet = 2
 function GetCurrentBindingSet() return bindingSet end
 function SaveBindings(set) table.insert(bindingSaves, set) end
 function GetBindingText(key) return key end
+-- override bindings: key -> owner's name:button, ! when priority
+overrides, overrideSets = {}, 0
+function SetOverrideBindingClick(owner, prio, key, name, button)
+    if inCombat then error("SetOverrideBindingClick in combat") end
+    overrideSets = overrideSets + 1
+    overrides[key] = name .. ":" .. tostring(button) .. (prio and "!" or "")
+end
+-- (clearing is allowed: PLAYER_REGEN_DISABLED's handlers run before the lockdown)
+function ClearOverrideBindings(owner)
+    for k in pairs(overrides) do overrides[k] = nil end
+end
 local modsDown = {}
 function IsAltKeyDown() return modsDown.ALT end
 function IsControlKeyDown() return modsDown.CTRL end
@@ -12566,20 +12577,87 @@ if npcPass then
     foot("npc gossip")
     for _, r in ipairs(rows) do click(rows, r.c.data.label) end
     calls("npc gossip clicks")
+    -- the keys: each clickable row numbered, the twelve keys bound over the bars
+    local function bound(tag)
+        local out = {}
+        for k, v in pairs(overrides) do table.insert(out, k .. "=" .. v) end
+        table.sort(out)
+        print(tag .. " keys", #out > 0 and table.concat(out, " ") or "none", "sets=" .. overrideSets)
+    end
+    local function numbers(tag)
+        local out = {}
+        for _, r in ipairs(page(tag)) do
+            local k = r.c.key
+            table.insert(out, (k and k.shown ~= false and (k.text or "") ~= "" and k.text
+                .. string.format("(%.2f,%.1f)", k.textColor and k.textColor[1] or -1, k.alpha or 1) or "-")
+                .. "@" .. tostring(r.c.label.points.LEFT and r.c.label.points.LEFT[3]))
+        end
+        print(tag .. " numbers", table.concat(out, " "))
+    end
+    numbers("npc gossip")
+    bound("npc gossip")
+    local keyer = _G.MedalluinNPCKeys
+    local function key(k) keyer.scripts.OnClick(keyer, k) end
+    key("2"); key("4"); key("9"); key("SPACE")
+    calls("npc gossip keys pressed")
+    -- combat: the bars have their keys back until it ends
+    inCombat = true
+    fire("PLAYER_REGEN_DISABLED")
+    bound("npc gossip combat")
+    key("2")
+    calls("npc gossip combat key")
+    fire("GOSSIP_SHOW")
+    bound("npc gossip combat redraw")
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    bound("npc gossip combat over")
+    -- more choices than keys: the first twelve are numbered, = picks the twelfth
+    local options = W.gossip.options
+    W.gossip.options = {}
+    for i = 1, 12 do
+        table.insert(W.gossip.options, { name = "Choice " .. i, icon = 132060, gossipOptionID = 400 + i, orderIndex = i })
+    end
+    fire("GOSSIP_SHOW")
+    numbers("npc gossip many")
+    key("="); key("0")
+    calls("npc gossip many keys")
+    -- the log changes under the open gossip: nothing left to pick, nothing bound
+    local active, available = W.gossip.active, W.gossip.available
+    W.gossip.options, W.gossip.active, W.gossip.available = {}, {}, {}
+    fire("QUEST_LOG_UPDATE")
+    bound("npc gossip emptied")
+    W.gossip.options, W.gossip.active, W.gossip.available = options, active, available
+    fire("GOSSIP_SHOW")
     -- Escape: Blizzard hides its frame, and ours follows
     GossipFrame:Hide()
     state("npc gossip escaped")
     fire("GOSSIP_CLOSED")
+    bound("npc gossip closed")
 
     -- the quest pages
     QuestFrame:Show()
     fire("QUEST_GREETING")
     state("npc greeting")
     rows = page("npc greeting")
+    numbers("npc greeting")
+    bound("npc greeting")
+    key("1")
+    calls("npc greeting key")
     for _, r in ipairs(rows) do click(rows, r.c.data.label) end
     calls("npc greeting clicks")
     fire("QUEST_DETAIL")
     state("npc detail")
+    numbers("npc detail")
+    bound("npc detail")
+    key("1")
+    key("SPACE")
+    calls("npc detail space")
+    ns.SetOption("npcSpace", false)
+    bound("npc detail space off")
+    key("SPACE")
+    calls("npc detail space off")
+    ns.SetOption("npcSpace", true)
+    bound("npc detail space on")
     -- a reward's item arrives: Blizzard shows its rewards frame; ours puts it away
     local function rewardsAt(tag)
         local r = QuestInfoRewardsFrame
@@ -12627,12 +12705,23 @@ if npcPass then
     calls("npc detail auto")
     fire("QUEST_PROGRESS")
     page("npc progress")
+    -- Continue is off until the items are in: Space does nothing
+    key("SPACE")
+    calls("npc progress space")
     press("npc progress", "Continue")
     print("npc progress tip", tipOf("Continue"))
     W.quest.completable = true
     fire("QUEST_ITEM_UPDATE")
     press("npc progress ready", "Continue")
     calls("npc progress")
+    fire("QUEST_COMPLETE")
+    rows = page("npc reward")
+    bound("npc reward")
+    -- back to the greeting: its rows again, and no button for Space
+    fire("QUEST_GREETING")
+    bound("npc greeting again")
+    key("SPACE")
+    calls("npc greeting space")
     fire("QUEST_COMPLETE")
     rows = page("npc reward")
     press("npc reward", "Complete Quest")
@@ -12660,6 +12749,7 @@ if npcPass then
     CloseQuest()
     fire("QUEST_FINISHED")
     state("npc quest closed")
+    bound("npc quest closed")
     calls("npc quest closed")
 
     -- the vendor, whose tooltip names its trade
@@ -12986,6 +13076,7 @@ if npcPass then
     GossipFrame:Hide()
     fire("GOSSIP_CLOSED")
     fstate("npc flight gossip gone")
+    bound("npc flight")
     fnodes("npc flight")
     froutes("npc flight")
     local frs = frows("npc flight")

@@ -737,7 +737,12 @@ function ns.OptionPages()
                 .. "other one stays the game's); the mailbox's tabs show your letters, with Open all, and a "
                 .. "letter to send, the names you write to offered as you type. Needs the chat "
                 .. "box. Untick it to keep the game's windows, or to use an addon for them.", true)),
-            groups = {},
+            groups = {
+                Group("Keys", Check("npcSpace", "Spacebar accepts quests",
+                    "Space presses a quest's Accept, Continue or Complete Quest while its page is open, instead "
+                    .. "of jumping. A gossip window's choices are numbered either way: the keys 1 to 0, - and = "
+                    .. "pick them, and the action bar buttons on those keys wait until it closes.")),
+            },
         },
         {
             id = "tooltips", name = "Tooltips (ext)",

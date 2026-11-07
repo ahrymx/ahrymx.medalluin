@@ -185,6 +185,9 @@ end
 
 ns.npc.Page{
     key = "quest", frame = "QuestFrame",
+    -- the greeting's quests numbered for the keys (the other pages have no
+    -- rows to pick); Space accepts, continues, completes
+    keys = true, space = true,
     Blocks = Blocks, Foot = Foot, Title = Title, Close = Close,
     Start = function()
         ns.On("QUEST_GREETING", To("greeting"))

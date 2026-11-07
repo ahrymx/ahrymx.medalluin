@@ -46,7 +46,10 @@
 --                             heading over their values), icon (the
 --                             portrait's, where there is no NPC: the
 --                             mailbox), Steady() -> blocks (the page as
---                             tall as these, on every tab: the rest scrolls) }
+--                             tall as these, on every tab: the rest scrolls),
+--                             keys (true: its rows numbered, and picked
+--                             with the keys 1 to 0, - and =), space (Space presses the foot's primary
+--                             button, while the Space option is on) }
 --   ns.npc.Show(key) (its page to the front), ns.npc.Update(key) (drawn
 --   again if in front), ns.npc.box, ns.npc.Room() (the room up to the
 --   screen's top)
@@ -91,6 +94,14 @@
 -- the buttons left to right: sharing the width when there is no text, else
 -- at the right; the primary one wears the deed's red.
 --
+-- The keys: while a page with keys is in front, its first twelve rows wear
+-- their key ("1." in grey) and the keys 1 to 0, - and = pick them; on a page
+-- with space, Space presses the primary button (Accept, Continue, Complete
+-- Quest). They are priority override bindings of the box's own, so the
+-- action bar buttons on those keys do nothing meanwhile. Bindings cannot
+-- change in combat: they are cleared as it begins (PLAYER_REGEN_DISABLED,
+-- still allowed), so a fight always has its bars, and set again after.
+--
 -- Built at login, only with the chat box and the NPC windows option on.
 local _, ns = ...
 
@@ -118,6 +129,12 @@ local wanted                     -- the page last asked for, preferred once its 
 local pools = {}
 local drawing                    -- inside Lay: a box's focus moving is not a redraw
 local edits = {}                 -- this draw's boxes in order, for Tab
+local KEYS = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=" }
+local numbering                  -- this draw's rows are numbered (the page's keys)
+local keyed = {}                 -- this draw's numbered rows, in order
+local primary                    -- the foot's primary button, for Space
+local KEY = 18                   -- a row's key's room
+local KEY_GREY = { 0.62, 0.62, 0.62 }
 
 ns.npc = { pages = pages }
 
@@ -302,6 +319,10 @@ local make = {
         r.icon = r:CreateTexture(nil, "ARTWORK")
         r.icon:SetSize(ICON, ICON)
         r.badge = r:CreateTexture(nil, "ARTWORK")
+        r.key = ns.Text(r, 13)
+        r.key:SetPoint("LEFT", 4, 0)
+        r.key:SetTextColor(KEY_GREY[1], KEY_GREY[2], KEY_GREY[3])
+        r.key:SetAlpha(0.7)
         r.label = ns.Text(r, 14)
         r.label:SetJustifyH("LEFT")
         r.label:SetWordWrap(false)
@@ -429,6 +450,7 @@ local function Lay(blocks, width, col)
     local used, y, n = {}, 0, 0                -- n: the rows so far, for the shading
     drawing = true
     wipe(edits)
+    wipe(keyed)
     for i, b in ipairs(blocks) do
         local kind = b[1]
         -- rows run together; a pill sits closer to what it labels
@@ -457,6 +479,12 @@ local function Lay(blocks, width, col)
             r:SetPoint("TOPLEFT", 0, -y)
             r:SetWidth(width)
             local x = 4
+            local key = numbering and KEYS[#keyed + 1]
+            r.key:SetText(key and key .. "." or "")
+            if key then
+                table.insert(keyed, b)
+                x = x + KEY
+            end
             r.icon:SetShown(b.icon ~= nil)
             if b.icon then
                 r.icon:SetTexture(b.icon)
@@ -673,6 +701,10 @@ end
 local buttons = {}
 local function Foot(spec)
     spec = spec or {}
+    primary = nil
+    for _, d in ipairs(spec) do
+        if d.primary then primary = d end
+    end
     footText:SetText(spec.left or "")
     local n = #spec
     local share = not spec.left and n > 0 and (WIDTH - 2 * PAD - (n - 1) * 6) / n
@@ -791,6 +823,7 @@ function ns.npc.Refresh()
         local col = current.price and Column(body, current.price)
         return Pin(say, tabs, col and current.price, col, width), Lay(body, width, col)
     end
+    numbering = current.keys or false
     -- a page as tall on every tab: its steady blocks drawn first, to be
     -- measured, then drawn over
     local steady = current.Steady and HEAD + PAD + (function(t, b) return t + b end)(Draw(current.Steady()))
@@ -804,6 +837,55 @@ function ns.npc.Refresh()
     offset = math.min(offset, scroll:GetVerticalScrollRange() or 0)
     scroll:SetVerticalScroll(offset)
     Thumb()
+    ns.npc.Keys()
+end
+
+-- ------------------------------------------------------------ the keys
+-- What the keys are bound to now: the rows' keys, Space, or nothing; set
+-- again only when that changes, and never in combat.
+local keyer, bound
+function ns.npc.Keys()
+    if not keyer or InCombatLockdown() then return end
+    local shown = box:IsShown() and current
+    local rows = shown and #keyed > 0
+    local space = shown and current.space and ns.db.npcSpace and primary ~= nil
+    local want = (rows and "rows" or "") .. (space and " space" or "")
+    if want == bound then return end
+    ClearOverrideBindings(keyer)
+    if rows then
+        for _, key in ipairs(KEYS) do SetOverrideBindingClick(keyer, true, key, keyer:GetName(), key) end
+    end
+    if space then SetOverrideBindingClick(keyer, true, "SPACE", keyer:GetName(), "SPACE") end
+    bound = want
+end
+
+-- a key pressed: its row picked, or the primary button pressed, while bound
+local function Press(_, key)
+    if not bound then return end
+    if key == "SPACE" then
+        if not bound:find("space") then return end
+        if primary and primary.enabled ~= false and primary.click then primary.click() end
+        return
+    end
+    for i, k in ipairs(KEYS) do
+        if k == key then
+            local row = keyed[i]
+            if row and row.click then row.click("LeftButton") end
+            return
+        end
+    end
+end
+
+local function Keyer()
+    keyer = CreateFrame("Button", "MedalluinNPCKeys", box)
+    keyer:RegisterForClicks("AnyUp")
+    keyer:SetScript("OnClick", Press)
+    ns.On("PLAYER_REGEN_DISABLED", function()
+        ClearOverrideBindings(keyer)
+        bound = nil
+    end)
+    ns.On("PLAYER_REGEN_ENABLED", ns.npc.Keys)
+    ns.OnSetting("npcSpace", ns.npc.Keys)
 end
 
 -- A page to the front: the one its event opened.
@@ -848,6 +930,7 @@ function ns.npc.Sync()
     end
     ns.chat.Hold(on)
     if on then ns.npc.Refresh() end
+    ns.npc.Keys()                   -- a page of its own (the flight map) leaves the box hidden
 end
 
 local function Build()
@@ -959,6 +1042,7 @@ local function Build()
     thumb:Hide()
     box:Hide()
     ns.npc.box = box
+    Keyer()
 end
 
 -- Blizzard's frame parked and followed
