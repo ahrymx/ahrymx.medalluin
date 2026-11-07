@@ -3000,9 +3000,11 @@ if npcPass or bankPass then
     function DressUpItemLink(l) called("DressUpItemLink", l) end
     -- two grey items in the backpack, one that sells for nothing
     W.bag = { [1] = { itemID = 701, quality = 0, stackCount = 3 }, [2] = { itemID = 702, quality = 0, stackCount = 1 },
-        [3] = { itemID = 703, quality = 0, hasNoValue = true }, [4] = { itemID = 704, quality = 2 } }
+        [3] = { itemID = 703, quality = 0, hasNoValue = true }, [4] = { itemID = 704, quality = 2 },
+        [5] = { itemID = 705, quality = 3, stackCount = 2, itemName = "Star Ruby", iconFileID = 55, hyperlink = "ruby" },
+        [6] = { itemID = 706, quality = 1 } }      -- the vendor buys it for nothing
     C_Container = bankPass and C_Container or {     -- the bank's pass keeps the bags'
-        GetContainerNumSlots = function(bag) return bag == 0 and 4 or 0 end,
+        GetContainerNumSlots = function(bag) return bag == 0 and 6 or 0 end,
         GetContainerNumFreeSlots = function() return 0 end,
         GetContainerItemInfo = function(bag, slot) return bag == 0 and W.bag[slot] or nil end,
         UseContainerItem = function(bag, slot) called("UseContainerItem", bag, slot) end,
@@ -3010,11 +3012,12 @@ if npcPass or bankPass then
     C_Item = C_Item or {}
     C_Item.GetItemInfo = function(id)
         if type(id) == "string" then return "x", id, id:match("901") and 1 or 3 end
-        return "junk" .. id, nil, 0, nil, nil, nil, nil, nil, nil, nil, id == 701 and 25 or 10
+        return "junk" .. id, nil, 0, nil, nil, nil, nil, nil, nil, nil, id == 701 and 25 or id == 705 and 400 or id == 706 and 0 or 10
     end
     ITEM_QUALITY_COLORS = { [1] = { r = 1, g = 1, b = 1 }, [2] = { r = 0.1, g = 1, b = 0 }, [3] = { r = 0, g = 0.44, b = 0.87 } }
     function GameTooltip:SetMerchantItem(i) self.item = "merchant" .. i end
     function GameTooltip:SetBuybackItem(i) self.item = "buyback" .. i end
+    function GameTooltip:SetBagItem(bag, slot) self.item = "bag" .. bag .. ":" .. slot end
     function GameTooltip:SetQuestItem(kind, i) self.item = kind .. i end
     -- the trainer: two to learn (one beyond your money), one not yet (level
     -- 40, a skill and a rank before it), one known, flat as Forever lists
@@ -12511,6 +12514,43 @@ if npcPass then
     foot("npc merchant no junk")
     print("npc merchant no junk tip", tipOf("Sell junk"))
     W.bag = bag
+    -- the sell tab: the bags' items the vendor buys, the most money first;
+    -- a purchase being asked about is dropped on the way
+    modsDown.SHIFT = true
+    click(rows, "Elemental Flux  x5  (3)")
+    modsDown.SHIFT = nil
+    click(rows, "Sell")
+    foot("npc sell")
+    rows = page("npc sell")
+    W.calls = {}
+    click(rows, "junk701  x3")
+    calls("npc sell click")
+    for _, r in ipairs(rows) do
+        if r.c.data.label == "Star Ruby  x2" then r.c.scripts.OnEnter(r.c) end
+    end
+    print("npc sell tip", tostring(GameTooltip.item))
+    -- never in combat, and never once the vendor has gone
+    inCombat = true
+    click(rows, "junk701  x3")
+    inCombat = false
+    MerchantFrame:Hide()
+    click(rows, "junk701  x3")
+    MerchantFrame:Show()
+    click(rows, "junk701  x3", "RightButton")
+    calls("npc sell refused")
+    -- chat-link and dress-up go elsewhere
+    W.modified, W.chatOpen = "CHATLINK", true
+    click(rows, "Star Ruby  x2")
+    W.modified = "DRESSUP"
+    click(rows, "Star Ruby  x2")
+    W.modified, W.chatOpen = nil, nil
+    calls("npc sell modified")
+    -- nothing to sell
+    W.bag = { [3] = bag[3] }
+    fire("BAG_UPDATE_DELAYED")
+    page("npc sell empty")
+    W.bag = bag
+    fire("BAG_UPDATE_DELAYED")
     -- the buyback tab
     click(rows, "Buyback")
     rows = page("npc buyback")

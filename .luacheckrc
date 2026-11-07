@@ -30,7 +30,7 @@ read_globals = {
     "SetTrainerServiceTypeFilter", "GetTrainerServiceLevelReq", "GetTrainerServiceSkillReq",
     "GetTrainerServiceTypeFilter", "IsTradeskillTrainer", "GetTrainerServiceSkillLine", "GetMacroSpell",
     "GetMaxLevelForPlayerExpansion",
-    "BankFrame", "C_Bank",
+    "BankFrame", "C_Bank", "MerchantFrame",
     "MailFrame", "C_Mail", "GetInboxNumItems", "GetInboxHeaderInfo", "GetInboxText", "GetInboxItem",
     "TakeInboxItem", "TakeInboxMoney", "AutoLootMailItem", "ReturnInboxItem", "DeleteInboxItem",
     "InboxItemCanDelete", "GetSendMailItem", "GetSendMailPrice", "ClickSendMailItemButton", "ClearSendMail",

@@ -1,8 +1,8 @@
--- The vendor, in the NPC box (npc/window.lua): what it sells and what you
--- sold it, on two tabs of our own, and its repairs and your junk in the
--- foot.
+-- The vendor, in the NPC box (npc/window.lua): what it sells, what you
+-- could sell it, and what you sold it, on three tabs of our own, and its
+-- repairs and your junk in the foot.
 --
---   [Merchant][Buyback]
+--   [Merchant][Sell][Buyback]
 --   [icon] Mining Pick                              10c
 --   [icon] Elemental Flux                    15s  2 [o]   <- an extended cost
 --   2g 36s 55c                [Repair] [Guild] [Sell junk] [Goodbye]
@@ -13,10 +13,11 @@
 --
 --   Buy 20 Strong Flux for 4s?              [-] [+] [Buy] [Cancel]
 --
--- Selling stays the game's: a bag item's right click, with the vendor
--- open. That works because Blizzard's MerchantFrame is still shown (only
--- parked), and stays untouched: no tab of its set, nothing of it called
--- (npc/window.lua, Taint).
+-- Sell lists what in your bags the vendor would buy, the most money first
+-- (a stack at its whole price); a click sells it, as the bag's right click
+-- would. A bag item's right click still sells too: Blizzard's MerchantFrame
+-- is still shown (only parked), and stays untouched: no tab of its set,
+-- nothing of it called (npc/window.lua, Taint).
 local _, ns = ...
 
 local HIGH = MERCHANT_HIGH_PRICE_COST or 1500000      -- the game's own: 150 gold
@@ -138,35 +139,90 @@ local function Buyback(out)
     if n == 0 then table.insert(out, { "text", "Nothing sold here yet.", ns.colors.dim }) end
 end
 
+-- ------------------------------------------------------------ to sell
+-- Everything in your bags the vendor buys: { bag, slot, info, name, value
+-- (the whole stack's) }, in the bags' order.
+local function Sellable()
+    local C, out = C_Container, {}
+    if not C or not C.GetContainerItemInfo then return out end
+    local info = C_Item and C_Item.GetItemInfo or GetItemInfo
+    for bag = 0, NUM_BAG_SLOTS or 4 do
+        for slot = 1, C.GetContainerNumSlots(bag) or 0 do
+            local item = C.GetContainerItemInfo(bag, slot)
+            if item and not item.hasNoValue then
+                local name, _, _, _, _, _, _, _, _, _, price = info(item.itemID)
+                if price and price > 0 then
+                    table.insert(out, { bag = bag, slot = slot, info = item, name = item.itemName or name or WAIT,
+                        value = price * (item.stackCount or 1) })
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- one sold, as a right click in the bags would; never in combat, and never
+-- once the vendor has gone (the same call would then use the item)
+local function Sell(s)
+    if InCombatLockdown() or not (MerchantFrame and MerchantFrame:IsShown()) then return end
+    C_Container.UseContainerItem(s.bag, s.slot)
+end
+
+local function SellList(out)
+    local list = Sellable()
+    table.sort(list, function(a, b)
+        if a.value ~= b.value then return a.value > b.value end
+        return a.name < b.name
+    end)
+    for _, s in ipairs(list) do
+        local n, link = s.info.stackCount or 1, s.info.hyperlink
+        local c = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[s.info.quality or 1]
+        table.insert(out, { "row", label = n > 1 and format("%s  x%d", s.name, n) or s.name, icon = s.info.iconFileID,
+            value = Money(s.value), color = c and { c.r, c.g, c.b },
+            click = function(button)
+                if button == "RightButton" then return end
+                if IsModifiedClick("CHATLINK") and link and ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow() then
+                    ChatEdit_InsertLink(link)
+                elseif IsModifiedClick("DRESSUP") and link and DressUpItemLink then
+                    DressUpItemLink(link)
+                else
+                    Sell(s)
+                end
+            end,
+            enter = function(row)
+                GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+                GameTooltip:SetBagItem(s.bag, s.slot)
+                GameTooltip:Show()
+            end })
+    end
+    if #list == 0 then table.insert(out, { "text", "Nothing in your bags to sell.", ns.colors.dim }) end
+end
+
 local function Blocks()
+    local function To(key)
+        return function()
+            tab = key
+            if key ~= "merchant" then pending = nil end
+            ns.npc.Update("merchant")
+        end
+    end
     local out = { { "tabs",
-        { label = "Merchant", selected = tab == "merchant", click = function()
-            tab = "merchant"
-            ns.npc.Update("merchant")
-        end },
-        { label = "Buyback", selected = tab == "buyback", click = function()
-            tab, pending = "buyback", nil
-            ns.npc.Update("merchant")
-        end } } }
-    if tab == "buyback" then Buyback(out) else Merchant(out) end
+        { label = "Merchant", selected = tab == "merchant", click = To("merchant") },
+        { label = "Sell", selected = tab == "sell", click = To("sell") },
+        { label = "Buyback", selected = tab == "buyback", click = To("buyback") } } }
+    if tab == "buyback" then Buyback(out) elseif tab == "sell" then SellList(out) else Merchant(out) end
     return out
 end
 
 -- -------------------------------------------------------------- junk
 -- Your grey items that sell: how many, and for how much.
 local function Junk()
-    local C = C_Container
     local count, value, slots = 0, 0, {}
-    if not C or not C.GetContainerItemInfo then return count, value, slots end
-    for bag = 0, NUM_BAG_SLOTS or 4 do
-        for slot = 1, C.GetContainerNumSlots(bag) or 0 do
-            local info = C.GetContainerItemInfo(bag, slot)
-            if info and info.quality == 0 and not info.hasNoValue then
-                local price = select(11, (C_Item and C_Item.GetItemInfo or GetItemInfo)(info.itemID)) or 0
-                count = count + 1
-                value = value + price * (info.stackCount or 1)
-                table.insert(slots, { bag, slot })
-            end
+    for _, s in ipairs(Sellable()) do
+        if s.info.quality == 0 then
+            count = count + 1
+            value = value + s.value
+            table.insert(slots, { s.bag, s.slot })
         end
     end
     return count, value, slots
