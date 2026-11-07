@@ -2,7 +2,7 @@
 -- you can learn now unless the filter asks for more, and the one picked,
 -- with what it asks of you; Train in the foot learns it.
 --
---   [Available] [Unavailable] [Known]           <- toggles, kept (trainerFilter)
+--   [Available] [Unavailable] [Known]           <- one at a time, kept (trainerFilter)
 --   [Fire]                                      <- the game's lines, as pills
 --   [icon] Fireball (Rank 2)              1s
 --   [icon] Fire Ward                      2s    <- red: not yet; dim: known
@@ -53,15 +53,19 @@ local function Picked(list)
     picked = nil
 end
 
--- the filter as kept: the types shown, Available alone until you choose
-local function Kept() return ns.db.trainerFilter or { available = true } end
+-- the type shown, as kept: Available until you choose (a filter kept as a
+-- table of several is from before the tabs were one at a time)
+local function Kept()
+    local kept = ns.db.trainerFilter
+    return type(kept) == "string" and kept or "available"
+end
 
--- the filter as kept, given to the game (it answers with TRAINER_UPDATE)
+-- the type kept given to the game, the others off (it answers with TRAINER_UPDATE)
 local function Filter()
-    local keep = Kept()
+    local kept = Kept()
     for _, t in ipairs(TYPES) do
         -- on/off as a boolean: the game raises "Missing on/off parameter" on 1 and 0
-        if SetTrainerServiceTypeFilter then SetTrainerServiceTypeFilter(t[1], keep[t[1]] and true or false) end
+        if SetTrainerServiceTypeFilter then SetTrainerServiceTypeFilter(t[1], t[1] == kept) end
     end
 end
 
@@ -90,11 +94,8 @@ local function Blocks()
     if greeting and greeting ~= "" then table.insert(out, { "text", greeting, ns.colors.dim }) end
     local tabs = { "tabs" }
     for _, t in ipairs(TYPES) do
-        table.insert(tabs, { label = t[2], selected = Kept()[t[1]] and true or false, click = function()
-            local keep = {}
-            for k, v in pairs(Kept()) do keep[k] = v end
-            keep[t[1]] = not keep[t[1]] or nil
-            ns.db.trainerFilter = keep
+        table.insert(tabs, { label = t[2], selected = Kept() == t[1], click = function()
+            ns.db.trainerFilter = t[1]
             Filter()
             ns.npc.Update("trainer")
         end })

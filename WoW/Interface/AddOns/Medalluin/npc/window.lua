@@ -52,6 +52,8 @@
 --   { "tiles", { icon, label, count, color, selected, dim, click(button),
 --     enter(tile) } ... }                items, two a row
 --   { "tabs", { label, selected, click } ... }
+--                                        one a page: it stays put under the
+--                                        head while the rest scrolls
 -- Its foot: { left = text, { label, click, enabled, tip, primary } ... },
 -- the buttons left to right: sharing the width when there is no text, else
 -- at the right; the primary one wears the deed's red.
@@ -73,7 +75,7 @@ local DEED = { 0.42, 0.13, 0.09 }                -- the primary button's fill
 local BAND_INK = 5 / 9
 
 local pages, order = {}, {}
-local box, head, portrait, name, under, close, scroll, child, foot, footText, thumb
+local box, head, portrait, name, under, close, bar, scroll, child, foot, footText, thumb
 local current
 local wanted                     -- the page last asked for, preferred once its frame is open
 local pools = {}
@@ -179,7 +181,7 @@ local make = {
         return t
     end,
     tab = function()
-        local b = CreateFrame("Button", nil, child)
+        local b = CreateFrame("Button", nil, bar)
         b:SetHeight(TABS)
         ns.window.Face(b)
         b.label = ns.Text(b, 13)
@@ -273,26 +275,41 @@ local function Lay(blocks, width)
                 t.mark:SetShown(d.selected and true or false)
             end
             y = y + math.ceil((#b - 1) / 2) * (TILE + GAP) - GAP
-        elseif kind == "tabs" then
-            local x = 0
-            for j = 2, #b do
-                local d = b[j]
-                local t = Take("tab", used)
-                t.data = d
-                t.label:SetText(d.label)
-                Colour(t.label, d.selected and GOLD or ns.colors.dim)
-                t.mark:SetShown(d.selected and true or false)
-                t:SetWidth(t.label:GetStringWidth() + 20)
-                t:SetPoint("TOPLEFT", x, -y)
-                x = x + t:GetWidth() + 4
-            end
-            y = y + TABS
         end
     end
     for kind, list in pairs(pools) do
         for i = (used[kind] or 0) + 1, #list do list[i]:Hide() end
     end
     return y
+end
+
+-- The page's tabs, held under the head out of the scroll: the room they
+-- take, their gap below included (none without tabs).
+local pins = {}
+local function Pin(b)
+    bar:SetShown(b ~= nil)
+    local x, n = 0, b and #b - 1 or 0
+    for j = 1, math.max(n, #pins) do
+        local d, t = b and b[j + 1], pins[j]
+        if d and not t then
+            t = make.tab()
+            pins[j] = t
+        end
+        if t then
+            t:SetShown(d ~= nil)
+            if d then
+                t.data = d
+                t.label:SetText(d.label)
+                Colour(t.label, d.selected and GOLD or ns.colors.dim)
+                t.mark:SetShown(d.selected and true or false)
+                t:SetWidth(t.label:GetStringWidth() + 20)
+                t:ClearAllPoints()
+                t:SetPoint("TOPLEFT", x, 0)
+                x = x + t:GetWidth() + 4
+            end
+        end
+    end
+    return b and TABS + GAP or 0
 end
 
 -- the foot's buttons, left to right: the width shared out when nothing
@@ -390,10 +407,16 @@ function ns.npc.Refresh()
     if portrait and SetPortraitTexture then SetPortraitTexture(portrait, "npc") end
     local width = WIDTH - 2 * PAD - 6
     child:SetWidth(width)
-    local h = Lay(current.Blocks(), width)
+    local body, tabs = {}, nil
+    for _, b in ipairs(current.Blocks()) do
+        if b[1] == "tabs" then tabs = b else table.insert(body, b) end
+    end
+    local top = Pin(tabs)
+    scroll:SetPoint("TOPLEFT", PAD, -(HEAD + PAD + top))
+    local h = Lay(body, width)
     child:SetHeight(math.max(1, h))
     Foot(current.Foot and current.Foot())
-    local want = HEAD + PAD + h + PAD + FOOT
+    local want = HEAD + PAD + top + h + PAD + FOOT
     box:SetHeight(math.min(want, Room()))
     offset = math.min(offset, scroll:GetVerticalScrollRange() or 0)
     scroll:SetVerticalScroll(offset)
@@ -517,6 +540,12 @@ local function Build()
     footRule:SetPoint("TOPLEFT", PAD, 0)
     footRule:SetPoint("TOPRIGHT", -PAD, 0)
 
+    bar = CreateFrame("Frame", nil, box)
+    bar:SetPoint("TOPLEFT", PAD, -(HEAD + PAD))
+    bar:SetPoint("TOPRIGHT", -PAD, -(HEAD + PAD))
+    bar:SetHeight(TABS)
+    bar:Hide()
+    ns.npc.bar = bar
     scroll = CreateFrame("ScrollFrame", nil, box)
     scroll:SetPoint("TOPLEFT", PAD, -(HEAD + PAD))
     scroll:SetPoint("BOTTOMRIGHT", -PAD, FOOT + PAD)

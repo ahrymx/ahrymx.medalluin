@@ -707,7 +707,7 @@ function ns.OptionPages()
                 "What an NPC says, its quest pages, its wares and what it teaches in one box standing on the chat "
                 .. "box, where the quest tracker stands (it steps aside while the box is open). A vendor's tabs "
                 .. "show its wares and what you sold it, with buttons to repair and to sell your grey items; a "
-                .. "trainer's list shows what you can learn now, and more when you ask; the flight "
+                .. "trainer's tabs show what you can learn now, what you cannot yet, or what you know; the flight "
                 .. "map stands there bare, with the places you can fly to under it (Forever's map: retail's "
                 .. "other one stays the game's). Needs the chat "
                 .. "box. Untick it to keep the game's windows, or to use an addon for them.", true)),

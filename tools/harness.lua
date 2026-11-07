@@ -10666,13 +10666,16 @@ if npcPass then
     end
     local portraitOf
     for _, t in ipairs(headFrame.all_ or {}) do if t.portrait then portraitOf = t.portrait end end
+    local scrollOf
+    for _, c in ipairs(box.all_) do if c.kind == "ScrollFrame" then scrollOf = c end end
     local function state(tag)
         local p = box.points.BOTTOMLEFT
         print(tag, "shown=" .. tostring(box.shown), "h=" .. tostring(box.h),
             "anchor=" .. (p and string.format("%s:%s %d,%d", p[1] == ns.chat.box and "chat" or "?", p[2], p[3], p[4])
                 or "-"),
             "tracker=" .. tostring(tracker and tracker.shown), "reach=" .. tostring(reach.shown),
-            "name=" .. tostring(head and head.text) .. (under and (under.text or "") ~= "" and "/" .. under.text or ""))
+            "name=" .. tostring(head and head.text) .. (under and (under.text or "") ~= "" and "/" .. under.text or ""),
+            "pinned=" .. tostring(ns.npc.bar.shown), "scrollTop=" .. tostring(scrollOf.points.TOPLEFT[4]))
     end
     -- what the page shows: each visible row and tile, top down, and the foot
     local function pool(f, out, depth)
@@ -10696,6 +10699,14 @@ if npcPass then
             if s.kind == "ScrollFrame" then pool(s.scrollChild, out) end
         end
         table.sort(out, function(a, b) if a.y ~= b.y then return a.y < b.y end return a.x < b.x end)
+        -- the tabs held under the head come first, marked ^, outside the scroll
+        local pinned = {}
+        if ns.npc.bar.shown then pool(ns.npc.bar, pinned) end
+        table.sort(pinned, function(a, b) return a.x < b.x end)
+        for i = #pinned, 1, -1 do
+            pinned[i].s = "^" .. pinned[i].s
+            table.insert(out, 1, pinned[i])
+        end
         local rows = {}
         for _, r in ipairs(out) do table.insert(rows, r.s) end
         print(tag .. " rows", table.concat(rows, " | "))
@@ -10982,22 +10993,29 @@ if npcPass then
     GossipFrame:Hide()
     fire("GOSSIP_CLOSED")
     state("npc trainer gossip gone")
-    -- the filter: each toggle given to the game, and kept
-    click(rows, "Unavailable")
-    calls("npc trainer unavailable")
-    rows = page("npc trainer unavailable")
-    click(rows, "Known")
-    rows = page("npc trainer known")
-    print("npc trainer kept", "available=" .. tostring(ns.db.trainerFilter.available),
-        "unavailable=" .. tostring(ns.db.trainerFilter.unavailable), "used=" .. tostring(ns.db.trainerFilter.used))
-    -- picking: the one beyond your money, the one not yet, the known one
-    for _, label in ipairs({ "Pyroblast (Rank 1)", "Fire Ward", "Frostbolt (Rank 1)" }) do
+    -- the tabs, one at a time: each given to the game with the others off,
+    -- and kept; on each, a pick: the one not yet, the known one
+    local function pick(label)
         click(rows, label)
         stack("npc trainer pick " .. label)
         foot("npc trainer pick " .. label)
         print("npc trainer pick " .. label .. " tip", tipOf("Train"))
         rows = page("npc trainer pick " .. label)
     end
+    click(rows, "Unavailable")
+    calls("npc trainer unavailable")
+    rows = page("npc trainer unavailable")
+    print("npc trainer kept", tostring(ns.db.trainerFilter))
+    pick("Fire Ward")
+    click(rows, "Known")
+    calls("npc trainer known")
+    rows = page("npc trainer known")
+    print("npc trainer kept", tostring(ns.db.trainerFilter))
+    pick("Frostbolt (Rank 1)")
+    -- back on Available: the one beyond your money
+    click(rows, "Available")
+    rows = page("npc trainer available")
+    pick("Pyroblast (Rank 1)")
     -- Fireball: Train learns it by its index in the list as shown
     click(rows, "Fireball (Rank 2)")
     W.calls = {}
@@ -11005,16 +11023,20 @@ if npcPass then
     calls("npc trainer train")
     fire("TRAINER_UPDATE")
     rows = page("npc trainer trained")
-    -- the pick follows its name when the list moves under it
-    click(rows, "Fire Ward")
-    click(rows, "Known")
+    -- the pick follows its name when the list moves under it: a skill
+    -- the game adds above it
+    click(rows, "Pyroblast (Rank 1)")
+    table.insert(W.services, 2, { name = "Flamestrike", rank = "Rank 1", category = "available", cost = 300 })
     fire("TRAINER_UPDATE")
     rows = page("npc trainer list moved")
     -- Escape: the game hides its frame, the box follows
     ClassTrainerFrame:Hide()
     state("npc trainer escaped")
     fire("TRAINER_CLOSED")
-    -- a second visit starts on the first you can learn, not the last pick
+    -- a second visit starts on the first you can learn (Flamestrike), not
+    -- the last pick (Pyroblast);
+    -- a filter kept from when the tabs were toggles reads as Available
+    ns.db.trainerFilter = { used = true, unavailable = true }
     fire("TRAINER_SHOW")
     W.ShowTrainer()
     page("npc trainer again")
