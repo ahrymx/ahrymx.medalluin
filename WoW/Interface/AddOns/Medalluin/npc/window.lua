@@ -45,7 +45,8 @@
 --                             price (a shop: its rows a table, under this
 --                             heading over their values), icon (the
 --                             portrait's, where there is no NPC: the
---                             mailbox) }
+--                             mailbox), Steady() -> blocks (the page as
+--                             tall as these, on every tab: the rest scrolls) }
 --   ns.npc.Show(key) (its page to the front), ns.npc.Update(key) (drawn
 --   again if in front), ns.npc.box, ns.npc.Room() (the room up to the
 --   screen's top)
@@ -55,10 +56,12 @@
 --                                        page's one that stays put, above
 --                                        the tabs: what the NPC says)
 --   { "heading", text }                  a label on a dark pill
---   { "row", label, icon, badge, value, color, dim, selected, click(button),
---     enter(row) }                       a line that clicks
---   { "tiles", { icon, label, count, color, selected, dim, click(button),
---     enter(tile) } ... }                items, two a row
+--   { "row", label, icon, crop, badge, value, color, dim, selected,
+--     click(button), enter(row) }        a line that clicks (crop: the icon's
+--                                        own square border cut off, as an
+--                                        item's or a letter's)
+--   { "tiles", { icon, crop, label, count, color, selected, dim,
+--     click(button), enter(tile) } ... } items, two a row
 --   { "tabs", { label, selected, click } ... }
 --                                        one a page: it stays put under the
 --                                        head, over a hairline, while the
@@ -74,6 +77,7 @@
 --   { "slots", { icon, count, click(button), receive(), enter(slot) } ... }
 --                                        item wells, six a row: a click, or
 --                                        what the cursor holds dropped in
+--                                        (the icons cropped, being items)
 -- A shop's rows, as a shop's list reads: shaded every other one, and a
 -- hairline between the names and the prices, the column as wide as the
 -- widest price, under its heading (which stays put with the tabs):
@@ -130,6 +134,13 @@ function ns.npc.Page(spec)
 end
 
 -- ------------------------------------------------------------ the blocks
+-- an icon's texture coordinates: cropped past the square border the game
+-- draws into an item's icon, or whole
+local function Crop(on)
+    if on then return 0.08, 0.92, 0.08, 0.92 end
+    return 0, 1, 0, 1
+end
+
 local function Glow(f)
     local glow = f:CreateTexture(nil, "HIGHLIGHT")
     glow:SetAllPoints()
@@ -162,20 +173,26 @@ local function Label(f)
     return t
 end
 
--- an edit box on its well: the game's, dressed as ours
-local function Edit(f)
+-- a box's well: a gold edge, ink inside
+local function Well(f)
+    local edge = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+    edge:SetAllPoints()
+    edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.5)
+    local well = f:CreateTexture(nil, "BACKGROUND", nil, 2)
+    well:SetPoint("TOPLEFT", 1, -1)
+    well:SetPoint("BOTTOMRIGHT", -1, 1)
+    well:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 0.85)
+end
+
+-- an edit box, the game's, dressed as ours: on a well of its own unless
+-- it stands in one (bare)
+local function Edit(f, bare)
     local e = CreateFrame("EditBox", nil, f)
     e:SetAutoFocus(false)
     e:SetFont(ns.font, 14, "")
     e:SetTextColor(ns.colors.text[1], ns.colors.text[2], ns.colors.text[3])
     e:SetTextInsets(6, 6, 0, 0)
-    local edge = e:CreateTexture(nil, "BACKGROUND", nil, 1)
-    edge:SetAllPoints()
-    edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.5)
-    local well = e:CreateTexture(nil, "BACKGROUND", nil, 2)
-    well:SetPoint("TOPLEFT", 1, -1)
-    well:SetPoint("BOTTOMRIGHT", -1, 1)
-    well:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 0.85)
+    if not bare then Well(e) end
     e:SetScript("OnEscapePressed", e.ClearFocus)
     e:SetScript("OnTabPressed", function(self) ns.npc.Tab(self) end)
     return e
@@ -200,13 +217,26 @@ local function Field(multi)
     f.label = Label(f)
     f.label:ClearAllPoints()
     f.label:SetPoint("TOPLEFT", 2, -(INPUT - 14) / 2)
-    local e = Edit(f)
-    e:SetPoint("TOPLEFT", LABEL, 0)
-    e:SetPoint("RIGHT")
-    e:SetMultiLine(multi)
+    local e
     if multi then
+        -- a box of several lines is as tall as its text, whatever it is
+        -- given: the well stands for it at the height asked, and a click
+        -- anywhere in it types
+        f.well = CreateFrame("Frame", nil, f)
+        f.well:SetPoint("TOPLEFT", LABEL, 0)
+        f.well:SetPoint("RIGHT")
+        Well(f.well)
+        f.well:EnableMouse(true)
+        f.well:SetScript("OnMouseDown", function() e:SetFocus() end)
+        e = Edit(f.well, true)
+        e:SetPoint("TOPLEFT")
+        e:SetPoint("TOPRIGHT")
+        e:SetMultiLine(true)
         e:SetTextInsets(6, 6, 5, 5)
     else
+        e = Edit(f)
+        e:SetPoint("TOPLEFT", LABEL, 0)
+        e:SetPoint("RIGHT")
         e:SetScript("OnEnterPressed", function(self)
             if self.data.enter then self.data.enter() else self:ClearFocus() end
         end)
@@ -351,6 +381,7 @@ local make = {
         b.icon = b:CreateTexture(nil, "ARTWORK")
         b.icon:SetPoint("TOPLEFT", 2, -2)
         b.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+        b.icon:SetTexCoord(Crop(true))
         b.count = ns.Text(b, 12)
         b.count:SetPoint("BOTTOMRIGHT", -3, 3)
         Clicks(b)
@@ -429,6 +460,7 @@ local function Lay(blocks, width, col)
             r.icon:SetShown(b.icon ~= nil)
             if b.icon then
                 r.icon:SetTexture(b.icon)
+                r.icon:SetTexCoord(Crop(b.crop))
                 r.icon:SetPoint("LEFT", x, 0)
                 x = x + ICON + 4
             end
@@ -466,6 +498,7 @@ local function Lay(blocks, width, col)
                 t:SetPoint("TOPLEFT", across * (half + GAP), -(y + down * (TILE + GAP)))
                 t:SetWidth(half)
                 t.icon:SetTexture(d.icon)
+                t.icon:SetTexCoord(Crop(d.crop))
                 t.icon:SetDesaturated(d.dim and true or false)
                 t.count:SetText(d.count and d.count > 1 and d.count or "")
                 t.label:SetText(d.label or "")
@@ -483,7 +516,7 @@ local function Lay(blocks, width, col)
             local e = f.edit
             e:SetNumeric(b.numeric and true or false)
             local tall = multi and b.lines * LINE + 10 or INPUT
-            e:SetHeight(tall)
+            if multi then f.well:SetHeight(tall) else e:SetHeight(tall) end
             Fill(e, b.text or "")
             table.insert(edits, e)
             -- the names that complete it, while it is typed in
@@ -502,6 +535,7 @@ local function Lay(blocks, width, col)
                     t = CreateFrame("Button", nil, f)
                     t:SetHeight(NAME)
                     Glow(t)
+                    t.mark:Hide()
                     t.label = ns.Text(t, 13)
                     t.label:SetPoint("CENTER")
                     t:SetScript("OnClick", function(self) Pick(e, self.name) end)
@@ -737,7 +771,8 @@ function ns.npc.Refresh()
     local npc = UnitName("npc") or ""
     local title = current.Title and current.Title()
     name:SetText(title or npc)
-    under:SetText(title and npc or Trade() or "")
+    -- under a title, the NPC's name, unless it is the title (the mailbox's)
+    under:SetText(title and (npc ~= title and npc or "") or Trade() or "")
     if portrait and current.icon then
         portrait:SetTexture(current.icon)
     elseif portrait and SetPortraitTexture then
@@ -745,19 +780,26 @@ function ns.npc.Refresh()
     end
     local width = WIDTH - 2 * PAD - 6
     child:SetWidth(width)
-    local body, tabs, say = {}, nil, nil
-    for _, b in ipairs(current.Blocks()) do
-        if b[1] == "tabs" then tabs = b
-        elseif b.pin then say = b
-        else table.insert(body, b) end
+    -- the blocks drawn: what stays put, then the rest; the room each took
+    local function Draw(blocks)
+        local body, tabs, say = {}, nil, nil
+        for _, b in ipairs(blocks) do
+            if b[1] == "tabs" then tabs = b
+            elseif b.pin then say = b
+            else table.insert(body, b) end
+        end
+        local col = current.price and Column(body, current.price)
+        return Pin(say, tabs, col and current.price, col, width), Lay(body, width, col)
     end
-    local col = current.price and Column(body, current.price)
-    local top = Pin(say, tabs, col and current.price, col, width)
+    -- a page as tall on every tab: its steady blocks drawn first, to be
+    -- measured, then drawn over
+    local steady = current.Steady and HEAD + PAD + (function(t, b) return t + b end)(Draw(current.Steady()))
+        + PAD + FOOT
+    local top, h = Draw(current.Blocks())
     scroll:SetPoint("TOPLEFT", PAD, -(HEAD + PAD + top))
-    local h = Lay(body, width, col)
     child:SetHeight(math.max(1, h))
     Foot(current.Foot and current.Foot())
-    local want = HEAD + PAD + top + h + PAD + FOOT
+    local want = steady or HEAD + PAD + top + h + PAD + FOOT
     box:SetHeight(math.min(want, Room()))
     offset = math.min(offset, scroll:GetVerticalScrollRange() or 0)
     scroll:SetVerticalScroll(offset)

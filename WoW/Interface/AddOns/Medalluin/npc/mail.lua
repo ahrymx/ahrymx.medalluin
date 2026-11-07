@@ -6,7 +6,7 @@
 --   Thalric — Spare cloth                       3 items  9d
 --   Auction House — Sale: Linen Cloth           1g 20s  29d
 --   Okun — Your order                          COD 1g  2d   <- red: it costs
---   2g 36s 55c                                 [Open all] [Close]
+--   2g 36s 55c                                            [Open all]
 --
 -- A click reads a letter in the same tab: what it says, its money as a row
 -- to take, its items as tiles to take; Take all, Reply, Return or Delete
@@ -38,6 +38,7 @@ local SOON = 3                                   -- days: a letter going sooner 
 local RECENT = 10                                -- the names last written to, kept
 local STEP = 0.15                                -- Open all's pace, as Blizzard's
 local WAIT = 2                                   -- seconds: a command's answer waited for, at most
+local AGAIN, REFUSALS = 1, 3                     -- a refused command: tried again after, and given up after
 local RECEIVE = ATTACHMENTS_MAX_RECEIVE or 16
 local SEND = ATTACHMENTS_MAX_SEND or 12
 
@@ -49,7 +50,9 @@ local reading                    -- the letter read, by index
 local readAs                     -- and by who sent it and what about: the index of a letter the game removed
                                  -- is the next one's
 local pending                    -- an item of a COD letter to pay for: { index, attachment, name, cod }
-local opening                    -- Open all: { total, at, taken, ticker, waiting (since when) }
+local opening                    -- Open all: { total, at, taken, ticker, waiting (since when), next (no
+                                 -- command before), asked (the money in flight), refused (in a row),
+                                 -- skip (items the game would not give, by id) }
 local said                       -- what Open all said when it stopped, until the next tab
 local form = { to = "", subject = "", body = "", copper = 0, cod = false }
 local sending                    -- the name a letter on its way was sent to
@@ -74,13 +77,29 @@ local function Front(list, name, most)
     while most and #list > most do table.remove(list) end
 end
 
+-- the game's own names for a letter's To, as Blizzard's box asks for them:
+-- this account's characters, friends, the guild, those met lately
+local function Game(text)
+    local out = {}
+    if not GetAutoCompleteResults then return out end
+    local list = AUTOCOMPLETE_LIST and AUTOCOMPLETE_LIST.MAIL
+    local ok, results = pcall(GetAutoCompleteResults, text, 10, #text, false,
+        list and list.include or AUTOCOMPLETE_FLAG_ALL or 0xffffffff, list and list.exclude or 0)
+    for _, r in ipairs(ok and type(results) == "table" and results or {}) do
+        local who = type(r) == "table" and r.name or r
+        if type(who) == "string" and not ns.IsSecret(who) then table.insert(out, who) end
+    end
+    return out
+end
+
 -- the names that begin with what is typed: the last written to first, then
--- this account's characters, never the one playing
+-- the game's, then this account's characters remembered, never the one
+-- playing
 local function Complete(text)
     local book, out, seen = Book(), {}, {}
     local me = (UnitName("player") or ""):lower()
     local typed = text:lower()
-    for _, list in ipairs({ book.recent, book.alts }) do
+    for _, list in ipairs({ book.recent, Game(text), book.alts }) do
         for _, name in ipairs(list) do
             local low = name:lower()
             if not seen[low] and low ~= me and low:sub(1, #typed) == typed then
@@ -98,6 +117,28 @@ local function Header(i)
     return { sender = sender or UNKNOWN or "Unknown", subject = subject or "", money = money or 0, cod = cod or 0,
         days = days or 0, items = items, read = read, returned = returned, reply = reply, gm = gm,
         icon = stationery }
+end
+
+-- An auction house's letters, as the game titles them ("Auction successful:
+-- %s"), shortened to what happened and to what: "Sold: Linen Cloth", from
+-- "AH". The game's own words, so any language reads.
+local AUCTION = {
+    { "AUCTION_SOLD_MAIL_SUBJECT", "Auction successful: %s", "Sold" },
+    { "AUCTION_WON_MAIL_SUBJECT", "Auction won: %s", "Won" },
+    { "AUCTION_OUTBID_MAIL_SUBJECT", "Outbid on %s", "Outbid" },
+    { "AUCTION_EXPIRED_MAIL_SUBJECT", "Auction expired: %s", "Expired" },
+    { "AUCTION_REMOVED_MAIL_SUBJECT", "Auction cancelled: %s", "Cancelled" },
+    { "AUCTION_INVOICE_MAIL_SUBJECT", "Sale Pending: %s", "Pending" },
+}
+local function Short(h)
+    for _, a in ipairs(AUCTION) do
+        local words = _G[a[1]] or a[2]
+        -- every character a pattern reads escaped, then the escaped %s the item
+        local pattern = "^" .. words:gsub("[%^%$%(%)%.%[%]%*%+%-%?%%]", "%%%0"):gsub("%%%%s", "(.+)") .. "$"
+        local what = h.subject:match(pattern)
+        if what then return "AH — " .. a[3] .. ": " .. what end
+    end
+    return h.sender .. " — " .. h.subject
 end
 
 local function Days(days)
@@ -129,8 +170,9 @@ local function Holds(h)
     return table.concat(parts, "  ")
 end
 
--- what Open all takes from: money or items, not COD, not a game master's
-local function Takeable(h) return not h.gm and h.cod == 0 and (h.money > 0 or (h.items or 0) > 0) end
+-- what Open all may take from: not COD, not a game master's (and only one
+-- with money or an item it may take: Left)
+local function Takeable(h) return not h.gm and h.cod == 0 end
 
 local function Key(h) return h.sender .. "\n" .. h.subject end
 
@@ -154,16 +196,28 @@ local function Stop(why)
     if opening.ticker then opening.ticker:Cancel() end
     if C_Mail and C_Mail.SetOpeningAll then C_Mail.SetOpeningAll(false) end
     local taken = opening.taken > 0 and " · " .. Money(opening.taken) .. " taken" or ""
-    said = (why or "Opened all") .. taken
+    local kept = 0
+    for _ in pairs(opening.skip) do kept = kept + 1 end
+    said = (why or kept > 0 and format("Opened all but %d item%s the mailbox kept", kept, kept == 1 and "" or "s")
+        or "Opened all") .. taken
     opening = nil
     Update()
+end
+
+-- a letter's first item Open all may take: not one the game refused it
+local function Next(i)
+    for a = 1, RECEIVE do
+        local name, id = GetInboxItem(i, a)
+        if name and not (opening and opening.skip[id]) then return a, id end
+    end
 end
 
 -- the letters left to open, last first
 local function Left()
     local out = {}
     for i = GetInboxNumItems() or 0, 1, -1 do
-        if Takeable(Header(i)) then table.insert(out, i) end
+        local h = Header(i)
+        if Takeable(h) and (h.money > 0 or Next(i)) then table.insert(out, i) end
     end
     return out
 end
@@ -177,6 +231,8 @@ end
 -- one's outcome
 function Step()
     if not opening then return end
+    -- a beat of the ticker apart (Blizzard's own pace), and never inside a refusal's pause
+    if GetTime() < opening.next then return end
     -- an answer that never came: the next goes after a while all the same
     if opening.waiting and GetTime() - opening.waiting < WAIT then return end
     if C_Mail and C_Mail.IsCommandPending and C_Mail.IsCommandPending() then return end
@@ -184,19 +240,13 @@ function Step()
     local i = left[1]
     if not i then return Stop() end
     local h = Header(i)
+    -- the money asked for, counted only once the game says it came
+    opening.waiting, opening.asked = GetTime(), h.money
     if h.money > 0 then
-        opening.waiting = GetTime()
-        opening.taken = opening.taken + h.money
         TakeInboxMoney(i)
     else
         if Free() == 0 then return Stop("Stopped: the bags are full") end
-        for a = 1, RECEIVE do
-            if GetInboxItem(i, a) then
-                opening.waiting = GetTime()
-                TakeInboxItem(i, a)
-                break
-            end
-        end
+        TakeInboxItem(i, (Next(i)))
     end
     opening.at = opening.total - #left + 1
     Update()
@@ -206,7 +256,7 @@ local function Start()
     local total = #Left()
     if total == 0 then return end
     said, reading, pending = nil, nil, nil
-    opening = { total = total, taken = 0, at = 1 }
+    opening = { total = total, taken = 0, at = 1, next = 0, refused = 0, skip = {} }
     if C_Mail and C_Mail.SetOpeningAll then C_Mail.SetOpeningAll(true) end
     if C_Timer and C_Timer.NewTicker then opening.ticker = C_Timer.NewTicker(STEP, Step) end
     Step()
@@ -241,7 +291,7 @@ local function Inbox(out)
     table.insert(out, { "text", Totals(n, total), pin = true })
     for i = 1, n do
         local h = Header(i)
-        table.insert(out, { "row", label = h.sender .. " — " .. h.subject, icon = h.icon, value = Holds(h),
+        table.insert(out, { "row", label = Short(h), icon = h.icon, crop = true, value = Holds(h),
             dim = h.read,
             click = function(button) if button ~= "RightButton" then Read(i) end end,
             enter = function(row)
@@ -278,14 +328,15 @@ local function Letter(out, i)
         table.insert(out, { "text", "Cash on delivery: taking an item pays " .. Money(h.cod) .. ".", RED })
     end
     if h.money > 0 then
-        table.insert(out, { "row", label = "Take " .. Money(h.money), icon = "Interface\\Icons\\INV_Misc_Coin_01",
+        table.insert(out, { "row", label = "Take " .. Money(h.money), crop = true,
+            icon = "Interface\\Icons\\INV_Misc_Coin_01",
             click = function(button) if button ~= "RightButton" then TakeInboxMoney(i) end end })
     end
     local tiles = { "tiles" }
     for a = 1, RECEIVE do
         local name, _, icon, count = GetInboxItem(i, a)
         if name then
-            table.insert(tiles, { icon = icon, label = name, count = count,
+            table.insert(tiles, { icon = icon, crop = true, label = name, count = count,
                 selected = pending and pending.attachment == a,
                 click = function(button) if button ~= "RightButton" then TakeItem(i, a, name, h.cod) end end,
                 enter = function(tile)
@@ -402,7 +453,6 @@ end
 
 -- ------------------------------------------------------------ the foot
 local function Foot()
-    local close = { label = "Close", click = function() CloseMail() end }
     local money = Money(GetMoney and GetMoney() or 0)
     if tab == "send" then
         local postage = GetSendMailPrice and GetSendMailPrice() or 0
@@ -416,7 +466,7 @@ local function Foot()
         return { left = "Postage " .. Money(postage),
             { label = "Send", primary = true, enabled = not why, click = Post,
                 tip = why or format("Sends it to %s, for %s.", form.to, Money(cost)) },
-            { label = "Clear", click = Clear }, close }
+            { label = "Clear", click = Clear } }
     end
     if pending then
         local p = pending
@@ -464,26 +514,30 @@ local function Foot()
                     Update()
                 end })
         end
-        table.insert(foot, close)
         return foot
     end
     if opening then
         return { left = format("Opening %d of %d", opening.at, opening.total)
             .. (opening.taken > 0 and " · " .. Money(opening.taken) .. " taken" or ""),
-            { label = "Stop", primary = true, click = function() Stop("Stopped") end }, close }
+            { label = "Stop", primary = true, click = function() Stop("Stopped") end } }
     end
     local left = #Left()
     return { left = said or money,
         { label = "Open all", primary = left > 0, enabled = left > 0,
             tip = left > 0 and format("Takes the money and items of %d letter%s; not one sent cash on delivery.",
-                left, left == 1 and "" or "s") or "Nothing to take.", click = Start },
-        close }
+                left, left == 1 and "" or "s") or "Nothing to take.", click = Start } }
 end
 
 ns.npc.Page{
     key = "mail", frame = "MailFrame", icon = "Interface\\Icons\\INV_Letter_15",
     Title = function() return "Mailbox" end,
     Blocks = Blocks, Foot = Foot, Close = function() CloseMail() end,
+    -- as tall as the Send tab, whichever is shown
+    Steady = function()
+        local out = { { "tabs", { label = "Inbox" }, { label = "Send" } } }
+        Send(out)
+        return out
+    end,
     Start = function()
         local me = UnitName("player")
         if me then Front(Book().alts, me) end
@@ -505,15 +559,31 @@ ns.npc.Page{
             if i == reading then reading, pending = nil, nil end
             Update()
         end)
+        -- the next goes on the ticker, at its pace: never straight after
         ns.On("MAIL_SUCCESS", function()
+            if opening then
+                opening.taken = opening.taken + (opening.asked or 0)
+                opening.asked, opening.refused = nil, 0
+            end
             Answered()
-            if opening then Step() end
             Update()
         end)
-        -- an item that could not be taken: the bags are full
-        ns.On("MAIL_FAILED", function()
+        -- A command refused. With an item named, the game will not give that
+        -- one (unique, or no room for it): it is left, as Blizzard's Open all
+        -- leaves it. Without, the mailbox was busy: tried again after a
+        -- pause, and given up after a few in a row.
+        ns.On("MAIL_FAILED", function(_, itemID)
             sending = nil
-            if opening then Stop("Stopped: the bags are full") end
+            if opening then
+                opening.waiting = nil
+                if itemID then
+                    opening.skip[itemID] = true
+                else
+                    opening.refused = opening.refused + 1
+                    opening.next = GetTime() + AGAIN
+                    if opening.refused >= REFUSALS then Stop("Stopped: the mailbox kept refusing") end
+                end
+            end
             Update()
         end)
         ns.On("MAIL_SEND_SUCCESS", function()

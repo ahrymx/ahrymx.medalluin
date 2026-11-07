@@ -35,7 +35,7 @@ read_globals = {
     "TakeInboxItem", "TakeInboxMoney", "AutoLootMailItem", "ReturnInboxItem", "DeleteInboxItem",
     "InboxItemCanDelete", "GetSendMailItem", "GetSendMailPrice", "ClickSendMailItemButton", "ClearSendMail",
     "SetSendMailCOD", "SetSendMailMoney", "SendMail", "SetSendMailShowing", "CloseMail", "MAIL_REPLY_PREFIX",
-    "ATTACHMENTS_MAX_RECEIVE", "ATTACHMENTS_MAX_SEND", "GetRealmName", "UNKNOWN",
+    "ATTACHMENTS_MAX_RECEIVE", "ATTACHMENTS_MAX_SEND", "GetRealmName", "UNKNOWN", "GetAutoCompleteResults", "AUTOCOMPLETE_LIST", "AUTOCOMPLETE_FLAG_ALL",
     "GetTrainerServiceNumAbilityReq", "GetTrainerServiceAbilityReq", "GetTrainerGreetingText", "GetTrainerServiceIcon",
     "GetTrainerServiceDescription", "CloseTrainer", "BuyTrainerService", "ExpandTrainerSkillLine",
     "RepairAllItems", "SelectActiveQuest", "SelectAvailableQuest",

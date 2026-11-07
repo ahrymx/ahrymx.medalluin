@@ -3112,7 +3112,9 @@ end
 -- master's gift, a letter of words only, and one that came back. A take
 -- happens at once but answers (MAIL_INBOX_UPDATE, MAIL_SUCCESS, or
 -- MAIL_FAILED with the bags full) only on mailWorld.Answer(); until then a
--- command is pending. Every act is logged in mailWorld.calls.
+-- command is pending. mailWorld.busy refuses that many commands outright
+-- (MAIL_FAILED, no item named); an item in mailWorld.kept is refused by name.
+-- Every act is logged in mailWorld.calls.
 local mailWorld
 if mailPass then
     mailWorld = { calls = {}, free = 10, money = 23655, send = {}, tickers = {} }
@@ -3128,7 +3130,8 @@ if mailPass then
         M.inbox = {
             { sender = "Thalric", subject = "Spare cloth", money = 0, days = 9.5, reply = true, body = "Here is the cloth.",
                 items = { { "Linen Cloth", 2589, "icon-linen", 20 }, { "Wool Cloth", 2592, "icon-wool", 5 } } },
-            { sender = "Auction House", subject = "Sale: Linen Cloth", money = 12000, days = 29, read = true,
+            { sender = "Alliance Auction House", subject = "Auction successful: Linen Cloth", money = 12000, days = 29,
+                read = true,
                 canDelete = true },
             { sender = "Okun", subject = "Your order", money = 0, cod = 10000, days = 2.4, reply = true,
                 items = { { "Heavy Leather", 4234, "icon-leather", 10 } } },
@@ -3137,7 +3140,7 @@ if mailPass then
                 body = "Just saying hello." },
             { sender = "Thalen", subject = "Back to you", money = 300, days = 20, returned = true },
         }
-        M.pending, M.answers = false, {}
+        M.pending, M.answers, M.busy, M.kept = false, {}, 0, {}
     end
     M.Fresh()
     local function count(l)
@@ -3169,15 +3172,27 @@ if mailPass then
         M.pending = true
         table.insert(M.answers, answer)
     end
+    -- the mailbox busy: the command refused, nothing done
+    local function busy(name)
+        if M.busy == 0 then return end
+        M.busy = M.busy - 1
+        command(name .. " (refused)", { "MAIL_FAILED" })
+        return true
+    end
     function TakeInboxMoney(i)
         local l = M.inbox[i]
+        if busy("TakeInboxMoney " .. i) then return end
         command("TakeInboxMoney " .. i .. " " .. l.money, "MAIL_SUCCESS")
         M.money, l.money = M.money + l.money, 0
         emptied(i)
     end
     function TakeInboxItem(i, a)
         local l = M.inbox[i]
+        if busy("TakeInboxItem " .. i .. " " .. a) then return end
         if M.free == 0 then return command("TakeInboxItem " .. i .. " " .. a .. " (bags full)", "MAIL_FAILED") end
+        if M.kept[l.items[a][2]] then
+            return command("TakeInboxItem " .. i .. " " .. a .. " (kept)", { "MAIL_FAILED", l.items[a][2] })
+        end
         command("TakeInboxItem " .. i .. " " .. a, "MAIL_SUCCESS")
         l.items[a], M.free = nil, M.free - 1
         if (l.cod or 0) > 0 then M.money, l.cod = M.money - l.cod, 0 end
@@ -3190,8 +3205,9 @@ if mailPass then
     function M.Answer()
         local e = table.remove(M.answers, 1)
         M.pending = #M.answers > 0
+        if type(e) ~= "table" then e = { e } end
         for _, f in ipairs(events.MAIL_INBOX_UPDATE or {}) do f.scripts.OnEvent(f, "MAIL_INBOX_UPDATE") end
-        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e) end
+        for _, f in ipairs(events[e[1]] or {}) do f.scripts.OnEvent(f, e[1], e[2]) end
     end
     C_Mail = { IsCommandPending = function() return M.pending end,
         SetOpeningAll = function(on) called("SetOpeningAll", on) end }
@@ -3222,6 +3238,18 @@ if mailPass then
     function SendMail(to, subject, body) called("SendMail", to, subject, body) end
     function SetSendMailShowing(on) called("SetSendMailShowing", on) end
     function GetRealmName() return "Nordanaar" end
+    -- at a mailbox the "npc" is the mailbox, by that name
+    local unitName = UnitName
+    function UnitName(u) if u == "npc" then return "Mailbox" end return unitName(u) end
+    -- the game's names for a letter: an alt never played since, a friend
+    M.known = { "Ahry", "Aeryn", "Thalric" }
+    function GetAutoCompleteResults(text, n)
+        local out = {}
+        for _, who in ipairs(M.known) do
+            if who:lower():sub(1, #text) == text:lower() and #out < n then table.insert(out, { name = who, priority = 1 }) end
+        end
+        return out
+    end
     function GetMoney() return M.money end
     MAIL_REPLY_PREFIX = "RE:"
     C_Container = C_Container or {}
@@ -11948,6 +11976,8 @@ if npcPass then
                     and c.points.TOPLEFT[3] or 0, s = text .. (d.value and d.value ~= "" and " [" .. d.value .. "]" or "")
                     .. (d.badge and " mark=" .. tostring(d.badge.file or d.badge.atlas or "?"):match("[^\\]+$") or "")
                     .. (c.mark and c.mark.shown and " *" or "")
+                    -- an icon cut past its square border
+                    .. (c.icon and c.icon.coords and c.icon.coords[1] > 0 and " #" or "")
                     .. (type(d) == "table" and d.color and string.format(" c=%.2f,%.2f,%.2f", d.color[1], d.color[2],
                         d.color[3]) or ""), c = c })
             end
@@ -12487,10 +12517,11 @@ if mailPass then
     UIParent.fixed = { -612, -916, 1308, 164 }
     function UIParent:GetEffectiveScale() return ns.console:GetEffectiveScale() end
     local bar = ns.npc.bar
-    local head, portrait
+    local head, under, portrait
     for _, c in ipairs(box.all_) do
         if not head and c.points.TOPRIGHT and c.points.TOPLEFT then
             for _, t in ipairs(c.all_ or {}) do
+                if t.kind == "FontString" and head and not under then under = t end
                 if t.kind == "FontString" and not head then head = t end
                 if t.kind == "Texture" and t.w == 42 then portrait = t end
             end
@@ -12504,6 +12535,8 @@ if mailPass then
     end
     -- what the page shows, top down: a row or tile by its label and value, a
     -- box as label=text with the names it offers, the coins, the wells
+    -- an icon cut past its square border: "#"
+    local function Cut(t) return t and t.coords and t.coords[1] > 0 and "#" or "" end
     local function shown(tag)
         local out = {}
         for _, c in ipairs(scroll.scrollChild.all_ or {}) do
@@ -12517,17 +12550,20 @@ if mailPass then
                 local d, s = c.data, nil
                 if c.edit then
                     local names = {}
-                    for _, t in ipairs(c.names) do if t.shown then table.insert(names, t.name) end end
+                    for _, t in ipairs(c.names) do
+                        if t.shown then table.insert(names, t.name .. (t.mark.shown and "*" or "")) end
+                    end
                     s = d.label .. "=" .. tostring(c.edit:GetText()) .. (#names > 0 and " {" .. table.concat(names, ",")
-                        .. "}" or "") .. (c.edit:HasFocus() and " _" or "") .. "/" .. c.h
+                        .. "}" or "") .. (c.edit:HasFocus() and " _" or "") .. "/" .. (c.well or c.edit).h .. "/" .. c.h
                 elseif c.boxes then
                     local t = {}
                     for _, e in ipairs(c.boxes) do table.insert(t, tostring(e:GetText())) end
                     s = d.label .. "=" .. table.concat(t, ".")
                 elseif d.receive then
-                    s = "well" .. (d.icon and ":" .. d.icon or "")
+                    s = "well" .. (d.icon and ":" .. d.icon .. Cut(c.icon) or "")
                 else
-                    s = tostring(d.label) .. (d.value and d.value ~= "" and " [" .. d.value .. "]" or "")
+                    s = tostring(d.label) .. (c.icon and c.icon.shown ~= false and d.icon and Cut(c.icon) or "")
+                        .. (d.value and d.value ~= "" and " [" .. d.value .. "]" or "")
                         .. (c.mark and c.mark.shown and " *" or "") .. (d.dim and " (dim)" or "")
                 end
                 table.insert(out, { y = -(c.points.TOPLEFT and c.points.TOPLEFT[4] or 0),
@@ -12608,9 +12644,12 @@ if mailPass then
     MailFrame:Show()
     fire("MAIL_SHOW")
     print("mail open", "shown=" .. tostring(box.shown), "title=" .. tostring(head and head.text),
-        "portrait=" .. tostring(portrait and portrait.texture))
+        "portrait=" .. tostring(portrait and portrait.texture), "under=" .. tostring(under and under.text))
     shown("mail inbox")
     foot("mail inbox")
+    -- the box as tall on every tab and letter: the Send tab's height
+    local function size(what) print("mail size " .. what, "h=" .. tostring(box.h)) end
+    size("inbox")
     print("mail open all tip", tip("Open all"))
     -- the soonest beyond three days: the days no longer red
     local soon = M.inbox[5].days
@@ -12622,11 +12661,17 @@ if mailPass then
     M.total = 60
     fire("MAIL_INBOX_UPDATE")
     shown("mail overflow")
+    for a = 7, 30 do M.inbox[a] = { sender = "Alt" .. a, subject = "Spare", money = 0, days = 20 } end
+    fire("MAIL_INBOX_UPDATE")
+    size("long inbox")
+    for a = 30, 7, -1 do M.inbox[a] = nil end
+    fire("MAIL_INBOX_UPDATE")
     M.total = nil
 
     -- reading: the cloth, an item taken
     click("mail inbox", "Thalric")
     shown("mail read cloth")
+    size("read")
     foot("mail read cloth")
     click("mail read cloth", "Linen Cloth")
     calls("mail take linen")
@@ -12660,7 +12705,7 @@ if mailPass then
 
     -- the auction's money: taken by its row, then the letter can go
     click("mail read cod", "‹ Inbox")
-    click("mail back", "Auction House")
+    click("mail back", "AH — Sold")
     shown("mail read auction")
     foot("mail read auction")
     -- the game deletes an auction letter it emptied: the page goes back
@@ -12681,9 +12726,10 @@ if mailPass then
     print("mail return tip", tip("Return"))
     click("mail read returned", "‹ Inbox")
     -- a letter the game may delete, with money still in it: Take first
-    M.inbox[#M.inbox + 1] = { sender = "Auction House", subject = "Outbid", money = 700, days = 30, canDelete = true }
+    M.inbox[#M.inbox + 1] = { sender = "Alliance Auction House", subject = "Outbid on Copper Ore", money = 700,
+        days = 30, canDelete = true }
     fire("MAIL_INBOX_UPDATE")
-    click("mail back", "Auction House — Outbid")
+    click("mail back", "AH — Outbid")
     foot("mail read outbid")
     print("mail delete tip", tip("Delete"))
     M.inbox[#M.inbox].money = 0
@@ -12699,6 +12745,14 @@ if mailPass then
     fire("CLOSE_INBOX_ITEM", 1)
     shown("mail closed item")
 
+    -- an auction's letter in words with a pattern's characters in them (another language)
+    AUCTION_EXPIRED_MAIL_SUBJECT = "Auction expired - %s (100%)"
+    M.inbox[#M.inbox + 1] = { sender = "Alliance Auction House", subject = "Auction expired - Copper Bar (100%)",
+        money = 0, days = 30, canDelete = true }
+    fire("MAIL_INBOX_UPDATE")
+    shown("mail auction words")
+    table.remove(M.inbox)
+    AUCTION_EXPIRED_MAIL_SUBJECT = nil
     -- a letter of your own: no reply; one already a reply keeps its subject
     M.inbox[#M.inbox + 1] = { sender = "Ahrymx", subject = "Note", money = 0, days = 10, reply = true }
     M.inbox[#M.inbox + 1] = { sender = "Okun", subject = "RE: Your order", money = 0, days = 10, reply = true }
@@ -12757,23 +12811,49 @@ if mailPass then
     for _ = 1, 4 do M.Answer() M.Tick(1) end
     calls("mail bags full")
     foot("mail bags full")
-    -- the game says the bags are full (MAIL_FAILED)
+    -- the pace: an answer alone sends nothing; the next goes a beat later
     M.Fresh()
-    M.free = 5
+    M.free, M.tickers = 10, {}
     fire("MAIL_INBOX_UPDATE")
-    press("mail failed", "Open all")
+    press("mail pace", "Open all")
+    M.calls = {}
     M.Answer()
+    calls("mail pace answered")
     M.Tick(1)
-    calls("mail failed before")
-    -- an item the bags cannot take with slots still free (one of a kind)
-    M.free = 3
-    M.inbox[1].items[1] = nil
-    M.pending = true
-    M.answers = { "MAIL_FAILED" }
+    calls("mail pace beat")
+    press("mail pace", "Stop")
+    M.calls = {}
+    -- an item the game will not give (one of a kind): left, the rest taken
+    M.Fresh()
+    M.free, M.kept = 5, { [2589] = true }
+    fire("MAIL_INBOX_UPDATE")
+    press("mail kept", "Open all")
+    for _ = 1, 6 do M.Answer() M.Tick(1) end
+    calls("mail kept")
+    foot("mail kept")
+    shown("mail kept")
+    -- the mailbox busy: refused, tried again after a pause, the count
+    -- starting over on a success; refused twice and twice again, it goes on
+    M.Fresh()
+    M.free, M.busy = 10, 2
+    fire("MAIL_INBOX_UPDATE")
+    press("mail busy", "Open all")
     M.Answer()
-    M.Tick(2)
-    calls("mail failed")
-    foot("mail failed")
+    M.Tick(3)
+    calls("mail busy paused")
+    for _ = 1, 4 do M.Answer() M.Tick(7) end
+    M.busy = 2
+    for _ = 1, 6 do M.Answer() M.Tick(7) end
+    calls("mail busy")
+    foot("mail busy")
+    -- refused three times running: it stops, and says why
+    M.Fresh()
+    M.free, M.busy = 10, 3
+    fire("MAIL_INBOX_UPDATE")
+    press("mail refused", "Open all")
+    for _ = 1, 4 do M.Answer() M.Tick(7) end
+    calls("mail refused")
+    foot("mail refused")
     -- Stop
     M.Fresh()
     M.free = 10
@@ -12812,6 +12892,7 @@ if mailPass then
     -- ------------------------------------------------ send
     tab("Send")
     calls("mail send tab")
+    size("send")
     shown("mail send")
     foot("mail send")
     print("mail send tip", tip("Send"))
@@ -12822,6 +12903,8 @@ if mailPass then
     shown("mail to o")
     type_("To", "a")
     shown("mail to a")
+    type_("To", "ahr")
+    shown("mail to ahr")
     type_("To", "Thalric")
     shown("mail to full")
     -- the box left: its names go
@@ -12835,6 +12918,10 @@ if mailPass then
     -- Tab with no names offered: on to Subject
     to.scripts.OnTabPressed(to)
     print("mail tab moves", "subject focused=" .. tostring(field("Subject").edit:HasFocus()))
+    -- a click anywhere in the letter's well types in it
+    local letter = field("Letter")
+    letter.well.scripts.OnMouseDown(letter.well)
+    print("mail letter well", "focused=" .. tostring(letter.edit:HasFocus()))
     -- a name clicked
     type_("To", "Th")
     for _, t in ipairs(field("To").names) do
@@ -12942,7 +13029,12 @@ if mailPass then
     print("mail book many", book())
     press("mail clear", "Clear")
     calls("mail clear")
-    -- Close
+    -- no Close in the foot: the head's cross closes
     press("mail close", "Close")
+    for _, c in ipairs(box.all_) do
+        for _, b in ipairs(c.all_ or {}) do
+            if b.icon and tostring(b.icon.texture):match("strips\\close$") then b.scripts.OnClick(b) end
+        end
+    end
     calls("mail close")
 end
