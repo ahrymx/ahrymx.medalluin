@@ -501,9 +501,15 @@ local function Start()
     end
     ns.bags = { window = window, blizzard = blizzard }
     local function Dirty() dirty = true end
-    for _, e in ipairs({ "BAG_UPDATE_DELAYED", "BAG_CONTAINER_UPDATE", "ITEM_LOCK_CHANGED", "BAG_UPDATE_COOLDOWN",
-        "INVENTORY_SEARCH_UPDATE", "BAG_NEW_ITEMS_UPDATED", "QUEST_ACCEPTED", "UNIT_QUEST_LOG_CHANGED",
-        "PLAYER_MONEY", "GET_ITEM_INFO_RECEIVED" }) do
+    -- the slots made before the bags first open, which may be in combat
+    -- (ns.Slots); a slot left out in combat comes when it ends
+    set.Make()
+    for _, e in ipairs({ "BAG_UPDATE_DELAYED", "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED" }) do
+        ns.On(e, function() set.Make() end)
+    end
+    for _, e in ipairs({ "BAG_UPDATE_DELAYED", "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED", "ITEM_LOCK_CHANGED",
+        "BAG_UPDATE_COOLDOWN", "INVENTORY_SEARCH_UPDATE", "BAG_NEW_ITEMS_UPDATED", "QUEST_ACCEPTED",
+        "UNIT_QUEST_LOG_CHANGED", "PLAYER_MONEY", "GET_ITEM_INFO_RECEIVED" }) do
         ns.On(e, Dirty)
     end
     for _, key in ipairs({ "bagsView", "bagsColumns", "bagsItemLevel" }) do ns.OnSetting(key, Refresh) end

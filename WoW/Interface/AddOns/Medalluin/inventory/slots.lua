@@ -11,6 +11,13 @@
 --                         own in the grid, and free slots of its own kind in
 --                         the groups (the reagent bag), Name(bag) }
 --   set.Refresh() -> width, height (the body sized to them)
+--   set.Make()    every container's slots made, out of combat only
+--
+-- A slot is never made in combat: a ContainerFrameItemButtonTemplate button
+-- created in combat runs its clicks tainted until /reload, and using an
+-- item (UseContainerItem) is then forbidden. So the slots are made ahead
+-- (Make, at login and as the bags change), and one still missing in combat
+-- is left out until it ends.
 --
 -- The views:
 --   grid    every slot in order, a container Apart on rows of its own
@@ -219,13 +226,16 @@ function ns.Slots(spec)
             for _, b in pairs(row) do b:Hide() end
             list[bag] = {}
         end
+        local fight = InCombatLockdown()
         for _, bag in ipairs(spec.Bags()) do
             list[bag] = list[bag] or {}
             for slot = 1, Container.GetContainerNumSlots(bag) do
-                local b = Slot(bag, slot)
-                local info = Container.GetContainerItemInfo(bag, slot)
-                Fill(b, bag, slot, info)
-                table.insert(list[bag], { slot = slot, button = b, info = info })
+                local b = slots[bag] and slots[bag][slot] or not fight and Slot(bag, slot)
+                if b then
+                    local info = Container.GetContainerItemInfo(bag, slot)
+                    Fill(b, bag, slot, info)
+                    table.insert(list[bag], { slot = slot, button = b, info = info })
+                end
             end
         end
         for _, h in ipairs(headings) do h:Hide() end
@@ -242,6 +252,13 @@ function ns.Slots(spec)
         height = math.max(height, SLOT)
         body:SetSize(width, height)
         return width, height
+    end
+
+    function set.Make()
+        if InCombatLockdown() then return end
+        for _, bag in ipairs(spec.Bags()) do
+            for slot = 1, Container.GetContainerNumSlots(bag) do Slot(bag, slot) end
+        end
     end
 
     -- how many slots go across a width

@@ -865,6 +865,8 @@ function CreateFrame(kind, name, parent, template)
     if template == DIVIDER and not modern then error("unknown template " .. template) end
     local f = new(kind, parent, name)
     f.template = template
+    -- a container item button born in combat runs its clicks tainted
+    if template == "ContainerFrameItemButtonTemplate" and InCombatLockdown() then f.bornInCombat = true end
     if template == DIVIDER then
         f.template, f.w = template, 12
         for _ = 1, 3 do new("Texture", f) end
@@ -8265,6 +8267,23 @@ if bagsPass then
     blizz("bags.login")
     print("bags.strata", w.strata, "parent=" .. tostring(w.parent == UIParent), "search=" .. tostring(_G.MedalluinBagsSearch ~= nil))
 
+    -- the slots are made at login, before any open (one made in combat
+    -- would use items tainted until /reload)
+    local function made(tag)
+        local n, fought = 0, 0
+        for bag = 0, 5 do
+            for i = 1, 20 do
+                local b = slot(bag, i)
+                if b then
+                    n = n + 1
+                    if b.bornInCombat then fought = fought + 1 end
+                end
+            end
+        end
+        print(tag, "made=" .. n, "in combat=" .. fought)
+    end
+    made("bags.made at login")
+
     -- 2. Blizzard opens the bags (the B key): the window follows
     W.reads = 0
     OpenAllBags()
@@ -8378,6 +8397,34 @@ if bagsPass then
     fire("BAG_CONTAINER_UPDATE")
     w.scripts.OnUpdate(w, 0.02)
     grid("bags.smaller bag")
+
+    -- 9b. a bigger bag in a fight: its new slots wait for the fight's end
+    -- rather than be made in it
+    W.sizes[1] = 20
+    inCombat = true
+    fire("BAG_CONTAINER_UPDATE")
+    w.scripts.OnUpdate(w, 0.02)
+    grid("bags.bigger bag in combat")
+    made("bags.bigger bag in combat")
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    w.scripts.OnUpdate(w, 0.02)
+    grid("bags.bigger bag after combat")
+    made("bags.bigger bag after combat")
+    -- and with the bags closed when the fight ends: made then, ready for
+    -- an open in the next fight
+    W.sizes[3] = 20
+    inCombat = true
+    fire("BAG_CONTAINER_UPDATE")
+    CloseAllBags()
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    made("bags.bigger bag, closed, after combat")
+    OpenAllBags()
+    W.sizes[3] = 10
+    W.sizes[1] = 6
+    fire("BAG_CONTAINER_UPDATE")
+    w.scripts.OnUpdate(w, 0.02)
 
     -- 10. closed with the window's button: Blizzard's close, the new items seen
     for _, r in ipairs(w.all_) do
