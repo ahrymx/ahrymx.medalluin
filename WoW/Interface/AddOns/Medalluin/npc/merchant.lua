@@ -30,12 +30,15 @@ local function Money(copper)
     return format("%dg %ds %dc", copper / 10000, copper / 100 % 100, copper % 100)
 end
 
--- An item the vendor sells, the same from either API.
+-- An item the vendor sells, the same from either API. One the client has
+-- not cached yet comes without its name (and link): the game's "retrieving"
+-- words stand in until GET_ITEM_INFO_RECEIVED draws it again.
+local WAIT = RETRIEVING_ITEM_INFO or "Retrieving item information"
 local function Item(i)
     if C_MerchantFrame and C_MerchantFrame.GetItemInfo then
         local t = C_MerchantFrame.GetItemInfo(i)
         if t then
-            return { name = t.name, icon = t.texture, price = t.price or 0, stack = t.stackCount or 1,
+            return { name = t.name or WAIT, icon = t.texture, price = t.price or 0, stack = t.stackCount or 1,
                 available = t.numAvailable, usable = t.isUsable, extended = t.hasExtendedCost }
         end
     end

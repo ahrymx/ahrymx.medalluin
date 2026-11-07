@@ -2842,12 +2842,14 @@ if npcPass then
     W.items = { { name = "Mining Pick", texture = 1, price = 81, stackCount = 1, numAvailable = -1, isUsable = true },
         { name = "Elemental Flux", texture = 2, price = 1500, stackCount = 5, numAvailable = 3, isUsable = true,
             hasExtendedCost = true },
+        -- not cached yet: no name, and no link
+        { texture = 4, price = 125, stackCount = 5, numAvailable = -1, isUsable = true },
         { name = "Swift Mount", texture = 3, price = 2000000, stackCount = 1, numAvailable = -1, isUsable = false } }
     W.buyback = { { "Linen Cloth", 4, 13, 20 }, { "Broken Fang", 5, 7, 1 } }
     W.repair, W.canRepair, W.guild, W.money = 104, true, false, 23655
     C_MerchantFrame = { GetItemInfo = function(i) return W.items[i] end }
     function GetMerchantNumItems() return #W.items end
-    function GetMerchantItemLink(i) return "|Hitem:" .. (900 + i) .. "|h" end
+    function GetMerchantItemLink(i) return W.items[i].name and "|Hitem:" .. (900 + i) .. "|h" or nil end
     function GetMerchantItemMaxStack(i) return i == 2 and 20 or 1 end
     function GetMerchantItemCostInfo(i) return i == 2 and 1 or 0 end
     function GetMerchantItemCostItem() return "icon-mark", 2 end
@@ -10694,6 +10696,10 @@ if npcPass then
     state("npc merchant")
     rows = page("npc merchant")
     foot("npc merchant")
+    -- the uncached item arrives
+    W.items[3].name = "Light Feather"
+    fire("GET_ITEM_INFO_RECEIVED", 904)
+    rows = page("npc merchant cached")
     print("npc merchant tips", "junk=" .. tipOf("Sell junk"), "repair=" .. tipOf("Repair"))
     -- a plain click buys one bundle; the extended cost and the high price ask
     click(rows, "Mining Pick")
