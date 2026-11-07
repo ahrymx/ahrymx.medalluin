@@ -511,7 +511,14 @@ function ns.OptionPages()
                 "Blizzard's chat in a box on top of the micro menu, with the chat buttons beside its tabs, "
                 .. "the timeless buffs and the edit box under it, and the quest tracker's full view above it. "
                 .. "Untick it to keep the chat where Edit Mode puts it, or to use a chat addon.", true),
-            groups = {},
+            groups = {
+                Group("Names",
+                    Check("chatClassColors", "Class colours",
+                        "A speaker's name in their class's colour, whatever the game's own chat settings say."),
+                    Check("chatLevels", "Levels",
+                        "A speaker's level before their name, \"[60:Name]\", when it is known: from the game for "
+                        .. "the line, else from your group, target, nameplates, guild, friends or a /who.")),
+            },
         },
         {
             id = "side", name = "Side panel",

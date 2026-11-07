@@ -391,9 +391,59 @@ end
 -- (channel:channel:N); a join or leave notice (channel:CHANNEL:N) keeps its
 -- name, and a secret line passes untouched.
 local TAG = "|Hchannel:channel:(%d+)|h%[%d+%.[^%]]*%]|h"
+
+-- A speaker's name in their class's colour, after their level: "[60:Name]"
+-- (Chat > Names). The class, and a level, come from the line's sender (the
+-- link's line ID gives its GUID); else the level is what this session saw
+-- of them by name: the group, the target, the mouseover, nameplates, the
+-- guild, friends and /who. Unknown, a name keeps the game's colour and has
+-- no level. Anything secret is left as it came.
+local levels = {}          -- by "Name" on this realm, "Name-Realm" off it
+ns.chatLevels = levels
+local function Key(name, server)
+    if not name or ns.IsSecret(name) or ns.IsSecret(server) or name == "" then return end
+    if server and server ~= "" and server ~= GetNormalizedRealmName() then return name .. "-" .. server end
+    return name
+end
+local function KeyOf(full)
+    if not full or ns.IsSecret(full) then return end
+    local name, server = full:match("^([^%-]+)%-(.+)$")
+    return Key(name or full, server)
+end
+local function Saw(key, level)
+    if key and level and not ns.IsSecret(level) and level > 0 then levels[key] = level end
+end
+local function SawUnit(unit)
+    if not UnitExists(unit) or not UnitIsPlayer(unit) then return end
+    Saw(Key(UnitFullName(unit)), UnitLevel(unit))
+end
+
+local PLAYER = "(|Hplayer:([^|]*)|h)%[(.-)%](|h)"
+local function Speaker(link, data, shown, close)
+    local full, line = data:match("^([^:]*):?(%d*)")
+    local guid = line ~= "" and C_ChatInfo.GetChatLineSenderGUID(tonumber(line))
+    local class, level
+    if guid then                            -- a secret GUID is allowed: its answers are secret
+        local _, c, _, _, _, _, _, l = GetPlayerInfoByGUID(guid)
+        if not ns.IsSecret(c) then class = c end
+        if not ns.IsSecret(l) and l and l > 0 then level = l end
+    end
+    level = level or levels[KeyOf(full) or ""]
+    if ns.db.chatClassColors then
+        local color = class and RAID_CLASS_COLORS[class]
+        if color then
+            shown = format("|cff%02x%02x%02x%s|r", color.r * 255, color.g * 255, color.b * 255,
+                (shown:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")))
+        end
+    end
+    if ns.db.chatLevels and level then shown = level .. ":" .. shown end
+    return link .. "[" .. shown .. "]" .. close
+end
+
 local function Short(text)
     if ns.IsSecret(text) or type(text) ~= "string" then return text end
-    return (text:gsub(TAG, "|Hchannel:channel:%1|h[%1]|h"))
+    text = text:gsub(TAG, "|Hchannel:channel:%1|h[%1]|h")
+    return (text:gsub(PLAYER, Speaker))
 end
 local function Tags(frame)
     local add = frame.AddMessage
@@ -636,4 +686,35 @@ end
 
 ns.On("PLAYER_LOGIN", function()
     if ns.db.chat and ChatFrame1 then Build() end
+end)
+
+-- ------------------------------------------------------------ the levels seen
+ns.On("PLAYER_LOGIN", function() SawUnit("player") end)
+ns.On("PLAYER_LEVEL_UP", function(_, level) Saw(Key(UnitFullName("player")), level) end)
+ns.On("PLAYER_TARGET_CHANGED", function() SawUnit("target") end)
+ns.On("UPDATE_MOUSEOVER_UNIT", function() SawUnit("mouseover") end)
+ns.On("NAME_PLATE_UNIT_ADDED", function(_, unit) SawUnit(unit) end)
+ns.On("UNIT_LEVEL", function(_, unit) SawUnit(unit) end)
+ns.On("GROUP_ROSTER_UPDATE", function()
+    local raid = IsInRaid()
+    for i = 1, raid and 40 or 4 do SawUnit((raid and "raid" or "party") .. i) end
+end)
+ns.On("GUILD_ROSTER_UPDATE", function()
+    if not GetGuildRosterInfo then return end
+    for i = 1, GetNumGuildMembers() do
+        local name, _, _, level = GetGuildRosterInfo(i)
+        Saw(KeyOf(name), level)
+    end
+end)
+ns.On("FRIENDLIST_UPDATE", function()
+    for i = 1, C_FriendList.GetNumFriends() do
+        local info = C_FriendList.GetFriendInfoByIndex(i)
+        if info then Saw(KeyOf(info.name), info.level) end
+    end
+end)
+ns.On("WHO_LIST_UPDATE", function()
+    for i = 1, C_FriendList.GetNumWhoResults() do
+        local info = C_FriendList.GetWhoInfo(i)
+        if info then Saw(KeyOf(info.fullName), info.level) end
+    end
 end)

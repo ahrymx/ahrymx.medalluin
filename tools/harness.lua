@@ -1240,6 +1240,27 @@ C_Spell = {
     end,
 }
 function UnitLevel() return 30 end
+-- the realm, a player's full name, and what the chat can learn of a speaker:
+-- a line's sender (line ID -> GUID), a GUID's class and level, the guild,
+-- friends and /who (strips/chat.lua's names)
+function GetNormalizedRealmName() return "Medalluin" end
+function UnitFullName(u) return UnitName(u), nil end
+chatSenders, guidInfo, harnessGuild, harnessFriends, harnessWho = {}, {}, {}, {}, {}
+C_ChatInfo = { GetChatLineSenderGUID = function(line) return chatSenders[assert(line, "chatLine")] end }
+function GetPlayerInfoByGUID(guid)
+    -- a secret GUID: allowed, and every answer secret
+    if isSecret(guid) then return secret(), secret(), secret(), secret(), secret(), secret(), secret(), secret() end
+    local i = guidInfo[guid]
+    if i then return i[1], i[1], "Human", "Human", 2, "?", "", i[2] end
+end
+function GetNumGuildMembers() return #harnessGuild end
+function GetGuildRosterInfo(i) local m = harnessGuild[i]; return m[1], "Member", 1, m[2] end
+C_FriendList = {
+    GetNumFriends = function() return #harnessFriends end,
+    GetFriendInfoByIndex = function(i) return harnessFriends[i] end,
+    GetNumWhoResults = function() return #harnessWho end,
+    GetWhoInfo = function(i) return harnessWho[i] end,
+}
 -- the target an elite, its level coloured by how hard it is
 function UnitClassification(u) return u == "target" and "elite" or "normal" end
 function GetQuestDifficultyColor() return { r = 1, g = 0.82, b = 0 } end
@@ -5137,6 +5158,55 @@ if stripsPass then
                     isSecret(line.text) and "<secret>" or tostring(line.text), "args=" .. line.n .. " r=" .. tostring(line.r))
             end
         end
+        -- a speaker's name: their class's colour, their level before it
+        local function hear(e, ...) for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end end
+        chatSenders[101], guidInfo["G-Bob"] = "G-Bob", { "WARRIOR", 42 }
+        chatSenders[102] = secret()
+        chatSenders[103], guidInfo["G-Kim"] = "G-Kim", { "MAGE", nil }
+        chatSenders[104], guidInfo["G-Lu"] = "G-Lu", { secret(), secret() }
+        harnessGuild = { { "Ann-Medalluin", 17 }, { "Lu-Medalluin", 0 }, { "Bob-Medalluin", 40 } }
+        hear("GUILD_ROSTER_UPDATE")
+        harnessWho = { { fullName = "Kim-Other", level = 33 }, { fullName = secret(), level = 9 },
+            { fullName = "Pip", level = secret() } }
+        hear("WHO_LIST_UPDATE")
+        -- a nameplate whose name is secret: not kept
+        local fullName = UnitFullName
+        UnitFullName = function() return secret(), nil end
+        hear("NAME_PLATE_UNIT_ADDED", "player")
+        UnitFullName = function() return "Pip", secret() end
+        hear("NAME_PLATE_UNIT_ADDED", "player")
+        UnitFullName = fullName
+        local kept, secrets = {}, 0
+        for k, v in pairs(ns.chatLevels) do
+            if isSecret(k) then secrets = secrets + 1 else table.insert(kept, k .. "=" .. v) end
+        end
+        table.sort(kept)
+        print("chat names seen", table.concat(kept, " "), "secret keys=" .. secrets)
+        harnessFriends = { { name = "Zed", level = 5 } }
+        hear("FRIENDLIST_UPDATE")
+        local names = {
+            "|Hplayer:Bob-Medalluin:101:CHANNEL:1|h[|cffaabbccBob|r]|h: hi",
+            "|Hplayer:Eve-Medalluin:102:SAY|h[Eve]|h says: secret sender",
+            "|Hplayer:Ann|h[Ann]|h has come online.",
+            "|Hplayer:Kim-Other:103:YELL|h[Kim-Other]|h yells: from afar",
+            "|Hplayer:Lu-Medalluin:104:GUILD|h[Lu]|h: secret class",
+            "|Hplayer:Zed:105:WHISPER|h[Zed]|h whispers: no sender",
+            "|Hplayer:Ahrymx-Medalluin:106:SAY|h[Ahrymx]|h says: me",
+            "|HBNplayer:Kay:1:107|h[Kay]|h: battle.net",
+        }
+        local function names_(tag)
+            ChatFrame1.said = {}
+            for _, line in ipairs(names) do ChatFrame1:AddMessage(line, 1, 1, 1) end
+            for i, line in ipairs(ChatFrame1.said) do print("chat name " .. tag .. " " .. i, tostring(line.text)) end
+        end
+        names_("on")
+        hear("PLAYER_LEVEL_UP", 31)
+        ns.SetOption("chatLevels", false)
+        names_("no levels")
+        ns.SetOption("chatLevels", true)
+        ns.SetOption("chatClassColors", false)
+        names_("no colours")
+        ns.SetOption("chatClassColors", true)
         -- docked again: wrapped once, not once more
         local wrapped = ChatFrame2.AddMessage
         FCF_DockFrame(ChatFrame2)
