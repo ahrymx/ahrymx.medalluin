@@ -100,6 +100,13 @@ function ns.trainers.Class()
     return out
 end
 
+-- a profession trainer's services as read, by the profession's name ({}: none)
+function ns.trainers.Trade(name)
+    local t = MedalluinCharDB and MedalluinCharDB.trainer
+    local list = type(t) == "table" and type(t.trade) == "table" and t.trade[name]
+    return type(list) == "table" and list or {}
+end
+
 -- whether a class trainer has ever been read
 function ns.trainers.Visited()
     local t = MedalluinCharDB and MedalluinCharDB.trainer

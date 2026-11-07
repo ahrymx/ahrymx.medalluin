@@ -7,7 +7,8 @@
 --   [Overview][prof][prof][prof]...                         [v] [x]
 --   ---------------------------------------------------------------
 --   [icon] Blacksmithing                          [spell] [spell]
---          [=========== 142 / 150 ===========]          [Unlearn]
+--          [=========== 142 / 150 ===========]
+--          Train Expert now                             [Unlearn]
 --   [icon] Mining ...
 --   ---------------------------------------------------------------
 --
@@ -15,6 +16,12 @@
 -- not learned); each other tab is a profession with recipes, crafted here
 -- (professions/crafting.lua). The tabs are Overview and one per profession
 -- that crafts, six at most, sharing the row: fewer professions, wider tabs.
+--
+-- Under a card's bar, its next rank: gold when its skill and level are met
+-- (red when the bar is within 5 of its cap, points about to be wasted),
+-- dim with what it asks otherwise. The ranks are the game's (Journeyman at
+-- skill 50 and level 10, ...), a trainer's own list preferred once read
+-- (spells/trainers.lua); none past what this expansion's level reaches.
 --
 -- A card's spells (Smelting, Find Herbs) are cast by the client: secure
 -- buttons over them in a layer on the strip, as the spellbook's are, gone
@@ -28,7 +35,8 @@
 local _, ns = ...
 
 local GOLD = { 0.941, 0.831, 0.533 }
-local CARD, GAP, ICON, SPELL = 66, 6, 40, 30
+local RED = { 1, 0.3, 0.25 }
+local CARD, GAP, ICON, SPELL = 74, 6, 40, 30
 local CARDS = 5                         -- two primaries and three secondaries
 local NONE = "Interface\\Icons\\INV_Scroll_04"
 
@@ -75,6 +83,48 @@ function W.Skill()
     return info and info.professionID or 0
 end
 
+-- The ranks: name, cap, the level and skill to learn it
+local RANKS = {
+    { "Apprentice", 75, 1, 1 }, { "Journeyman", 150, 10, 50 }, { "Expert", 225, 20, 125 },
+    { "Artisan", 300, 35, 200 }, { "Master", 375, 50, 275 }, { "Grand Master", 450, 65, 350 },
+}
+
+-- the highest cap this expansion reaches: Artisan's at 60, a rank a 10 levels
+local function Top()
+    local level = GetMaxLevelForPlayerExpansion and GetMaxLevelForPlayerExpansion() or 60
+    return 300 + 75 * math.max(0, math.floor((level - 60) / 10))
+end
+
+-- the rank after a profession's: { name, level, skill }, or nil at the top;
+-- a trainer's service of that rank's name, when one was read, says instead
+function W.NextRank(prof)
+    for _, r in ipairs(RANKS) do
+        if r[2] > prof.max then
+            if r[2] > Top() then return nil end
+            local out = { name = r[1], level = r[3], skill = r[4] }
+            local list = ns.trainers and ns.trainers.Trade(prof.name) or {}
+            for _, e in pairs(list) do
+                if e.name:find(r[1], 1, true) or (e.rank and e.rank:find(r[1], 1, true)) then
+                    out.level = e.level and e.level > 0 and e.level or out.level
+                    out.skill = e.skill and e.skill > 0 and e.skill or out.skill
+                    break
+                end
+            end
+            return out
+        end
+    end
+end
+
+-- the line under a card's bar: its text and colour, or nil
+function W.RankLine(prof)
+    local r = W.NextRank(prof)
+    if not r then return nil end
+    if prof.rank >= r.skill and UnitLevel("player") >= r.level then
+        return format("Train %s now", r.name), prof.rank >= prof.max - 5 and RED or GOLD
+    end
+    return format("%s at skill %d, level %d", r.name, r.skill, r.level), ns.colors.dim
+end
+
 -- ----------------------------------------------------------------- cards
 local function Spell(card, i)
     local s = CreateFrame("Button", nil, card)
@@ -107,7 +157,7 @@ local function Card(body, i)
     fill:SetColorTexture(0.541, 0.439, 0.204, 0.12)
     c.icon = c:CreateTexture(nil, "ARTWORK")
     c.icon:SetSize(ICON, ICON)
-    c.icon:SetPoint("LEFT", 8, 0)
+    c.icon:SetPoint("TOPLEFT", 8, -10)
     c.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     c.name = ns.Text(c, 14)
     c.name:SetPoint("TOPLEFT", c.icon, "TOPRIGHT", 10, -2)
@@ -117,6 +167,8 @@ local function Card(body, i)
     c.none = ns.Text(c, 12)
     c.none:SetPoint("BOTTOMLEFT", c.icon, "BOTTOMRIGHT", 10, 4)
     c.none:SetTextColor(unpack(ns.colors.dim))
+    c.rank = ns.Text(c, 12)
+    c.rank:SetPoint("TOPLEFT", c.bar, "BOTTOMLEFT", 0, -4)
     c.spells = { Spell(c, 1), Spell(c, 2) }  -- from the right
     c.unlearn = ns.window.Button(c, 64, function(self)
         local p = self:GetParent().prof
@@ -143,6 +195,13 @@ local function Fill(c, prof)
         local text = prof.modifier > 0 and format("%d (+%d) / %d", prof.rank, prof.modifier, prof.max)
             or format("%d / %d", prof.rank, prof.max)
         c.bar:Fill({ min = 0, max = prof.max, cur = prof.rank, text = text })
+    end
+    local line, color
+    if learned then line, color = W.RankLine(prof) end
+    c.rank:SetShown(line and true or false)
+    if line then
+        c.rank:SetText(line)
+        c.rank:SetTextColor(unpack(color))
     end
     -- the spells, the first at the right
     local n = learned and math.min(prof.spells or 0, #c.spells) or 0
@@ -213,7 +272,8 @@ end
 overview = { key = "overview", label = "Overview", glyph = "profession", order = 0, frame = "ProfessionsFrame" }
 overview.cards = {}
 overview.height = CARDS * CARD + (CARDS - 1) * GAP
-overview.events = { "SKILL_LINES_CHANGED", "SPELLS_CHANGED", "TRADE_SKILL_LIST_UPDATE", "PLAYER_REGEN_ENABLED" }
+overview.events = { "SKILL_LINES_CHANGED", "SPELLS_CHANGED", "TRADE_SKILL_LIST_UPDATE", "PLAYER_REGEN_ENABLED",
+    "PLAYER_LEVEL_UP", "TRAINER_UPDATE" }
 function overview.Available() return true end
 function overview.Build(body)
     for i = 1, CARDS do overview.cards[i] = Card(body, i) end

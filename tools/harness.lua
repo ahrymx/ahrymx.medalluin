@@ -2698,6 +2698,8 @@ if profPass then
         [185] = { { 2538, "Charred Wolf Meat", 4, 3, { { 2672, 1 } } } },
         [129] = { { 3275, "Linen Bandage", 5, 0, { { 2589, 1 } } } },
     }
+    -- where a recipe greys, its points a craft, whether it can skill up at all
+    P.trivial = { [2662] = { 165, 1 }, [7408] = { 170, 2 }, [3115] = { 95, 1, false } }
     local CATS = { "Armor", "Materials", "Smelting", "Meat", "Bandages" }
     local ITEMS = { [2840] = "Copper Bar", [2835] = "Rough Stone", [2880] = "Weak Flux", [2770] = "Copper Ore",
         [2672] = "Stringy Wolf Meat", [2589] = "Linen Cloth" }
@@ -2734,8 +2736,10 @@ if profPass then
         end,
         GetRecipeInfo = function(id)
             local r = byID[id]
+            local t = P.trivial[id] or {}
             return { recipeID = id, name = r[2], icon = 4000 + id % 100, categoryID = r[3],
-                relativeDifficulty = r[4], learned = true }
+                relativeDifficulty = r[4], learned = true, maxTrivialLevel = t[1] or 0, numSkillUps = t[2] or 0,
+                canSkillUp = t[3] ~= false }
         end,
         GetCategoryInfo = function(cat) return { categoryID = cat, name = CATS[cat] } end,
         GetCraftableCount = count,
@@ -10210,6 +10214,8 @@ if profPass then
                 end
                 print(tag .. i, c.name.text, c.icon.desaturated and "dim" or "lit",
                     c.bar.shown and c.bar.text.text or ("none: " .. c.none.text),
+                    c.rank.shown and (c.rank.text .. "(" .. c3(c.rank.textColor) .. ")"
+                        .. (c.rank.points.TOPLEFT[1] == c.bar and "" or "!loose")) or "rank=-",
                     "spells=" .. table.concat(spells, ","), "unlearn=" .. tostring(c.unlearn.shown))
             end
         end
@@ -10274,6 +10280,47 @@ if profPass then
     print("prof.unlearn", table.concat(P.calls, ","))
     P.calls = {}
 
+    -- 2b. the next rank: red near the cap, dim when the level or skill is
+    -- short, none at the expansion's top; a trainer's list says instead
+    local function card(tag, i)
+        local c = pageOf("overview").cards[i]
+        fire("SKILL_LINES_CHANGED")
+        frame()
+        print(tag, c.name.text, c.bar.text.text, c.rank.shown and (c.rank.text .. "(" .. c3(c.rank.textColor) .. ")")
+            or "rank=-")
+    end
+    local smithInfo = P.info[1]
+    P.info[1] = { "Blacksmithing", 136241, 145, 150, 1, 50, 164, 0 }
+    card("prof.rank cap", 1)
+    P.info[1] = { "Blacksmithing", 136241, 144, 150, 1, 50, 164, 0 }
+    card("prof.rank under cap", 1)
+    P.info[1] = { "Blacksmithing", 136241, 124, 150, 1, 50, 164, 0 }
+    card("prof.rank skill short", 1)
+    P.info[1] = { "Blacksmithing", 136241, 30, 75, 1, 50, 164, 0 }
+    card("prof.rank journeyman", 1)
+    local level = UnitLevel
+    UnitLevel = function() return 19 end
+    P.info[1] = { "Blacksmithing", 136241, 130, 150, 1, 50, 164, 0 }
+    card("prof.rank level short", 1)
+    UnitLevel = level
+    P.info[1] = { "Blacksmithing", 136241, 290, 300, 1, 50, 164, 0 }
+    card("prof.rank top", 1)
+    GetMaxLevelForPlayerExpansion = function() return 70 end
+    card("prof.rank master", 1)
+    GetMaxLevelForPlayerExpansion = function() return 80 end
+    P.info[1] = { "Blacksmithing", 136241, 370, 375, 1, 50, 164, 0 }
+    card("prof.rank grand master", 1)
+    GetMaxLevelForPlayerExpansion = nil
+    MedalluinCharDB.trainer = { class = {}, trade = { Blacksmithing = {
+        ["Blacksmithing|Expert"] = { name = "Blacksmithing", rank = "Expert", level = 22, skill = 130, icon = 1 } } } }
+    P.info[1] = { "Blacksmithing", 136241, 128, 150, 1, 50, 164, 0 }
+    card("prof.rank trainer", 1)
+    P.info[1] = { "Blacksmithing", 136241, 131, 150, 1, 50, 164, 0 }
+    card("prof.rank trainer met", 1)
+    MedalluinCharDB.trainer = nil
+    P.info[1] = smithInfo
+    card("prof.rank back", 1)
+
     -- 3. Blacksmithing's tab opens it: the crafting page follows
     local smith = pageOf("craft1")
     click(smith.tab)
@@ -10315,6 +10362,116 @@ if profPass then
     row("Armor")
     rows("prof.folded")
     row("Armor")
+
+    -- 5b. favourites: a right-click stars a recipe, listed first and not
+    -- again in its category; its tooltip says so
+    local tipLines = {}
+    local addLine = GameTooltip.AddLine
+    GameTooltip.AddLine = function(_, t) table.insert(tipLines, tostring(t)) end
+    local function rowOf(label)
+        for _, r in ipairs(W.Current().list.rows) do
+            if r.shown and r.label.text == label then return r end
+        end
+    end
+    local function hint(label)
+        tipLines = {}
+        local r = rowOf(label)
+        r.scripts.OnEnter(r)
+        r.scripts.OnLeave(r)
+        print("prof.hint " .. label, table.concat(tipLines, ";"))
+    end
+    hint("Copper Bracers")
+    local function right(label)
+        local r = rowOf(label)
+        if not r then print("no row " .. label) return end
+        r.scripts.OnClick(r, "RightButton")
+        frame()
+    end
+    right("Copper Bracers")
+    rows("prof.starred")
+    hint("Copper Bracers")
+    print("prof.favourites", tostring(MedalluinCharDB.recipeFavourites and MedalluinCharDB.recipeFavourites[2663]),
+        "chosen=" .. tostring(smith.chosen))
+    right("Heavy Copper Maul")
+    rows("prof.starred two")
+    row("Favourites")
+    rows("prof.favourites folded")
+    row("Favourites")
+    right("Copper Bracers")
+    right("Heavy Copper Maul")
+    rows("prof.unstarred")
+    -- the skill-up line: greys at, points a craft, none left
+    row("Copper Chain Pants")
+    foot("prof.worth pants")
+    row("Copper Bracers")
+    foot("prof.worth trivial")
+    row("Rough Sharpening Stone")
+    foot("prof.worth no skill-up")
+
+    -- 5c. at the trainer: the services not learned, those allowed first
+    MedalluinCharDB.trainer = { class = {}, trade = { Blacksmithing = {
+        ["Copper Mace|"] = { name = "Copper Mace", level = 1, skill = 15, cost = 100, icon = 11 },
+        ["Copper Bracers|"] = { name = "Copper Bracers", level = 1, skill = 1, cost = 10, icon = 12 },
+        ["Copper Axe|"] = { name = "Copper Axe", level = 1, skill = 35, cost = 50, icon = 13, known = true },
+        ["Iron Buckle|"] = { name = "Iron Buckle", level = 1, skill = 150, cost = 900, icon = 14 },
+        ["Silver Rod|"] = { name = "Silver Rod", level = 40, skill = 100, cost = 500, icon = 15 },
+        ["Blacksmithing|Expert"] = { name = "Blacksmithing", rank = "Expert", level = 20, skill = 125,
+            cost = 10000, icon = 16 },
+    } } }
+    local tall = smith.list.body.h
+    smith.list.body.h = 22 * 20
+    fire("TRAINER_UPDATE")
+    frame()
+    rows("prof.trainer")
+    row("Iron Buckle")
+    rows("prof.trainer picked")
+    foot("prof.trainer later")
+    click(smith.create)
+    click(smith.createAll)
+    print("prof.trainer craft", table.concat(P.calls, ","))
+    row("Blacksmithing (Expert)")
+    foot("prof.trainer now")
+    right("Copper Mace")
+    print("prof.trainer right", tostring(MedalluinCharDB.recipeFavourites[11]), "trained=" .. tostring(smith.trained))
+    row("Copper Chain Pants")
+    foot("prof.trainer back to a recipe")
+    smith.search:SetText("mace")
+    smith.search.scripts.OnTextChanged(smith.search)
+    rows("prof.trainer search")
+    smith.search:SetText("")
+    smith.search.scripts.OnTextChanged(smith.search)
+    click(smith.details.ticks[1])
+    rows("prof.trainer makeable")
+    click(smith.details.ticks[1])
+    row("At the trainer (4)")
+    rows("prof.trainer folded")
+    row("At the trainer (4)")
+    -- a picked service gone from the list: the details let it go
+    row("Iron Buckle")
+    MedalluinCharDB.trainer.trade.Blacksmithing["Iron Buckle|"].known = true
+    fire("TRAINER_UPDATE")
+    frame()
+    foot("prof.trainer learned")
+    -- back on the list (forgotten, say): no longer picked
+    MedalluinCharDB.trainer.trade.Blacksmithing["Iron Buckle|"].known = nil
+    fire("TRAINER_UPDATE")
+    frame()
+    rows("prof.trainer unpicked")
+    -- the tab taken by another profession: what was picked there goes
+    row("Iron Buckle")
+    P.learned[1] = nil
+    smith.Available()
+    print("prof.trainer retabbed", smith.label, "trained=" .. tostring(smith.trained))
+    P.learned[1] = 1
+    smith.Available()
+    print("prof.trainer tab back", smith.label, "trained=" .. tostring(smith.trained))
+    MedalluinCharDB.trainer = nil
+    smith.list.body.h = tall
+    GameTooltip.AddLine = addLine
+    smith.chosen, smith.trained = nil, nil
+    fire("TRAINER_UPDATE")
+    frame()
+    rows("prof.trainer gone")
 
     -- 6. Cooking's spell cast: Blizzard opens it, the window follows
     P.Show(185)
