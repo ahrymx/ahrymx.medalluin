@@ -6,7 +6,9 @@
 --
 --   (portrait) The Defias Brotherhood                       [x]  <- the page's
 --              Gryan Stoutmantle                                  title, the NPC
---   ---------------------------------------------------------
+--   ---------------------------------------------------------      (or, untitled,
+--                                                                   the NPC's name
+--                                                                   and its trade)
 --   Did Master Shaw shed any light on things?       (the page: text, label
 --                                                    pills, rows, item tiles,
 --   [Required]                                       tabs; scrolls past the top)
@@ -39,13 +41,17 @@
 --                             Shown(), own (a frame of its own, shown in
 --                             the box's place instead: the flight map),
 --                             veil (Blizzard's frame must stay visible:
---                             parked under ns.veil, not ns.hidden) }
+--                             parked under ns.veil, not ns.hidden),
+--                             price (a shop: its rows a table, under this
+--                             heading over their values) }
 --   ns.npc.Show(key) (its page to the front), ns.npc.Update(key) (drawn
 --   again if in front), ns.npc.box, ns.npc.Room() (the room up to the
 --   screen's top)
 --
 -- A page's blocks, top down:
---   { "text", text, color }              a paragraph, wrapped
+--   { "text", text, color, pin }         a paragraph, wrapped (pin: the
+--                                        page's one that stays put, above
+--                                        the tabs: what the NPC says)
 --   { "heading", text }                  a label on a dark pill
 --   { "row", label, icon, badge, value, color, dim, selected, click(button),
 --     enter(row) }                       a line that clicks
@@ -53,7 +59,17 @@
 --     enter(tile) } ... }                items, two a row
 --   { "tabs", { label, selected, click } ... }
 --                                        one a page: it stays put under the
---                                        head while the rest scrolls
+--                                        head, over a hairline, while the
+--                                        rest scrolls
+-- A shop's rows, as a shop's list reads: shaded every other one, and a
+-- hairline between the names and the prices, the column as wide as the
+-- widest price, under its heading (which stays put with the tabs):
+--
+--   [Merchant][Buyback]
+--   --------------------------------------------------------
+--                                                 |   Price
+--   [icon] Fishing Pole                           |     23c   <- shaded
+--   [icon] Shiny Bauble                           |     50c
 -- Its foot: { left = text, { label, click, enabled, tip, primary } ... },
 -- the buttons left to right: sharing the width when there is no text, else
 -- at the right; the primary one wears the deed's red.
@@ -67,6 +83,8 @@ local PAD, HEAD, FOOT, GAP = 14, 60, 50, 12
 local PORTRAIT, BUTTON = 42, 32
 local ROW, ICON, TILE, TILE_ICON, TABS, PILL = 30, 20, 48, 40, 26, 22
 local CONTROL = 16
+local ZEBRA, RULE = 0.05, 0.6                    -- a shop's shaded rows, its hairlines
+local HEADING = 18                               -- a shop's column heading
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local DEED = { 0.42, 0.13, 0.09 }                -- the primary button's fill
@@ -154,6 +172,13 @@ local make = {
         r.label:SetWordWrap(false)
         r.value = ns.Text(r, 13)
         r.value:SetPoint("RIGHT", -6, 0)
+        -- a shop's: every other row shaded, and the price column's rule
+        r.zebra = r:CreateTexture(nil, "BACKGROUND", nil, 1)
+        r.zebra:SetAllPoints()
+        r.zebra:SetColorTexture(1, 1, 1, ZEBRA)
+        r.rule = r:CreateTexture(nil, "BORDER")
+        r.rule:SetWidth(1)
+        r.rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], RULE)
         Clicks(r)
         return r
     end,
@@ -207,9 +232,10 @@ end
 
 local function Colour(t, c) t:SetTextColor(c[1], c[2], c[3]) end
 
--- Lays the blocks out down the scroll child; how tall they came to.
-local function Lay(blocks, width)
-    local used, y = {}, 0
+-- Lays the blocks out down the scroll child; how tall they came to. With
+-- col (a shop's price column, its width) the rows are a table.
+local function Lay(blocks, width, col)
+    local used, y, n = {}, 0, 0                -- n: the rows so far, for the shading
     for i, b in ipairs(blocks) do
         local kind = b[1]
         -- rows run together; a pill sits closer to what it labels
@@ -254,8 +280,17 @@ local function Lay(blocks, width)
             r.label:SetText(b.label or "")
             Colour(r.label, b.color or b.dim and ns.colors.dim or ns.colors.text)
             r.value:SetText(b.value or "")
-            r.label:SetPoint("RIGHT", r, "RIGHT", b.value and -(r.value:GetStringWidth() + 14) or -6, 0)
+            r.label:SetPoint("RIGHT", r, "RIGHT", col and -(col + 8) or b.value and -(r.value:GetStringWidth() + 14)
+                or -6, 0)
             r.mark:SetShown(b.selected and true or false)
+            n = n + 1
+            r.zebra:SetShown(col ~= nil and n % 2 == 1)
+            r.rule:SetShown(col ~= nil)
+            if col then
+                r.rule:ClearAllPoints()
+                r.rule:SetPoint("TOPLEFT", width - col, 0)
+                r.rule:SetPoint("BOTTOMLEFT", width - col, 0)
+            end
             y = y + ROW
         elseif kind == "tiles" then
             local half = (width - GAP) / 2
@@ -264,8 +299,8 @@ local function Lay(blocks, width)
                 local d = b[j + 1]
                 local t = Take("tile", used)
                 t.data = d
-                local col, row = (j - 1) % 2, math.floor((j - 1) / 2)
-                t:SetPoint("TOPLEFT", col * (half + GAP), -(y + row * (TILE + GAP)))
+                local across, down = (j - 1) % 2, math.floor((j - 1) / 2)
+                t:SetPoint("TOPLEFT", across * (half + GAP), -(y + down * (TILE + GAP)))
                 t:SetWidth(half)
                 t.icon:SetTexture(d.icon)
                 t.icon:SetDesaturated(d.dim and true or false)
@@ -283,11 +318,19 @@ local function Lay(blocks, width)
     return y
 end
 
--- The page's tabs, held under the head out of the scroll: the room they
--- take, their gap below included (none without tabs).
+-- What stays put under the head while the page scrolls: what the NPC
+-- says, the tabs over a hairline, and a shop's column heading. The room it
+-- takes, its gap below included (none with none of them).
 local pins = {}
-local function Pin(b)
-    bar:SetShown(b ~= nil)
+local function Pin(say, b, price, col, width)
+    bar:SetShown(say ~= nil or b ~= nil or price ~= nil)
+    local y = 0
+    bar.say:SetShown(say ~= nil)
+    if say then
+        bar.say:SetText(say[2] or "")
+        Colour(bar.say, say[3] or ns.colors.text)
+        y = y + bar.say:GetStringHeight() + GAP
+    end
     local x, n = 0, b and #b - 1 or 0
     for j = 1, math.max(n, #pins) do
         local d, t = b and b[j + 1], pins[j]
@@ -304,12 +347,49 @@ local function Pin(b)
                 t.mark:SetShown(d.selected and true or false)
                 t:SetWidth(t.label:GetStringWidth() + 20)
                 t:ClearAllPoints()
-                t:SetPoint("TOPLEFT", x, 0)
+                t:SetPoint("TOPLEFT", x, -y)
                 x = x + t:GetWidth() + 4
             end
         end
     end
-    return b and TABS + GAP or 0
+    bar.rule:SetShown(b ~= nil)
+    if b then
+        y = y + TABS + GAP / 2
+        bar.rule:ClearAllPoints()
+        bar.rule:SetPoint("TOPLEFT", 0, -y)
+        bar.rule:SetPoint("TOPRIGHT", 0, -y)
+        y = y + 1 + GAP / 2
+    end
+    bar.price:SetShown(price ~= nil)
+    bar.priceRule:SetShown(price ~= nil)
+    if price then
+        bar.price:SetText(price)
+        bar.price:ClearAllPoints()
+        bar.price:SetPoint("RIGHT", bar, "TOPLEFT", width - 6, -(y + HEADING / 2))
+        bar.priceRule:ClearAllPoints()
+        bar.priceRule:SetPoint("TOPLEFT", width - col, -y)
+        bar.priceRule:SetSize(1, HEADING)
+        y = y + HEADING
+    elseif b then
+        y = y + GAP / 2
+    end
+    bar:SetHeight(math.max(1, y))
+    return y
+end
+
+-- a shop's price column: as wide as its widest price, and its heading;
+-- none with no rows to head
+local function Column(blocks, price)
+    bar.price:SetText(price)
+    local most, any = bar.price:GetStringWidth(), false
+    for _, b in ipairs(blocks) do
+        if b[1] == "row" then
+            any = true
+            bar.measure:SetText(b.value or "")
+            most = math.max(most, bar.measure:GetStringWidth())
+        end
+    end
+    if any then return math.floor(most + 20 + 0.5) end
 end
 
 -- the foot's buttons, left to right: the width shared out when nothing
@@ -397,23 +477,38 @@ function ns.npc.Scroll(lines)
     Thumb()
 end
 
+-- The NPC's trade, the line under its name in its tooltip ("Fishing
+-- Supplier"); none when that line is its level.
+local function Trade()
+    local G = C_TooltipInfo
+    local ok, info = pcall(function() return G and G.GetUnit and G.GetUnit("npc") end)
+    local line = ok and info and info.lines and info.lines[2]
+    local text = line and line.leftText
+    if not text or ns.IsSecret(text) or text == "" then return end
+    if text:find(LEVEL or "Level", 1, true) then return end
+    return text
+end
+
 -- The page drawn again, and the box fitted to it.
 function ns.npc.Refresh()
     if not box or not current or current.own then return end
     local npc = UnitName("npc") or ""
     local title = current.Title and current.Title()
     name:SetText(title or npc)
-    under:SetText(title and npc or "")
+    under:SetText(title and npc or Trade() or "")
     if portrait and SetPortraitTexture then SetPortraitTexture(portrait, "npc") end
     local width = WIDTH - 2 * PAD - 6
     child:SetWidth(width)
-    local body, tabs = {}, nil
+    local body, tabs, say = {}, nil, nil
     for _, b in ipairs(current.Blocks()) do
-        if b[1] == "tabs" then tabs = b else table.insert(body, b) end
+        if b[1] == "tabs" then tabs = b
+        elseif b.pin then say = b
+        else table.insert(body, b) end
     end
-    local top = Pin(tabs)
+    local col = current.price and Column(body, current.price)
+    local top = Pin(say, tabs, col and current.price, col, width)
     scroll:SetPoint("TOPLEFT", PAD, -(HEAD + PAD + top))
-    local h = Lay(body, width)
+    local h = Lay(body, width, col)
     child:SetHeight(math.max(1, h))
     Foot(current.Foot and current.Foot())
     local want = HEAD + PAD + top + h + PAD + FOOT
@@ -544,6 +639,21 @@ local function Build()
     bar:SetPoint("TOPLEFT", PAD, -(HEAD + PAD))
     bar:SetPoint("TOPRIGHT", -PAD, -(HEAD + PAD))
     bar:SetHeight(TABS)
+    bar.say = ns.Text(bar, 14)
+    bar.say:SetFont(ns.FontPath("friz"), 14, "")
+    bar.say:SetJustifyH("LEFT")
+    bar.say:SetSpacing(4)
+    bar.say:SetPoint("TOPLEFT")
+    bar.say:SetWidth(WIDTH - 2 * PAD - 6)
+    bar.rule = bar:CreateTexture(nil, "ARTWORK")
+    bar.rule:SetHeight(1)
+    bar.rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], RULE)
+    bar.price = ns.Text(bar, 12)
+    bar.price:SetTextColor(ns.colors.dim[1], ns.colors.dim[2], ns.colors.dim[3])
+    bar.priceRule = bar:CreateTexture(nil, "ARTWORK")
+    bar.priceRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], RULE)
+    bar.measure = ns.Text(bar, 13)
+    bar.measure:Hide()
     bar:Hide()
     ns.npc.bar = bar
     scroll = CreateFrame("ScrollFrame", nil, box)

@@ -2,10 +2,12 @@
 -- you can learn now unless the filter asks for more, and the one picked,
 -- with what it asks of you; Train in the foot learns it.
 --
+--   Ready for some training?                    <- what it says, staying put
 --   [Available] [Unavailable] [Known]           <- one at a time, kept (trainerFilter)
---   [Fire]                                      <- the game's lines, as pills
---   [icon] Fireball (Rank 2)              1s
---   [icon] Fire Ward                      2s    <- red: not yet; dim: known
+--   -------------------------------------------
+--                                      | Price
+--   [icon] Fireball (Rank 2)           |    1s  <- a shop's table (npc/window.lua)
+--   [icon] Fire Ward                   |    2s  <- red: not yet; dim: known
 --   [Fireball (Rank 2)]
 --   Hurls a fiery ball ...
 --   Requires level 6                            <- red while it is not met
@@ -24,14 +26,16 @@ local TYPES = { { "available", "Available" }, { "unavailable", "Unavailable" }, 
 
 local picked                     -- the service picked, by name: indexes move as you learn
 
--- the game's services in its order, headers too
+-- the game's services in its order. Forever's answer is name, type
+-- ("available", "unavailable" or "used"), icon, level, rank: not Classic's
+-- name, rank, type, and no header lines (it lists them flat)
 local function Services()
     local out = {}
     for i = 1, GetNumTrainerServices and GetNumTrainerServices() or 0 do
-        local name, rank, category = GetTrainerServiceInfo(i)
+        local name, category, icon, _, rank = GetTrainerServiceInfo(i)
         if name then
             table.insert(out, { index = i, name = name, rank = rank ~= "" and rank or nil, category = category,
-                cost = category ~= "header" and GetTrainerServiceCost(i) or 0 })
+                icon = icon, cost = GetTrainerServiceCost(i) or 0 })
         end
     end
     return out
@@ -42,7 +46,7 @@ local function Label(s) return s.rank and format("%s (%s)", s.name, s.rank) or s
 -- the picked service, or the first you can learn when it is gone
 local function Picked(list)
     for _, s in ipairs(list) do
-        if s.category ~= "header" and Label(s) == picked then return s end
+        if Label(s) == picked then return s end
     end
     for _, s in ipairs(list) do
         if s.category == "available" then
@@ -91,7 +95,7 @@ end
 local function Blocks()
     local out = {}
     local greeting = GetTrainerGreetingText and GetTrainerGreetingText()
-    if greeting and greeting ~= "" then table.insert(out, { "text", greeting, ns.colors.dim }) end
+    if greeting and greeting ~= "" then table.insert(out, { "text", greeting, ns.colors.dim, pin = true }) end
     local tabs = { "tabs" }
     for _, t in ipairs(TYPES) do
         table.insert(tabs, { label = t[2], selected = Kept() == t[1], click = function()
@@ -103,29 +107,23 @@ local function Blocks()
     table.insert(out, tabs)
     local list = Services()
     local current = Picked(list)
-    local any = false
     for _, s in ipairs(list) do
-        if s.category == "header" then
-            table.insert(out, { "heading", s.name })
-        else
-            any = true
-            local i = s.index
-            table.insert(out, { "row", label = Label(s), icon = GetTrainerServiceIcon and GetTrainerServiceIcon(i),
-                value = s.cost > 0 and Money(s.cost) or nil, selected = s == current,
-                color = s.category == "unavailable" and RED or s.category == "used" and ns.colors.dim or nil,
-                click = function(button)
-                    if button == "RightButton" then return end
-                    picked = Label(s)
-                    ns.npc.Update("trainer")
-                end,
-                enter = function(row)
-                    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
-                    GameTooltip:SetTrainerService(i)
-                    GameTooltip:Show()
-                end })
-        end
+        local i = s.index
+        table.insert(out, { "row", label = Label(s), icon = s.icon,
+            value = s.cost > 0 and Money(s.cost) or nil, selected = s == current,
+            color = s.category == "unavailable" and RED or s.category == "used" and ns.colors.dim or nil,
+            click = function(button)
+                if button == "RightButton" then return end
+                picked = Label(s)
+                ns.npc.Update("trainer")
+            end,
+            enter = function(row)
+                GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+                GameTooltip:SetTrainerService(i)
+                GameTooltip:Show()
+            end })
     end
-    if not any then table.insert(out, { "text", "Nothing to learn here right now.", ns.colors.dim }) end
+    if #list == 0 then table.insert(out, { "text", "Nothing to learn here right now.", ns.colors.dim }) end
     if current then
         table.insert(out, { "heading", Label(current) })
         local text = GetTrainerServiceDescription and GetTrainerServiceDescription(current.index)
@@ -154,7 +152,7 @@ end
 local function Update() ns.npc.Update("trainer") end
 
 ns.npc.Page{
-    key = "trainer", frame = "ClassTrainerFrame", addon = "Blizzard_TrainerUI", veil = true,
+    key = "trainer", frame = "ClassTrainerFrame", addon = "Blizzard_TrainerUI", veil = true, price = "Price",
     Blocks = Blocks, Foot = Foot, Close = Close,
     Start = function()
         ns.On("TRAINER_SHOW", function()

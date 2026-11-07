@@ -458,7 +458,11 @@ function Region:UnregisterAllEvents()
         end
     end
 end
-function Region:GetStringWidth() return #(self.text or "") * 7 end   -- ~Marcellus SC 15px
+-- ~Marcellus SC 15px; an inline icon (|T...|t) two letters wide, colour codes none
+function Region:GetStringWidth()
+    local t = (self.text or ""):gsub("|T.-|t", "..")
+    return #t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") * 7
+end
 -- wrapped at its width, 6 a character, 14 a line
 function Region:GetStringHeight()
     if self.wrap == false then return 14 end
@@ -2901,12 +2905,11 @@ if npcPass then
     function GameTooltip:SetMerchantItem(i) self.item = "merchant" .. i end
     function GameTooltip:SetBuybackItem(i) self.item = "buyback" .. i end
     function GameTooltip:SetQuestItem(kind, i) self.item = kind .. i end
-    -- the trainer: a line of fire, two to learn (one beyond your money), one
-    -- not yet (level 40, a skill and a rank before it), one known. The game's
-    -- filter decides which it lists (headers always); training one makes it
+    -- the trainer: two to learn (one beyond your money), one not yet (level
+    -- 40, a skill and a rank before it), one known, flat as Forever lists
+    -- them. The game's filter decides which it lists; training one makes it
     -- known. ClassTrainerFrame comes only with Blizzard_TrainerUI.
     W.services = {
-        { name = "Fire", category = "header" },
         { name = "Fireball", rank = "Rank 2", category = "available", cost = 100, desc = "Hurls a fiery ball." },
         { name = "Pyroblast", rank = "Rank 1", category = "available", cost = 50000 },
         { name = "Fire Ward", rank = "", category = "unavailable", cost = 200, level = 40,
@@ -2917,14 +2920,24 @@ if npcPass then
     local function listed()
         local out = {}
         for _, v in ipairs(W.services) do
-            if v.category == "header" or W.tfilter[v.category] then table.insert(out, v) end
+            if W.tfilter[v.category] then table.insert(out, v) end
         end
         return out
     end
     function GetNumTrainerServices() return #listed() end
-    function GetTrainerServiceInfo(i) local v = listed()[i] if v then return v.name, v.rank or "", v.category, true end end
+    -- the NPC's tooltip: its name, then its trade or (none) its level
+    W.trade = nil
+    C_TooltipInfo = C_TooltipInfo or {}
+    C_TooltipInfo.GetUnit = function(unit)
+        if unit ~= "npc" then return end
+        return { lines = { { leftText = UnitName("npc") }, { leftText = W.trade or "Level 30" } } }
+    end
+    -- Forever's order: name, type, icon, level, rank
+    function GetTrainerServiceInfo(i)
+        local v = listed()[i]
+        if v then return v.name, v.category, "icon-" .. v.name, v.level or 0, v.rank or "" end
+    end
     function GetTrainerServiceCost(i) return listed()[i].cost end
-    function GetTrainerServiceIcon(i) return "icon-" .. listed()[i].name end
     function GetTrainerServiceDescription(i) return listed()[i].desc end
     function GetTrainerServiceLevelReq(i) return listed()[i].level or 0 end
     function GetTrainerServiceSkillReq(i) local k = listed()[i].skill if k then return k[1], k[2], k[3] end end
@@ -10712,6 +10725,26 @@ if npcPass then
         print(tag .. " rows", table.concat(rows, " | "))
         return out
     end
+    -- a shop's table: what stays put (the words, the hairline, the heading
+    -- and its rule), then each row's shading, rule and label's reach
+    local bar = ns.npc.bar
+    local function shop(tag)
+        local function x(t, p) return t.shown and t.points[p] and tostring(t.points[p][3]) or "-" end
+        print(tag .. " shop", "say=" .. (bar.say.shown and tostring(bar.say.text) or "-"),
+            "hairline=" .. (bar.rule.shown and tostring(-bar.rule.points.TOPLEFT[4]) or "-"),
+            "price=" .. (bar.price.shown and bar.price.text .. "@" .. x(bar.price, "RIGHT") or "-"),
+            "priceRule=" .. x(bar.priceRule, "TOPLEFT") .. "/" .. tostring(bar.priceRule.h),
+            "bar=" .. tostring(bar.h))
+        local out = {}
+        for _, r in ipairs(page(tag .. " shop")) do
+            local c = r.c
+            if c.zebra then
+                table.insert(out, (c.icon.shown and "i" or "") .. (c.zebra.shown and "#" or ".") .. (c.rule.shown and x(c.rule, "TOPLEFT") or "-")
+                    .. ":" .. tostring(c.label.points.RIGHT and c.label.points.RIGHT[3]))
+            end
+        end
+        print(tag .. " shop rows", table.concat(out, " "))
+    end
     local function foot(tag)
         local f
         for _, c in ipairs(box.all_) do
@@ -10772,6 +10805,7 @@ if npcPass then
     ns.chat.Reach(true, 0.5)
     state("npc gossip reach asked")
     local rows = page("npc gossip")
+    shop("npc gossip")                   -- not a shop: no table
     foot("npc gossip")
     for _, r in ipairs(rows) do click(rows, r.c.data.label) end
     calls("npc gossip clicks")
@@ -10871,11 +10905,13 @@ if npcPass then
     state("npc quest closed")
     calls("npc quest closed")
 
-    -- the vendor
+    -- the vendor, whose tooltip names its trade
+    W.trade = "General Goods"
     MerchantFrame:Show()
     fire("MERCHANT_SHOW")
     state("npc merchant")
     rows = page("npc merchant")
+    shop("npc merchant")
     foot("npc merchant")
     -- the uncached item arrives
     W.items[3].name = "Light Feather"
@@ -10972,6 +11008,7 @@ if npcPass then
     GossipFrame:Show()
     fire("GOSSIP_SHOW")
     W.LoadTrainer()
+    W.trade = "Mage Trainer"
     local trainerBefore = keys(ClassTrainerFrame)
     W.calls = {}
     fire("TRAINER_SHOW")
@@ -10987,6 +11024,19 @@ if npcPass then
     state("npc trainer")
     calls("npc trainer show")
     rows = page("npc trainer")
+    shop("npc trainer")
+    -- nothing listed: no heading over no prices
+    local services = W.services
+    W.services = {}
+    ns.npc.Update("trainer")
+    shop("npc trainer empty")
+    W.services = services
+    -- a trade the game keeps secret is not written
+    W.trade = secret()
+    ns.npc.Update("trainer")
+    state("npc trainer secret trade")
+    W.trade = "Mage Trainer"
+    ns.npc.Update("trainer")
     foot("npc trainer")
     stack("npc trainer")
     -- gossip closes after; the trainer stays
