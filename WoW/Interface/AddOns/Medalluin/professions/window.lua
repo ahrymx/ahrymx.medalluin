@@ -190,9 +190,7 @@ local function Follow()
                     local b = Secure(n)
                     b.slot, b.cell = s.slot, s
                     b:SetAttribute("spell", s.item.spellID or s.item.actionID)
-                    b:ClearAllPoints()
-                    b:SetAllPoints(s)
-                    b:Show()
+                    b:SetShown(W.Over(b, s))
                 end
             end
         end
@@ -287,13 +285,7 @@ end
 local function Start()
     if not ns.db.professions or not SpellbookMicroButton or not C_TradeSkillUI or not GetProfessions then return end
     W.Build()
-    layer = CreateFrame("Frame", "MedalluinProfessionsCasts", ns.strips[1])
-    layer:SetFrameStrata("MEDIUM")
-    layer:SetFrameLevel(W.window:GetFrameLevel() + 10)
-    layer:SetIgnoreParentAlpha(true)
-    layer:SetAllPoints(W.window)
-    layer:Hide()
-    layer.buttons = {}
+    layer = W.Layer("MedalluinProfessionsCasts")
     W.layer = layer
     W.Select(overview)
     -- a profession learned or forgotten; one opened (its spell, a tab)

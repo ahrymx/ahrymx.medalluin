@@ -565,6 +565,19 @@ function Region:GetBottom()
     local ok, r = pcall(resolve, self)
     return ok and r and 1080 - r[4] or nil
 end
+-- A secure button over a region by numbers, as the windows' cast layers
+-- set them (window/shell.lua, Over): "over" when it covers the region and
+-- is anchored to its layer alone; "anchored" when it rests on anything else
+-- (which would make that, and the window, protected); "off" when misplaced.
+function harnessOver(b, region)
+    if b.all then return "anchored" end
+    for _, p in pairs(b.points) do
+        if p[1] ~= b.parent then return "anchored" end
+    end
+    local function near(a, c) return a and c and math.abs(a - c) < 0.01 end
+    return (near(b:GetLeft(), region:GetLeft()) and near(b:GetBottom(), region:GetBottom())
+        and near(b.w, region:GetWidth()) and near(b.h, region:GetHeight())) and "over" or "off"
+end
 -- a drag: StartMoving takes the frame, StopMovingOrSizing leaves it where
 -- harnessDropAt says, on UIParent, as the game re-anchors a moved frame
 function Region:StartMoving() self.isMoving = true end
@@ -9284,7 +9297,8 @@ if spellPass then
             if c.shown then
                 local b = layer.buttons[i]
                 local arm = b and b.shown and b.item == c.item
-                    and ((b.attrs.type or "none") .. ":" .. tostring(b.attrs.spell)) or "unarmed"
+                    and ((b.attrs.type or "none") .. ":" .. tostring(b.attrs.spell)
+                        .. (harnessOver(b, c) == "over" and "" or "!" .. harnessOver(b, c))) or "unarmed"
                 if c.head.shown then
                     -- a heading: its title and count, and the tile under them
                     -- the tiles: how many show, where the first and last
@@ -9337,7 +9351,10 @@ if spellPass then
     state("book.login")
     print("book.anchor", where(w), "parent=" .. tostring(w.parent == ns.strips[1]),
         "medal=" .. where(w.medal), "medalUV=" .. table.concat(w.medal.all_[1].coords or {}, ","))
-    print("book.layer", "parent=" .. tostring(layer.parent == ns.strips[1]), "over=" .. tostring(layer.all == w))
+    -- the layer on the strip where the window stands, anchored to the strip
+    -- alone (never the window: see harnessOver)
+    print("book.layer", "parent=" .. tostring(layer.parent == ns.strips[1]), "at=" .. where(layer),
+        "onWindow=" .. tostring(layer.all == w))
     tabs("book.tabs")
 
     -- 2. the key loads Blizzard_PlayerSpells: its frame is parked and followed
@@ -10028,7 +10045,7 @@ if profPass then
         for _, b in ipairs(layer.buttons) do
             if b.shown then
                 table.insert(secure, b.attrs.type .. ":" .. tostring(b.attrs.spell)
-                    .. (b.all == b.cell and "" or "!"))
+                    .. (harnessOver(b, b.cell) == "over" and "" or "!" .. harnessOver(b, b.cell)))
             end
         end
         print(tag .. " layer", "parent=" .. tostring(layer.parent == ns.strips[1]),

@@ -547,5 +547,33 @@ function ns.Window(spec)
         if window and open ~= window:IsShown() then window:SetShown(open) end
     end
 
+    -- Secure buttons over the window, on a layer of their own on the strip.
+    -- Never anchored to the window or anything in it: a frame a protected
+    -- frame is anchored to is protected too, and so is whatever that one is
+    -- anchored to, up to the window, which then cannot open or close in
+    -- combat. The layer stands where the window does, at its foot; Over(b,
+    -- region) sets b over region by numbers, out of combat (false when the
+    -- region is not laid out).
+    function w.Layer(name)
+        local strip = ns.strips[side]
+        local layer = CreateFrame("Frame", name, strip)
+        layer:SetFrameStrata("MEDIUM")
+        layer:SetFrameLevel(window:GetFrameLevel() + 10)
+        layer:SetIgnoreParentAlpha(true)
+        layer:SetPoint(Outer(side, "BOTTOM"), strip, Outer(side, "BOTTOM"), 0, L.stripHeight)
+        layer:SetSize(WIDTH, 1)
+        layer:Hide()
+        layer.buttons = {}
+        return layer
+    end
+    function w.Over(b, region)
+        local x, y, wx, wy = region:GetLeft(), region:GetBottom(), window:GetLeft(), window:GetBottom()
+        if not (x and y and wx and wy) then return false end
+        b:ClearAllPoints()
+        b:SetPoint("BOTTOMLEFT", b:GetParent(), "BOTTOMLEFT", x - wx, y - wy)
+        b:SetSize(region:GetWidth(), region:GetHeight())
+        return true
+    end
+
     return w
 end

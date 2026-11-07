@@ -432,9 +432,7 @@ local function Follow()
             local b = Secure(i)
             b.item, b.page = c.item, p
             Arm(b, c.item)
-            b:ClearAllPoints()
-            b:SetAllPoints(c)
-            b:Show()
+            b:SetShown(W.Over(b, c))
         elseif layer.buttons[i] then
             local b = layer.buttons[i]
             b.item = nil
@@ -773,13 +771,7 @@ local function Start()
     -- one player-spells button for its combined frame
     if not ns.db.spellbook or not SpellbookMicroButton or not SB or not SB.GetSpellBookSkillLineInfo then return end
     W.Build()
-    layer = CreateFrame("Frame", "MedalluinSpellbookCasts", ns.strips[1])
-    layer:SetFrameStrata("MEDIUM")
-    layer:SetFrameLevel(W.window:GetFrameLevel() + 10)
-    layer:SetIgnoreParentAlpha(true)
-    layer:SetAllPoints(W.window)
-    layer:Hide()
-    layer.buttons = {}
+    layer = W.Layer("MedalluinSpellbookCasts")
     W.layer = layer
     for _, p in ipairs(W.pages) do
         if p.available then W.Select(p); break end
