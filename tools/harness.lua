@@ -439,7 +439,15 @@ end
 function Region:GetName() return self.name end
 function Region:GetParent() return self.parent end
 function Region:GetText() return self.text end
-function Region:IsVisible() return self.shown end
+-- shown, and every parent up the chain shown too, as in WoW
+function Region:IsVisible()
+    local f = self
+    while f do
+        if not f.shown then return false end
+        f = f.parent
+    end
+    return true
+end
 function Region:IsShown() return self.shown end
 -- as in WoW: the frame hears none of them after, until registered again
 function Region:UnregisterAllEvents()
@@ -2937,6 +2945,12 @@ if npcPass then
     end
     function CloseTrainer() called("CloseTrainer"); ClassTrainerFrame:Hide() end
     function GameTooltip:SetTrainerService(i) self.item = "trainer" .. i end
+    -- Blizzard_TrainerUI's own show: the panel, then the trainer closed
+    -- at once if the frame is not visible (a frame under a hidden parent)
+    function W.ShowTrainer()
+        ClassTrainerFrame:Show()
+        if not ClassTrainerFrame:IsVisible() then CloseTrainer() end
+    end
     function W.LoadTrainer()
         if ClassTrainerFrame then return end
         local f = new("Frame", UIParent, "ClassTrainerFrame")
@@ -10950,8 +10964,15 @@ if npcPass then
     local trainerBefore = keys(ClassTrainerFrame)
     W.calls = {}
     fire("TRAINER_SHOW")
-    ClassTrainerFrame:Show()
-    print("npc trainer", "parked=" .. tostring(ClassTrainerFrame.parent == ns.hidden))
+    W.ShowTrainer()
+    print("npc trainer", "parked=" .. tostring(ClassTrainerFrame.parent == ns.veil and "veil"
+        or ClassTrainerFrame.parent == ns.hidden and "hidden"), "veil=" .. tostring(ns.veil.alpha) .. "/"
+        .. tostring(ns.veil.scale) .. "/" .. tostring(ns.veil.shown))
+    -- taken back by another hand: it returns to the veil, not the hidden parent
+    ClassTrainerFrame:SetParent(UIParent)
+    print("npc trainer reparked", ClassTrainerFrame.parent == ns.veil and "veil"
+        or ClassTrainerFrame.parent == ns.hidden and "hidden" or "other",
+        "visible=" .. tostring(ClassTrainerFrame:IsVisible()))
     state("npc trainer")
     calls("npc trainer show")
     rows = page("npc trainer")
@@ -10995,7 +11016,7 @@ if npcPass then
     fire("TRAINER_CLOSED")
     -- a second visit starts on the first you can learn, not the last pick
     fire("TRAINER_SHOW")
-    ClassTrainerFrame:Show()
+    W.ShowTrainer()
     page("npc trainer again")
     CloseTrainer()
     fire("TRAINER_CLOSED")

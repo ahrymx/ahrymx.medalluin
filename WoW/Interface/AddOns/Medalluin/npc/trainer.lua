@@ -14,7 +14,8 @@
 -- A click only picks: Blizzard's selection (SelectTrainerService) is left
 -- alone, and nothing of ClassTrainerFrame is written or called; it comes
 -- with Blizzard_TrainerUI, loaded on the first TRAINER_SHOW, and is parked
--- as it loads (npc/window.lua, Adopt).
+-- as it loads (npc/window.lua, Adopt). Under the veil, not the hidden
+-- parent: Blizzard closes the trainer when its frame is not visible.
 local _, ns = ...
 
 local RED = { 1, 0.3, 0.25 }
@@ -152,7 +153,7 @@ end
 local function Update() ns.npc.Update("trainer") end
 
 ns.npc.Page{
-    key = "trainer", frame = "ClassTrainerFrame", addon = "Blizzard_TrainerUI",
+    key = "trainer", frame = "ClassTrainerFrame", addon = "Blizzard_TrainerUI", veil = true,
     Blocks = Blocks, Foot = Foot, Close = Close,
     Start = function()
         ns.On("TRAINER_SHOW", function()

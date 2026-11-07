@@ -80,14 +80,23 @@ local killed = {}
 -- Park is Kill without the unregistering: the frame is out of sight, but its
 -- own events still run. The stance and pet bars are parked, because their
 -- events are what give the buttons the overhead adopts their icons.
-function ns.Park(frame)
+-- Parked under the veil (under) instead, a frame stays visible to its own
+-- code: Blizzard_TrainerUI shows its frame and closes the trainer at once
+-- when it is not IsVisible, which a frame under the hidden parent never is.
+-- The veil is shown but see-through, and shrunk to a speck, so nothing on
+-- it draws or takes a click.
+ns.veil = CreateFrame("Frame", nil, UIParent)
+ns.veil:SetAlpha(0)
+ns.veil:SetScale(0.01)
+function ns.Park(frame, under)
     if not frame then return end
-    frame:SetParent(ns.hidden)
+    under = under or ns.hidden
+    frame:SetParent(under)
     if killed[frame] then return end
     killed[frame] = true
     hooksecurefunc(frame, "SetParent", function(self, parent)
-        if parent ~= ns.hidden then
-            ns.OutOfCombat(function() self:SetParent(ns.hidden) end)
+        if parent ~= under then
+            ns.OutOfCombat(function() self:SetParent(under) end)
         end
     end)
 end

@@ -37,7 +37,9 @@
 --                             blocks, Foot() -> foot, Title() -> title,
 --                             under (the NPC's name when not given), Close(),
 --                             Shown(), own (a frame of its own, shown in
---                             the box's place instead: the flight map) }
+--                             the box's place instead: the flight map),
+--                             veil (Blizzard's frame must stay visible:
+--                             parked under ns.veil, not ns.hidden) }
 --   ns.npc.Show(key) (its page to the front), ns.npc.Update(key) (drawn
 --   again if in front), ns.npc.box, ns.npc.Room() (the room up to the
 --   screen's top)
@@ -536,7 +538,7 @@ local function Adopt(p)
     local f = _G[p.frame]
     if not f or p.adopted then return end
     p.adopted = true
-    ns.Park(f)
+    ns.Park(f, p.veil and ns.veil)
     for _, method in ipairs({ "Show", "Hide", "SetShown" }) do
         hooksecurefunc(f, method, ns.npc.Sync)
     end
