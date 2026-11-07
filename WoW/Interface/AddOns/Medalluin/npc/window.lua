@@ -43,7 +43,9 @@
 --                             veil (Blizzard's frame must stay visible:
 --                             parked under ns.veil, not ns.hidden),
 --                             price (a shop: its rows a table, under this
---                             heading over their values) }
+--                             heading over their values), icon (the
+--                             portrait's, where there is no NPC: the
+--                             mailbox) }
 --   ns.npc.Show(key) (its page to the front), ns.npc.Update(key) (drawn
 --   again if in front), ns.npc.box, ns.npc.Room() (the room up to the
 --   screen's top)
@@ -61,6 +63,17 @@
 --                                        one a page: it stays put under the
 --                                        head, over a hairline, while the
 --                                        rest scrolls
+--   { "input", key, label, text, lines, numeric, complete(text) -> names,
+--     changed(text), enter() }           a labelled box, one line or several
+--                                        (lines); a box being typed in keeps
+--                                        its text when the page is drawn
+--                                        again. complete: names under it,
+--                                        Tab or a click takes one
+--   { "money", key, label, copper, changed(copper) }
+--                                        gold, silver and copper boxes
+--   { "slots", { icon, count, click(button), receive(), enter(slot) } ... }
+--                                        item wells, six a row: a click, or
+--                                        what the cursor holds dropped in
 -- A shop's rows, as a shop's list reads: shaded every other one, and a
 -- hairline between the names and the prices, the column as wide as the
 -- widest price, under its heading (which stays put with the tabs):
@@ -83,6 +96,8 @@ local PAD, HEAD, FOOT, GAP = 14, 60, 50, 12
 local PORTRAIT, BUTTON = 42, 32
 local ROW, ICON, TILE, TILE_ICON, TABS, PILL = 30, 20, 48, 40, 26, 22
 local CONTROL = 16
+local INPUT, LINE, LABEL, NAME, WELL = 26, 16, 72, 22, 40   -- the boxes, a line of one, the label's width
+local NAMES = 4                                  -- the names offered under a box, at most
 local ZEBRA, RULE = 0.05, 0.6                    -- a shop's shaded rows, its hairlines
 local HEADING = 18                               -- a shop's column heading
 local GOLD = { 0.941, 0.831, 0.533 }
@@ -97,6 +112,8 @@ local box, head, portrait, name, under, close, bar, scroll, child, foot, footTex
 local current
 local wanted                     -- the page last asked for, preferred once its frame is open
 local pools = {}
+local drawing                    -- inside Lay: a box's focus moving is not a redraw
+local edits = {}                 -- this draw's boxes in order, for Tab
 
 ns.npc = { pages = pages }
 
@@ -133,6 +150,94 @@ local function Clicks(f)
     f:SetScript("OnLeave", function() GameTooltip:Hide() end)
     f:EnableMouseWheel(true)
     f:SetScript("OnMouseWheel", function(_, delta) ns.npc.Scroll(-delta) end)
+end
+
+-- -------------------------------------------------------- the boxes
+local function Label(f)
+    local t = ns.Text(f, 13)
+    t:SetPoint("LEFT", 2, 0)
+    t:SetWidth(LABEL - 8)
+    t:SetJustifyH("LEFT")
+    t:SetTextColor(ns.colors.dim[1], ns.colors.dim[2], ns.colors.dim[3])
+    return t
+end
+
+-- an edit box on its well: the game's, dressed as ours
+local function Edit(f)
+    local e = CreateFrame("EditBox", nil, f)
+    e:SetAutoFocus(false)
+    e:SetFont(ns.font, 14, "")
+    e:SetTextColor(ns.colors.text[1], ns.colors.text[2], ns.colors.text[3])
+    e:SetTextInsets(6, 6, 0, 0)
+    local edge = e:CreateTexture(nil, "BACKGROUND", nil, 1)
+    edge:SetAllPoints()
+    edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.5)
+    local well = e:CreateTexture(nil, "BACKGROUND", nil, 2)
+    well:SetPoint("TOPLEFT", 1, -1)
+    well:SetPoint("BOTTOMRIGHT", -1, 1)
+    well:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 0.85)
+    e:SetScript("OnEscapePressed", e.ClearFocus)
+    e:SetScript("OnTabPressed", function(self) ns.npc.Tab(self) end)
+    return e
+end
+
+-- the copper three boxes hold
+local function Coins(f)
+    local function n(i) return tonumber(f.boxes[i]:GetText()) or 0 end
+    return n(1) * 10000 + n(2) * 100 + n(3)
+end
+
+-- a name offered under a box taken into it
+local function Pick(e, who)
+    e:SetText(who)
+    e:SetCursorPosition(#who)
+    if e.data.changed then e.data.changed(who) end
+    ns.npc.Refresh()
+end
+
+local function Field(multi)
+    local f = CreateFrame("Frame", nil, child)
+    f.label = Label(f)
+    f.label:ClearAllPoints()
+    f.label:SetPoint("TOPLEFT", 2, -(INPUT - 14) / 2)
+    local e = Edit(f)
+    e:SetPoint("TOPLEFT", LABEL, 0)
+    e:SetPoint("RIGHT")
+    e:SetMultiLine(multi)
+    if multi then
+        e:SetTextInsets(6, 6, 5, 5)
+    else
+        e:SetScript("OnEnterPressed", function(self)
+            if self.data.enter then self.data.enter() else self:ClearFocus() end
+        end)
+    end
+    e:SetScript("OnTextChanged", function(self, user)
+        if user and self.data.changed then self.data.changed(self:GetText()) end
+    end)
+    -- the names offered show for the box being typed in
+    e:SetScript("OnEditFocusGained", function() if not drawing then ns.npc.Refresh() end end)
+    f.edit = e
+    f.names = {}
+    return f
+end
+
+function ns.npc.Tab(e)
+    local first = e.offered and e.offered[1]
+    if first then return Pick(e, first) end
+    for i, other in ipairs(edits) do
+        if other == e then
+            local next = edits[i % #edits + 1]
+            if next ~= e then next:SetFocus() end
+            return
+        end
+    end
+end
+
+-- a box's text, set only when it differs: what is typed reaches the page
+-- (changed) before it draws again, so a box being typed in is left alone,
+-- its cursor where it was
+local function Fill(e, text)
+    if e:GetText() ~= text then e:SetText(text) end
 end
 
 local make = {
@@ -205,6 +310,61 @@ local make = {
         Clicks(t)
         return t
     end,
+    field = function() return Field(false) end,
+    area = function() return Field(true) end,
+    coins = function()
+        local f = CreateFrame("Frame", nil, child)
+        f:SetHeight(INPUT)
+        f.label = Label(f)
+        f.boxes = {}
+        local x = LABEL
+        for i, c in ipairs({ { "g", 0.941, 0.831, 0.533, 64 }, { "s", 0.78, 0.78, 0.8, 36 },
+            { "c", 0.78, 0.5, 0.3, 36 } }) do
+            local e = Edit(f)
+            e:SetNumeric(true)
+            e:SetMaxLetters(i == 1 and 6 or 2)
+            e:SetSize(c[5], INPUT)
+            e:SetPoint("LEFT", x, 0)
+            e:SetScript("OnTextChanged", function(self, user)
+                if user and f.data.changed then f.data.changed(Coins(f)) end
+            end)
+            local t = ns.Text(f, 13)
+            t:SetText(c[1])
+            t:SetTextColor(c[2], c[3], c[4])
+            t:SetPoint("LEFT", e, "RIGHT", 4, 0)
+            x = x + c[5] + 18
+            f.boxes[i] = e
+        end
+        return f
+    end,
+    well = function()
+        local b = CreateFrame("Button", nil, child)
+        b:SetSize(WELL, WELL)
+        local edge = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+        edge:SetAllPoints()
+        edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.5)
+        local well = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+        well:SetPoint("TOPLEFT", 1, -1)
+        well:SetPoint("BOTTOMRIGHT", -1, 1)
+        well:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 0.85)
+        Glow(b)
+        b.icon = b:CreateTexture(nil, "ARTWORK")
+        b.icon:SetPoint("TOPLEFT", 2, -2)
+        b.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+        b.count = ns.Text(b, 12)
+        b.count:SetPoint("BOTTOMRIGHT", -3, 3)
+        Clicks(b)
+        -- what the cursor holds goes in: dropped, or clicked in
+        b:SetScript("OnClick", function(self, button)
+            if button == "LeftButton" and GetCursorInfo() and self.data.receive then
+                self.data.receive()
+            elseif self.data.click then
+                self.data.click(button)
+            end
+        end)
+        b:SetScript("OnReceiveDrag", function(self) if self.data.receive then self.data.receive() end end)
+        return b
+    end,
     tab = function()
         local b = CreateFrame("Button", nil, bar)
         b:SetHeight(TABS)
@@ -236,12 +396,15 @@ local function Colour(t, c) t:SetTextColor(c[1], c[2], c[3]) end
 -- col (a shop's price column, its width) the rows are a table.
 local function Lay(blocks, width, col)
     local used, y, n = {}, 0, 0                -- n: the rows so far, for the shading
+    drawing = true
+    wipe(edits)
     for i, b in ipairs(blocks) do
         local kind = b[1]
         -- rows run together; a pill sits closer to what it labels
         if i > 1 then
             local last = blocks[i - 1][1]
-            y = y + ((kind == "row" and last == "row") and 0 or last == "heading" and GAP / 2 or GAP)
+            local boxes = (kind == "input" or kind == "money") and (last == "input" or last == "money")
+            y = y + ((kind == "row" and last == "row") and 0 or (last == "heading" or boxes) and GAP / 2 or GAP)
         end
         if kind == "text" then
             local t = Take(kind, used)
@@ -310,8 +473,87 @@ local function Lay(blocks, width, col)
                 t.mark:SetShown(d.selected and true or false)
             end
             y = y + math.ceil((#b - 1) / 2) * (TILE + GAP) - GAP
+        elseif kind == "input" then
+            local multi = (b.lines or 1) > 1
+            local f = Take(multi and "area" or "field", used)
+            f.data, f.edit.data = b, b
+            f:SetPoint("TOPLEFT", 0, -y)
+            f:SetWidth(width)
+            f.label:SetText(b.label or "")
+            local e = f.edit
+            e:SetNumeric(b.numeric and true or false)
+            local tall = multi and b.lines * LINE + 10 or INPUT
+            e:SetHeight(tall)
+            Fill(e, b.text or "")
+            table.insert(edits, e)
+            -- the names that complete it, while it is typed in
+            local names = {}
+            local text = e:GetText() or ""
+            if b.complete and e:HasFocus() and text ~= "" then
+                for _, who in ipairs(b.complete(text)) do
+                    if who ~= text and #names < NAMES then table.insert(names, who) end
+                end
+            end
+            e.offered = names
+            local x = LABEL
+            for j = 1, math.max(#names, #f.names) do
+                local t = f.names[j]
+                if names[j] and not t then
+                    t = CreateFrame("Button", nil, f)
+                    t:SetHeight(NAME)
+                    Glow(t)
+                    t.label = ns.Text(t, 13)
+                    t.label:SetPoint("CENTER")
+                    t:SetScript("OnClick", function(self) Pick(e, self.name) end)
+                    f.names[j] = t
+                end
+                if t then
+                    t:SetShown(names[j] ~= nil)
+                    if names[j] then
+                        t.name = names[j]
+                        t.label:SetText(names[j])
+                        Colour(t.label, j == 1 and GOLD or ns.colors.text)
+                        t:SetWidth(t.label:GetStringWidth() + 16)
+                        t:ClearAllPoints()
+                        t:SetPoint("TOPLEFT", x, -(tall + 2))
+                        x = x + t:GetWidth() + 4
+                    end
+                end
+            end
+            if #names > 0 then tall = tall + 2 + NAME end
+            f:SetHeight(tall)
+            y = y + tall
+        elseif kind == "money" then
+            local f = Take("coins", used)
+            f.data = b
+            f:SetPoint("TOPLEFT", 0, -y)
+            f:SetWidth(width)
+            f.label:SetText(b.label or "")
+            local c = b.copper or 0
+            local parts = { math.floor(c / 10000), math.floor(c / 100) % 100, c % 100 }
+            -- set only when they hold another sum (as Fill): a nought shows as
+            -- nothing, and "05" typed stays as typed
+            local same = Coins(f) == c
+            for j, e in ipairs(f.boxes) do
+                e.data = b
+                if not same then e:SetText(parts[j] > 0 and tostring(parts[j]) or "") end
+                table.insert(edits, e)
+            end
+            y = y + INPUT
+        elseif kind == "slots" then
+            for j = 1, #b - 1 do
+                local d = b[j + 1]
+                local w = Take("well", used)
+                w.data = d
+                w:SetPoint("TOPLEFT", ((j - 1) % 6) * (WELL + 6), -(y + math.floor((j - 1) / 6) * (WELL + 6)))
+                w.icon:SetShown(d.icon ~= nil)
+                w.icon:SetTexture(d.icon)
+                w.count:SetText(d.count and d.count > 1 and d.count or "")
+            end
+            y = y + math.ceil((#b - 1) / 6) * (WELL + 6) - 6
         end
     end
+    drawing = false
     for kind, list in pairs(pools) do
         for i = (used[kind] or 0) + 1, #list do list[i]:Hide() end
     end
@@ -496,7 +738,11 @@ function ns.npc.Refresh()
     local title = current.Title and current.Title()
     name:SetText(title or npc)
     under:SetText(title and npc or Trade() or "")
-    if portrait and SetPortraitTexture then SetPortraitTexture(portrait, "npc") end
+    if portrait and current.icon then
+        portrait:SetTexture(current.icon)
+    elseif portrait and SetPortraitTexture then
+        SetPortraitTexture(portrait, "npc")
+    end
     local width = WIDTH - 2 * PAD - 6
     child:SetWidth(width)
     local body, tabs, say = {}, nil, nil

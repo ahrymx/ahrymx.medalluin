@@ -732,13 +732,14 @@ function ns.OptionPages()
         },
         {
             id = "npc", name = "Gossip and vendors", intro = "Shared by every profile.",
-            master = Needs("chat", Check("npcWindows", "Gossip, quest, vendor, trainer and flight windows",
+            master = Needs("chat", Check("npcWindows", "Gossip, quest, vendor, trainer, flight and mailbox windows",
                 "What an NPC says, its quest pages, its wares and what it teaches in one box standing on the chat "
                 .. "box, where the quest tracker stands (it steps aside while the box is open). A vendor's tabs "
                 .. "show its wares and what you sold it, with buttons to repair and to sell your grey items; a "
                 .. "trainer's tabs show what you can learn now, what you cannot yet, or what you know; the flight "
                 .. "map stands there bare, with the places you can fly to under it (Forever's map: retail's "
-                .. "other one stays the game's). Needs the chat "
+                .. "other one stays the game's); the mailbox's tabs show your letters, with Open all, and a "
+                .. "letter to send, the names you write to offered as you type. Needs the chat "
                 .. "box. Untick it to keep the game's windows, or to use an addon for them.", true)),
             groups = {},
         },
