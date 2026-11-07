@@ -4,13 +4,21 @@
 -- screen's top. The tracker hides while it is open (quests/tracker.lua),
 -- as it does under the character window; the box hides under that too.
 --
---   Karen Taylor                                        [x]  <- the NPC
+--   (portrait) The Defias Brotherhood                       [x]  <- the page's
+--              Gryan Stoutmantle                                  title, the NPC
 --   ---------------------------------------------------------
---   the page: text, headings, rows, item tiles, tabs           (scrolls
---                                                               past the top)
+--   Did Master Shaw shed any light on things?       (the page: text, label
+--                                                    pills, rows, item tiles,
+--   [Required]                                       tabs; scrolls past the top)
+--   [icon] Shaw's Report
 --   ---------------------------------------------------------
---   2g 36s 55c                      [Repair] [Sell junk] [Goodbye]
+--   [        Continue        ] [         Cancel         ]
 --   [General][Trade]                       <- the chat box under it
+--
+-- Laid out as a dialogue is, not a list: a readable face for what the NPC
+-- says, room between the parts, and wide buttons. The head and foot keep
+-- the ink at 60% at the far edge where the page fades to the tracker's
+-- tenth, so the name and the buttons stand on something.
 --
 -- Blizzard's GossipFrame, QuestFrame and MerchantFrame keep every way in
 -- and out: the game opens and closes them, Escape too, under a hidden
@@ -24,35 +32,42 @@
 -- asked of the game's API instead, and confirmed in the box's own foot.
 --
 --   local page = ns.npc.Page{ key, frame (Blizzard's, by name), Blocks() ->
---                             blocks, Foot() -> foot, Close(), Shown() }
+--                             blocks, Foot() -> foot, Title() -> title,
+--                             under (the NPC's name when not given), Close(),
+--                             Shown() }
 --   ns.npc.Show(key) (its page to the front), ns.npc.Update(key) (drawn
 --   again if in front), ns.npc.box
 --
 -- A page's blocks, top down:
---   { "title", text }                    gold, larger
 --   { "text", text, color }              a paragraph, wrapped
---   { "heading", text }                  a gold word between rules
+--   { "heading", text }                  a label on a dark pill
 --   { "row", label, icon, badge, value, color, dim, selected, click(button),
 --     enter(row) }                       a line that clicks
 --   { "tiles", { icon, label, count, color, selected, dim, click(button),
 --     enter(tile) } ... }                items, two a row
 --   { "tabs", { label, selected, click } ... }
--- Its foot: { left = text, { label, click, enabled, tip } ... } (the
--- buttons from the right).
+-- Its foot: { left = text, { label, click, enabled, tip, primary } ... },
+-- the buttons left to right: sharing the width when there is no text, else
+-- at the right; the primary one wears the deed's red.
 --
 -- Built at login, only with the chat box and the NPC windows option on.
 local _, ns = ...
 
 local L = ns.stripLayout
 local WIDTH = L.chatLeft + L.chatWidth
-local PAD, HEAD, FOOT, GAP = 8, 26, 28, 6
-local ROW, ICON, TILE, TILE_ICON, TABS = 22, 18, 40, 34, 22
+local PAD, HEAD, FOOT, GAP = 14, 60, 50, 12
+local PORTRAIT, BUTTON = 42, 32
+local ROW, ICON, TILE, TILE_ICON, TABS, PILL = 30, 20, 48, 40, 26, 22
 local CONTROL = 16
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
+local DEED = { 0.42, 0.13, 0.09 }                -- the primary button's fill
+-- the head's and foot's own ink over the box's: 5/9 more, the box's fade
+-- from solid to a tenth becomes solid to 60% (1 - 0.9 * 4/9 = 0.6)
+local BAND_INK = 5 / 9
 
 local pages, order = {}, {}
-local box, head, name, close, scroll, child, foot, footText, thumb
+local box, head, portrait, name, under, close, scroll, child, foot, footText, thumb
 local current
 local pools = {}
 
@@ -88,19 +103,30 @@ local function Clicks(f)
 end
 
 local make = {
-    title = function()
-        local t = ns.Text(child, 16)
-        t:SetJustifyH("LEFT")
-        t:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-        return t
-    end,
+    -- what the NPC says, in a face made for reading (the game's own)
     text = function()
-        local t = ns.Text(child, 13)
+        local t = ns.Text(child, 14)
+        t:SetFont(ns.FontPath("friz"), 14, "")
         t:SetJustifyH("LEFT")
-        t:SetSpacing(2)
+        t:SetSpacing(4)
         return t
     end,
-    heading = function() return ns.window.Ornament(child, "") end,
+    heading = function()
+        local h = CreateFrame("Frame", nil, child)
+        h:SetHeight(PILL)
+        local fill = h:CreateTexture(nil, "BACKGROUND")
+        fill:SetAllPoints()
+        fill:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 0.8)
+        local edge = h:CreateTexture(nil, "BORDER")
+        edge:SetPoint("TOPLEFT")
+        edge:SetPoint("BOTTOMLEFT")
+        edge:SetWidth(2)
+        edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+        h.mid = ns.Text(h, 13)
+        h.mid:SetPoint("LEFT", 10, 0)
+        h.mid:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+        return h
+    end,
     row = function()
         local r = CreateFrame("Button", nil, child)
         r:SetHeight(ROW)
@@ -108,10 +134,10 @@ local make = {
         r.icon = r:CreateTexture(nil, "ARTWORK")
         r.icon:SetSize(ICON, ICON)
         r.badge = r:CreateTexture(nil, "ARTWORK")
-        r.label = ns.Text(r, 13)
+        r.label = ns.Text(r, 14)
         r.label:SetJustifyH("LEFT")
         r.label:SetWordWrap(false)
-        r.value = ns.Text(r, 12)
+        r.value = ns.Text(r, 13)
         r.value:SetPoint("RIGHT", -6, 0)
         Clicks(r)
         return r
@@ -130,11 +156,11 @@ local make = {
         t.icon = t:CreateTexture(nil, "ARTWORK")
         t.icon:SetSize(TILE_ICON, TILE_ICON)
         t.icon:SetPoint("LEFT", 3, 0)
-        t.count = ns.Text(t, 11)
+        t.count = ns.Text(t, 12)
         t.count:SetPoint("BOTTOMRIGHT", t.icon, "BOTTOMRIGHT", -1, 1)
-        t.label = ns.Text(t, 12)
+        t.label = ns.Text(t, 13)
         t.label:SetJustifyH("LEFT")
-        t.label:SetPoint("LEFT", t.icon, "RIGHT", 6, 0)
+        t.label:SetPoint("LEFT", t.icon, "RIGHT", 8, 0)
         t.label:SetPoint("RIGHT", -4, 0)
         Clicks(t)
         return t
@@ -143,7 +169,7 @@ local make = {
         local b = CreateFrame("Button", nil, child)
         b:SetHeight(TABS)
         ns.window.Face(b)
-        b.label = ns.Text(b, 12)
+        b.label = ns.Text(b, 13)
         b.label:SetPoint("CENTER")
         b:SetScript("OnClick", function(self) self.data.click() end)
         return b
@@ -171,20 +197,25 @@ local function Lay(blocks, width)
     local used, y = {}, 0
     for i, b in ipairs(blocks) do
         local kind = b[1]
-        if i > 1 then y = y + (kind == "row" and blocks[i - 1][1] == "row" and 0 or GAP) end
-        if kind == "title" or kind == "text" then
+        -- rows run together; a pill sits closer to what it labels
+        if i > 1 then
+            local last = blocks[i - 1][1]
+            y = y + ((kind == "row" and last == "row") and 0 or last == "heading" and GAP / 2 or GAP)
+        end
+        if kind == "text" then
             local t = Take(kind, used)
             t:SetWidth(width)
             t:SetPoint("TOPLEFT", 0, -y)
             t:SetText(b[2] or "")
-            if kind == "text" then Colour(t, b[3] or ns.colors.text) end
+            Colour(t, b[3] or ns.colors.text)
             y = y + t:GetStringHeight()
         elseif kind == "heading" then
             local h = Take("heading", used)
+            if i > 1 then y = y + GAP / 2 end    -- and further from what went before
             h:SetPoint("TOPLEFT", 0, -y)
-            h:SetWidth(width)
             h.mid:SetText(b[2])
-            y = y + h:GetHeight()
+            h:SetWidth(h.mid:GetStringWidth() + 24)
+            y = y + PILL
         elseif kind == "row" then
             local r = Take("row", used)
             r.data = b
@@ -251,19 +282,26 @@ local function Lay(blocks, width)
     return y
 end
 
--- the foot's buttons, from the right
+-- the foot's buttons, left to right: the width shared out when nothing
+-- is written beside them, else each as wide as its word, at the right
 local buttons = {}
 local function Foot(spec)
     spec = spec or {}
     footText:SetText(spec.left or "")
-    local right = -PAD
-    for i = 1, math.max(#buttons, #spec) do
+    local n = #spec
+    local share = not spec.left and n > 0 and (WIDTH - 2 * PAD - (n - 1) * 6) / n
+    for i = 1, math.max(#buttons, n) do
         local d = spec[i]
         local b = buttons[i]
         if d and not b then
             b = ns.window.Button(foot, 60, function(self) if self.data.click then self.data.click() end end,
                 function() return "" end)
-            b:SetHeight(FOOT - 6)
+            b:SetHeight(BUTTON)
+            b.label:SetFont(ns.font, 14, "")
+            b.deed = b:CreateTexture(nil, "BACKGROUND", nil, 3)
+            b.deed:SetPoint("TOPLEFT", 1, -1)
+            b.deed:SetPoint("BOTTOMRIGHT", -1, 1)
+            b.deed:SetColorTexture(DEED[1], DEED[2], DEED[3], 0.9)
             b:SetScript("OnEnter", function(self)
                 if self.data.tip then
                     ns.Tip(self, "ANCHOR_TOP", { title = self.data.label, color = GOLD, { "body", self.data.tip } })
@@ -276,14 +314,26 @@ local function Foot(spec)
             if d then
                 b.data = d
                 b.label:SetText(d.label)
-                b:SetWidth(math.max(60, b.label:GetStringWidth() + 20))
+                b:SetWidth(share or math.max(#d.label > 1 and 76 or BUTTON, b.label:GetStringWidth() + 24))
                 b:SetEnabled(d.enabled ~= false)
+                b.deed:SetShown(d.primary and d.enabled ~= false or false)
                 Colour(b.label, d.enabled ~= false and ns.colors.text or ns.colors.dim)
-                b:ClearAllPoints()
-                b:SetPoint("RIGHT", foot, "RIGHT", right, 0)
-                right = right - b:GetWidth() - 4
             end
         end
+    end
+    -- placed once the widths are known: from the left when shared, else
+    -- the last against the right edge
+    local x = share and PAD or WIDTH - PAD
+    if not share then
+        for i = 1, n do x = x - buttons[i]:GetWidth() - (i > 1 and 6 or 0) end
+    end
+    -- the words stop short of the first button, on two lines if they must
+    footText:SetPoint("RIGHT", foot, "LEFT", x - 8, 0)
+    for i = 1, n do
+        local b = buttons[i]
+        b:ClearAllPoints()
+        b:SetPoint("LEFT", foot, "LEFT", x, 0)
+        x = x + b:GetWidth() + 6
     end
 end
 
@@ -319,7 +369,11 @@ end
 -- The page drawn again, and the box fitted to it.
 function ns.npc.Refresh()
     if not box or not current then return end
-    name:SetText(UnitName("npc") or "")
+    local npc = UnitName("npc") or ""
+    local title = current.Title and current.Title()
+    name:SetText(title or npc)
+    under:SetText(title and npc or "")
+    if portrait and SetPortraitTexture then SetPortraitTexture(portrait, "npc") end
     local width = WIDTH - 2 * PAD - 6
     child:SetWidth(width)
     local h = Lay(current.Blocks(), width)
@@ -381,34 +435,61 @@ local function Build()
     for point, lines in pairs(dress.corners) do
         if point:find("^BOTTOM") then for _, t in ipairs(lines) do t:Hide() end end
     end
+    -- the head's and foot's band of ink, over the box's (BAND_INK)
+    local function Band(f)
+        local ink = f:CreateTexture(nil, "BACKGROUND")
+        ink:SetPoint("TOPLEFT", 1, 0)
+        ink:SetPoint("BOTTOMRIGHT", -1, 0)
+        ink:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], BAND_INK)
+        return ink
+    end
     head = CreateFrame("Frame", nil, box)
-    head:SetPoint("TOPLEFT", PAD, -PAD)
-    head:SetPoint("TOPRIGHT", -PAD, -PAD)
-    head:SetHeight(HEAD - PAD)
-    name = ns.Text(head, 14)
-    name:SetPoint("LEFT", 4, 0)
+    head:SetPoint("TOPLEFT", 0, -1)
+    head:SetPoint("TOPRIGHT", 0, -1)
+    head:SetHeight(HEAD)
+    head.ink = Band(head)
+    portrait = head:CreateTexture(nil, "ARTWORK")
+    portrait:SetSize(PORTRAIT, PORTRAIT)
+    portrait:SetPoint("LEFT", PAD, 0)
+    local ring = head:CreateTexture(nil, "OVERLAY")
+    ring:SetPoint("CENTER", portrait)
+    ring:SetSize(PORTRAIT + 4, PORTRAIT + 4)
+    ring:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
+    ring:SetVertexColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    ring:SetDrawLayer("ARTWORK", -1)
+    name = ns.Text(head, 20)
+    name:SetPoint("BOTTOMLEFT", portrait, "RIGHT", 12, 1)
+    name:SetPoint("RIGHT", -(PAD + CONTROL + 18), 0)
+    name:SetJustifyH("LEFT")
+    name:SetWordWrap(false)
     name:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-    close = ns.window.Button(head, HEAD - PAD, function()
+    under = ns.Text(head, 13)
+    under:SetPoint("TOPLEFT", portrait, "RIGHT", 12, -3)
+    under:SetTextColor(ns.colors.dim[1], ns.colors.dim[2], ns.colors.dim[3])
+    close = ns.window.Button(head, CONTROL + 8, function()
         if current and current.Close then current.Close() end
     end, function() return "Close." end)
     close.icon = close:CreateTexture(nil, "ARTWORK")
     close.icon:SetSize(CONTROL, CONTROL)
     close.icon:SetPoint("CENTER")
     close.icon:SetTexture(ns.media .. "strips\\close")
-    close:SetHeight(HEAD - PAD)
-    close:SetPoint("RIGHT")
+    close:SetHeight(CONTROL + 8)
+    close:SetPoint("RIGHT", -PAD, 0)
     local rule = head:CreateTexture(nil, "ARTWORK")
     rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
     rule:SetHeight(1)
-    rule:SetPoint("TOPLEFT", head, "BOTTOMLEFT", 0, -2)
-    rule:SetPoint("TOPRIGHT", head, "BOTTOMRIGHT", 0, -2)
+    rule:SetPoint("BOTTOMLEFT", PAD, 0)
+    rule:SetPoint("BOTTOMRIGHT", -PAD, 0)
 
     foot = CreateFrame("Frame", nil, box)
     foot:SetPoint("BOTTOMLEFT", 0, 0)
     foot:SetPoint("BOTTOMRIGHT", 0, 0)
     foot:SetHeight(FOOT)
-    footText = ns.Text(foot, 12)
-    footText:SetPoint("LEFT", PAD + 4, 0)
+    foot.ink = Band(foot)
+    footText = ns.Text(foot, 13)
+    footText:SetPoint("LEFT", PAD + 2, 0)
+    footText:SetJustifyH("LEFT")
+    footText:SetMaxLines(2)
     local footRule = foot:CreateTexture(nil, "ARTWORK")
     footRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
     footRule:SetHeight(1)
@@ -416,8 +497,8 @@ local function Build()
     footRule:SetPoint("TOPRIGHT", -PAD, 0)
 
     scroll = CreateFrame("ScrollFrame", nil, box)
-    scroll:SetPoint("TOPLEFT", PAD, -(HEAD + PAD / 2))
-    scroll:SetPoint("BOTTOMRIGHT", -PAD, FOOT + PAD / 2)
+    scroll:SetPoint("TOPLEFT", PAD, -(HEAD + PAD))
+    scroll:SetPoint("BOTTOMRIGHT", -PAD, FOOT + PAD)
     child = CreateFrame("Frame", nil, scroll)
     child:SetSize(WIDTH - 2 * PAD, 1)
     scroll:SetScrollChild(child)

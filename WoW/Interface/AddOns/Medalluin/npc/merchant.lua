@@ -5,13 +5,13 @@
 --   [Merchant][Buyback]
 --   [icon] Mining Pick                              10c
 --   [icon] Elemental Flux                    15s  2 [o]   <- an extended cost
---   2g 36s 55c         [Repair 1s 4c] [Guild] [Sell junk] [Goodbye]
+--   2g 36s 55c                [Repair] [Guild] [Sell junk] [Goodbye]
 --
 -- A click buys one (one bundle: a stack of five sells as five); Shift
 -- asks how many, up to a stack; an item that costs more than money, or
 -- more than the game's high price, asks first. Asking happens in the foot:
 --
---   Buy 20 Strong Flux for 4s?          [-] [+] [Buy] [Cancel]
+--   Buy 20 Strong Flux for 4s?              [-] [+] [Buy] [Cancel]
 --
 -- Selling stays the game's: a bag item's right click, with the vendor
 -- open. That works because Blizzard's MerchantFrame is still shown (only
@@ -201,19 +201,15 @@ local function Foot()
             end
         end
         return { left = ask,
+            { label = "-", click = By(-1), enabled = p.count > 1 },
+            { label = "+", click = By(1), enabled = p.count < p.most },
+            { label = "Buy", primary = true, click = function() Buy(p.index, p.count) end },
             { label = "Cancel", click = function()
                 pending = nil
                 ns.npc.Update("merchant")
-            end },
-            { label = "Buy", click = function() Buy(p.index, p.count) end },
-            { label = "+", click = By(1), enabled = p.count < p.most },
-            { label = "-", click = By(-1), enabled = p.count > 1 } }
+            end } }
     end
-    local foot = { left = Money(GetMoney and GetMoney() or 0), close }
-    local count, value = Junk()
-    table.insert(foot, { label = "Sell junk", click = SellJunk, enabled = count > 0,
-        tip = count > 0 and format("Sells your %d grey item%s for %s.", count, count == 1 and "" or "s", Money(value))
-            or "No grey items to sell." })
+    local foot = { left = Money(GetMoney and GetMoney() or 0) }
     if CanMerchantRepair and CanMerchantRepair() then
         local cost, can = GetRepairAllCost()
         local broken = can and cost and cost > 0
@@ -222,10 +218,15 @@ local function Foot()
                 tip = broken and "Repair everything from the guild bank: " .. Money(cost) .. "."
                     or "Nothing to repair." })
         end
-        table.insert(foot, { label = "Repair", click = function() RepairAllItems() end,
+        table.insert(foot, 1, { label = "Repair", click = function() RepairAllItems() end,
             enabled = broken and (GetMoney() >= cost),
             tip = broken and "Repair everything: " .. Money(cost) .. "." or "Nothing to repair." })
     end
+    local count, value = Junk()
+    table.insert(foot, { label = "Sell junk", click = SellJunk, enabled = count > 0,
+        tip = count > 0 and format("Sells your %d grey item%s for %s.", count, count == 1 and "" or "s", Money(value))
+            or "No grey items to sell." })
+    table.insert(foot, close)
     return foot
 end
 

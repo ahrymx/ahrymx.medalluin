@@ -22,7 +22,8 @@ read_globals = {
     "GetMerchantNumItems", "GetNumActiveQuests", "GetNumAvailableQuests", "GetNumBuybackItems", "GetNumQuestChoices",
     "GetNumQuestItems", "GetNumQuestRewards", "GetObjectiveText", "GetProgressText", "GetQuestItemInfo",
     "GetQuestMoneyToGet", "GetQuestReward", "GetQuestText", "GetRepairAllCost", "GetRewardMoney", "GetRewardText",
-    "GetRewardXP", "GetTitleText", "IsQuestCompletable", "MERCHANT_HIGH_PRICE_COST", "RETRIEVING_ITEM_INFO", "QuestGetAutoAccept",
+    "GetRewardXP", "GetTitleText", "IsQuestCompletable", "MERCHANT_HIGH_PRICE_COST", "RETRIEVING_ITEM_INFO", "QuestGetAutoAccept", "QuestInfoFrame",
+    "QuestInfo_ShowRewards",
     "RepairAllItems", "SelectActiveQuest", "SelectAvailableQuest",
     -- frames
     "UIParent", "Minimap", "MinimapCluster", "GameTooltip", "PlayerFrame", "TargetFrame",

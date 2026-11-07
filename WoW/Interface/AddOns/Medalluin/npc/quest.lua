@@ -8,11 +8,12 @@
 --   reward    the rewards, a choice among some (a click picks it, marked);
 --             [Complete Quest], once a choice is picked if there is one
 --
---   Solomon's Law
+--   (portrait) Solomon's Law                  <- the head: the quest, and
+--              Magistrate Solomon                the NPC under it
 --   Turn in 10 Shadowhide Pendants to me, and you shall be rewarded.
---   ------------- Required -------------
+--   [Required]
 --   [icon 10] Shadowhide Pendant
---                                      [Cancel] [Continue]
+--   [       Continue       ] [        Cancel        ]
 --
 -- The words, items and rewards are the game's (GetQuestText and the rest);
 -- the buttons answer it (AcceptQuest, CompleteQuest, GetQuestReward).
@@ -106,7 +107,6 @@ local function Blocks()
         table.insert(out, { "text", GetGreetingText() or "" })
         Greeting(out)
     elseif page == "detail" then
-        table.insert(out, { "title", GetTitleText() or "" })
         table.insert(out, { "text", GetQuestText() or "" })
         local objectives = GetObjectiveText and GetObjectiveText() or ""
         if objectives ~= "" then
@@ -115,7 +115,6 @@ local function Blocks()
         end
         Rewards(out)
     elseif page == "progress" then
-        table.insert(out, { "title", GetTitleText() or "" })
         table.insert(out, { "text", GetProgressText() or "" })
         local n = GetNumQuestItems and GetNumQuestItems() or 0
         local money = GetQuestMoneyToGet and GetQuestMoneyToGet() or 0
@@ -125,7 +124,6 @@ local function Blocks()
             if money > 0 then table.insert(out, { "text", Money(money) }) end
         end
     elseif page == "reward" then
-        table.insert(out, { "title", GetTitleText() or "" })
         table.insert(out, { "text", GetRewardText() or "" })
         Rewards(out, true)
     end
@@ -134,12 +132,17 @@ end
 
 local function Close() CloseQuest() end
 
+-- the head: the quest's title on its pages, the NPC's name on the greeting
+local function Title()
+    if page ~= "greeting" then return GetTitleText() end
+end
+
 local function Foot()
     if page == "detail" then
         -- a quest the game took already (shared, or a zone's) is only acknowledged
         local auto = QuestGetAutoAccept and QuestGetAutoAccept()
         return {
-            { label = auto and "Okay" or "Accept", click = function()
+            { label = auto and "Okay" or "Accept", primary = true, click = function()
                 if auto then AcknowledgeAutoAcceptQuest() else AcceptQuest() end
             end },
             not auto and { label = "Decline", click = DeclineQuest } or nil,
@@ -147,7 +150,7 @@ local function Foot()
     elseif page == "progress" then
         local ready = IsQuestCompletable()
         return {
-            { label = "Continue", click = CompleteQuest, enabled = ready and true or false,
+            { label = "Continue", primary = true, click = CompleteQuest, enabled = ready and true or false,
                 tip = not ready and "You do not have everything it asks for yet." or nil },
             { label = "Cancel", click = Close },
         }
@@ -155,12 +158,25 @@ local function Foot()
         local choices = GetNumQuestChoices() or 0
         local need = choices > 1 and not choice
         return {
-            { label = "Complete Quest", enabled = not need,
+            { label = "Complete Quest", primary = true, enabled = not need,
                 tip = need and "Choose a reward first." or nil,
                 click = function() GetQuestReward(choices > 1 and choice or choices) end },
         }
     end
     return { { label = "Goodbye", click = Close } }
+end
+
+-- Blizzard's QuestFrame answers QUEST_ITEM_UPDATE (a reward's item data
+-- arriving) by showing the shared rewards frame whenever its detail or
+-- reward panel IsShown, which a parked frame still is. Parked, those panels
+-- never ran their OnShow, so QuestInfo_Display never took the rewards frame
+-- in: it showed on its own in the middle of the screen. The NPC's rewards
+-- (not the quest log's) are put away under the hidden parent; the quest
+-- log's next QuestInfo_Display takes the frame back as it always does.
+local function Stray()
+    local info = QuestInfoFrame
+    local rewards = info and info.rewardsFrame
+    if rewards and not info.questLog then rewards:SetParent(ns.hidden) end
 end
 
 local function To(which)
@@ -172,7 +188,7 @@ end
 
 ns.npc.Page{
     key = "quest", frame = "QuestFrame",
-    Blocks = Blocks, Foot = Foot, Close = Close,
+    Blocks = Blocks, Foot = Foot, Title = Title, Close = Close,
     Start = function()
         ns.On("QUEST_GREETING", To("greeting"))
         ns.On("QUEST_DETAIL", To("detail"))
@@ -180,5 +196,6 @@ ns.npc.Page{
         ns.On("QUEST_COMPLETE", To("reward"))
         ns.On("QUEST_FINISHED", ns.npc.Sync)
         ns.On("QUEST_ITEM_UPDATE", function() ns.npc.Update("quest") end)
+        if QuestInfo_ShowRewards then hooksecurefunc("QuestInfo_ShowRewards", Stray) end
     end,
 }

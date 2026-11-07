@@ -218,6 +218,7 @@ function Region:GetNumPoints()
 end
 -- a font: the face, the size, the flags (the editor reads and sets it)
 function Region:SetFont(face, size, flags) self.font = { face, size, flags } end
+function Region:SetSpacing(n) self.spacing = n end
 function Region:GetFont()
     if self.font then return self.font[1], self.font[2], self.font[3] end
 end
@@ -2782,6 +2783,13 @@ if npcPass then
         f.shown = false
     end
     MerchantFrame.selectedTab = 1
+    -- the shared quest info: a rewards frame of its own, shown by Blizzard on
+    -- QUEST_ITEM_UPDATE whether or not QuestInfo_Display took it in
+    QuestInfoRewardsFrame = new("Frame", nil, "QuestInfoRewardsFrame")
+    QuestInfoRewardsFrame.shown = false
+    QuestInfoFrame = new("Frame", nil, "QuestInfoFrame")
+    QuestInfoFrame.rewardsFrame = QuestInfoRewardsFrame
+    function QuestInfo_ShowRewards() QuestInfoFrame.rewardsFrame:Show() end
     W.gossip = { text = "Who is this shaman who goes before the Court?",
         active = { { title = "WANTED: Gath'Ilzogg", questID = 201, isComplete = true } },
         available = { { title = "Messenger to Westfall", questID = 202, frequency = 1 } },
@@ -10537,19 +10545,34 @@ if npcPass then
     local reach = ns.chat.reach
     -- the tracker's full view drawn before anyone talks: the reach is up
     ns.chat.Reach(true, 1)
-    local head                       -- the NPC's name, the head's first text
+    local head, under, headFrame     -- the title, and the NPC's name under it
     for _, c in ipairs(box.all_) do
-        if not head and c.points.TOPRIGHT and c.points.TOPLEFT then
-            for _, t in ipairs(c.all_ or {}) do if not head and t.kind == "FontString" then head = t end end
+        if not headFrame and c.points.TOPRIGHT and c.points.TOPLEFT then
+            headFrame = c
+            for _, t in ipairs(c.all_ or {}) do
+                if t.kind == "FontString" then
+                    if not head then head = t elseif not under then under = t end
+                end
+            end
         end
     end
+    -- the head's and foot's ink over the box's fade, the portrait, the body's face
+    local function inks()
+        local out = {}
+        for _, c in ipairs(box.all_) do
+            if c.ink and c.ink.color then table.insert(out, string.format("%.3f", c.ink.color[4])) end
+        end
+        return table.concat(out, ",")
+    end
+    local portraitOf
+    for _, t in ipairs(headFrame.all_ or {}) do if t.portrait then portraitOf = t.portrait end end
     local function state(tag)
         local p = box.points.BOTTOMLEFT
         print(tag, "shown=" .. tostring(box.shown), "h=" .. tostring(box.h),
             "anchor=" .. (p and string.format("%s:%s %d,%d", p[1] == ns.chat.box and "chat" or "?", p[2], p[3], p[4])
                 or "-"),
             "tracker=" .. tostring(tracker and tracker.shown), "reach=" .. tostring(reach.shown),
-            "name=" .. tostring(head and head.text))
+            "name=" .. tostring(head and head.text) .. (under and (under.text or "") ~= "" and "/" .. under.text or ""))
     end
     -- what the page shows: each visible row and tile, top down, and the foot
     local function pool(f, out, depth)
@@ -10584,12 +10607,17 @@ if npcPass then
         local out = {}
         for _, b in ipairs(f.all_ or {}) do
             if b.shown and b.data then
-                table.insert(out, b.data.label .. (b.disabled and "(off)" or ""))
+                -- where it stands and how wide; * the primary's red
+                table.insert(out, b.data.label .. (b.disabled and "(off)" or "") .. "@" .. tostring(b.points.LEFT
+                    and b.points.LEFT[3]) .. "/" .. tostring(math.floor(b.w + 0.5)) .. (b.deed.shown and "*" or ""))
             end
         end
         local left
         for _, t in ipairs(f.all_ or {}) do if t.kind == "FontString" then left = t.text end end
         print(tag .. " foot", "left=" .. tostring(left), table.concat(out, " "))
+        local t
+        for _, c in ipairs(f.all_ or {}) do if c.kind == "FontString" then t = c end end
+        if t and t.points.RIGHT then print(tag .. " foot text", "right=" .. tostring(t.points.RIGHT[3])) end
         return f
     end
     local function button(f, label)
@@ -10625,6 +10653,8 @@ if npcPass then
     GossipFrame:Show()
     fire("GOSSIP_SHOW")
     state("npc gossip")
+    for _, t in ipairs(headFrame.all_ or {}) do if t.portrait then portraitOf = t.portrait end end
+    print("npc look", "bands=" .. inks(), "portrait=" .. tostring(portraitOf))
     -- the tracker asks for its reach while the box holds the chat: kept for after
     ns.chat.Reach(true, 0.5)
     state("npc gossip reach asked")
@@ -10645,7 +10675,44 @@ if npcPass then
     for _, r in ipairs(rows) do click(rows, r.c.data.label) end
     calls("npc greeting clicks")
     fire("QUEST_DETAIL")
+    state("npc detail")
+    -- a reward's item arrives: Blizzard shows its rewards frame; ours puts it away
+    local function rewardsAt(tag)
+        local r = QuestInfoRewardsFrame
+        print(tag, "rewards shown=" .. tostring(r.shown), "parent=" .. (r.parent == ns.hidden and "hidden"
+            or r.parent and (r.parent.name or "?") or "none"))
+    end
+    QuestInfo_ShowRewards()
+    rewardsAt("npc detail item update")
+    -- the quest log's own rewards are left where the log put them
+    local logChild = new("Frame", UIParent, "QuestLogDetailScrollChildFrame")
+    QuestInfoRewardsFrame:SetParent(logChild)
+    QuestInfoFrame.questLog = true
+    QuestInfo_ShowRewards()
+    rewardsAt("npc quest log rewards")
+    QuestInfoFrame.questLog = nil
     page("npc detail")
+    -- the blocks down the page: what each is, where it starts, the text's face
+    local function stack(tag)
+        local out = {}
+        for _, s in ipairs(box.all_) do
+            if s.kind == "ScrollFrame" then
+                for _, c in ipairs(s.scrollChild.all_ or {}) do
+                    if c.shown and c.points.TOPLEFT and c.points.TOPLEFT[3] == 0 then
+                        local what = c.kind == "FontString" and ("text:" .. tostring(c.font and c.font[1]):match("[^\\]+$")
+                            .. "/" .. tostring(c.font and c.font[2]) .. "+" .. tostring(c.spacing))
+                            or c.mid and ("pill:" .. c.mid.text .. "/" .. c.w) or c.data and "item" or c.kind
+                        table.insert(out, { -c.points.TOPLEFT[4], what })
+                    end
+                end
+            end
+        end
+        table.sort(out, function(a, b) return a[1] < b[1] end)
+        local parts = {}
+        for _, o in ipairs(out) do table.insert(parts, o[1] .. "=" .. o[2]) end
+        print(tag .. " stack", table.concat(parts, " "))
+    end
+    stack("npc detail")
     press("npc detail", "Accept")
     press("npc detail", "Decline")
     calls("npc detail")
