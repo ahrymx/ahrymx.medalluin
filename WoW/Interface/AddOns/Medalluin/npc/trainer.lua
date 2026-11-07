@@ -3,7 +3,8 @@
 -- with what it asks of you; Train in the foot learns it.
 --
 --   Ready for some training?                    <- what it says, staying put
---   [Available] [Unavailable] [Known]           <- one at a time, kept (trainerFilter)
+--   [Available] [Unavailable] [Known]           <- one at a time, kept (trainerFilter);
+--                                                  the game lists all three
 --   -------------------------------------------
 --                                      | Price
 --   [icon] Fireball (Rank 2)           |    1s  <- a shop's table (npc/window.lua)
@@ -64,13 +65,23 @@ local function Kept()
     return type(kept) == "string" and kept or "available"
 end
 
--- the type kept given to the game, the others off (it answers with TRAINER_UPDATE)
+-- The game lists every type, and the tab shown is ours to sort out: its
+-- filter answers late (TRAINER_UPDATE, not the call), and the trainers'
+-- memory (spells/trainers.lua) reads the whole list as the game sends it.
 local function Filter()
-    local kept = Kept()
     for _, t in ipairs(TYPES) do
         -- on/off as a boolean: the game raises "Missing on/off parameter" on 1 and 0
-        if SetTrainerServiceTypeFilter then SetTrainerServiceTypeFilter(t[1], t[1] == kept) end
+        if SetTrainerServiceTypeFilter then SetTrainerServiceTypeFilter(t[1], true) end
     end
+end
+
+-- the services of the type kept
+local function Shown()
+    local kept, out = Kept(), {}
+    for _, s in ipairs(Services()) do
+        if s.category == kept then table.insert(out, s) end
+    end
+    return out
 end
 
 -- what the picked one asks of you, a line each, red when not met
@@ -100,12 +111,11 @@ local function Blocks()
     for _, t in ipairs(TYPES) do
         table.insert(tabs, { label = t[2], selected = Kept() == t[1], click = function()
             ns.db.trainerFilter = t[1]
-            Filter()
             ns.npc.Update("trainer")
         end })
     end
     table.insert(out, tabs)
-    local list = Services()
+    local list = Shown()
     local current = Picked(list)
     for _, s in ipairs(list) do
         local i = s.index

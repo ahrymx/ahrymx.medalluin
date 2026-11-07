@@ -28,6 +28,7 @@ read_globals = {
     "TaxiGetNodeSlot", "TaxiIsDirectFlight", "TakeTaxiNode", "CloseTaxiMap", "SetTaxiMap", "TaxiFrame",
     "ERR_TAXINOPATHS", "TAXINODEYOUAREHERE", "FLIGHT_MAP", "UIErrorsFrame",
     "SetTrainerServiceTypeFilter", "GetTrainerServiceLevelReq", "GetTrainerServiceSkillReq",
+    "GetTrainerServiceTypeFilter", "IsTradeskillTrainer", "GetTrainerServiceSkillLine", "GetMacroSpell",
     "GetTrainerServiceNumAbilityReq", "GetTrainerServiceAbilityReq", "GetTrainerGreetingText", "GetTrainerServiceIcon",
     "GetTrainerServiceDescription", "CloseTrainer", "BuyTrainerService", "ExpandTrainerSkillLine",
     "RepairAllItems", "SelectActiveQuest", "SelectAvailableQuest",

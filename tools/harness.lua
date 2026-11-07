@@ -2372,8 +2372,11 @@ if spellPass or talentPass or profPass then
     local lines = {
         { name = "General", iconID = 101, spells = { { "Attack", S }, { "Hearthstone", S }, { "Teleports", X } } },
         { name = "Elemental", iconID = 102, spells = { { "Lightning Bolt", S, "Rank 4" }, { "Earth Shock", S, "Rank 2" },
-            { "Searing Totem", S, "Rank 1" }, { "Elemental Focus", P }, { "Chain Lightning", F, 32 } } },
-        { name = "Enhancement", iconID = 103, spells = { { "Rockbiter Weapon", S, "Rank 3" }, { "Lightning Shield", S } } },
+            { "Searing Totem", S, "Rank 1" }, { "Elemental Focus", P }, { "Chain Lightning", F, 32 },
+            { "Earth Shock", F, 30 } } },
+        -- a spell's two ranks, the book's order: low to high
+        { name = "Enhancement", iconID = 103, spells = { { "Rockbiter Weapon", S, "Rank 2" },
+            { "Rockbiter Weapon", S, "Rank 3" }, { "Lightning Shield", S } } },
         { name = "Restoration", iconID = 104, spells = { { "Healing Wave", S, "Rank 5" } } },
     }
     local items, offset = {}, 0
@@ -2944,6 +2947,7 @@ if npcPass then
     function GetTrainerServiceNumAbilityReq(i) return #(listed()[i].abilities or {}) end
     function GetTrainerServiceAbilityReq(i, j) local a = listed()[i].abilities[j] return a[1], a[2] end
     function GetTrainerGreetingText() return "Hello, mage." end
+    function GetTrainerServiceTypeFilter(t) return W.tfilter[t] end
     -- the game's own check: on/off is a boolean
     function SetTrainerServiceTypeFilter(t, on)
         if type(on) ~= "boolean" then error("Missing on/off parameter in SetTrainerServiceTypeFilter", 2) end
@@ -9460,6 +9464,171 @@ if spellPass then
     frame()
     held("book.stale book")
     bookWorld.stale = false
+    -- 10. ranks, bars and the trainer. The bars: Lightning Bolt on one,
+    -- Earth Shock in a macro on one, Rockbiter's lower rank on one
+    local calls = {}
+    C_ActionBar = C_ActionBar or {}
+    C_ActionBar.FindSpellActionButtons = function(id)
+        local out = {}
+        for slot, a in pairs(actionSlots) do if a[1] == "spell" and a[2] == id then table.insert(out, slot) end end
+        return out
+    end
+    function GetMacroSpell(i) return i == 7 and 202 or nil end
+    C_Spell.PickupSpell = function(id)
+        table.insert(calls, "pickup " .. id)
+        cursor = { "spell", id }
+    end
+    local place = PlaceAction
+    function PlaceAction(slot)
+        table.insert(calls, "place " .. slot)
+        place(slot)
+    end
+    local function bars(tag)
+        local out = {}
+        for slot = 1, 3 do
+            local a = actionSlots[slot]
+            table.insert(out, slot .. "=" .. (a and a[1] .. ":" .. tostring(a[2]) or "-"))
+        end
+        print(tag, table.concat(out, " "), "calls=" .. (#calls > 0 and table.concat(calls, ",") or "none"))
+        calls = {}
+    end
+    actionSlots[1], actionSlots[2], actionSlots[3] = { "spell", 201 }, { "macro", "Shock" }, { "spell", 301 }
+    -- the edges: red on no bar; a tooltip says so, or names the lower rank
+    local function edges(tag)
+        local p = B.Current()
+        local out = {}
+        local add = GameTooltip.AddLine
+        for _, c in ipairs(p.cells) do
+            if c.shown then
+                local red = c.edge.color and c.edge.color[1] > 0.8
+                local said
+                GameTooltip.AddLine = function(_, t) said = t end
+                c.scripts.OnEnter(c)
+                table.insert(out, c.name.text .. (red and "!" or "") .. (c.miss.shown and "~" or "")
+                    .. (red and "@" .. tostring(-c.edge.points.TOPLEFT[3]) or "") .. (said and "<" .. said .. ">" or ""))
+            end
+        end
+        GameTooltip.AddLine = add
+        print(tag, table.concat(out, " "))
+    end
+    elem.tab.scripts.OnClick(elem.tab)
+    frame()
+    cells("book.ranks elemental")
+    edges("book.bars elemental")
+    local enh = pageOf("line3")
+    enh.tab.scripts.OnClick(enh.tab)
+    frame()
+    cells("book.ranks enhancement")
+    edges("book.bars enhancement")
+    -- every rank: both Rockbiters, and the future Earth Shock
+    ns.SetOption("spellbookAllRanks", true)
+    cells("book.all ranks")
+    edges("book.all ranks bars")
+    elem.tab.scripts.OnClick(elem.tab)
+    frame()
+    cells("book.all ranks elemental")
+    ns.SetOption("spellbookAllRanks", false)
+    -- no marks when asked for none
+    ns.SetOption("spellbookMissing", false)
+    edges("book.no marks")
+    ns.SetOption("spellbookMissing", true)
+    -- the chosen Rockbiter: its other rank named, its tick
+    enh.tab.scripts.OnClick(enh.tab)
+    frame()
+    layer.buttons[1].scripts.PostClick(layer.buttons[1], "LeftButton")
+    details("book.rockbiter")
+    local tick = enh.details.ticks[1]
+    print("book.tick", "shown=" .. tostring(tick.shown), "on=" .. tostring(tick.on), "enabled=" .. tostring(tick.enabled))
+    -- Lightning Shield, one rank: no tick
+    layer.buttons[2].scripts.PostClick(layer.buttons[2], "LeftButton")
+    print("book.tick one rank", "shown=" .. tostring(tick.shown))
+    layer.buttons[1].scripts.PostClick(layer.buttons[1], "LeftButton")
+    -- ticked: the lower rank on the bar rises at once
+    tick.scripts.OnClick(tick)
+    bars("book.uprank ticked")
+    print("book.uprank kept", tostring(MedalluinCharDB.upRank and MedalluinCharDB.upRank["Rockbiter Weapon"]))
+    -- a busy cursor waits; combat waits for its end
+    actionSlots[3] = { "spell", 301 }
+    cursor = { "item", 6948 }
+    fire("LEARNED_SPELL_IN_SKILL_LINE")
+    bars("book.uprank busy")
+    cursor = nil
+    combat(true)
+    fire("LEARNED_SPELL_IN_SKILL_LINE")
+    bars("book.uprank combat")
+    combat(false)
+    bars("book.uprank after combat")
+    -- unticked, nothing moves; every spell asked, it does
+    tick.scripts.OnClick(tick)
+    actionSlots[3] = { "spell", 301 }
+    fire("LEARNED_SPELL_IN_SKILL_LINE")
+    bars("book.uprank unticked")
+    ns.SetOption("spellbookUpRankAll", true)
+    bars("book.uprank all")
+    print("book.tick all", "on=" .. tostring(tick.on), "enabled=" .. tostring(tick.enabled))
+    ns.SetOption("spellbookUpRankAll", false)
+    -- the trainer: no tab until one is read; then what is left to learn,
+    -- now first, the filter put back as the box's tab had it
+    tabs("book.no trainer")
+    local services = {
+        { "Rockbiter Weapon", "used", 9, 1, "Rank 3", 0 }, { "Flame Shock", "available", 8, 10, "Rank 1", 800 },
+        { "Frost Shock", "unavailable", 7, 20, "Rank 1", 1500 }, { "Purge", "available", 6, 12, "", 900 },
+        { "Lightning Shield", "available", 5, 8, "", 100 }, { "Ghost Wolf", "used", 4, 10, "", 0 },
+    }
+    -- as the game: an empty list at TRAINER_SHOW, the services with the
+    -- TRAINER_UPDATE after; the filter Blizzard's window left, Available only
+    local tfilter = { available = true, unavailable = false, used = false }
+    local arrived = false
+    local function listed()
+        local out = {}
+        for _, v in ipairs(arrived and services or {}) do if tfilter[v[2]] then table.insert(out, v) end end
+        return out
+    end
+    function GetNumTrainerServices() return #listed() end
+    function GetTrainerServiceInfo(i) local v = listed()[i] if v then return v[1], v[2], v[3], v[4], v[5] end end
+    function GetTrainerServiceCost(i) return listed()[i][6] end
+    function GetTrainerServiceTypeFilter(t) return tfilter[t] end
+    function SetTrainerServiceTypeFilter(t, on)
+        if type(on) ~= "boolean" then error("Missing on/off parameter") end
+        tfilter[t] = on
+    end
+    function IsTradeskillTrainer() return false end
+    function UnitLevel() return 12 end
+    fire("TRAINER_SHOW")
+    tabs("book.trainer shown, empty")
+    arrived = true
+    fire("TRAINER_UPDATE")
+    print("book.trainer read", "filter=" .. tostring(tfilter.available) .. "/" .. tostring(tfilter.unavailable)
+        .. "/" .. tostring(tfilter.used))
+    tabs("book.trainer tabs")
+    local tr = pageOf("trainer")
+    tr.tab.scripts.OnClick(tr.tab)
+    frame()
+    cells("book.trainer")
+    details("book.trainer summary")
+    tr.cells[1].scripts.OnEnter(tr.cells[1])
+    layer.buttons[1].scripts.PostClick(layer.buttons[1], "LeftButton")
+    details("book.trainer chosen")
+    print("book.trainer drag", tostring(pcall(layer.buttons[1].scripts.OnDragStart, layer.buttons[1])))
+    -- a level later: Frost Shock's time comes
+    function UnitLevel() return 20 end
+    tr.Refresh()
+    cells("book.trainer level 20")
+    details("book.trainer level 20 summary")
+    -- a profession's trainer: its services kept by skill line, not the class's
+    services = { { "Journeyman Mining", "available", 4, 10, "", 500 }, { "Smelt Tin", "available", 3, 0, "", 50 } }
+    function IsTradeskillTrainer() return true end
+    function GetTrainerServiceSkillLine() return "Mining" end
+    function GetTrainerServiceSkillReq(i) return "Mining", ({ 50, 65 })[i] end
+    fire("TRAINER_SHOW")
+    local trade = {}
+    for line, list in pairs(MedalluinCharDB.trainer.trade) do
+        for key, e in pairs(list) do table.insert(trade, line .. ":" .. key .. "@" .. tostring(e.skill)) end
+    end
+    table.sort(trade)
+    local class = 0
+    for _ in pairs(MedalluinCharDB.trainer.class) do class = class + 1 end
+    print("book.trade trainer", table.concat(trade, " "), "class=" .. class)
     -- 9. the close button
     w.close.scripts.OnClick(w.close)
     state("book.closed")

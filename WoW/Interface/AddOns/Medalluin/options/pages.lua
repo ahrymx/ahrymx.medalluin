@@ -630,6 +630,16 @@ function ns.OptionPages()
                 Group("Window",
                     Check("spellbookDetails", "Details",
                         "The chosen spell's rank and description, under the spells. The window's arrow folds it too.")),
+                Group("Spells",
+                    Check("spellbookAllRanks", "Every rank",
+                        "List each rank of a spell. Unticked, a spell is listed once, at its highest rank learned, "
+                        .. "and its details name the others."),
+                    Check("spellbookMissing", "Mark spells not on a bar",
+                        "A red edge on a spell that is on none of your action bars, nor in a macro on one. Its "
+                        .. "tooltip says so, or names the lower rank that is."),
+                    Check("spellbookUpRankAll", "Keep every spell on its highest rank",
+                        "As you learn a rank, a lower rank of it on your action bars is swapped for it, out of "
+                        .. "combat. Unticked, only the spells whose details have it ticked.")),
             },
         },
         {
