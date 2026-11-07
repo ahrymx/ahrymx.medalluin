@@ -19,25 +19,33 @@ local AREA_FADE_IN, AREA_FADE_OUT = 0.5, 1      -- seconds it takes to come and 
 --   1. a party row under the console takes the bay's foot, so in a group
 --      the minimap is in the corner, always (party_row.lua)
 --   2. a pin, from the minimap key, holds it where the key put it until the
---      key is pressed again (for this session)
+--      key is pressed again (for this session). The place chosen for the
+--      game's load (Console > Minimap: When the game loads) is a pin too,
+--      held only until the automatic moves change their answer
 --   3. otherwise, with Move automatically on, it goes to the corner on each
 --      trigger ticked on Console > Minimap: combat, a target, skyriding
 local inCombat = UnitAffectingCombat and UnitAffectingCombat("player") or false
 local pin                                   -- nil, "corner" or "console"
+local held                                  -- the load's pin: rule 3's answer when it was set
 
 function ns.MinimapMoves()
     local mm = ns.layout and ns.layout.minimap
     return mm and mm.relocate and true or false
 end
 
-function ns.MinimapInCorner()
-    if not ns.MinimapMoves() then return false end
-    if ns.PartyRowShown and ns.PartyRowShown() then return true end
-    if pin then return pin == "corner" end
+-- rule 3 alone
+local function Auto()
     if not ns.db.minimapAuto then return false end
     local target = UnitExists and UnitExists("target")
     return (inCombat and ns.db.minimapAutoCombat or target and ns.db.minimapAutoTarget
         or ns.skyriding and ns.db.minimapAutoSkyriding) and true or false
+end
+
+function ns.MinimapInCorner()
+    if not ns.MinimapMoves() then return false end
+    if ns.PartyRowShown and ns.PartyRowShown() then return true end
+    if pin then return pin == "corner" end
+    return Auto()
 end
 
 function ns.MinimapPinned() return pin end
@@ -51,6 +59,7 @@ function ns.ToggleMinimap()
         end
         return
     end
+    held = nil
     if pin then
         pin = nil
     else
@@ -153,6 +162,8 @@ ns.On("PLAYER_LOGIN", function()
         end
 
         local function UpdateLocation()
+            -- the load's place is let go once rule 3 says something new
+            if held ~= nil and Auto() ~= held then pin, held = nil, nil end
             local _, rx, rTop, rBottom = unpack(ns.windows.ring)
             local w = 2 * rx + 2 * ns.layout.minimapBleed
             local h = rBottom - rTop
@@ -197,6 +208,8 @@ ns.On("PLAYER_LOGIN", function()
             inCombat = UnitAffectingCombat and UnitAffectingCombat("player") or false
             UpdateLocation()
         end)
+        local start = ns.db.minimapStart
+        if start == "corner" or start == "console" then pin, held = start, Auto() end
         UpdateLocation()
     end
 

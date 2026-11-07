@@ -395,7 +395,14 @@ function ns.OptionPages()
                             { kind = "key", label = "Minimap key", command = "MEDALLUIN_MINIMAP",
                                 tip = "Moves the minimap to its other place and keeps it there. Press it again "
                                     .. "and the automatic moves decide once more. Also under Options > "
-                                    .. "Keybindings > AddOns." }),
+                                    .. "Keybindings > AddOns." },
+                            Choice("minimapStart", "When the game loads", {
+                                { "auto", "As it moves", "Where Moving by itself puts it." },
+                                { "console", "In the console" },
+                                { "corner", "In the corner" },
+                            }, "Where the minimap is after a login or a reload. It stays there until a ticked "
+                                .. "trigger below starts or ends, or the minimap key is pressed. On the "
+                                .. "Medallion console the minimap stays in its ring.")),
                         {
                             title = "Moving by itself",
                             tip = "A party row under the console always takes the corner: it needs the bay's foot.",

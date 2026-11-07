@@ -134,8 +134,10 @@ local pagingPass = args[2] == "paging" or args[3] == "paging"
 -- is seeded with the retired "vertical", which comes to the same.
 local rowPass = args[3] == "row"
 -- "minimap" (alone: the Medallion; after "light": the Central Console) plays
--- Console > Minimap: the rule's triggers, the key's pin, the corner's size and place
+-- Console > Minimap: the rule's triggers, the key's pin, the corner's size and place.
+-- "light minimap corner" (or "console") is saved with that place for the load.
 local minimapPass = args[2] == "minimap" or args[3] == "minimap"
+local savedStart = (args[4] == "corner" or args[4] == "console") and args[4] or nil
 local fadePass = args[2] == "fade" or args[3] == "fade"      -- the console's and the overhead's fading
 local actionPage = 1
 local class = argClass or "PALADIN"
@@ -1723,7 +1725,7 @@ MedalluinDB = profilesPass and args[3] == "saved" and { consoleProfile = "light"
         artColor = "ffffffff", drawer = 2, sideTab = "loot", bagsPoint = { "TOP", "TOP", 4, -8 },
         bagsColumns = 12, retired = "kept" }
     or lightPass and { consoleProfile = "light", bareIcons = true, simParty = grouped,
-        partyLayout = rowPass and "horizontal" or "vertical" }
+        partyLayout = rowPass and "horizontal" or "vertical", minimapStart = savedStart }
     or barOff and { actionBar = false } or savedRows and { rows = savedRows }
     or pagingPass and { rows = 3 }
     or savedBare and { bareIcons = true } or savedNoChat and { chat = false }
@@ -6327,11 +6329,11 @@ function MinimapPass()
     local function greyed()
         ns.OpenOptions("console/minimap")
         local out = {}
-        for _, key in ipairs({ "MEDALLUIN_MINIMAP", "minimapAuto", "minimapAutoCombat", "minimapScale",
-            "minimapAreaTime" }) do
+        for _, key in ipairs({ "MEDALLUIN_MINIMAP", "minimapStart", "minimapAuto", "minimapAutoCombat",
+            "minimapScale", "minimapAreaTime" }) do
             local c = ns.optionControls[key]
-            -- a slider is greyed through its - and + buttons
-            local hit = c.box or c.less or c
+            -- a slider is greyed through its - and + buttons, a choice through its box
+            local hit = c.box or c.less or c.button or c
             table.insert(out, key .. "=" .. (hit:IsEnabled() and "on" or "grey"))
         end
         ns.CloseOptions()
@@ -6435,6 +6437,9 @@ function MinimapPass()
                 "art=" .. tostring(ns.consoleTex.texture):match("[^\\]+$"), "pin=" .. tostring(ns.MinimapPinned()),
                 "grid mouse=" .. gridMouse())
         end
+        -- the load's place (Console > Minimap: When the game loads) is let
+        -- go: the harness logs in with a target, which has cleared by now
+        where("load place " .. tostring(ns.db.minimapStart) .. ", target gone")
         inCombat, hasTarget = false, false
         fire("PLAYER_REGEN_ENABLED")
         fire("PLAYER_TARGET_CHANGED")
@@ -6785,6 +6790,27 @@ if lightPass then
         "bar7Slot1=" .. tostring(ns.bar7Buttons[1].action),
         "bar7Slot10=" .. tostring(ns.bar7Buttons[10].action),
         "stateDriver=" .. tostring(ns.bar7Frame.stateDrivers and ns.bar7Frame.stateDrivers.page))
+    -- the load's place (Console > Minimap: When the game loads), then held
+    -- through an event that leaves the triggers' answer as it was
+    print("minimap load place", tostring(ns.db.minimapStart), "pin=" .. tostring(ns.MinimapPinned()),
+        "corner=" .. tostring(Minimap.points.CENTER[1] == _G.MedalluinMinimapBezel))
+    if savedStart then
+        fire("PLAYER_TARGET_CHANGED")
+        print("minimap load place, target kept", "pin=" .. tostring(ns.MinimapPinned()),
+            "corner=" .. tostring(Minimap.points.CENTER[1] == _G.MedalluinMinimapBezel))
+        -- the key takes over from the load: its pin is not let go when the
+        -- target, which the load's place was held against, clears
+        ns.ToggleMinimap()
+        ns.ToggleMinimap()
+        local keyed = ns.MinimapPinned()
+        hasTarget = false
+        fire("PLAYER_TARGET_CHANGED")
+        print("minimap load place, key pressed twice then target gone", "pin " .. tostring(keyed) .. " -> "
+            .. tostring(ns.MinimapPinned()))
+        if ns.MinimapPinned() then ns.ToggleMinimap() end
+        hasTarget = true
+        fire("PLAYER_TARGET_CHANGED")
+    end
     print("bar7 buttons", ns.bar7Buttons[1]:GetName(), "parent=" .. tostring(ns.bar7Buttons[1].parent == ns.bar7Frame),
         "tainted=" .. tostring(ns.bar7Buttons[1].taintedBy), "key G=" .. tostring(bindings.G),
         "spare11=" .. tostring(_G.MultiBar6Button11 and _G.MultiBar6Button11.parent == ns.hidden),
