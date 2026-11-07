@@ -18,6 +18,7 @@ references are not mirrored (portrait outer, backpack inner), so two mirrored re
     python3 art/strips/gen_strips.py          -> render/strips.png
     python3 art/strips/gen_strips.py layer3   -> assets/layer3.png, assets/strips/*.png
     python3 art/strips/gen_strips.py glyphs   -> assets/strips/<glyph>.png alone
+    python3 art/strips/gen_strips.py mailbox  -> assets/strips/mailbox.png, media/strips/mailbox.tga
 
 The user chose B. assets/layer3.png is B's two strips in the console's
 asset format (a 1920x1080 screen, the medallion wells cut out), and
@@ -296,6 +297,58 @@ def leave(size=64):
             f'<path d="M27,32.5 L39,32.5 L39,27 L48,34.5 L39,42 L39,36.5 L27,36.5 Z" {f}/></g>')
 
 
+def mailbox(size=64):
+    """The mailbox's portrait in the NPC box's head, where a mailbox has no
+    face (Blizzard's letter icon is a square with a frame; the portrait is
+    round): a deep blue disc filling the 64x64 part edge to edge, as the
+    leave seat does, and on it a gold envelope sealed with a red wax seal,
+    drawn on a 64 box and grown a sixth."""
+    c = size / 2
+    f = 'fill="url(#gold)" stroke="#2a1e08" stroke-width="1.1" stroke-linejoin="round"'
+    line = 'fill="none" stroke="#5a431a" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"'
+    return (f'<radialGradient id="post" cx="45%" cy="36%" r="68%">'
+            f'<stop offset="0" stop-color="#3f5378"/><stop offset="0.7" stop-color="#1c2638"/>'
+            f'<stop offset="1" stop-color="#0d121c"/></radialGradient>'
+            f'<radialGradient id="wax" cx="40%" cy="35%" r="70%">'
+            f'<stop offset="0" stop-color="#d0443a"/><stop offset="1" stop-color="#6e1410"/></radialGradient>'
+            f'<circle cx="{c}" cy="{c}" r="{c}" fill="url(#post)"/>'
+            # the envelope, grown a sixth about the disc's centre to read at 42 px:
+            # its body, then the flap's folds and the bottom's
+            f'<g transform="translate({c},{c}) scale(1.16) translate(-32,-32.5)">'
+            f'<rect x="14" y="20" width="36" height="25" rx="2.5" {f}/>'
+            f'<path d="M15.5,21.5 L32,35 L48.5,21.5" {line}/>'
+            f'<path d="M15.5,43.5 L27.5,32.5 M48.5,43.5 L36.5,32.5" {line}/>'
+            # the seal where the flap meets
+            f'<circle cx="32" cy="35" r="4.6" fill="url(#wax)" stroke="#3a0806" stroke-width="0.9"/>'
+            f'<circle cx="32" cy="35" r="2" fill="none" stroke="#f0a090" stroke-width="0.6" opacity="0.6"/></g>')
+
+
+def mailbox_part():
+    """assets/strips/mailbox.png and media/strips/mailbox.tga, and a look at
+    it in render/mailbox.png: at 4x, and at the 42 px the head draws it,
+    inside the head's gold ring, over its ink."""
+    parts = os.path.join(ROOT, "assets", "strips")
+    part("mailbox", mailbox(), size=64)
+    path = os.path.join(parts, "mailbox.png")
+    im = Image.open(path).convert("RGBA")
+    media = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medalluin", "media", "strips", "mailbox.tga")
+    tmp = os.path.join(OUT, "mailbox-tga.png")
+    os.makedirs(OUT, exist_ok=True)
+    im.save(tmp)
+    subprocess.run(["magick", tmp, "-define", "tga:compression=none", media], check=True)
+    os.remove(tmp)
+    from PIL import ImageDraw
+    sheet = Image.new("RGBA", (256 + 120, 264), (18, 17, 16, 255))
+    sheet.alpha_composite(im.resize((256, 256), Image.LANCZOS), (4, 4))
+    ring = Image.new("RGBA", (46, 46), (0, 0, 0, 0))
+    ImageDraw.Draw(ring).ellipse((0, 0, 45, 45), fill=(138, 112, 52, 255))
+    sheet.alpha_composite(ring, (290, 110))
+    sheet.alpha_composite(im.resize((42, 42), Image.LANCZOS), (292, 112))
+    out = os.path.join(OUT, "mailbox.png")
+    sheet.save(out)
+    print(out)
+
+
 def svg(body):
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}"><defs>'
             f'<linearGradient id="navy" x1="0" y1="0" x2="0" y2="1">'
@@ -427,6 +480,8 @@ def layer3():
     part("round", '<circle cx="32" cy="32" r="31.5" fill="#fff"/>', size=64)
     # the leave-vehicle seat, in the right well while a vehicle can be left
     part("leave", leave(), size=64)
+    # the mailbox's portrait in the NPC box's head
+    part("mailbox", mailbox(), size=64)
     # the numbers code needs that the art cannot show (screen px, 1080p)
     import json
     with open(os.path.join(parts, "layout.json"), "w") as f:
@@ -581,5 +636,7 @@ if __name__ == "__main__":
         glyphs()
     elif sys.argv[1:2] == ["gate"]:
         gate_part()
+    elif sys.argv[1:2] == ["mailbox"]:
+        mailbox_part()
     else:
         main()

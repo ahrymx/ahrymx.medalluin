@@ -34,7 +34,8 @@
 -- next the brightest; Follow stages the plan's next entries, as many as
 -- the points left, for Apply to learn. Order, in the margin, lists the
 -- plan (the level each entry comes at, the learned ticked, the next
--- marked; a click opens its talent), with Clear plan.
+-- marked; a click opens its talent), with Clear plan. In the mode the
+-- tree's ground turns blue, so it is never mistaken for learning.
 --
 -- Nothing here is secure: the window opens and reads in combat, where the
 -- game refuses every change, so they wait for its end.
@@ -46,6 +47,7 @@ local _, ns = ...
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local LIT = { 0.4, 0.85, 0.35 }         -- ranks still to spend where they can be
+local PLANNING = { 0.12, 0.24, 0.48, 0.55 }  -- the tree's ground in the plan's mode: the ink turned blue
 local TREES = 3
 local ICON, MARGIN = 36, 10             -- a talent's icon, the room round the tree
 local STRIP = 26                        -- the points' row over the tree
@@ -563,6 +565,7 @@ local function Refresh(p)
     p.reset:SetShown(staged)
     p.apply:SetAlpha(Editable() and 1 or 0.4)
     p.planButton.mark:SetShown(planning and true or false)
+    p.wash:SetShown(planning and true or false)
     p.follow:SetShown(not planning and nextID ~= nil and Editable() and Left(config) > 0)
     p.follow:ClearAllPoints()
     if staged then p.follow:SetPoint("RIGHT", p.apply, "LEFT", -4, 0) else p.follow:SetPoint("RIGHT", -4, 0) end
@@ -682,6 +685,11 @@ for i = 1, TREES do
         return true
     end
     function p.Build(body, foot, band)
+        -- the plan's mode at a glance: the tree's ground washed blue, under
+        -- its lines and talents
+        p.wash = body:CreateTexture(nil, "BACKGROUND", nil, -8)
+        p.wash:SetAllPoints()
+        p.wash:SetColorTexture(PLANNING[1], PLANNING[2], PLANNING[3], PLANNING[4])
         Points(p, body)
         Foot(p, foot)
         Margin(p, band)

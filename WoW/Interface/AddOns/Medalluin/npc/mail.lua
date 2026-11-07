@@ -529,7 +529,9 @@ local function Foot()
 end
 
 ns.npc.Page{
-    key = "mail", frame = "MailFrame", icon = "Interface\\Icons\\INV_Letter_15",
+    -- a mailbox has no face: Medalluin's round envelope stands in its portrait
+    -- (art/strips/gen_strips.py mailbox), the game's letter icon being square
+    key = "mail", frame = "MailFrame", icon = ns.media .. "strips\\mailbox",
     Title = function() return "Mailbox" end,
     Blocks = Blocks, Foot = Foot, Close = function() CloseMail() end,
     -- as tall as the Send tab, whichever is shown

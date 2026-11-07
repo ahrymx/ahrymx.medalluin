@@ -10666,6 +10666,8 @@ if talentPass then
     local function strip(tag)
         local p = W.Current()
         print(tag, "points=" .. p.points.text, "plan=" .. (p.planButton.mark.shown and "on" or "off"),
+            "wash=" .. (p.wash.shown and table.concat(p.wash.color, ",") .. "@" .. (p.wash.all == p.body and "body"
+                or "?") or "off"),
             "follow=" .. tostring(p.follow.shown) .. "@" .. where(p.follow),
             "next=" .. (p.details.nothing.shown and p.details.nothing.text or "-"))
     end
