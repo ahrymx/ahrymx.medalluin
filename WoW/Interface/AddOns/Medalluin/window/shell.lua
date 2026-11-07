@@ -83,32 +83,37 @@ ns.window = { width = WIDTH - 2 * PAD, pad = PAD, band = BAND }
 -- ------------------------------------------------------------ buttons
 -- As the bags window's: a gold edge, an ink well, a white glow under the
 -- mouse; one of a set marked when it is in use. Drawn on b, over b or over
--- another region to (a chat tab's slim box inside its taller frame).
-local function Face(b, to)
+-- another region to (a chat tab's slim box inside its taller frame). Soft:
+-- the edge faint and the well thin, so the surface under it shows through
+-- (the talents' controls, over the tree's ground).
+local SOFT = { edge = 0.3, well = 0.35, mark = 0.3, glow = 0.07 }
+local HARD = { edge = 1, well = 1, mark = 0.45, glow = 0.12 }
+local function Face(b, to, soft)
     to = to or b
+    local a = soft and SOFT or HARD
     local edge = b:CreateTexture(nil, "BACKGROUND", nil, 1)
     edge:SetAllPoints(to)
-    edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], a.edge)
     local well = b:CreateTexture(nil, "BACKGROUND", nil, 2)
     well:SetPoint("TOPLEFT", to, "TOPLEFT", 1, -1)
     well:SetPoint("BOTTOMRIGHT", to, "BOTTOMRIGHT", -1, 1)
-    well:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 1)
+    well:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], a.well)
     b.mark = b:CreateTexture(nil, "BACKGROUND", nil, 3)
     b.mark:SetPoint("TOPLEFT", to, "TOPLEFT", 1, -1)
     b.mark:SetPoint("BOTTOMRIGHT", to, "BOTTOMRIGHT", -1, 1)
-    b.mark:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.45)
+    b.mark:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], a.mark)
     b.mark:Hide()
     local glow = b:CreateTexture(nil, "HIGHLIGHT")
     glow:SetPoint("TOPLEFT", to, "TOPLEFT", 1, -1)
     glow:SetPoint("BOTTOMRIGHT", to, "BOTTOMRIGHT", -1, 1)
-    glow:SetColorTexture(1, 1, 1, 0.12)
+    glow:SetColorTexture(1, 1, 1, a.glow)
 end
 ns.window.Face = Face           -- the chat's tabs wear it too (strips/chat.lua)
 
-local function Button(parent, width, click, tip, template)
+local function Button(parent, width, click, tip, template, soft)
     local b = CreateFrame("Button", nil, parent, template)
     b:SetSize(width, TAB)
-    Face(b)
+    Face(b, nil, soft)
     b.label = ns.Text(b, 12)
     b.label:SetPoint("CENTER")
     if click then b:SetScript("OnClick", click) end

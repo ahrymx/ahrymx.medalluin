@@ -160,6 +160,8 @@ def glyph(kind, x, y):
         return P("M2,5 L10,13 L18,5 L18,9.5 L10,17.5 L2,9.5 Z")
     if kind == "chevron-up":
         return P("M2,15 L10,7 L18,15 L18,10.5 L10,2.5 L2,10.5 Z")
+    if kind == "chevron-double":  # >> turned down: a group's fold (the talents' plans)
+        return P("M3,2 L10,8.5 L17,2 L17,5.6 L10,12.1 L3,5.6 Z M3,8.9 L10,15.4 L17,8.9 L17,12.5 L10,19 L3,12.5 Z")
     if kind == "close":         # a cross of two bars
         bar = '<rect x="8.4" y="1" width="3.2" height="18" rx="0.6" transform="rotate({} 10 10)"/>'
         return f'<g transform="translate({x},{y}) scale({s})" {f}>{bar.format(45)}{bar.format(-45)}</g>'
@@ -378,7 +380,7 @@ GLYPHS = ["spellbook", "talents", "quests", "social", "guild", "lfg", "map", "me
           "profession", "achievement", "housing", "collections", "journal", "store", "legacy", "misc"]
 # the character window's tabs, its controls, the quest tracker's footer and the chat box's head
 TABS = ["character", "reputation", "currency", "skills", "pvp", "statistics",
-        "chevron-down", "chevron-up", "close", "questlog", "sort", "view-minimal", "view-full",
+        "chevron-down", "chevron-up", "chevron-double", "close", "questlog", "sort", "view-minimal", "view-full",
         "chat", "channels"]
 
 

@@ -354,8 +354,13 @@ function ns.character.Details(foot, ticks, nothing, lines)
     d.text:SetJustifyH("LEFT")
     d.text:SetJustifyV("TOP")
     d.text:SetHeight(lines * LINE)           -- more trail off
+    -- the line said when nothing is chosen: as wide as the foot, wrapping
+    -- (one with only its centre placed runs past the window's edges)
     d.nothing = ns.Text(foot, 13)
-    d.nothing:SetPoint("CENTER")
+    d.nothing:SetPoint("LEFT", 8, 0)
+    d.nothing:SetPoint("RIGHT", -8, 0)
+    d.nothing:SetJustifyH("CENTER")
+    d.nothing:SetWordWrap(true)
     d.nothing:SetTextColor(unpack(ns.colors.dim))
     d.nothing:SetText(nothing or "")
     local prev

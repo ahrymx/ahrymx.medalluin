@@ -522,6 +522,8 @@ function Region:GetAlpha() return self.alpha or 1 end
 -- an edit box's focus: one at a time, with its two scripts
 local focused
 function Region:HasFocus() return focused == self end
+function Region:HighlightText() self.highlighted = true end
+function Region:SetRotation(r) self.rotation = r end
 function Region:SetFocus()
     if focused == self then return end
     local old = focused
@@ -10656,12 +10658,18 @@ if talentPass then
     local elemT = pageOf("tree1")
     elemT.tab.scripts.OnClick(elemT.tab)
     frame()
-    local function plan(tag)
+    -- the plans kept for a specialisation: each name, its talents, the
+    -- active one starred
+    local function plan(tag, spec)
+        local b = MedalluinCharDB.talentPlans and MedalluinCharDB.talentPlans[spec or 1]
         local list = {}
-        for _, id in ipairs(MedalluinCharDB.talentPlan[1] or {}) do
-            table.insert(list, T.names[id])
+        for k, kept in ipairs(b and b.list or {}) do
+            local names = {}
+            for _, id in ipairs(kept.steps) do table.insert(names, T.names[id]) end
+            table.insert(list, kept.name .. (k == b.active and "*" or "") .. " " .. #names .. ": "
+                .. table.concat(names, ", "))
         end
-        print(tag, #list .. ": " .. table.concat(list, ", "))
+        print(tag, #list == 0 and "none" or table.concat(list, " / "))
     end
     local function strip(tag)
         local p = W.Current()
@@ -10669,47 +10677,105 @@ if talentPass then
             "wash=" .. (p.wash.shown and table.concat(p.wash.color, ",") .. "@" .. (p.wash.all == p.body and "body"
                 or "?") or "off"),
             "follow=" .. tostring(p.follow.shown) .. "@" .. where(p.follow),
+            "checkpoint=" .. tostring(p.checkpoint.shown),
+            "save=" .. tostring(p.save.shown) .. string.format("(%.1f)", p.save.alpha or 1) .. "@"
+                .. (p.save.points.LEFT[1] == p.checkpoint and "checkpoint" or p.save.points.LEFT[1] == p.planButton
+                    and "plan" or "?"),
+            "name=" .. (p.name.shown and tostring(p.name.text) or "off"),
             "next=" .. (p.details.nothing.shown and p.details.nothing.text or "-"))
     end
-    -- Plan: the plan starts from what is learned, tier by tier (Call of
-    -- Flame, a tier down, learned too: it comes after Concussion, though it
-    -- stands further left)
+    local function press(b)
+        b.scripts.OnClick(b, "LeftButton")
+        frame()
+    end
+    -- Save plan, its name typed and Enter pressed
+    local function save(name)
+        press(elemT.save)
+        local box = elemT.name
+        print("talents.plan name offered", "shown=" .. tostring(box.shown), "text=" .. tostring(box.text),
+            "focus=" .. tostring(box:HasFocus()), "highlighted=" .. tostring(box.highlighted))
+        box:SetText(name)
+        box.scripts.OnEnterPressed(box)
+        frame()
+    end
+    -- Plan: a simulation from nothing, the talents learned (Convection 5/5,
+    -- Concussion 1/3, Call of Flame) left out
     T.committed[1][3] = 1
-    elemT.planButton.scripts.OnClick(elemT.planButton)
-    frame()
-    plan("talents.plan seeded")
+    press(elemT.planButton)
+    plan("talents.plan none kept")
     tree("talents.plan tree")
-    strip("talents.plan strip")
-    -- the gate: 8 points in Elemental (the condition's), 6 planned
+    -- the chrome: the plan's row over the points', the buttons soft (each
+    -- texture's alpha: edge, well, mark, glow), a hairline before Plans
+    do
+        local function face(b)
+            local a = {}
+            for _, t in ipairs({ b:GetRegions() }) do
+                if t.color then table.insert(a, string.format("%.2f", t.color[4] or 1)) end
+            end
+            return table.concat(a, ",")
+        end
+        local function row(b) return b.parent.points.TOPLEFT and string.format("%d", -b.parent.points.TOPLEFT[4]) or "?" end
+        print("talents.chrome", "plan@" .. row(elemT.planButton), "checkpoint@" .. row(elemT.checkpoint),
+            "save@" .. row(elemT.save), "name@" .. row(elemT.name), "points@" .. row(elemT.points),
+            "reset@" .. row(elemT.reset), "apply@" .. row(elemT.apply), "follow@" .. row(elemT.follow),
+            "face=" .. face(elemT.planButton), "margin=" .. face(elemT.specs[1]),
+            "rule=" .. (elemT.rule.w .. "x" .. elemT.rule.h .. " " .. (elemT.rule.points.LEFT[1] == elemT.specs[2]
+                and "secondary" or "?") .. string.format(" %.2f", elemT.rule.color[4])),
+            "plans@" .. (elemT.plans.points.LEFT[1] == elemT.rule and "rule" or "?") .. " "
+                .. elemT.plans.points.LEFT[3])
+        local sp = elemT.split
+        print("talents.chrome split", "h=" .. sp.h, string.format("alpha=%.2f", sp.color[4]),
+            "from=" .. sp.points.TOPLEFT[3] .. "," .. sp.points.TOPLEFT[4],
+            "to=" .. sp.points.TOPRIGHT[3] .. "," .. sp.points.TOPRIGHT[4])
+        local nothing = elemT.details.nothing
+        print("talents.chrome nothing", "left=" .. tostring(nothing.points.LEFT and nothing.points.LEFT[3]),
+            "right=" .. tostring(nothing.points.RIGHT and nothing.points.RIGHT[3]),
+            "centre=" .. tostring(nothing.points.CENTER ~= nil), "wrap=" .. tostring(nothing.wrap))
+    end
+    strip("talents.plan fresh")
+    -- the draft: Convection's points, of one talent only
+    click("Convection")
+    click("Convection")
+    strip("talents.plan draft")
+    click("Concussion")
+    foot("talents.plan draft refused")
+    tip("talents.plan draft tip", "Concussion")
+    -- Save plan waits for the checkpoint
+    press(elemT.save)
+    strip("talents.plan save refused")
+    -- the draft's own last point off, then on again, and every rank
+    click("Convection", "RightButton")
+    strip("talents.plan draft less")
+    for _ = 1, 5 do click("Convection") end
+    foot("talents.plan every rank")
+    press(elemT.checkpoint)
+    strip("talents.plan checkpoint")
+    -- the gate: 8 points in Elemental (the condition's), 5 planned
     click("Elemental Mastery")
-    plan("talents.plan gate refused")
     foot("talents.plan gate why")
     tip("talents.plan tip", "Elemental Mastery")
-    click("Concussion")
-    click("Concussion")
-    click("Concussion")
-    plan("talents.plan ranks")
-    foot("talents.plan every rank")
+    for _ = 1, 3 do click("Concussion") end
+    press(elemT.checkpoint)
     click("Elemental Mastery")
+    press(elemT.checkpoint)
     click("Call of Flame")
-    plan("talents.plan gate met")
     tree("talents.plan full")
-    -- a rank of Convection off: Call of Flame needs it whole, and the gate
-    -- its point, so both go
+    strip("talents.plan full")
+    -- a rank of Convection off its checkpoint: Call of Flame (the draft)
+    -- needs it whole, and Elemental Mastery the gate's point, so both go
     click("Convection", "RightButton")
-    plan("talents.plan cascade")
     tree("talents.plan cascade tree")
+    strip("talents.plan cascade")
+    -- Convection again: one point, its own checkpoint's run going on
+    click("Convection")
+    press(elemT.checkpoint)
     -- the cap: the top level less 9
     GetMaxLevelForPlayerExpansion = function() return 17 end
-    click("Convection")
-    click("Call of Flame")
-    plan("talents.plan capped")
+    click("Elemental Mastery")
     foot("talents.plan cap why")
     GetMaxLevelForPlayerExpansion = nil
-    -- the gate met again (8 in Elemental), and a talent the game refuses
-    -- to stage: Elemental Mastery, locked by its tier
     click("Elemental Mastery")
-    plan("talents.plan mastery")
+    press(elemT.checkpoint)
     -- the tiers' own gate where no condition says: Shamanistic Focus, six
     -- tiers down, wants 30 in Enhancement
     local enhT = pageOf("tree2")
@@ -10719,68 +10785,120 @@ if talentPass then
     foot("talents.plan tier gate")
     elemT.tab.scripts.OnClick(elemT.tab)
     frame()
-    -- out of the mode: the planned glow, the next brightest; Follow stages
-    -- the next entries for Apply
-    elemT.chosen = nil
-    elemT.planButton.scripts.OnClick(elemT.planButton)
+    -- nothing kept until Save plan: the name offered, Enter keeps it
+    plan("talents.plan unsaved")
+    save("Fire")
+    plan("talents.plan saved")
+    strip("talents.plan saved")
+    -- Escape keeps nothing; a blank name keeps nothing
+    press(elemT.save)
+    elemT.name.scripts.OnEscapePressed(elemT.name)
     frame()
+    strip("talents.plan escaped")
+    save("   ")
+    plan("talents.plan blank")
+    -- a point added while the name is asked for: Enter keeps nothing until
+    -- it is checkpointed
+    press(elemT.save)
+    click("Call of Flame")
+    elemT.name:SetText("Draft")
+    elemT.name.scripts.OnEnterPressed(elemT.name)
+    frame()
+    plan("talents.plan draft unsaved")
+    click("Call of Flame", "RightButton")
+    -- the box goes with the mode
+    press(elemT.save)
+    press(elemT.planButton)
+    strip("talents.plan box left")
+    press(elemT.planButton)
+    -- out of the mode: the active plan's glow, the next brightest; Follow
+    -- stages the next entries for Apply
+    elemT.chosen = nil
+    press(elemT.planButton)
     tree("talents.plan glow")
     strip("talents.plan next")
     T.calls = {}
-    elemT.follow.scripts.OnClick(elemT.follow)
-    frame()
+    press(elemT.follow)
     tree("talents.followed")
     strip("talents.followed")
     foot("talents.followed")
-    elemT.reset.scripts.OnClick(elemT.reset)
-    frame()
+    press(elemT.reset)
     -- one point left: Follow stages one
     local points = T.points
     T.points = T.points - 4       -- 7 spent: one left
     T.calls = {}
-    elemT.follow.scripts.OnClick(elemT.follow)
-    frame()
+    press(elemT.follow)
     print("talents.followed one", table.concat(T.calls, ","))
-    elemT.reset.scripts.OnClick(elemT.reset)
-    frame()
+    press(elemT.reset)
     T.points = points
-    -- not while the talents in view are not in use
+    -- talents staged are not the plan's: Apply and Reset wait out the mode
+    click("Concussion")
+    press(elemT.planButton)
+    foot("talents.plan staged")
+    press(elemT.planButton)
+    press(elemT.reset)
+    -- unsaved work is lost: leaving the mode, closing the window, or
+    -- viewing the other specialisation
+    press(elemT.planButton)
+    click("Concussion")
+    press(elemT.planButton)
+    press(elemT.planButton)
+    strip("talents.plan left unsaved")
+    click("Concussion")
+    W.window:Hide()
+    W.window:Show()
+    frame()
+    strip("talents.plan window closed")
     T.groups = 2
+    press(elemT.planButton)
+    click("Concussion")
     local sec2 = W.Current().specs[2]
-    sec2.scripts.OnClick(sec2)
-    frame()
+    press(sec2)
     strip("talents.plan secondary")
-    -- its own plan; Follow stages nothing in talents not in use
-    elemT.planButton.scripts.OnClick(elemT.planButton)
+    plan("talents.plan kept still")
+    -- its own plans; Follow stages nothing in talents not in use
+    press(elemT.planButton)
     click("Convection")
-    elemT.planButton.scripts.OnClick(elemT.planButton)
+    press(elemT.checkpoint)
+    save("Water")
+    press(elemT.planButton)
     T.calls = {}
-    elemT.follow.scripts.OnClick(elemT.follow)
-    print("talents.plan secondary follow", "calls=" .. table.concat(T.calls, ","),
-        "plans=" .. #(MedalluinCharDB.talentPlan[1] or {}) .. "/" .. #(MedalluinCharDB.talentPlan[2] or {}))
+    press(elemT.follow)
+    print("talents.plan secondary follow", "calls=" .. table.concat(T.calls, ","))
+    plan("talents.plan secondary kept", 2)
     local prim2 = W.Current().specs[1]
-    prim2.scripts.OnClick(prim2)
-    frame()
-    -- Order: the plan as a list, no tab of its own
-    local ord = pageOf("order")
-    print("talents.order tab", tostring(ord.tab ~= nil))
-    elemT.order.scripts.OnClick(elemT.order)
-    frame()
-    local function order(tag)
+    press(prim2)
+    -- Plans: the plans kept and the active one's checkpoints, no tab
+    local ord = pageOf("plans")
+    print("talents.plans tab", tostring(ord.tab ~= nil))
+    press(elemT.plans)
+    local function plans(tag)
         local p = W.Current()
         local list = {}
-        for _, r in ipairs(p.rows) do
-            if r.shown then
-                table.insert(list, string.format("%s %s%s%s/%s", r.at.text, r.name.text, r.tick.shown and " ✓" or "",
-                    r.mark.shown and " <" or "", r.tree.text))
+        -- heads and checkpoints in the list's order, each at its top
+        for _, h in ipairs(p.heads) do
+            if h.shown then
+                table.insert(list, { -h.points.TOPLEFT[4], string.format("[%s %s%s | %s%s]@%d",
+                    (h.fold.rotation or 0) == 0 and "v" or ">", h.name.text, "(" .. c3(h.name.textColor) .. ")", h.count.text, h.use.shown and " Use" or "", -h.points.TOPLEFT[4]) })
             end
         end
-        print(tag, "page=" .. p.key, "points=" .. p.points.text, "clear=" .. tostring(p.clear.shown)
-            .. "(" .. p.clear.label.text .. ")",
-            "order=" .. tostring(p.order.mark.shown), "rows: " .. table.concat(list, "; "))
+        for _, r in ipairs(p.rows) do
+            if r.shown then
+                table.insert(list, { -r.points.TOPLEFT[4], string.format("%s %s%s%s/%s@%d", r.at.text, r.name.text,
+                    r.tick.shown and " ✓" or "", r.mark.shown and " <" or "", r.tree.text, -r.points.TOPLEFT[4]) })
+            end
+        end
+        table.sort(list, function(a, b) return a[1] < b[1] end)
+        for k, e in ipairs(list) do list[k] = e[2] end
+        print(tag, "page=" .. p.key, "points=" .. p.points.text .. "@" .. -p.points.parent.points.TOPLEFT[4],
+            "edit=" .. tostring(p.edit.shown) .. "@" .. string.format("%d", -p.edit.parent.points.TOPLEFT[4]),
+            "remove=" .. tostring(p.remove.shown) .. "(" .. p.remove.label.text .. ")",
+            "plans=" .. tostring(p.plans.mark.shown), "split=" .. (p.split.points.TOPLEFT and p.split.points.TOPRIGHT
+                and p.split.points.TOPLEFT[3] .. "," .. p.split.points.TOPLEFT[4] .. ">" .. p.split.points.TOPRIGHT[3]
+                or "?"), "rows: " .. table.concat(list, "; "))
         print(tag .. " foot", p.details.nothing.text)
     end
-    order("talents.order")
+    plans("talents.plans")
     -- a short window: the list scrolls under the wheel
     local ordH = ord.body.h
     ord.body.h = 120
@@ -10788,34 +10906,85 @@ if talentPass then
     ord.Refresh()
     local area = ord.list.scroll.parent
     area.scripts.OnMouseWheel(area, -1)
-    print("talents.order scroll", "range=" .. ord.list.scroll:GetVerticalScrollRange(), "target=" .. ord.list.target,
+    print("talents.plans scroll", "range=" .. ord.list.scroll:GetVerticalScrollRange(), "target=" .. ord.list.target,
         "bar=" .. tostring(ord.list.bar.shown))
     ord.list.To(0, true)
     ord.body.h, ord.list.scroll.h = ordH, 0
     ord.Refresh()
-    -- a row opens its talent's tree, the talent chosen
-    ord.rows[6].scripts.OnClick(ord.rows[6])
-    frame()
-    foot("talents.order opened")
-    -- Order from Enhancement, and back to it
+    -- a checkpoint's row opens its talent's tree, the talent chosen
+    press(ord.rows[2])
+    foot("talents.plans opened")
+    -- Plans from Enhancement, and back to it
     enhT.tab.scripts.OnClick(enhT.tab)
     frame()
-    W.Current().order.scripts.OnClick(W.Current().order)
+    press(W.Current().plans)
+    press(ord.plans)
+    print("talents.plans back", "page=" .. W.Current().key)
+    -- Edit: the active plan drawn again; saved under a new name, a second
+    -- plan, the active one
+    press(W.Current().plans)
+    press(ord.edit)
+    strip("talents.plan edit")
+    print("talents.plan edit page", W.Current().key)
+    elemT.tab.scripts.OnClick(elemT.tab)
     frame()
-    ord.order.scripts.OnClick(ord.order)
+    -- opened at its last checkpoint: Elemental Mastery is the draft, and
+    -- another talent waits for its Checkpoint
+    click("Concussion")
+    foot("talents.plan edit locked")
+    click("Concussion", "RightButton")
+    strip("talents.plan edited")
+    save("Frost")
+    plan("talents.plan saved as")
+    -- the same name replaces
+    click("Call of Flame")
+    press(elemT.checkpoint)
+    save("Fire")
+    plan("talents.plan replaced")
+    press(elemT.planButton)
+    -- each plan under its head; Use makes another active
+    press(elemT.plans)
+    plans("talents.plans two")
+    press(ord.heads[2].use)
+    plans("talents.plans chosen")
+    -- a head folds its checkpoints away, and back; kept with the plan
+    press(ord.heads[1])
+    plans("talents.plans folded")
+    print("talents.plans folded kept", tostring(MedalluinCharDB.talentPlans[1].list[1].collapsed))
+    press(ord.heads[1])
+    plans("talents.plans unfolded")
+    -- Remove asks twice; leaving disarms it. The first plan removed, none
+    -- is active
+    press(ord.heads[1].use)
+    press(ord.remove)
+    plans("talents.plans remove armed")
+    ord.remove.scripts.OnLeave(ord.remove)
+    press(ord.remove)
+    press(ord.remove)
+    plans("talents.plans removed")
+    plan("talents.plans removed kept")
+    press(ord.heads[1].use)
+    press(ord.remove)
+    press(ord.remove)
+    plans("talents.plans none")
+    -- the one plan of before becomes "Plan", active
+    MedalluinCharDB.talentPlans = nil
+    local id = {}
+    for k, name in pairs(T.names) do id[name] = k end
+    MedalluinCharDB.talentPlan = { { id.Convection, id.Convection, id.Concussion, id.Concussion } }
+    ord.Refresh()
+    plans("talents.plans migrated")
+    print("talents.plans migrated old", tostring(MedalluinCharDB.talentPlan[1]))
+    -- Edit reopens the whole last checkpoint: both Concussion ranks are the
+    -- draft, so one off leaves one to checkpoint
+    press(ord.edit)
+    elemT.tab.scripts.OnClick(elemT.tab)
     frame()
-    print("talents.order back", "page=" .. W.Current().key)
-    -- Clear plan asks twice; leaving disarms it
-    W.Current().order.scripts.OnClick(W.Current().order)
-    frame()
-    ord.clear.scripts.OnClick(ord.clear)
-    print("talents.clear armed", ord.clear.label.text, #MedalluinCharDB.talentPlan[1])
-    ord.clear.scripts.OnLeave(ord.clear)
-    ord.clear.scripts.OnClick(ord.clear)
-    ord.clear.scripts.OnClick(ord.clear)
-    frame()
-    order("talents.cleared")
-    ord.order.scripts.OnClick(ord.order)
+    click("Concussion", "RightButton")
+    strip("talents.plan edit run")
+    press(elemT.planButton)
+    press(elemT.plans)
+    enhT.tab.scripts.OnClick(enhT.tab)
     frame()
 
     -- 8. the book takes the frame, and the talents take it back
