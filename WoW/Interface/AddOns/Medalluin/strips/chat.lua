@@ -383,9 +383,29 @@ local function Arrows(frame)
     if box and box.SetAltArrowKeyMode then box:SetAltArrowKeyMode(false) end
 end
 
+-- A channel's tag is its number alone: "[1] [Name]: hi", not "[1. General -
+-- Elwynn Forest] [Name]: hi". Blizzard builds the tag inside its own handler,
+-- and its filters cannot make it shorter than "[1. ]", so each window's
+-- AddMessage is wrapped, as Prat and ElvUI do: the one write to Blizzard's
+-- chat, chosen by the user over the filter's "[1. ]". Only a message's tag
+-- (channel:channel:N); a join or leave notice (channel:CHANNEL:N) keeps its
+-- name, and a secret line passes untouched.
+local TAG = "|Hchannel:channel:(%d+)|h%[%d+%.[^%]]*%]|h"
+local function Short(text)
+    if ns.IsSecret(text) or type(text) ~= "string" then return text end
+    return (text:gsub(TAG, "|Hchannel:channel:%1|h[%1]|h"))
+end
+local function Tags(frame)
+    local add = frame.AddMessage
+    if not add or frame.medalluinAddMessage then return end
+    frame.medalluinAddMessage = add
+    frame.AddMessage = function(self, text, ...) return add(self, Short(text), ...) end
+end
+
 local function Sweep()
     for _, frame in ipairs(Frames()) do
         Arrows(frame)
+        Tags(frame)
         SkinTab(_G[frame:GetName() .. "Tab"])
         if frame == ChatFrame1 or frame.isDocked then Dress(frame) end
     end
@@ -606,6 +626,7 @@ local function Build()
     if FCF_DockFrame then
         hooksecurefunc("FCF_DockFrame", function(frame)
             Arrows(frame)
+            Tags(frame)
             SkinTab(_G[frame:GetName() .. "Tab"])
             Dress(frame)
         end)

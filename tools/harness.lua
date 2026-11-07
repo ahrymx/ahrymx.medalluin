@@ -1299,6 +1299,8 @@ local function ChatWindow(i)
     local box = new("EditBox", f, name .. "EditBox")
     box.w, box.h = 5, 32
     box.altArrows = true                    -- the template's ignoreArrows
+    f.said = {}
+    function f:AddMessage(text, ...) table.insert(self.said, { text = text, n = select("#", ...), r = ... }) end
     box:SetPoint("TOPLEFT", f, "BOTTOMLEFT", -5, -2)
     box:SetPoint("RIGHT", f.ScrollBar, "RIGHT", 8, 0)
     for _, k in ipairs({ "Left", "Mid", "Right" }) do new("Texture", box, name .. "EditBox" .. k) end
@@ -5099,6 +5101,34 @@ if stripsPass then
         print("chat arrows", "alt only: ChatFrame1=" .. tostring(ChatFrame1.editBox.altArrows),
             "ChatFrame2 (undocked)=" .. tostring(ChatFrame2.editBox.altArrows),
             "whisper=" .. tostring(temp.editBox.altArrows))
+        -- a channel's tag is its number alone; a notice keeps its name, a
+        -- secret line and anything else pass as they came
+        local lines = {
+            "|Hchannel:channel:1|h[1. General - Elwynn Forest]|h |Hplayer:Bob|h[Bob]|h: hi",
+            "12:01 |Hchannel:channel:2|h[2. Trade - City]|h |Hplayer:Ann|h[Ann]|h: WTS [1. ore]",
+            "|Hchannel:channel:14|h[14. MyChannel]|h |Hplayer:Kim|h[Kim]|h: yo",
+            "Joined Channel: |Hchannel:CHANNEL:1|h[1. General - Elwynn Forest]|h",
+            "|Hplayer:Bob|h[Bob]|h whispers: [1. not a tag]",
+        }
+        for _, frame in ipairs({ ChatFrame1, temp }) do
+            frame.said = {}
+            for _, line in ipairs(lines) do frame:AddMessage(line, 1, 1, 1) end
+            -- the game's secret is a string to type(): never matched
+            local plain = type
+            type = function(v) if isSecret(v) then return "string" end return plain(v) end
+            frame:AddMessage(secret())
+            type = plain
+            frame:AddMessage(nil)
+            for i, line in ipairs(frame.said) do
+                print("chat tag " .. frame:GetName() .. " " .. i,
+                    isSecret(line.text) and "<secret>" or tostring(line.text), "args=" .. line.n .. " r=" .. tostring(line.r))
+            end
+        end
+        -- docked again: wrapped once, not once more
+        local wrapped = ChatFrame2.AddMessage
+        FCF_DockFrame(ChatFrame2)
+        print("chat tag redocked", "same=" .. tostring(ChatFrame2.AddMessage == wrapped))
+        FCF_UnDockFrame(ChatFrame2)
         print("undocked clamp", table.concat({ ChatFrame2:GetClampRectInsets() }, ","),
             "docked", table.concat({ temp:GetClampRectInsets() }, ","))
         -- the console at a 1080-high UI: Blizzard's pieces need less room
