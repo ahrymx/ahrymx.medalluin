@@ -3,30 +3,34 @@
 -- medallion. Forever only: its talents are one tree of three groups, the
 -- old trees, drawn by Blizzard side by side; retail's keep Blizzard's.
 --
---   [tree][tree][tree]                                      [v] [x]
+--   [tree][tree][tree]                                          [x]
 --   ---------------------------------------------------------------
---   [Plan] [Reset]    12 points available  ·  Elemental 5  [Follow] [Apply]
---   [Plan] [Checkpoint] [Save plan]  Fire  ·  12/71  ·  Elemental 5  [name]
+--   [Reset]       12 points available  ·  Elemental 5  [Follow] [Apply]
 --        [o]     [o]                (a tree's talents, where the
 --         |                          tree puts them, with the
 --        [o] 2/5 [o]     [o]         lines between them)
 --   ...
 --   ---------------------------------------------------------------
---   the chosen talent's name, rank and what each rank gives
+--   the chosen talent's name, rank and what each rank gives; in the
+--   plan's mode, [Exit plan] [Checkpoint] [Save plan]         [name]
+--        and a hint: why a click was refused, or what comes next
 --   ---------------------------------------------------------------
---   (backpack)   [Primary] [Secondary]  [Plans] [Activate]
+--   (backpack)   [Primary] [Secondary] | [Plans] [Activate]
 --
 -- A tab per tree, the game's own icons. A click spends a rank, a right-click
 -- takes one back: both only staged, until Apply commits them (Reset
 -- forgets them). A talent's tooltip and the details say what each rank
--- gives: "by 33% / 66% / 100%", the rank it is at in green. The margin views the Primary or the Secondary talents;
--- the one not in use reads only, and Activate switches to it (a cast).
+-- gives: "by 33% / 66% / 100%", the rank it is at in green. In the plan's
+-- mode the foot is the plan's controls instead, and it never folds. The
+-- margin views the Primary or the Secondary talents; the one not in use
+-- reads only, and Activate switches to it (a cast).
 --
 -- A plan: the order to learn talents in, as checkpoints, one talent and
 -- the ranks it takes each. Plans are named, several for each
 -- specialisation, one of them active (MedalluinCharDB.talentPlans
 -- [specGroup] = { active, list = { { name, steps } } }, steps the node IDs,
--- a rank an entry). Plan turns its mode on, the tree's ground blue: a
+-- a rank an entry). Create Plan, on the plans' page, turns the plan's mode
+-- on over a tree, the tree's ground blue: a
 -- simulation from nothing, the talents learned left out. A click adds a
 -- point, a right-click takes the talent's last off (and whatever after it
 -- no longer follows). The points clicked since the last Checkpoint are its
@@ -40,10 +44,11 @@
 -- ranks, and the points a character ever has (the top level less 9). Out
 -- of the mode, the active plan's talents not learned glow, the next the
 -- brightest; Follow stages its next entries, as many as the points left,
--- for Apply to learn. Plans, in the margin, lists the plans kept (a click
--- makes one active) and the active one's checkpoints (the levels each
--- comes at, the learned ticked, the next marked; a click opens its
--- talent), with Edit (the active plan drawn again) and Remove.
+-- for Apply to learn. Plans, in the margin, lists the plans kept, each
+-- under a head that folds it (Use makes one active), with its checkpoints
+-- (the levels each comes at, the learned ticked, the active one's next
+-- marked; a click opens its talent); its foot has Create Plan, Edit (the
+-- active plan drawn again, from its last checkpoint) and Remove.
 --
 -- Nothing here is secure: the window opens and reads in combat, where the
 -- game refuses every change, so they wait for its end.
@@ -58,11 +63,12 @@ local LIT = { 0.4, 0.85, 0.35 }         -- ranks still to spend where they can b
 local PLANNING = { 0.12, 0.24, 0.48, 0.55 }  -- the tree's ground in the plan's mode: the ink turned blue
 local TREES = 3
 local ICON, MARGIN = 36, 10             -- a talent's icon, the room round the tree
-local STRIP = 26                        -- a row of controls over the tree
-local HEAD = 2 * STRIP                  -- the tree's two: the plan's, then the points'
+local STRIP = 26                        -- a row of controls: the points' over the tree, the plan's under it
+local HEAD = STRIP                      -- what stands over the tree
+local FOOT = 6 + STRIP + 6 + 2 * 15     -- the plan's row and two lines of hint under it
 
 local W = ns.Window{
-    name = "MedalluinTalents", side = 1, detailsKey = "talentsDetails",
+    name = "MedalluinTalents", side = 1,
     closeTip = "Close the talents.",
     Close = function() HideUIPanel(PlayerSpellsFrame) end,
     Lifted = function() return { MainMenuBarBackpackButton } end,
@@ -621,22 +627,29 @@ local function Refresh(p)
     plan.model, plan.next = m, nextID
     local d = planning and sim.draft
     local byID = Draw(p, config, group, groups, plan)
+    -- the foot: in the plan's mode its row and a hint (why the talent last
+    -- clicked was refused, else what the Checkpoint keeps, else what a
+    -- click does); otherwise the talent chosen, or the plan's next
     local chosen = p.chosen and byID[p.chosen]
-    if chosen then
+    p.planRow:SetShown(planning and true or false)
+    p.hint:SetShown(planning and true or false)
+    if planning then
+        p.details:Set(nil)
+        p.details.nothing:Hide()
+        local why = chosen and chosen.refusal
+        p.hint:SetText(why and format("%s: %s", chosen.talent.name, why)
+            or d and format("Checkpoint keeps %s %d/%d as a step of the plan.",
+                Entry(config, m[d.id].node).name, plan.counts[d.id], m[d.id].node.maxRanks)
+            or "Click a talent to add a point to the plan; right-click takes its last off.")
+    elseif chosen then
         local node, t = chosen.node, chosen.talent
-        local why = planning and chosen.refusal or not planning and Lock(node)
+        local why = Lock(node)
         p.details:Set({ title = t.name, sub = format("Rank %d/%d", node.ranksPurchased, node.maxRanks)
-            .. (planning and format("  ·  Planned %d/%d", chosen.planned, node.maxRanks) or "")
             .. (why and ("  ·  " .. why) or ""), text = Describe(chosen) })
     else
-        -- nothing chosen: what a click does in the plan's mode, or the
-        -- plan's next talent
         local nextOne = nextID and m[nextID]
-        p.details.nothing:SetText(d and format("Checkpoint keeps %s %d/%d as a step of the plan.",
-                Entry(config, m[d.id].node).name, plan.counts[d.id], m[d.id].node.maxRanks)
-            or planning and "Click a talent to add a point to the plan; right-click takes its last off."
-            or nextOne and format("Next in your plan: %s %d/%d, at level %d.", Entry(config, nextOne.node).name,
-                nextRank, nextOne.node.maxRanks, place + 9)
+        p.details.nothing:SetText(nextOne and format("Next in your plan: %s %d/%d, at level %d.",
+                Entry(config, nextOne.node).name, nextRank, nextOne.node.maxRanks, place + 9)
             or "Choose a talent to read it.")
         p.details:Set(nil)
     end
@@ -655,12 +668,11 @@ local function Refresh(p)
     p.reset:SetShown(staged)
     p.checkpoint:SetShown(d and true or false)
     p.save:ClearAllPoints()
-    p.save:SetPoint("LEFT", d and p.checkpoint or p.planButton, "RIGHT", 4, 0)
+    p.save:SetPoint("LEFT", d and p.checkpoint or p.exit, "RIGHT", 4, 0)
     p.save:SetShown(planning and (#sim.steps > 0 or d) and true or false)
     p.save:SetAlpha(d and 0.4 or 1)
     if not planning then p.name:Hide() end
     p.apply:SetAlpha(Editable() and 1 or 0.4)
-    p.planButton.mark:SetShown(planning and true or false)
     p.wash:SetShown(planning and true or false)
     p.follow:SetShown(not planning and nextID ~= nil and Editable() and Left(config) > 0)
     p.follow:ClearAllPoints()
@@ -733,22 +745,11 @@ local function Margin(p, band)
     p.activate:SetPoint("LEFT", p.plans, "RIGHT", 4, 0)
 end
 
--- two rows over the tree: the plan's, [Plan] [Checkpoint] [Save plan]
--- and the name asked for; under it the points', [Reset]  points  [Apply]
+-- the points' row over the tree: [Reset]  points available  [Apply]
 local function Points(p, body)
-    local top = CreateFrame("Frame", nil, body)
-    top:SetPoint("TOPLEFT")
-    top:SetPoint("TOPRIGHT")
-    top:SetHeight(STRIP)
-    -- a hairline between the two rows
-    p.split = body:CreateTexture(nil, "ARTWORK")
-    p.split:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.5)
-    p.split:SetHeight(1)
-    p.split:SetPoint("TOPLEFT", 8, -STRIP)
-    p.split:SetPoint("TOPRIGHT", -8, -STRIP)
     local strip = CreateFrame("Frame", nil, body)
-    strip:SetPoint("TOPLEFT", 0, -STRIP)
-    strip:SetPoint("TOPRIGHT", 0, -STRIP)
+    strip:SetPoint("TOPLEFT")
+    strip:SetPoint("TOPRIGHT")
     strip:SetHeight(STRIP)
     p.points = ns.Text(strip, 12)
     p.points:SetPoint("CENTER", 0, 0)
@@ -766,30 +767,57 @@ local function Points(p, body)
     end, function() return "Forget the talents chosen." end)
     p.reset.label:SetText("Reset")
     p.reset:SetHeight(STRIP - 2)
-    -- the plan's mode, a plan drawn from nothing; left, the plan drawn is
-    -- forgotten unless saved
-    p.planButton = Button(top, 52, function()
-        if planning then End() else Begin() end
+    p.reset:SetPoint("LEFT", 4, 0)
+    p.follow = Button(strip, 64, function()
+        Follow()
+        W.Refresh()
+    end, function() return "Choose the plan's next talents, as many as your points; Apply learns them." end)
+    p.follow.label:SetText("Follow")
+    p.follow:SetHeight(STRIP - 2)
+end
+
+-- a foot's hint, under its row of buttons: two lines, wrapping
+local function Hint(foot)
+    local hint = ns.Text(foot, 12)
+    hint:SetPoint("TOPLEFT", 8, -(6 + STRIP + 6))
+    hint:SetPoint("TOPRIGHT", -8, -(6 + STRIP + 6))
+    hint:SetJustifyH("CENTER")
+    hint:SetWordWrap(true)
+    hint:SetTextColor(unpack(ns.colors.dim))
+    return hint
+end
+
+-- the foot: in the plan's mode, where the plan is worked ([Exit plan]
+-- [Checkpoint] [Save plan] and the name asked for, a hint under them);
+-- otherwise the chosen talent's details
+local function Foot(p, foot)
+    local row = CreateFrame("Frame", nil, foot)
+    p.planRow = row
+    row:SetPoint("TOPLEFT", 0, -6)
+    row:SetPoint("TOPRIGHT", 0, -6)
+    row:SetHeight(STRIP)
+    -- out of the plan's mode (Create Plan and Edit, on the plans' page,
+    -- bring it); the plan drawn is forgotten unless saved
+    p.exit = Button(row, 72, function()
+        End()
         p.chosen = nil
         W.Refresh()
     end, function()
-        if not planning then return "Draw a plan from nothing: the order to learn talents in." end
         return sim.saved and "Back to learning talents." or "Back to learning talents; the plan is lost unless saved."
     end)
-    p.planButton.label:SetText("Plan")
-    p.planButton:SetHeight(STRIP - 2)
-    p.planButton:SetPoint("LEFT", 4, 0)
-    p.reset:SetPoint("LEFT", 4, 0)
-    p.checkpoint = Button(top, 84, function()
+    p.exit.label:SetText("Exit plan")
+    p.exit:SetHeight(STRIP - 2)
+    p.exit:SetPoint("LEFT", 4, 0)
+    p.checkpoint = Button(row, 84, function()
         Checkpoint()
         W.Refresh()
     end, function() return "Keep the points added as one step of the plan." end)
     p.checkpoint.label:SetText("Checkpoint")
     p.checkpoint:SetHeight(STRIP - 2)
-    p.checkpoint:SetPoint("LEFT", p.planButton, "RIGHT", 4, 0)
-    -- Save plan asks for the name in a box on the strip: Enter keeps it,
+    p.checkpoint:SetPoint("LEFT", p.exit, "RIGHT", 4, 0)
+    -- Save plan asks for the name in a box on the row: Enter keeps it,
     -- Escape (or leaving the box) does not
-    p.save = Button(top, 76, function()
+    p.save = Button(row, 76, function()
         if sim.draft then return end
         p.name:SetText(sim.name or format("Plan %d", #Book().list + 1))
         p.name:Show()
@@ -802,7 +830,7 @@ local function Points(p, body)
     end)
     p.save.label:SetText("Save plan")
     p.save:SetHeight(STRIP - 2)
-    p.name = CreateFrame("EditBox", nil, top)
+    p.name = CreateFrame("EditBox", nil, row)
     p.name:SetAutoFocus(false)
     p.name:SetFont(ns.font, 12, "")
     p.name:SetTextColor(ns.colors.text[1], ns.colors.text[2], ns.colors.text[3])
@@ -822,17 +850,10 @@ local function Points(p, body)
     end)
     p.name:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     p.name:SetScript("OnEditFocusLost", function(self) self:Hide() end)
-    p.follow = Button(strip, 64, function()
-        Follow()
-        W.Refresh()
-    end, function() return "Choose the plan's next talents, as many as your points; Apply learns them." end)
-    p.follow.label:SetText("Follow")
-    p.follow:SetHeight(STRIP - 2)
-end
-
-local function Foot(p, foot)
+    p.hint = Hint(foot)
+    -- out of the mode, the talent chosen: its rank and what each gives
     p.details = ns.character.Details(foot, nil, "Choose a talent to read it.", 4)
-    p.footHeight = p.details.height
+    p.footHeight = math.max(FOOT, p.details.height)
 end
 
 -- ------------------------------------------------------------------ pages
@@ -872,7 +893,7 @@ end
 -- plan). Under it, its checkpoints: the levels each comes at, the talent
 -- and the rank it reaches, its tree; learned ones ticked and dim, the
 -- active plan's next marked. A checkpoint is a run of one talent in it.
-local LINE, GUTTER, HEADER, GAP = 24, 10, 28, 6
+local LINE, GUTTER, HEADER, GAP, LABELS = 24, 10, 28, 6, 20
 local FOLD = 14
 
 -- a plan's head: darker than the page, with an edge, as a section's
@@ -918,33 +939,70 @@ local function Head(p, i)
     return h
 end
 
+-- the checkpoints' table: its columns, from the right (the spec's icon,
+-- the progress, the goal), the levels and the talent from the left
+local SPEC, PROGRESS, GOAL, LVLS = 18, 58, 50, 44
+local function Columns(f)
+    f.at = ns.Text(f, 12)
+    f.at:SetPoint("LEFT", 0, 0)
+    f.at:SetWidth(LVLS)
+    f.at:SetJustifyH("RIGHT")
+    f.progress = ns.Text(f, 12)
+    f.progress:SetPoint("RIGHT", -(4 + SPEC + 6), 0)
+    f.progress:SetWidth(PROGRESS)
+    f.progress:SetJustifyH("CENTER")
+    f.goal = ns.Text(f, 12)
+    f.goal:SetPoint("RIGHT", f.progress, "LEFT", 0, 0)
+    f.goal:SetWidth(GOAL)
+    f.goal:SetJustifyH("CENTER")
+    f.name = ns.Text(f, 12)
+    f.name:SetPoint("RIGHT", f.goal, "LEFT", -6, 0)
+    f.name:SetJustifyH("LEFT")
+    f.name:SetWordWrap(false)
+end
+
+-- the table's head, under a plan's: what each column is
+local function Labels(p, i)
+    local f = CreateFrame("Frame", nil, p.list.child)
+    f:SetHeight(LABELS)
+    Columns(f)
+    f.name:SetPoint("LEFT", LVLS + 8, 0)
+    f.at:SetText("Lvls")
+    f.name:SetText("Talent")
+    f.goal:SetText("Goal")
+    f.progress:SetText("Progress")
+    f.spec = ns.Text(f, 11)
+    f.spec:SetPoint("RIGHT", -2, 0)
+    f.spec:SetText("Spec")
+    for _, t in ipairs({ f.at, f.name, f.goal, f.progress, f.spec }) do
+        t:SetFont(ns.font, 11, "")
+        t:SetTextColor(GOLD_D[1], GOLD_D[2], GOLD_D[3])
+    end
+    p.labels[i] = f
+    return f
+end
+
 local function Row(p, i)
     local r = CreateFrame("Button", nil, p.list.child)
     r:SetHeight(LINE)
     r.mark = r:CreateTexture(nil, "BACKGROUND")
     r.mark:SetAllPoints()
     r.mark:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.35)
-    r.at = ns.Text(r, 12)
-    r.at:SetPoint("LEFT", 0, 0)
-    r.at:SetWidth(48)
-    r.at:SetJustifyH("RIGHT")
+    Columns(r)
     r.at:SetTextColor(unpack(ns.colors.dim))
     r.icon = r:CreateTexture(nil, "ARTWORK")
     r.icon:SetSize(LINE - 4, LINE - 4)
-    r.icon:SetPoint("LEFT", 56, 0)
+    r.icon:SetPoint("LEFT", LVLS + 8, 0)
     r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    r.name:SetPoint("LEFT", r.icon, "RIGHT", 6, 0)
     r.tick = r:CreateTexture(nil, "ARTWORK")
     r.tick:SetSize(14, 14)
-    r.tick:SetPoint("RIGHT", -4, 0)
+    r.tick:SetPoint("CENTER", r.progress, "CENTER", 0, 0)
     r.tick:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-    r.tree = ns.Text(r, 11)
-    r.tree:SetPoint("RIGHT", -24, 0)
-    r.tree:SetTextColor(unpack(ns.colors.dim))
-    r.name = ns.Text(r, 12)
-    r.name:SetPoint("LEFT", r.icon, "RIGHT", 6, 0)
-    r.name:SetPoint("RIGHT", r.tree, "LEFT", -6, 0)
-    r.name:SetJustifyH("LEFT")
-    r.name:SetWordWrap(false)
+    r.spec = r:CreateTexture(nil, "ARTWORK")
+    r.spec:SetSize(SPEC, SPEC)
+    r.spec:SetPoint("RIGHT", -4, 0)
+    r.spec:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     local glow = r:CreateTexture(nil, "HIGHLIGHT")
     glow:SetAllPoints()
     glow:SetColorTexture(1, 1, 1, 0.08)
@@ -986,10 +1044,10 @@ local function RefreshPlans(p)
     if not config then return end
     local m = Model(config)
     local b = Book()
-    local names = {}
-    for _, g in ipairs(Groups()) do names[g.groupID] = g.displayName end
+    local icons = {}
+    for _, g in ipairs(Groups()) do icons[g.groupID] = g.icon end
     local width = W.width - GUTTER
-    local nh, nr, y = 0, 0, 0
+    local nh, nr, nl, y = 0, 0, 0, 0
     local summary
     for k, kept in ipairs(b.list) do
         local active = k == b.active
@@ -1012,6 +1070,15 @@ local function RefreshPlans(p)
         h.count:ClearAllPoints()
         if active then h.count:SetPoint("RIGHT", -10, 0) else h.count:SetPoint("RIGHT", h.use, "LEFT", -8, 0) end
         h.count:SetText(format("%s%d |4point:points;", active and "Active  ·  " or "", #walk.kept))
+        if not kept.collapsed then
+            nl = nl + 1
+            local l = p.labels[nl] or Labels(p, nl)
+            l:ClearAllPoints()
+            l:SetPoint("TOPLEFT", 0, -y)
+            l:SetWidth(width)
+            l:Show()
+            y = y + LABELS
+        end
         local learned = 0
         for _, step in ipairs(steps) do
             local t = m[step.id]
@@ -1031,63 +1098,64 @@ local function RefreshPlans(p)
                     or format("%d–%d", step.from + 9, step.to + 9))
                 r.icon:SetTexture(r.talent.icon)
                 r.icon:SetDesaturated(done)
-                r.name:SetText(format("%s %d/%d", r.talent.name, step.rank, t.node.maxRanks))
-                local rc = done and ns.colors.dim or ahead and GOLD or ns.colors.text
+                r.name:SetText(r.talent.name)
+                local rc = ahead and GOLD or ns.colors.text
                 r.name:SetTextColor(rc[1], rc[2], rc[3])
-                r.tree:SetText(names[t.group] or "")
+                -- the goal, the rank the checkpoint reaches; the progress,
+                -- the ranks learned toward it, a tick once they are all
+                r.goal:SetText(format("%d/%d", step.rank, t.node.maxRanks))
+                r.progress:SetText(format("%d/%d", t.node.ranksPurchased, step.rank))
+                r.progress:SetShown(not done)
                 r.tick:SetShown(done)
+                r.spec:SetTexture(icons[t.group])
+                r:SetAlpha(done and 0.45 or 1)
                 r.mark:SetShown(ahead and true or false)
             end
         end
         y = y + GAP
         if active then
-            summary = { name = kept.name, points = #walk.kept, learned = learned, steps = #steps, place = place }
+            summary = { steps = #steps, place = place }
         end
     end
     for k = nh + 1, #p.heads do p.heads[k]:Hide() end
     for k = nr + 1, #p.rows do p.rows[k]:Hide() end
+    for k = nl + 1, #p.labels do p.labels[k]:Hide() end
     p.list.child:SetSize(width, math.max(1, y))
     p.list.To(p.list.target)
-    p.points:SetText(summary and format("%s  ·  %d/%d  ·  %d/%d learned", summary.name, summary.points, Cap(),
-        summary.learned, summary.steps) or #b.list > 0 and "No plan active" or "No plans")
     p.edit:SetShown(summary and true or false)
     p.remove:SetShown(summary and true or false)
-    p.details.nothing:SetText(#b.list == 0
-        and "No plan yet: press Plan over a tree, click its talents, Checkpoint each, then Save plan."
+    p.hint:SetText(#b.list == 0
+        and "No plan yet: Create Plan, click talents, Checkpoint each, then Save plan."
         or not summary and "Press Use on a plan to make it the active one."
         or summary.place and format("Next: level %d. Click a checkpoint to open its talent.", summary.place + 9)
         or summary.steps > 0 and "Every talent in the plan is learned."
         or "The plan is empty.")
-    p.details:Set(nil)
     Band(p)
 end
 
--- the plans' page: no tab, Plans in the margin opens it. Over its list two
--- rows, as over a tree: Edit and Remove, then the active plan's count
+-- the plans' page: no tab, Plans in the margin opens it. Over its list the
+-- active plan's count; in its foot, as under a tree, Edit and Remove and a
+-- hint
 do
     local p = { key = "plans", tabless = true, order = TREES + 1, label = "Plans", frame = "TalentsFrame" }
-    p.rows, p.heads = {}, {}
+    p.rows, p.heads, p.labels = {}, {}, {}
     p.flex, p.height, p.bandUsed = true, 0, true
     p.events = { "TRAIT_CONFIG_UPDATED", "TRAIT_NODE_CHANGED", "PLAYER_TALENT_UPDATE",
         "ACTIVE_TALENT_GROUP_CHANGED", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }
     function p.Available() return C_Traits and C_SpecializationInfo and Groups()[1] ~= nil end
     function p.Build(body, foot, band)
-        local top = CreateFrame("Frame", nil, body)
-        top:SetPoint("TOPLEFT")
-        top:SetPoint("TOPRIGHT")
+        local top = CreateFrame("Frame", nil, foot)
+        top:SetPoint("TOPLEFT", 0, -6)
+        top:SetPoint("TOPRIGHT", 0, -6)
         top:SetHeight(STRIP)
-        p.split = body:CreateTexture(nil, "ARTWORK")
-        p.split:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.5)
-        p.split:SetHeight(1)
-        p.split:SetPoint("TOPLEFT", 8, -STRIP)
-        p.split:SetPoint("TOPRIGHT", -8, -STRIP)
-        local strip = CreateFrame("Frame", nil, body)
-        strip:SetPoint("TOPLEFT", 0, -STRIP)
-        strip:SetPoint("TOPRIGHT", 0, -STRIP)
-        strip:SetHeight(STRIP)
-        p.points = ns.Text(strip, 12)
-        p.points:SetPoint("CENTER", 0, 0)
-        p.points:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+        -- Create Plan draws one from nothing, in the plan's mode over a tree
+        p.create = Button(top, 92, function()
+            Begin()
+            Back()
+        end, function() return "Draw a plan from nothing: the order to learn talents in." end)
+        p.create.label:SetText("Create Plan")
+        p.create:SetHeight(STRIP - 2)
+        p.create:SetPoint("LEFT", 4, 0)
         -- Edit draws the active plan again, in the plan's mode over a tree
         p.edit = Button(top, 52, function()
             local chosen = Chosen()
@@ -1099,7 +1167,7 @@ do
         end)
         p.edit.label:SetText("Edit")
         p.edit:SetHeight(STRIP - 2)
-        p.edit:SetPoint("LEFT", 4, 0)
+        p.edit:SetPoint("LEFT", p.create, "RIGHT", 4, 0)
         -- Remove asks twice: the first press arms it, leaving disarms it
         p.remove = Button(top, 92, function(self)
             if not self.armed then
@@ -1122,13 +1190,17 @@ do
             self.label:SetText("Remove")
         end)
         local area = CreateFrame("Frame", nil, body)
-        area:SetPoint("TOPLEFT", 0, -(HEAD + 4))
+        area:SetPoint("TOPLEFT", 0, -4)
         area:SetPoint("BOTTOMRIGHT")
         p.list = ns.window.Scroller(area, GUTTER)
         area:EnableMouseWheel(true)
         area:SetScript("OnMouseWheel", function(_, delta) p.list.To(p.list.target - delta * LINE * 3) end)
-        p.details = ns.character.Details(foot, nil, "", 4)
-        p.footHeight = p.details.height
+        p.hint = Hint(foot)
+        -- as tall as a tree's foot, so the list keeps its place between them
+        p.footHeight = FOOT
+        for _, page in ipairs(W.pages) do
+            if page.tree and page.footHeight then p.footHeight = page.footHeight end
+        end
         Margin(p, band)
     end
     function p.Refresh() RefreshPlans(p) end

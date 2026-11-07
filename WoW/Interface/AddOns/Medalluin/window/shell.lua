@@ -26,7 +26,9 @@
 -- go (a pet's spells, a profession learned) asks for Retab, and the row is
 -- shared out again.
 --
---   local w = ns.Window{ name, side (-1 left, 1 right), detailsKey,
+--   local w = ns.Window{ name, side (-1 left, 1 right),
+--                        detailsKey (the setting the chevron folds the
+--                        details by; none: they stay open, no chevron),
 --                        closeTip, Close(), Open(page) (ask Blizzard),
 --                        Lifted() -> the medallion's buttons,
 --                        place (a setting: the window detaches, below) }
@@ -329,7 +331,9 @@ function ns.Window(spec)
         table.insert(pages, page)
     end
 
-    local function Details() return ns.db[spec.detailsKey] and true or false end
+    -- the details open: always, for a window with no key to fold them
+    -- (nor a chevron)
+    local function Details() return not spec.detailsKey or ns.db[spec.detailsKey] and true or false end
 
     -- the detached view's place (none for a window that stays docked)
     local function At() return spec.place and type(ns.db[spec.place]) == "table" and ns.db[spec.place] or {} end
@@ -413,7 +417,9 @@ function ns.Window(spec)
             current.foot:SetHeight(current.footHeight)
         end
         window:SetHeight(total)
-        chevron.icon:SetTexture(ns.media .. "strips\\" .. (details and "chevron-down" or "chevron-up"))
+        if chevron then
+            chevron.icon:SetTexture(ns.media .. "strips\\" .. (details and "chevron-down" or "chevron-up"))
+        end
         dirty = true            -- a list's rows follow its height
     end
 
@@ -579,7 +585,8 @@ function ns.Window(spec)
             if p.available and not p.tabless then table.insert(shown, p) end
             p.tab = nil
         end
-        local room = (window:GetWidth() or WIDTH) - 2 * PAD - (spec.place and 3 or 2) * (TAB + 4)
+        local controls = 1 + (spec.detailsKey and 1 or 0) + (spec.place and 1 or 0)
+        local room = (window:GetWidth() or WIDTH) - 2 * PAD - controls * (TAB + 4)
         local width = math.floor((room + #shown - 1) / #shown)
         local prev
         for i, p in ipairs(shown) do
@@ -676,10 +683,12 @@ function ns.Window(spec)
         close = Button(window, TAB, function() spec.Close() end, function() return spec.closeTip end)
         Glyph(close, "close")
         close:SetPoint("TOPRIGHT", -PAD, -PAD)
-        chevron = Button(window, TAB, function() ns.SetOption(spec.detailsKey, not ns.db[spec.detailsKey]) end,
-            function() return ns.db[spec.detailsKey] and "Hide the details." or "Show the details." end)
-        Glyph(chevron)
-        chevron:SetPoint("RIGHT", close, "LEFT", -4, 0)
+        if spec.detailsKey then
+            chevron = Button(window, TAB, function() ns.SetOption(spec.detailsKey, not ns.db[spec.detailsKey]) end,
+                function() return ns.db[spec.detailsKey] and "Hide the details." or "Show the details." end)
+            Glyph(chevron)
+            chevron:SetPoint("RIGHT", close, "LEFT", -4, 0)
+        end
         window.close, window.chevron = close, chevron
         if spec.place then
             view = Button(window, TAB, function()
@@ -702,7 +711,7 @@ function ns.Window(spec)
                     or "Detached: a box of its own, to move and size."
             end)
             Glyph(view)
-            view:SetPoint("RIGHT", chevron, "LEFT", -4, 0)
+            view:SetPoint("RIGHT", chevron or close, "LEFT", -4, 0)
             window.view = view
             window:SetMovable(true)
             window:SetResizable(true)
@@ -769,7 +778,7 @@ function ns.Window(spec)
                 current.Refresh()
             end
         end)
-        ns.OnSetting(spec.detailsKey, Layout)
+        if spec.detailsKey then ns.OnSetting(spec.detailsKey, Layout) end
         if spec.place then Place() end
         -- the screen's height is the window's
         for _, e in ipairs({ "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED" }) do

@@ -10503,8 +10503,9 @@ if talentPass then
     local function foot(tag)
         local p = W.Current()
         local d = p.details
-        print(tag, d.nothing.shown and ("nothing: " .. d.nothing.text) or (d.title.text .. " | " .. d.sub.text
-            .. " | " .. d.text.text), "points=" .. p.points.text,
+        print(tag, p.hint.shown and ("hint: " .. p.hint.text .. (d.nothing.shown and " +nothing" or "")
+            .. (d.title.shown and " +details" or "")) or d.nothing.shown and ("nothing: " .. d.nothing.text)
+            or (d.title.text .. " | " .. d.sub.text .. " | " .. d.text.text), "points=" .. p.points.text,
             "apply=" .. tostring(p.apply.shown) .. string.format("(%.1f)", p.apply.alpha or 1),
             "reset=" .. tostring(p.reset.shown))
         local specs = {}
@@ -10673,20 +10674,31 @@ if talentPass then
     end
     local function strip(tag)
         local p = W.Current()
-        print(tag, "points=" .. p.points.text, "plan=" .. (p.planButton.mark.shown and "on" or "off"),
+        print(tag, "points=" .. p.points.text, "plan=" .. (p.planRow.shown and "on" or "off"),
             "wash=" .. (p.wash.shown and table.concat(p.wash.color, ",") .. "@" .. (p.wash.all == p.body and "body"
                 or "?") or "off"),
             "follow=" .. tostring(p.follow.shown) .. "@" .. where(p.follow),
             "checkpoint=" .. tostring(p.checkpoint.shown),
             "save=" .. tostring(p.save.shown) .. string.format("(%.1f)", p.save.alpha or 1) .. "@"
-                .. (p.save.points.LEFT[1] == p.checkpoint and "checkpoint" or p.save.points.LEFT[1] == p.planButton
-                    and "plan" or "?"),
+                .. (p.save.points.LEFT[1] == p.checkpoint and "checkpoint" or p.save.points.LEFT[1] == p.exit
+                    and "exit" or "?"),
             "name=" .. (p.name.shown and tostring(p.name.text) or "off"),
-            "next=" .. (p.details.nothing.shown and p.details.nothing.text or "-"))
+            "hint=" .. (p.hint.shown and p.hint.text or p.details.nothing.shown and p.details.nothing.text or "-"))
     end
     local function press(b)
         b.scripts.OnClick(b, "LeftButton")
         frame()
+    end
+    -- the plan's mode on (Create Plan, on the plans' page, back to the
+    -- tree it was opened from) or off (Exit plan)
+    local function toggle()
+        local p = W.Current()
+        if p.planRow and p.planRow.shown then
+            press(p.exit)
+        else
+            press(p.plans)
+            press(pageOf("plans").create)
+        end
     end
     -- Save plan, its name typed and Enter pressed
     local function save(name)
@@ -10701,11 +10713,12 @@ if talentPass then
     -- Plan: a simulation from nothing, the talents learned (Convection 5/5,
     -- Concussion 1/3, Call of Flame) left out
     T.committed[1][3] = 1
-    press(elemT.planButton)
+    toggle()
     plan("talents.plan none kept")
     tree("talents.plan tree")
-    -- the chrome: the plan's row over the points', the buttons soft (each
-    -- texture's alpha: edge, well, mark, glow), a hairline before Plans
+    -- the chrome: the points' row over the tree, the plan's in the foot
+    -- (no chevron folds it), the buttons soft (each texture's alpha: edge,
+    -- well, mark, glow), a hairline before Plans
     do
         local function face(b)
             local a = {}
@@ -10714,23 +10727,23 @@ if talentPass then
             end
             return table.concat(a, ",")
         end
-        local function row(b) return b.parent.points.TOPLEFT and string.format("%d", -b.parent.points.TOPLEFT[4]) or "?" end
-        print("talents.chrome", "plan@" .. row(elemT.planButton), "checkpoint@" .. row(elemT.checkpoint),
+        local function row(b)
+            local host = b.parent.parent == elemT.foot and "foot" or b.parent.parent == elemT.body and "body" or "?"
+            return host .. (b.parent.points.TOPLEFT and string.format("%d", -b.parent.points.TOPLEFT[4]) or "?")
+        end
+        print("talents.chrome", "exit@" .. row(elemT.exit), "checkpoint@" .. row(elemT.checkpoint),
             "save@" .. row(elemT.save), "name@" .. row(elemT.name), "points@" .. row(elemT.points),
             "reset@" .. row(elemT.reset), "apply@" .. row(elemT.apply), "follow@" .. row(elemT.follow),
-            "face=" .. face(elemT.planButton), "margin=" .. face(elemT.specs[1]),
+            "face=" .. face(elemT.exit), "margin=" .. face(elemT.specs[1]),
             "rule=" .. (elemT.rule.w .. "x" .. elemT.rule.h .. " " .. (elemT.rule.points.LEFT[1] == elemT.specs[2]
                 and "secondary" or "?") .. string.format(" %.2f", elemT.rule.color[4])),
             "plans@" .. (elemT.plans.points.LEFT[1] == elemT.rule and "rule" or "?") .. " "
                 .. elemT.plans.points.LEFT[3])
-        local sp = elemT.split
-        print("talents.chrome split", "h=" .. sp.h, string.format("alpha=%.2f", sp.color[4]),
-            "from=" .. sp.points.TOPLEFT[3] .. "," .. sp.points.TOPLEFT[4],
-            "to=" .. sp.points.TOPRIGHT[3] .. "," .. sp.points.TOPRIGHT[4])
-        local nothing = elemT.details.nothing
-        print("talents.chrome nothing", "left=" .. tostring(nothing.points.LEFT and nothing.points.LEFT[3]),
-            "right=" .. tostring(nothing.points.RIGHT and nothing.points.RIGHT[3]),
-            "centre=" .. tostring(nothing.points.CENTER ~= nil), "wrap=" .. tostring(nothing.wrap))
+        local hint = elemT.hint
+        print("talents.chrome foot", "height=" .. elemT.footHeight, "shown=" .. tostring(elemT.foot.shown),
+            "chevron=" .. tostring(W.window.chevron ~= nil), "hint@" .. tostring(hint.parent == elemT.foot and "foot"
+                or "?") .. " " .. hint.points.TOPLEFT[3] .. "," .. hint.points.TOPLEFT[4] .. ">"
+                .. hint.points.TOPRIGHT[3], "wrap=" .. tostring(hint.wrap))
     end
     strip("talents.plan fresh")
     -- the draft: Convection's points, of one talent only
@@ -10808,13 +10821,13 @@ if talentPass then
     click("Call of Flame", "RightButton")
     -- the box goes with the mode
     press(elemT.save)
-    press(elemT.planButton)
+    toggle()
     strip("talents.plan box left")
-    press(elemT.planButton)
+    toggle()
     -- out of the mode: the active plan's glow, the next brightest; Follow
     -- stages the next entries for Apply
     elemT.chosen = nil
-    press(elemT.planButton)
+    toggle()
     tree("talents.plan glow")
     strip("talents.plan next")
     T.calls = {}
@@ -10833,16 +10846,16 @@ if talentPass then
     T.points = points
     -- talents staged are not the plan's: Apply and Reset wait out the mode
     click("Concussion")
-    press(elemT.planButton)
+    toggle()
     foot("talents.plan staged")
-    press(elemT.planButton)
+    toggle()
     press(elemT.reset)
     -- unsaved work is lost: leaving the mode, closing the window, or
     -- viewing the other specialisation
-    press(elemT.planButton)
+    toggle()
     click("Concussion")
-    press(elemT.planButton)
-    press(elemT.planButton)
+    toggle()
+    toggle()
     strip("talents.plan left unsaved")
     click("Concussion")
     W.window:Hide()
@@ -10850,18 +10863,18 @@ if talentPass then
     frame()
     strip("talents.plan window closed")
     T.groups = 2
-    press(elemT.planButton)
+    toggle()
     click("Concussion")
     local sec2 = W.Current().specs[2]
     press(sec2)
     strip("talents.plan secondary")
     plan("talents.plan kept still")
     -- its own plans; Follow stages nothing in talents not in use
-    press(elemT.planButton)
+    toggle()
     click("Convection")
     press(elemT.checkpoint)
     save("Water")
-    press(elemT.planButton)
+    toggle()
     T.calls = {}
     press(elemT.follow)
     print("talents.plan secondary follow", "calls=" .. table.concat(T.calls, ","))
@@ -10882,21 +10895,27 @@ if talentPass then
                     (h.fold.rotation or 0) == 0 and "v" or ">", h.name.text, "(" .. c3(h.name.textColor) .. ")", h.count.text, h.use.shown and " Use" or "", -h.points.TOPLEFT[4]) })
             end
         end
+        for _, l in ipairs(p.labels) do
+            if l.shown then
+                table.insert(list, { -l.points.TOPLEFT[4], string.format("{%s|%s|%s|%s|%s}@%d", l.at.text, l.name.text,
+                    l.goal.text, l.progress.text, l.spec.text, -l.points.TOPLEFT[4]) })
+            end
+        end
         for _, r in ipairs(p.rows) do
             if r.shown then
-                table.insert(list, { -r.points.TOPLEFT[4], string.format("%s %s%s%s/%s@%d", r.at.text, r.name.text,
-                    r.tick.shown and " ✓" or "", r.mark.shown and " <" or "", r.tree.text, -r.points.TOPLEFT[4]) })
+                table.insert(list, { -r.points.TOPLEFT[4], string.format("%s|%s|%s|%s|%s%s a%.2f@%d", r.at.text, r.name.text,
+                    r.goal.text, (r.progress.shown and r.progress.text or "") .. (r.tick.shown and "✓" or ""),
+                    tostring(r.spec.texture), r.mark.shown and " <" or "", r.alpha or 1, -r.points.TOPLEFT[4]) })
             end
         end
         table.sort(list, function(a, b) return a[1] < b[1] end)
         for k, e in ipairs(list) do list[k] = e[2] end
-        print(tag, "page=" .. p.key, "points=" .. p.points.text .. "@" .. -p.points.parent.points.TOPLEFT[4],
-            "edit=" .. tostring(p.edit.shown) .. "@" .. string.format("%d", -p.edit.parent.points.TOPLEFT[4]),
+        print(tag, "page=" .. p.key, "list@" .. string.format("%d", -p.list.scroll.parent.points.TOPLEFT[4]),
+            "edit=" .. tostring(p.edit.shown) .. "@" .. (p.edit.parent.parent == p.foot and "foot" or "?")
+                .. string.format("%d", -p.edit.parent.points.TOPLEFT[4]),
             "remove=" .. tostring(p.remove.shown) .. "(" .. p.remove.label.text .. ")",
-            "plans=" .. tostring(p.plans.mark.shown), "split=" .. (p.split.points.TOPLEFT and p.split.points.TOPRIGHT
-                and p.split.points.TOPLEFT[3] .. "," .. p.split.points.TOPLEFT[4] .. ">" .. p.split.points.TOPRIGHT[3]
-                or "?"), "rows: " .. table.concat(list, "; "))
-        print(tag .. " foot", p.details.nothing.text)
+            "plans=" .. tostring(p.plans.mark.shown), "rows: " .. table.concat(list, "; "))
+        print(tag .. " foot", p.hint.text, "foot=" .. p.footHeight .. "/" .. tostring(p.foot.shown))
     end
     plans("talents.plans")
     -- a short window: the list scrolls under the wheel
@@ -10939,9 +10958,16 @@ if talentPass then
     -- the same name replaces
     click("Call of Flame")
     press(elemT.checkpoint)
+    -- a step in another tree: its row wears that tree's icon
+    enhT.tab.scripts.OnClick(enhT.tab)
+    frame()
+    click("Ancestral Knowledge")
+    press(enhT.checkpoint)
+    elemT.tab.scripts.OnClick(elemT.tab)
+    frame()
     save("Fire")
     plan("talents.plan replaced")
-    press(elemT.planButton)
+    toggle()
     -- each plan under its head; Use makes another active
     press(elemT.plans)
     plans("talents.plans two")
@@ -10982,7 +11008,7 @@ if talentPass then
     frame()
     click("Concussion", "RightButton")
     strip("talents.plan edit run")
-    press(elemT.planButton)
+    toggle()
     press(elemT.plans)
     enhT.tab.scripts.OnClick(enhT.tab)
     frame()

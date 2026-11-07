@@ -93,7 +93,6 @@ local DEFAULTS = {
     spellbookMissing = true, -- a red edge on a spell on no action bar (nor in a macro on one)
     spellbookUpRankAll = false, -- every spell kept on its highest rank on the bars (else only those ticked)
     talents = true,         -- Medalluin's talents instead of Blizzard's (Forever)
-    talentsDetails = true,  -- its trees' details open (the window's chevron sets it too)
     professions = true,     -- Medalluin's professions instead of Blizzard's (Forever)
     professionsDetails = true, -- its recipes' details open (the window's chevron sets it too)
     quests = true,          -- Medalluin's quest tracker on the left; its full view stands in the chat box

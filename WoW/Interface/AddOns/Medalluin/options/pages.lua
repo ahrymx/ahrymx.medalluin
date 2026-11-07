@@ -665,14 +665,10 @@ function ns.OptionPages()
             id = "talents", name = "Talents", intro = "Forever only. Shared by every profile.",
             master = Check("talents", "Talents window",
                 "Your talents, a tab for each tree, in one window standing on the side panel. Spend points, then "
-                .. "Apply; switch between your Primary and Secondary talents in its margin. In combat it reads. "
-                .. "Untick it to keep the game's talents.", true),
-            groups = {
-                Group("Window",
-                    Check("talentsDetails", "Details",
-                        "The chosen talent's rank and description, and the points left, under the tree. The "
-                        .. "window's arrow folds it too.")),
-            },
+                .. "Apply; switch between your Primary and Secondary talents in its margin. Plans, there, "
+                .. "draws and keeps the orders to learn them in. In combat it reads. Untick it to keep the game's "
+                .. "talents.", true),
+            groups = {},
         },
         {
             id = "professions", name = "Professions", intro = "Forever only. Shared by every profile.",
