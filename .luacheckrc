@@ -111,7 +111,7 @@ read_globals = {
     "IsInRaid", "ColorPickerFrame", "GetAddOnMetadata", "UISpecialFrames", "IsInInstance", "GetNumGroupMembers", "GetRaidRosterInfo",
     -- the action slots (bars/skills.lua)
     "GetActionInfo", "GetActionText", "GetMacroInfo", "GetMacroIndexByName", "PickupMacro", "PickupAction",
-    "PlaceAction", "ClearCursor", "GetCursorInfo", "PickupSpell", "PickupItem", "C_Item", "C_MountJournal",
+    "PlaceAction", "ClearCursor", "CursorHasItem", "GetCursorInfo", "PickupSpell", "PickupItem", "C_Item", "C_MountJournal",
     "C_PetJournal", "C_SpellBook", "C_EquipmentSet", "C_SpecializationInfo", "GetSpecialization",
     "GetActiveTalentGroup", "Enum",
     -- the character window (character/)

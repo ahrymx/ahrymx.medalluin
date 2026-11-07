@@ -19,6 +19,10 @@
 -- (Make, at login and as the bags change), and one still missing in combat
 -- is left out until it ends.
 --
+-- A locked item (inventory/locks.lua) wears a padlock in the bottom left;
+-- Alt+click locks or unlocks it. The click is hooked, never replaced: the
+-- template's own OnClick runs first and does nothing with Alt.
+--
 -- The views:
 --   grid    every slot in order, a container Apart on rows of its own
 --   bags    each container on rows of its own, under its name
@@ -88,6 +92,42 @@ local function Fill(b, bag, slot, info)
     if b.CheckUpdateTooltip then b:CheckUpdateTooltip(GameTooltip:GetOwner()) end
     Level(b, info, bag, slot)
     b.spare:SetText("")
+    b.itemID = info and info.itemID
+    b.lock:SetShown(ns.locks.Is(b.itemID))
+end
+
+-- every slot made, of every set, for the padlocks to follow a lock
+local all = {}
+ns.locks.Watch(function()
+    for _, b in ipairs(all) do b.lock:SetShown(ns.locks.Is(b.itemID)) end
+end)
+
+-- Alt+click, alone and with nothing held: the item's lock turned over
+local function Lock(b)
+    if not IsAltKeyDown() or IsShiftKeyDown() or IsControlKeyDown() or CursorHasItem() then return end
+    if b.itemID then ns.locks.Toggle(b.itemID) end
+end
+
+-- The game's own padlock (quest sharing's), greyed and tinted blue; a copy
+-- added over it lifts it, since a tint only ever darkens. In a frame of its
+-- own, above the slot's border and cooldown, shown and hidden as one.
+local BLUE = { 0.45, 0.75, 1 }
+local function Padlock(b)
+    local f = CreateFrame("Frame", nil, b)
+    f:SetSize(28, 28)
+    f:SetPoint("BOTTOMLEFT", 0, 0)
+    f:SetFrameLevel(b:GetFrameLevel() + 5)
+    for _, blend in ipairs({ "BLEND", "ADD" }) do
+        local t = f:CreateTexture(nil, "OVERLAY")
+        t:SetAllPoints()
+        t:SetAtlas("QuestSharing-Padlock")
+        t:SetDesaturated(true)
+        t:SetVertexColor(BLUE[1], BLUE[2], BLUE[3])
+        t:SetBlendMode(blend)
+        f[blend] = t
+    end
+    f:Hide()
+    return f
 end
 
 function ns.Slots(spec)
@@ -121,6 +161,9 @@ function ns.Slots(spec)
         b.spare = ns.PlainText(b, 12)       -- on the free slot: how many there are
         b.spare:SetPoint("CENTER")
         b.spare:SetTextColor(unpack(ns.colors.dim))
+        b.lock = Padlock(b)
+        b:HookScript("OnClick", Lock)
+        table.insert(all, b)
         slots[bag][slot] = b
         return b
     end

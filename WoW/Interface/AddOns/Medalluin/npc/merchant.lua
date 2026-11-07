@@ -18,6 +18,9 @@
 -- would. A bag item's right click still sells too: Blizzard's MerchantFrame
 -- is still shown (only parked), and stays untouched: no tab of its set,
 -- nothing of it called (npc/window.lua, Taint).
+--
+-- A locked item (inventory/locks.lua) is on neither Sell nor Sell junk, and
+-- one sold anyway, by a right click in the bags, is bought back.
 local _, ns = ...
 
 local HIGH = MERCHANT_HIGH_PRICE_COST or 1500000      -- the game's own: 150 gold
@@ -140,16 +143,17 @@ local function Buyback(out)
 end
 
 -- ------------------------------------------------------------ to sell
--- Everything in your bags the vendor buys: { bag, slot, info, name, value
--- (the whole stack's) }, in the bags' order.
-local function Sellable()
+-- Everything in your bags the vendor buys and you have not locked: { bag,
+-- slot, info, name, value (the whole stack's) }, in the bags' order. With
+-- `locked`, the locked ones alone.
+local function Sellable(locked)
     local C, out = C_Container, {}
     if not C or not C.GetContainerItemInfo then return out end
     local info = C_Item and C_Item.GetItemInfo or GetItemInfo
     for bag = 0, NUM_BAG_SLOTS or 4 do
         for slot = 1, C.GetContainerNumSlots(bag) or 0 do
             local item = C.GetContainerItemInfo(bag, slot)
-            if item and not item.hasNoValue then
+            if item and not item.hasNoValue and ns.locks.Is(item.itemID) == (locked or false) then
                 local name, _, _, _, _, _, _, _, _, _, price = info(item.itemID)
                 if price and price > 0 then
                     table.insert(out, { bag = bag, slot = slot, info = item, name = item.itemName or name or WAIT,
@@ -216,9 +220,9 @@ end
 
 -- -------------------------------------------------------------- junk
 -- Your grey items that sell: how many, and for how much.
-local function Junk()
+local function Junk(locked)
     local count, value, slots = 0, 0, {}
-    for _, s in ipairs(Sellable()) do
+    for _, s in ipairs(Sellable(locked)) do
         if s.info.quality == 0 then
             count = count + 1
             value = value + s.value
@@ -229,7 +233,8 @@ local function Junk()
 end
 
 local function SellJunk()
-    if C_MerchantFrame and C_MerchantFrame.SellAllJunkItems then
+    -- the game's own sells every grey, so not while one is locked
+    if C_MerchantFrame and C_MerchantFrame.SellAllJunkItems and Junk(true) == 0 then
         C_MerchantFrame.SellAllJunkItems()
         return
     end
@@ -291,15 +296,21 @@ ns.npc.Page{
     Start = function()
         ns.On("MERCHANT_SHOW", function()
             tab, pending = "merchant", nil
+            ns.locks.Seen()
             ns.npc.Show("merchant")
         end)
         ns.On("MERCHANT_CLOSED", function()
             pending = nil
+            ns.locks.Seen(false)
             ns.npc.Sync()
         end)
+        -- a locked item sold comes back before the page is drawn again
+        ns.On("MERCHANT_UPDATE", ns.locks.Rescue)
+        ns.On("BAG_UPDATE_DELAYED", ns.locks.Rescue)
         for _, e in ipairs({ "MERCHANT_UPDATE", "MERCHANT_FILTER_ITEM_UPDATE", "UPDATE_INVENTORY_DURABILITY",
             "PLAYER_MONEY", "BAG_UPDATE_DELAYED", "GET_ITEM_INFO_RECEIVED" }) do
             ns.On(e, Update)
         end
+        ns.locks.Watch(function() if MerchantFrame and MerchantFrame:IsShown() then Update() end end)
     end,
 }

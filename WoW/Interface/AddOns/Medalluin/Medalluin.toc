@@ -59,6 +59,7 @@ strips\side.lua
 strips\loot.lua
 strips\meter.lua
 strips\auras.lua
+inventory\locks.lua
 inventory\slots.lua
 inventory\bags.lua
 window\shell.lua

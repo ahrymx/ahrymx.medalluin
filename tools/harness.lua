@@ -512,6 +512,8 @@ function Region:IsProtected() return false end
 function Region:LockHighlight() self.highlightLocked = true end
 function Region:UnlockHighlight() self.highlightLocked = false end
 function Region:HookScript(k, f)
+    self.hooked = self.hooked or {}
+    self.hooked[k] = true
     local old = self.scripts[k]
     self.scripts[k] = function(...)
         if old then old(...) end
@@ -1759,6 +1761,7 @@ function PlaceAction(slot)
     cursor, actionSlots[slot] = actionSlots[slot], cursor
 end
 function ClearCursor() cursor = nil end
+function CursorHasItem() return cursor ~= nil end
 function GetMacroIndexByName(name)
     for i, m in ipairs(macros) do if m == name then return i end end
     return 0
@@ -2988,6 +2991,7 @@ if npcPass or bankPass then
     function GetNumBuybackItems() return #W.buyback end
     function GetBuybackItemInfo(i) local b = W.buyback[i] return b[1], b[2], b[3], b[4], nil, true end
     function BuybackItem(i) called("BuybackItem", i) end
+    function GetBuybackItemLink(i) return W.buyback[i][5] end
     function CanMerchantRepair() return W.canRepair end
     function CanGuildBankRepair() return W.guild end
     function GetRepairAllCost() return W.repair, W.repair > 0 end
@@ -8222,7 +8226,8 @@ if bagsPass then
                     if b.hasItem then
                         table.insert(items, string.format("%d@%s q=%s n=%s%s%s%s%s%s", i, at(b), tostring(b.quality),
                             tostring(b.count), b.newGlow and " new" or "", b.quest and " quest" or "",
-                            b.junk and " junk" or "", b.desat and " locked" or "", b.matches == false and " dim" or ""))
+                            b.junk and " junk" or "", b.desat and " locked" or "", b.matches == false and " dim" or "")
+                            .. (b.lock.shown and " padlock" or ""))
                     end
                     if b.itemLevel.text and b.itemLevel.text ~= "" then
                         items[#items] = items[#items] .. " ilvl=" .. b.itemLevel.text
@@ -8298,14 +8303,16 @@ if bagsPass then
     -- (GetBagID, bagID) written by us, or UseContainerItem is blocked as tainted
     do
         local b = slot(0, 1)
-        local ours = {}
+        local ours, hooked = {}, {}
         for _, key in ipairs({ "OnClick", "PreClick", "PostClick" }) do
-            if b.scripts[key] then table.insert(ours, key) end
+            if b.scripts[key] and not (b.hooked and b.hooked[key]) then table.insert(ours, key) end
+            if b.hooked and b.hooked[key] then table.insert(hooked, key) end
         end
         for _, key in ipairs({ "GetBagID", "bagID", "GetSlotAndBagID" }) do
             if rawget(b, key) ~= nil then table.insert(ours, key) end
         end
-        print("bags.item click", "template=" .. tostring(b.template), "ours=" .. (#ours > 0 and table.concat(ours, ",") or "none"))
+        print("bags.item click", "template=" .. tostring(b.template), "ours=" .. (#ours > 0 and table.concat(ours, ",") or "none"),
+            "hooked after it=" .. (#hooked > 0 and table.concat(hooked, ",") or "none"))
     end
     print("bags.anchor", tostring(w.points.BOTTOMRIGHT and w.points.BOTTOMRIGHT[1].name),
         tostring(w.points.BOTTOMRIGHT and w.points.BOTTOMRIGHT[2]))
@@ -8330,6 +8337,89 @@ if bagsPass then
     w.scripts.OnUpdate(w, 0.02)
     print("bags.lock", "3:2 desaturated=" .. tostring(_G.MedalluinBagsItem3_2.desat))
     W.items["3:2"].isLocked = false
+
+    -- 4b. Alt+click locks an item from the vendor and from destroying: a
+    -- padlock in the slot's bottom left, on every one of that item
+    do
+        local stone, ore = slot(0, 1), slot(3, 2)
+        local lock = stone.lock
+        local p = lock.points.BOTTOMLEFT
+        print("bags.padlock", string.format("size=%dx%d", lock.w, lock.h),
+            string.format("at=%s %d,%d", tostring(p[2]), p[3] or 0, p[4] or 0),
+            "above=" .. tostring((lock.level or 0) - (stone.level or 0)), "shown=" .. tostring(lock.shown))
+        for _, blend in ipairs({ "BLEND", "ADD" }) do
+            local t = lock[blend]
+            print("  padlock " .. blend, "atlas=" .. tostring(t.atlas), "grey=" .. tostring(t.desaturated),
+                string.format("tint=%.2f,%.2f,%.2f", unpack(t.vertex or { 1, 1, 1 })), "blend=" .. tostring(t.blend))
+        end
+        local function db() return MedalluinCharDB and MedalluinCharDB.lockedItems or {} end
+        local function marks(tag)
+            local on = {}
+            for bag = 0, 5 do
+                for i = 1, 20 do
+                    local b = slot(bag, i)
+                    if b and b.lock.shown then table.insert(on, bag .. ":" .. i) end
+                end
+            end
+            local ids = {}
+            for id in pairs(db()) do table.insert(ids, id) end
+            table.sort(ids)
+            print(tag, "padlocks=" .. (#on > 0 and table.concat(on, ",") or "none"),
+                "stored=" .. (#ids > 0 and table.concat(ids, ",") or "none"))
+        end
+        stone.scripts.OnClick(stone, "LeftButton")
+        marks("bags.lock plain click")
+        modsDown.ALT = true
+        stone.scripts.OnClick(stone, "LeftButton")
+        marks("bags.lock alt")
+        ore.scripts.OnClick(ore, "RightButton")
+        marks("bags.lock alt right, ore")
+        -- with Shift or Ctrl too, or an item held: not a lock
+        modsDown.SHIFT = true
+        ore.scripts.OnClick(ore, "LeftButton")
+        modsDown.SHIFT, modsDown.CTRL = nil, true
+        ore.scripts.OnClick(ore, "LeftButton")
+        modsDown.CTRL = nil
+        local held = CursorHasItem
+        CursorHasItem = function() return true end
+        ore.scripts.OnClick(ore, "LeftButton")
+        CursorHasItem = held
+        marks("bags.lock alt with more, or held")
+        -- an empty slot: nothing to lock
+        slot(0, 4).scripts.OnClick(slot(0, 4), "LeftButton")
+        marks("bags.lock empty slot")
+        modsDown.ALT = nil
+        -- the lock follows the item: ore put in another bag wears it there
+        W.put(4, 3, 105, 2)
+        fire("BAG_UPDATE_DELAYED")
+        w.scripts.OnUpdate(w, 0.02)
+        marks("bags.lock follows the item")
+        -- destroying a locked item: put back, and said why; an unlocked one is left to the game
+        local info, clear = GetCursorInfo, ClearCursor
+        local put = 0
+        ClearCursor = function() put = put + 1 end
+        GetCursorInfo = function() return "item", 107 end
+        W.said = {}
+        local errors = UIErrorsFrame
+        UIErrorsFrame = { AddMessage = function(_, m) table.insert(W.said, m) end }
+        fire("DELETE_ITEM_CONFIRM", "Hearthstone", 1, 0, 0)
+        GetCursorInfo = function() return "item", 103 end
+        fire("DELETE_ITEM_CONFIRM", "Healing Potion", 1, 0, 0)
+        GetCursorInfo = function() return "spell", 107 end
+        fire("DELETE_ITEM_CONFIRM", "x", 1, 0, 0)
+        print("bags.destroy locked", "put back=" .. put, "said=" .. table.concat(W.said, " / "))
+        UIErrorsFrame = errors
+        GetCursorInfo, ClearCursor = info, clear
+        -- Alt+click again: unlocked
+        modsDown.ALT = true
+        stone.scripts.OnClick(stone, "LeftButton")
+        slot(4, 3).scripts.OnClick(slot(4, 3), "LeftButton")
+        modsDown.ALT = nil
+        marks("bags.unlocked")
+        W.items["4:3"] = nil
+        fire("BAG_UPDATE_DELAYED")
+        w.scripts.OnUpdate(w, 0.02)
+    end
 
     -- 5. the groups
     page.settings.bagsView:Set("groups")
@@ -12556,6 +12646,56 @@ if npcPass then
     rows = page("npc buyback")
     click(rows, "Linen Cloth  x20")
     calls("npc buyback")
+    -- locked items (inventory/locks.lua): on neither Sell nor Sell junk, and
+    -- the game's own junk sale, which would take them, not used
+    ns.locks.Toggle(705)
+    ns.locks.Toggle(701)
+    click(rows, "Sell")
+    page("npc sell locked")
+    foot("npc sell locked")
+    print("npc sell locked junk tip", tipOf("Sell junk"))
+    W.calls = {}
+    press("npc sell locked", "Sell junk")
+    calls("npc sell locked junk")
+    -- one sold anyway (a bag's right click): bought straight back; one sold
+    -- before the vendor opened, or not locked, stays sold
+    W.buyback[2][5] = "|Hitem:705|h"                -- sold earlier, then locked
+    fire("MERCHANT_SHOW")
+    W.calls = {}
+    table.insert(W.buyback, { "Linen Cloth", 4, 13, 20, "|Hitem:707|h" })
+    table.insert(W.buyback, { "Star Ruby", 55, 400, 2, "|Hitem:705|h" })
+    fire("MERCHANT_UPDATE")
+    calls("npc sold locked")
+    fire("BAG_UPDATE_DELAYED")                      -- a look before the client's list has caught up
+    table.remove(W.buyback, 4)                      -- the client's list, after the buyback
+    fire("MERCHANT_UPDATE")
+    calls("npc sold locked, again")
+    -- one locked after it was sold here: it stays sold
+    ns.locks.Toggle(707)
+    fire("MERCHANT_UPDATE")
+    calls("npc locked after selling")
+    ns.locks.Toggle(707)
+    -- two sold between looks: both back, the newest first
+    W.calls = {}
+    table.insert(W.buyback, { "Star Ruby", 55, 400, 1, "|Hitem:705|h" })
+    table.insert(W.buyback, { "junk701", 6, 25, 3, "|Hitem:701|h" })
+    fire("BAG_UPDATE_DELAYED")
+    calls("npc sold two locked")
+    table.remove(W.buyback, 5)
+    table.remove(W.buyback, 4)
+    fire("MERCHANT_UPDATE")                         -- the client's list caught up
+    -- the vendor gone: nothing bought back
+    fire("MERCHANT_CLOSED")
+    table.insert(W.buyback, { "Star Ruby", 55, 400, 1, "|Hitem:705|h" })
+    W.calls = {}
+    fire("MERCHANT_UPDATE")
+    calls("npc sold locked, closed")
+    table.remove(W.buyback)
+    W.buyback[2][5], W.buyback[3] = nil, nil
+    ns.locks.Toggle(705)
+    ns.locks.Toggle(701)
+    fire("MERCHANT_SHOW")
+    click(page("npc unlocked"), "Buyback")
     -- the character window over the chat: the box hides under it
     local character = ns.character and ns.character.window
     if character then
