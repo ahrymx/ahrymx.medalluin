@@ -83,6 +83,8 @@ npc\window.lua
 npc\gossip.lua
 npc\quest.lua
 npc\merchant.lua
+npc\trainer.lua
+npc\flight.lua
 keybind.lua
 diag.lua
 

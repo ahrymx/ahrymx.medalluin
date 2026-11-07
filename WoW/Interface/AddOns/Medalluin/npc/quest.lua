@@ -24,10 +24,7 @@ local MARK = 16
 local page                       -- "greeting", "detail", "progress" or "reward"
 local choice                     -- the reward picked, on the reward page
 
-local function Money(copper)
-    if GetMoneyString then return GetMoneyString(copper, true) end
-    return format("%dg %ds %dc", copper / 10000, copper / 100 % 100, copper % 100)
-end
+local Money = ns.npc.Money
 
 local function Tip(kind, i)
     return function(tile)

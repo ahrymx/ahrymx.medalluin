@@ -25,10 +25,7 @@ local RED = { 1, 0.3, 0.25 }
 local tab = "merchant"
 local pending                    -- { index, name, count, most, stack, price, extended }
 
-local function Money(copper)
-    if GetMoneyString then return GetMoneyString(copper, true) end
-    return format("%dg %ds %dc", copper / 10000, copper / 100 % 100, copper % 100)
-end
+local Money = ns.npc.Money
 
 -- An item the vendor sells, the same from either API. One the client has
 -- not cached yet comes without its name (and link): the game's "retrieving"

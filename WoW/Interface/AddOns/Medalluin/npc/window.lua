@@ -31,12 +31,16 @@
 -- wrote there would block it (the 0.12 bag-click errors). Everything is
 -- asked of the game's API instead, and confirmed in the box's own foot.
 --
---   local page = ns.npc.Page{ key, frame (Blizzard's, by name), Blocks() ->
+--   local page = ns.npc.Page{ key, frame (Blizzard's, by name), addon (the
+--                             Blizzard addon that brings it, when loaded on
+--                             demand), Blocks() ->
 --                             blocks, Foot() -> foot, Title() -> title,
 --                             under (the NPC's name when not given), Close(),
---                             Shown() }
+--                             Shown(), own (a frame of its own, shown in
+--                             the box's place instead: the flight map) }
 --   ns.npc.Show(key) (its page to the front), ns.npc.Update(key) (drawn
---   again if in front), ns.npc.box
+--   again if in front), ns.npc.box, ns.npc.Room() (the room up to the
+--   screen's top)
 --
 -- A page's blocks, top down:
 --   { "text", text, color }              a paragraph, wrapped
@@ -69,9 +73,16 @@ local BAND_INK = 5 / 9
 local pages, order = {}, {}
 local box, head, portrait, name, under, close, scroll, child, foot, footText, thumb
 local current
+local wanted                     -- the page last asked for, preferred once its frame is open
 local pools = {}
 
 ns.npc = { pages = pages }
+
+-- copper as the game writes it, for every page
+function ns.npc.Money(copper)
+    if GetMoneyString then return GetMoneyString(copper, true) end
+    return format("%dg %ds %dc", copper / 10000, copper / 100 % 100, copper % 100)
+end
 
 function ns.npc.Page(spec)
     pages[spec.key] = spec
@@ -345,6 +356,7 @@ local function Room()
     if not top or not at then return 600 end
     return (top - at) / box:GetEffectiveScale()
 end
+ns.npc.Room = Room
 
 local offset = 0
 local function Thumb()
@@ -368,7 +380,7 @@ end
 
 -- The page drawn again, and the box fitted to it.
 function ns.npc.Refresh()
-    if not box or not current then return end
+    if not box or not current or current.own then return end
     local npc = UnitName("npc") or ""
     local title = current.Title and current.Title()
     name:SetText(title or npc)
@@ -391,7 +403,7 @@ function ns.npc.Show(key)
     local p = pages[key]
     if not p or not box then return end
     if current ~= p then offset = 0 end
-    current = p
+    current, wanted = p, p
     if p.Shown then p.Shown() end
     ns.npc.Sync()
 end
@@ -409,6 +421,9 @@ end
 -- the chat; on the page in front, or another still open.
 function ns.npc.Sync()
     if not box then return end
+    -- the page last asked for, as soon as its frame is: the game may show
+    -- it only after our handler for its event has run
+    if wanted and Open(wanted) then current = wanted end
     if current and not Open(current) then current = nil end
     if not current then
         for _, p in ipairs(order) do
@@ -417,7 +432,11 @@ function ns.npc.Sync()
     end
     local character = ns.character and ns.character.window
     local on = current ~= nil and not (character and character:IsShown())
-    box:SetShown(on)
+    local own = on and current.own
+    box:SetShown(on and not own)
+    for _, p in ipairs(order) do
+        if p.own then p.own:SetShown(p.own == own) end
+    end
     ns.chat.Hold(on)
     if on then ns.npc.Refresh() end
 end
@@ -512,16 +531,29 @@ local function Build()
     ns.npc.box = box
 end
 
+-- Blizzard's frame parked and followed
+local function Adopt(p)
+    local f = _G[p.frame]
+    if not f or p.adopted then return end
+    p.adopted = true
+    ns.Park(f)
+    for _, method in ipairs({ "Show", "Hide", "SetShown" }) do
+        hooksecurefunc(f, method, ns.npc.Sync)
+    end
+end
+
 local function Start()
     if not ns.db.npcWindows or not ns.chat then return end
     Build()
     for _, p in ipairs(order) do
-        local f = _G[p.frame]
-        if f then
-            ns.Park(f)
-            for _, method in ipairs({ "Show", "Hide", "SetShown" }) do
-                hooksecurefunc(f, method, ns.npc.Sync)
-            end
+        if _G[p.frame] then
+            Adopt(p)
+            if p.Start then p.Start() end
+        elseif p.addon then
+            -- loaded on demand (the trainer's on its first TRAINER_SHOW):
+            -- adopted as it loads, before the game shows it
+            ns.On("ADDON_LOADED", function(_, loaded) if loaded == p.addon then Adopt(p) end end)
+            if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(p.addon) then Adopt(p) end
             if p.Start then p.Start() end
         end
     end
@@ -530,7 +562,12 @@ local function Start()
         character:HookScript("OnShow", ns.npc.Sync)
         character:HookScript("OnHide", ns.npc.Sync)
     end
-    if ns.quests and ns.quests.Cover then ns.quests.Cover(box) end
+    if ns.quests and ns.quests.Cover then
+        ns.quests.Cover(box)
+        for _, p in ipairs(order) do
+            if p.own then ns.quests.Cover(p.own) end
+        end
+    end
 end
 
 -- the pages (npc/gossip.lua and the rest, loaded after this file) have

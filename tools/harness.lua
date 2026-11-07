@@ -2893,6 +2893,92 @@ if npcPass then
     function GameTooltip:SetMerchantItem(i) self.item = "merchant" .. i end
     function GameTooltip:SetBuybackItem(i) self.item = "buyback" .. i end
     function GameTooltip:SetQuestItem(kind, i) self.item = kind .. i end
+    -- the trainer: a line of fire, two to learn (one beyond your money), one
+    -- not yet (level 40, a skill and a rank before it), one known. The game's
+    -- filter decides which it lists (headers always); training one makes it
+    -- known. ClassTrainerFrame comes only with Blizzard_TrainerUI.
+    W.services = {
+        { name = "Fire", category = "header" },
+        { name = "Fireball", rank = "Rank 2", category = "available", cost = 100, desc = "Hurls a fiery ball." },
+        { name = "Pyroblast", rank = "Rank 1", category = "available", cost = 50000 },
+        { name = "Fire Ward", rank = "", category = "unavailable", cost = 200, level = 40,
+            skill = { "Fire", 50, false }, abilities = { { "Fireball (Rank 3)", false }, { "Arcane Mind", true } } },
+        { name = "Frostbolt", rank = "Rank 1", category = "used", cost = 0 },
+    }
+    W.tfilter = { available = true, unavailable = true, used = true }
+    local function listed()
+        local out = {}
+        for _, v in ipairs(W.services) do
+            if v.category == "header" or W.tfilter[v.category] then table.insert(out, v) end
+        end
+        return out
+    end
+    function GetNumTrainerServices() return #listed() end
+    function GetTrainerServiceInfo(i) local v = listed()[i] if v then return v.name, v.rank or "", v.category, true end end
+    function GetTrainerServiceCost(i) return listed()[i].cost end
+    function GetTrainerServiceIcon(i) return "icon-" .. listed()[i].name end
+    function GetTrainerServiceDescription(i) return listed()[i].desc end
+    function GetTrainerServiceLevelReq(i) return listed()[i].level or 0 end
+    function GetTrainerServiceSkillReq(i) local k = listed()[i].skill if k then return k[1], k[2], k[3] end end
+    function GetTrainerServiceNumAbilityReq(i) return #(listed()[i].abilities or {}) end
+    function GetTrainerServiceAbilityReq(i, j) local a = listed()[i].abilities[j] return a[1], a[2] end
+    function GetTrainerGreetingText() return "Hello, mage." end
+    -- the game's own check: on/off is a boolean
+    function SetTrainerServiceTypeFilter(t, on)
+        if type(on) ~= "boolean" then error("Missing on/off parameter in SetTrainerServiceTypeFilter", 2) end
+        W.tfilter[t] = on
+        called("SetTrainerServiceTypeFilter", t, on)
+    end
+    function ExpandTrainerSkillLine(i) called("ExpandTrainerSkillLine", i) end
+    function BuyTrainerService(i)
+        local v = listed()[i]
+        called("BuyTrainerService", i, v.name)
+        v.category = "used"
+    end
+    function CloseTrainer() called("CloseTrainer"); ClassTrainerFrame:Hide() end
+    function GameTooltip:SetTrainerService(i) self.item = "trainer" .. i end
+    function W.LoadTrainer()
+        if ClassTrainerFrame then return end
+        local f = new("Frame", UIParent, "ClassTrainerFrame")
+        f.shown = false
+        for _, h in ipairs(events.ADDON_LOADED or {}) do h.scripts.OnEvent(h, "ADDON_LOADED", "Blizzard_TrainerUI") end
+    end
+    -- the flight map: Forever's TaxiFrame, there from the start. Ironforge
+    -- is here; Algaz sits on it (pushed off); Menethil one hop; Sentinel
+    -- Hill two, through distant Darkshire, and beyond your money; Aerie
+    -- Peak out of reach, on Darkshire (a distant node pushes no near one);
+    -- a seventh is no node at all.
+    local taxi = new("Frame", UIParent, "TaxiFrame")
+    taxi.shown = false
+    W.nodes = {
+        { name = "Ironforge", kind = "CURRENT", x = 0.5, y = 0.5 },
+        { name = "Menethil Harbor", kind = "REACHABLE", x = 0.3, y = 0.6, cost = 5000, legs = { { 1, 2 } } },
+        { name = "Sentinel Hill", kind = "REACHABLE", x = 0.2, y = 0.1, cost = 10500, legs = { { 1, 4 }, { 4, 3 } } },
+        { name = "Darkshire", kind = "DISTANT", x = 0.6, y = 0.2 },
+        { name = "Aerie Peak", kind = "UNREACHABLE", x = 0.605, y = 0.205 },
+        { name = "Algaz Station", kind = "REACHABLE", x = 0.505, y = 0.505, cost = 800, legs = { { 1, 6 } } },
+        { name = "Nowhere", kind = "NONE", x = 0, y = 0 },
+    }
+    function NumTaxiNodes() return #W.nodes end
+    function TaxiNodeName(i) return W.nodes[i].name end
+    function TaxiNodeGetType(i) return W.nodes[i].kind end
+    function TaxiNodePosition(i) return W.nodes[i].x, W.nodes[i].y end
+    function TaxiNodeCost(i) return W.nodes[i].cost or 0 end
+    function GetNumRoutes(i) return #(W.nodes[i].legs or {}) end
+    function TaxiGetNodeSlot(i, leg, src) return W.nodes[i].legs[leg][src and 1 or 2] end
+    function TaxiIsDirectFlight(i) return #(W.nodes[i].legs or {}) == 1 end
+    function TakeTaxiNode(i) called("TakeTaxiNode", i, W.nodes[i].name) end
+    function SetTaxiMap(t) t:SetTexture("taxi-map"); called("SetTaxiMap") end
+    -- the game: closing fires TAXIMAP_CLOSED, on which Blizzard hides its frame
+    function CloseTaxiMap()
+        called("CloseTaxiMap")
+        if TaxiFrame.shown then TaxiFrame:Hide() end
+    end
+    ERR_TAXINOPATHS = "You know no flight paths connected to this one."
+    UIErrorsFrame = new("Frame", UIParent, "UIErrorsFrame")
+    function UIErrorsFrame:AddMessage(m) called("error", m) end
+    W.tip = {}
+    function GameTooltip:AddLine(t) table.insert(W.tip, tostring(t)) end
 end
 
 -- ------------------------------------------------------------ load + fire
@@ -10583,7 +10669,9 @@ if npcPass then
                 table.insert(out, { y = -(c.points.TOPLEFT and c.points.TOPLEFT[4] or 0), x = c.points.TOPLEFT
                     and c.points.TOPLEFT[3] or 0, s = text .. (d.value and d.value ~= "" and " [" .. d.value .. "]" or "")
                     .. (d.badge and " mark=" .. tostring(d.badge.file or d.badge.atlas or "?"):match("[^\\]+$") or "")
-                    .. (c.mark and c.mark.shown and " *" or ""), c = c })
+                    .. (c.mark and c.mark.shown and " *" or "")
+                    .. (type(d) == "table" and d.color and string.format(" c=%.2f,%.2f,%.2f", d.color[1], d.color[2],
+                        d.color[3]) or ""), c = c })
             end
         end
     end
@@ -10700,7 +10788,8 @@ if npcPass then
                 for _, c in ipairs(s.scrollChild.all_ or {}) do
                     if c.shown and c.points.TOPLEFT and c.points.TOPLEFT[3] == 0 then
                         local what = c.kind == "FontString" and ("text:" .. tostring(c.font and c.font[1]):match("[^\\]+$")
-                            .. "/" .. tostring(c.font and c.font[2]) .. "+" .. tostring(c.spacing))
+                            .. "/" .. tostring(c.font and c.font[2]) .. "+" .. tostring(c.spacing)
+                            .. (c.textColor and c.textColor[1] == 1 and c.textColor[2] < 0.5 and "(red)" or ""))
                             or c.mid and ("pill:" .. c.mid.text .. "/" .. c.w) or c.data and "item" or c.kind
                         table.insert(out, { -c.points.TOPLEFT[4], what })
                     end
@@ -10852,6 +10941,194 @@ if npcPass then
     for k, v in pairs(_G) do
         if type(k) == "string" and k:match("^MerchantFrame_") and merchantFns[k] ~= v then table.insert(fns, k) end
     end
+    -- the trainer, from gossip: Blizzard loads its frame, our handler runs
+    -- before the game shows it, and gossip is still open then
+    print("npc trainer before load", "frame=" .. tostring(ClassTrainerFrame ~= nil))
+    GossipFrame:Show()
+    fire("GOSSIP_SHOW")
+    W.LoadTrainer()
+    local trainerBefore = keys(ClassTrainerFrame)
+    W.calls = {}
+    fire("TRAINER_SHOW")
+    ClassTrainerFrame:Show()
+    print("npc trainer", "parked=" .. tostring(ClassTrainerFrame.parent == ns.hidden))
+    state("npc trainer")
+    calls("npc trainer show")
+    rows = page("npc trainer")
+    foot("npc trainer")
+    stack("npc trainer")
+    -- gossip closes after; the trainer stays
+    GossipFrame:Hide()
+    fire("GOSSIP_CLOSED")
+    state("npc trainer gossip gone")
+    -- the filter: each toggle given to the game, and kept
+    click(rows, "Unavailable")
+    calls("npc trainer unavailable")
+    rows = page("npc trainer unavailable")
+    click(rows, "Known")
+    rows = page("npc trainer known")
+    print("npc trainer kept", "available=" .. tostring(ns.db.trainerFilter.available),
+        "unavailable=" .. tostring(ns.db.trainerFilter.unavailable), "used=" .. tostring(ns.db.trainerFilter.used))
+    -- picking: the one beyond your money, the one not yet, the known one
+    for _, label in ipairs({ "Pyroblast (Rank 1)", "Fire Ward", "Frostbolt (Rank 1)" }) do
+        click(rows, label)
+        stack("npc trainer pick " .. label)
+        foot("npc trainer pick " .. label)
+        print("npc trainer pick " .. label .. " tip", tipOf("Train"))
+        rows = page("npc trainer pick " .. label)
+    end
+    -- Fireball: Train learns it by its index in the list as shown
+    click(rows, "Fireball (Rank 2)")
+    W.calls = {}
+    press("npc trainer train", "Train")
+    calls("npc trainer train")
+    fire("TRAINER_UPDATE")
+    rows = page("npc trainer trained")
+    -- the pick follows its name when the list moves under it
+    click(rows, "Fire Ward")
+    click(rows, "Known")
+    fire("TRAINER_UPDATE")
+    rows = page("npc trainer list moved")
+    -- Escape: the game hides its frame, the box follows
+    ClassTrainerFrame:Hide()
+    state("npc trainer escaped")
+    fire("TRAINER_CLOSED")
+    -- a second visit starts on the first you can learn, not the last pick
+    fire("TRAINER_SHOW")
+    ClassTrainerFrame:Show()
+    page("npc trainer again")
+    CloseTrainer()
+    fire("TRAINER_CLOSED")
+    state("npc trainer closed")
+    print("npc trainer untouched", tostring(keys(ClassTrainerFrame) == trainerBefore))
+    -- the flight map: Blizzard's TaxiFrame parked, ours in the box's place
+    local fl = _G.MedalluinFlight
+    print("npc flight", "parked=" .. tostring(TaxiFrame.parent == ns.hidden), "frame=" .. tostring(fl ~= nil),
+        "covered=" .. tostring(fl and fl.scripts.OnShow ~= nil))
+    local taxiBefore = keys(TaxiFrame)
+    local fstrip, fmap, flist = fl.all_[1], fl.all_[2], fl.all_[3]
+    local fart, ftitle
+    for _, t in ipairs(fmap.all_) do if t.kind == "Texture" and t.layer == "ARTWORK" then fart = t end end
+    for _, t in ipairs(fstrip.all_) do if t.kind == "FontString" then ftitle = t end end
+    local function fstate(tag)
+        local p = fl.points.BOTTOMLEFT
+        print(tag, "flight=" .. tostring(fl.shown), "box=" .. tostring(box.shown), "h=" .. tostring(fl.h),
+            "anchor=" .. (p and string.format("%s:%s %d,%d", p[1] == ns.chat.box and "chat" or "?", p[2], p[3], p[4])
+                or "-"),
+            "tracker=" .. tostring(tracker and tracker.shown), "title=" .. tostring(ftitle.text),
+            "strip=" .. fstrip.h, "map=" .. fmap.w .. "x" .. fmap.h, "art=" .. fart.w .. "x" .. fart.h .. ":"
+                .. tostring(fart.texture), "list=" .. tostring(flist.shown) .. "/" .. flist.h)
+    end
+    local function fnodes(tag)
+        local out = {}
+        for _, n in ipairs(fmap.all_) do
+            if n.kind == "Button" and n.icon then
+                local c = n.points.CENTER
+                table.insert(out, string.format("%s@%d,%d:%s%s%s", n.shown and "on" or "off", c and c[3] or -1,
+                    c and c[4] or -1, tostring(n.icon.texture):match("Icon%-(%a+)$") or "?",
+                    n.glow.alpha == 1 and "+glow" or "", n.lit.shown and "+lit" or ""))
+            end
+        end
+        print(tag .. " nodes", table.concat(out, " "))
+    end
+    local function froutes(tag)
+        local out = {}
+        for _, l in ipairs(fmap.all_) do
+            if l.kind == "Line" and l.shown then
+                table.insert(out, string.format("%.1f,%.1f>%.1f,%.1f", l.from[3], l.from[4], l.to[3], l.to[4]))
+            end
+        end
+        print(tag .. " routes", #out > 0 and table.concat(out, " ") or "none")
+    end
+    local function frows(tag)
+        local child
+        for _, c in ipairs(flist.all_) do if c.kind == "ScrollFrame" then child = c.scrollChild end end
+        local out, list = {}, {}
+        for _, r in ipairs(child.all_) do
+            if r.shown and r.data then
+                local c = r.label.textColor
+                table.insert(list, { y = -r.points.TOPLEFT[4], s = r.label.text .. " [" .. tostring(r.value.text) .. "]"
+                    .. (c and string.format(" c=%.2f,%.2f,%.2f", c[1], c[2], c[3]) or ""), r = r })
+            end
+        end
+        table.sort(list, function(x, y) return x.y < y.y end)
+        for _, r in ipairs(list) do table.insert(out, r.s) end
+        print(tag .. " rows", table.concat(out, " | "))
+        return list
+    end
+    local function frow(list, label)
+        for _, r in ipairs(list) do if r.r.label.text == label then return r.r end end
+    end
+    local function fnode(i)
+        local k = 0
+        for _, n in ipairs(fmap.all_) do
+            if n.kind == "Button" and n.icon then
+                k = k + 1
+                if k == i then return n end
+            end
+        end
+    end
+    -- from gossip: the game shows its map while gossip is still open
+    W.money = 10000
+    GossipFrame:Show()
+    fire("GOSSIP_SHOW")
+    W.calls = {}
+    fire("TAXIMAP_OPENED")
+    TaxiFrame:Show()
+    fstate("npc flight")
+    calls("npc flight show")
+    GossipFrame:Hide()
+    fire("GOSSIP_CLOSED")
+    fstate("npc flight gossip gone")
+    fnodes("npc flight")
+    froutes("npc flight")
+    local frs = frows("npc flight")
+    -- hovering: the two-leg flight through Darkshire, then out of reach, then a row
+    W.tip = {}
+    fnode(3).scripts.OnEnter(fnode(3))
+    fnodes("npc flight hover sentinel")
+    froutes("npc flight hover sentinel")
+    print("npc flight hover sentinel tip", table.concat(W.tip, " / "))
+    fnode(3).scripts.OnLeave(fnode(3))
+    fnodes("npc flight left")
+    froutes("npc flight left")
+    fnode(5).scripts.OnEnter(fnode(5))
+    fnodes("npc flight hover aerie")
+    froutes("npc flight hover aerie")
+    fnode(5).scripts.OnLeave(fnode(5))
+    W.tip = {}
+    local menethil = frow(frs, "Menethil Harbor")
+    menethil.scripts.OnEnter(menethil)
+    fnodes("npc flight hover row")
+    froutes("npc flight hover row")
+    print("npc flight hover row tip", table.concat(W.tip, " / "))
+    menethil.scripts.OnLeave(menethil)
+    -- flying: a row, a node; never from here or out of reach
+    W.calls = {}
+    local algaz = frow(frs, "Algaz Station")
+    algaz.scripts.OnClick(algaz, "LeftButton")
+    fnode(3).scripts.OnClick(fnode(3), "LeftButton")
+    fnode(5).scripts.OnClick(fnode(5), "LeftButton")
+    local here = frow(frs, "Ironforge")
+    here.scripts.OnClick(here, "LeftButton")
+    calls("npc flight fly")
+    -- richer: Sentinel Hill no longer red
+    W.money = 20000
+    fire("PLAYER_MONEY")
+    frows("npc flight richer")
+    -- Escape: the game hides its frame; ours follows and tells the game
+    W.calls = {}
+    TaxiFrame:Hide()
+    fstate("npc flight escaped")
+    calls("npc flight escaped")
+    fire("TAXIMAP_CLOSED")
+    -- no route from here: the game's words, and closed
+    W.nodes[2].kind, W.nodes[3].kind, W.nodes[4].kind, W.nodes[6].kind = "UNREACHABLE", "UNREACHABLE", "NONE", "NONE"
+    W.calls = {}
+    TaxiFrame:Show()
+    fstate("npc flight no paths")
+    calls("npc flight no paths")
+    print("npc flight untouched", tostring(keys(TaxiFrame) == taxiBefore))
     MerchantFrame.shown = false
     print("npc merchant untouched", tostring(keys(MerchantFrame) == merchantBefore),
         "fns=" .. (#fns > 0 and table.concat(fns, ",") or "none"))

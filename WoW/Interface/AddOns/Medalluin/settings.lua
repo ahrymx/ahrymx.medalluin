@@ -99,6 +99,7 @@ local DEFAULTS = {
     questsMinimalMouseover = false, questsMinimalCombat = false, -- over it, and in combat
     questsTree = false,     -- objectives on a tree's branches, the finished risen to the top; bulleted otherwise
     npcWindows = true,      -- gossip, the quest pages and the vendor in a box on the chat box (npc/window.lua)
+    trainerFilter = false,  -- the trainer's types shown: { available, unavailable, used }; Available alone if unset
     questsTitleFont = "marcellus", questsTitleSize = 12,         -- ns.Fonts()'s keys, and points
     questsObjectiveFont = "marcellus", questsObjectiveSize = 12,
     optionsPoint = false,   -- where the settings window was dragged to, the same way (options/window.lua)
