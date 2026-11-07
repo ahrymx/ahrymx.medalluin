@@ -374,8 +374,18 @@ local function Frames()
     return list
 end
 
+-- The arrow keys move the cursor in the edit box, as in any text field, to
+-- go back and fix a typo; Up and Down step through what was said before.
+-- Blizzard's template ignores them unless Alt is held (ignoreArrows), so
+-- they turned the character instead. Every window's box, docked or not.
+local function Arrows(frame)
+    local box = frame.editBox
+    if box and box.SetAltArrowKeyMode then box:SetAltArrowKeyMode(false) end
+end
+
 local function Sweep()
     for _, frame in ipairs(Frames()) do
+        Arrows(frame)
         SkinTab(_G[frame:GetName() .. "Tab"])
         if frame == ChatFrame1 or frame.isDocked then Dress(frame) end
     end
@@ -595,6 +605,7 @@ local function Build()
     -- a whisper window is new, and docked here too (FCF_OpenTemporaryWindow)
     if FCF_DockFrame then
         hooksecurefunc("FCF_DockFrame", function(frame)
+            Arrows(frame)
             SkinTab(_G[frame:GetName() .. "Tab"])
             Dress(frame)
         end)

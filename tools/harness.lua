@@ -278,6 +278,7 @@ function Region:GetScript(k) return self.scripts[k] end
 function Region:SetAttribute(k, v) self.attrs[k] = v end
 function Region:RegisterForClicks(...) self.clicks = { ... } end
 function Region:RegisterForDrag(...) self.drag = { ... } end
+function Region:SetAltArrowKeyMode(on) self.altArrows = on end
 function Region:GetAttribute(k) return self.attrs[k] end
 function Region:SetFrameRef(k, f) self.refs = self.refs or {}; self.refs[k] = f end
 function Region:GetFrameRef(k) return self.refs and self.refs[k] end
@@ -1297,6 +1298,7 @@ local function ChatWindow(i)
     f.ScrollBar:SetPoint("BOTTOMLEFT", f, "BOTTOMRIGHT", 0, 0)
     local box = new("EditBox", f, name .. "EditBox")
     box.w, box.h = 5, 32
+    box.altArrows = true                    -- the template's ignoreArrows
     box:SetPoint("TOPLEFT", f, "BOTTOMLEFT", -5, -2)
     box:SetPoint("RIGHT", f.ScrollBar, "RIGHT", 8, 0)
     for _, k in ipairs({ "Left", "Mid", "Right" }) do new("Texture", box, name .. "EditBox" .. k) end
@@ -5093,6 +5095,10 @@ if stripsPass then
         print("editBox backing", "rest=" .. rest, "typing=" .. typing, "after=" .. lit(b1))
         local temp = FCF_OpenTemporaryWindow()
         print("whisper", art(temp), tab(temp))
+        -- the arrow keys move the cursor in every box, Alt or not
+        print("chat arrows", "alt only: ChatFrame1=" .. tostring(ChatFrame1.editBox.altArrows),
+            "ChatFrame2 (undocked)=" .. tostring(ChatFrame2.editBox.altArrows),
+            "whisper=" .. tostring(temp.editBox.altArrows))
         print("undocked clamp", table.concat({ ChatFrame2:GetClampRectInsets() }, ","),
             "docked", table.concat({ temp:GetClampRectInsets() }, ","))
         -- the console at a 1080-high UI: Blizzard's pieces need less room
