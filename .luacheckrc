@@ -13,6 +13,17 @@ exclude_files = {
 unused_args = false
 
 read_globals = {
+    -- the NPC windows (npc/): gossip, the quest pages, the vendor
+    "AcceptQuest", "AcknowledgeAutoAcceptQuest", "BuyMerchantItem", "BuybackItem", "C_MerchantFrame",
+    "CanGuildBankRepair", "CanMerchantRepair", "ChatEdit_GetActiveWindow", "CloseMerchant", "CloseQuest",
+    "CompleteQuest", "DeclineQuest", "DressUpItemLink", "GetActiveQuestID", "GetActiveTitle", "GetAvailableQuestInfo",
+    "GetAvailableTitle", "GetBuybackItemInfo", "GetBuybackItemLink", "GetGreetingText", "GetMerchantItemCostInfo",
+    "GetMerchantItemCostItem", "GetMerchantItemInfo", "GetMerchantItemLink", "GetMerchantItemMaxStack",
+    "GetMerchantNumItems", "GetNumActiveQuests", "GetNumAvailableQuests", "GetNumBuybackItems", "GetNumQuestChoices",
+    "GetNumQuestItems", "GetNumQuestRewards", "GetObjectiveText", "GetProgressText", "GetQuestItemInfo",
+    "GetQuestMoneyToGet", "GetQuestReward", "GetQuestText", "GetRepairAllCost", "GetRewardMoney", "GetRewardText",
+    "GetRewardXP", "GetTitleText", "IsQuestCompletable", "MERCHANT_HIGH_PRICE_COST", "QuestGetAutoAccept",
+    "RepairAllItems", "SelectActiveQuest", "SelectAvailableQuest",
     -- frames
     "UIParent", "Minimap", "MinimapCluster", "GameTooltip", "PlayerFrame", "TargetFrame",
     "PartyFrame", "CompactPartyFrame", "MainMenuBar", "CastingBarFrame", "PlayerCastingBarFrame",

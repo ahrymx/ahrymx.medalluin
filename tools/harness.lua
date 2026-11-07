@@ -100,6 +100,11 @@ local profRetail = profPass and args[3] == "retail"
 local questPass = args[2] == "quests"
 local questieStub = questPass and args[3] == "questie"
 local questieBroken = questPass and args[3] == "broken"
+-- "npc" (with "modern") plays the NPC box (npc/): gossip, the four quest
+-- pages and the vendor over stubbed APIs, Blizzard's three frames parked and
+-- followed, the tracker covered, the chat box held. "npc nochat" plays the
+-- chat box off: nothing built, nothing parked; "npc nonpc" the option off.
+local npcPass = args[2] == "npc"
 local barOff = args[3] == "nobar"
 local savedRows = tonumber((args[3] or ""):match("^rows(%d)$"))
 local savedBare = args[3] == "bare"
@@ -1064,7 +1069,7 @@ local targetHostile = true
 function UnitCanAttack(_, u) return u == "target" and hasTarget and targetHostile end
 function UnitExists(u) return u == "player" or (u == "target" and hasTarget) or (grouped and u:match("^party[12]$")) end
 function UnitName(u) return ({ player = "Ahrymx", target = "Defias Pillager", party1 = "Thalric",
-    party2 = "Okun" })[u] end
+    party2 = "Okun", npc = "Karen Taylor" })[u] end
 -- a group's classes, by name: the loot log asks UnitClass for a name
 local classOf = { Mira = "PRIEST", Thalen = "MAGE", Aldren = "WARRIOR" }
 function UnitClass(u) local c = classOf[u] or class; return c, c end
@@ -1731,7 +1736,8 @@ MedalluinDB = profilesPass and args[3] == "saved" and { consoleProfile = "light"
     or savedBare and { bareIcons = true } or savedNoChat and { chat = false }
     or savedBeam and { xpCast = true, repCast = true }
     or savedSimParty and { simParty = true } or savedNoSide and { side = false }
-    or savedNoBags and { bags = false } or savedNoCharacter and { character = false } or nil
+    or savedNoBags and { bags = false } or savedNoCharacter and { character = false }
+    or npcPass and args[3] == "nonpc" and { npcWindows = false } or nil
 if modern then
     function CreateColor(r, g, b, a) return { r, g, b, a } end
     function Region:SetGradient(o, a, b) self.gradient = { o, a, b } end
@@ -1870,7 +1876,7 @@ end
 -- three), its gear slot buttons, a shaman's gear and stats on Forever and a
 -- rogue's on retail. Only for the character pass.
 local charWorld
-if characterPass or questPass then
+if characterPass or questPass or npcPass then
     charWorld = { toggles = {} }
     function Region:SetUnit(u) self.unit, self.unitSets = u, (self.unitSets or 0) + 1 end
     function Region:SetFacing(f) self.facing = f end
@@ -2753,6 +2759,130 @@ if profPass then
         for _, h in ipairs(events.TRADE_SKILL_SHOW or {}) do h.scripts.OnEvent(h, "TRADE_SKILL_SHOW") end
         for _, h in ipairs(events.TRADE_SKILL_LIST_UPDATE or {}) do h.scripts.OnEvent(h, "TRADE_SKILL_LIST_UPDATE") end
     end
+end
+
+-- ------------------------------------------------------------ the NPC
+-- Blizzard's three conversation frames, and the APIs our pages read: a
+-- gossip of text, a quest each way and two options; the quest pages; a
+-- vendor of three (one an extended cost, one above the high price), two
+-- bought back, a repair bill and two grey items in the bags. Every act is
+-- logged in npcWorld.calls. Only for the npc pass.
+local npcWorld
+if npcPass then
+    npcWorld = { calls = {}, combat = false }
+    local W = npcWorld
+    local function called(...)
+        local parts = {}
+        for i = 1, select("#", ...) do table.insert(parts, tostring((select(i, ...)))) end
+        table.insert(W.calls, table.concat(parts, " "))
+    end
+    W.called = called
+    for _, n in ipairs({ "GossipFrame", "QuestFrame", "MerchantFrame" }) do
+        local f = new("Frame", UIParent, n)
+        f.shown = false
+    end
+    MerchantFrame.selectedTab = 1
+    W.gossip = { text = "Who is this shaman who goes before the Court?",
+        active = { { title = "WANTED: Gath'Ilzogg", questID = 201, isComplete = true } },
+        available = { { title = "Messenger to Westfall", questID = 202, frequency = 1 } },
+        options = { { name = "Let me browse your goods.", icon = 132060, gossipOptionID = 302, orderIndex = 1 },
+            { name = "I would like to train.", icon = 132058, gossipOptionID = 301, orderIndex = 0 } } }
+    C_GossipInfo = {
+        GetText = function() return W.gossip.text end,
+        GetActiveQuests = function() return W.gossip.active end,
+        GetAvailableQuests = function() return W.gossip.available end,
+        GetOptions = function() local o = {} for i, v in ipairs(W.gossip.options) do o[i] = v end return o end,
+        SelectOption = function(id) called("SelectOption", id) end,
+        SelectActiveQuest = function(id) called("SelectActiveQuest", id) end,
+        SelectAvailableQuest = function(id) called("SelectAvailableQuest", id) end,
+        CloseGossip = function() called("CloseGossip"); GossipFrame:Hide() end,
+    }
+    -- the quest pages
+    W.quest = { title = "Solomon's Law", text = "Bring me the pendants.", objectives = "Turn in 10 pendants.",
+        progress = "Have you the pendants?", reward = "You have done well.", completable = false,
+        required = 1, choices = 2, rewards = 1, money = 1550, xp = 450, auto = false }
+    local Q = W.quest
+    function GetGreetingText() return "Greetings, traveller." end
+    function GetNumActiveQuests() return 1 end
+    function GetNumAvailableQuests() return 1 end
+    function GetActiveTitle() return "Solomon's Law" end
+    function GetAvailableTitle() return "Look to the Stars" end
+    function GetActiveQuestID() return 203 end
+    function GetAvailableQuestInfo() return false, 0 end
+    function SelectActiveQuest(i) called("SelectActiveQuest(i)", i) end
+    function SelectAvailableQuest(i) called("SelectAvailableQuest(i)", i) end
+    -- an empty quest log, so the tracker is built and can be covered
+    C_QuestLog = C_QuestLog or {}
+    C_QuestLog.IsComplete = C_QuestLog.IsComplete or function() return false end
+    C_QuestLog.GetInfo = C_QuestLog.GetInfo or function() end
+    C_QuestLog.GetNumQuestLogEntries = C_QuestLog.GetNumQuestLogEntries or function() return 0 end
+    C_Timer = C_Timer or { After = function() end }
+    C_Timer.NewTicker = C_Timer.NewTicker or function() end
+    function GetTitleText() return Q.title end
+    function GetQuestText() return Q.text end
+    function GetObjectiveText() return Q.objectives end
+    function GetProgressText() return Q.progress end
+    function GetRewardText() return Q.reward end
+    function GetNumQuestItems() return Q.required end
+    function GetQuestMoneyToGet() return 0 end
+    function GetNumQuestChoices() return Q.choices end
+    function GetNumQuestRewards() return Q.rewards end
+    function GetRewardMoney() return Q.money end
+    function GetRewardXP() return Q.xp end
+    function GetQuestItemInfo(kind, i) return kind .. i, "icon-" .. kind .. i, kind == "required" and 10 or 1, 2, true end
+    function IsQuestCompletable() return Q.completable end
+    function QuestGetAutoAccept() return Q.auto end
+    function AcceptQuest() called("AcceptQuest") end
+    function AcknowledgeAutoAcceptQuest() called("AcknowledgeAutoAcceptQuest") end
+    function DeclineQuest() called("DeclineQuest") end
+    function CompleteQuest() called("CompleteQuest") end
+    function GetQuestReward(i) called("GetQuestReward", i) end
+    function CloseQuest() called("CloseQuest"); QuestFrame:Hide() end
+    -- the vendor
+    W.items = { { name = "Mining Pick", texture = 1, price = 81, stackCount = 1, numAvailable = -1, isUsable = true },
+        { name = "Elemental Flux", texture = 2, price = 1500, stackCount = 5, numAvailable = 3, isUsable = true,
+            hasExtendedCost = true },
+        { name = "Swift Mount", texture = 3, price = 2000000, stackCount = 1, numAvailable = -1, isUsable = false } }
+    W.buyback = { { "Linen Cloth", 4, 13, 20 }, { "Broken Fang", 5, 7, 1 } }
+    W.repair, W.canRepair, W.guild, W.money = 104, true, false, 23655
+    C_MerchantFrame = { GetItemInfo = function(i) return W.items[i] end }
+    function GetMerchantNumItems() return #W.items end
+    function GetMerchantItemLink(i) return "|Hitem:" .. (900 + i) .. "|h" end
+    function GetMerchantItemMaxStack(i) return i == 2 and 20 or 1 end
+    function GetMerchantItemCostInfo(i) return i == 2 and 1 or 0 end
+    function GetMerchantItemCostItem() return "icon-mark", 2 end
+    function BuyMerchantItem(i, n) called("BuyMerchantItem", i, n) end
+    function GetNumBuybackItems() return #W.buyback end
+    function GetBuybackItemInfo(i) local b = W.buyback[i] return b[1], b[2], b[3], b[4], nil, true end
+    function BuybackItem(i) called("BuybackItem", i) end
+    function CanMerchantRepair() return W.canRepair end
+    function CanGuildBankRepair() return W.guild end
+    function GetRepairAllCost() return W.repair, W.repair > 0 end
+    function RepairAllItems(guild) called("RepairAllItems", guild) end
+    function GetMoney() return W.money end
+    function CloseMerchant() called("CloseMerchant"); MerchantFrame:Hide() end
+    function IsModifiedClick(action) return W.modified == action end
+    function ChatEdit_GetActiveWindow() return W.chatOpen end
+    function ChatEdit_InsertLink(l) called("ChatEdit_InsertLink", l) end
+    function DressUpItemLink(l) called("DressUpItemLink", l) end
+    -- two grey items in the backpack, one that sells for nothing
+    W.bag = { [1] = { itemID = 701, quality = 0, stackCount = 3 }, [2] = { itemID = 702, quality = 0, stackCount = 1 },
+        [3] = { itemID = 703, quality = 0, hasNoValue = true }, [4] = { itemID = 704, quality = 2 } }
+    C_Container = {
+        GetContainerNumSlots = function(bag) return bag == 0 and 4 or 0 end,
+        GetContainerNumFreeSlots = function() return 0 end,
+        GetContainerItemInfo = function(bag, slot) return bag == 0 and W.bag[slot] or nil end,
+        UseContainerItem = function(bag, slot) called("UseContainerItem", bag, slot) end,
+    }
+    C_Item = C_Item or {}
+    C_Item.GetItemInfo = function(id)
+        if type(id) == "string" then return "x", id, id:match("901") and 1 or 3 end
+        return "junk" .. id, nil, 0, nil, nil, nil, nil, nil, nil, nil, id == 701 and 25 or 10
+    end
+    ITEM_QUALITY_COLORS = { [1] = { r = 1, g = 1, b = 1 }, [2] = { r = 0.1, g = 1, b = 0 }, [3] = { r = 0, g = 0.44, b = 0.87 } }
+    function GameTooltip:SetMerchantItem(i) self.item = "merchant" .. i end
+    function GameTooltip:SetBuybackItem(i) self.item = "buyback" .. i end
+    function GameTooltip:SetQuestItem(kind, i) self.item = kind .. i end
 end
 
 -- ------------------------------------------------------------ load + fire
@@ -10362,4 +10492,294 @@ if questPass then
     ns.SetOption("questsObjectiveFont", "lsm:Gone")
     frame()
     type_("quests.type font gone")
+end
+
+-- ------------------------------------------------------------ the NPC box
+if npcPass then
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local W = npcWorld
+    local box = ns.npc and ns.npc.box
+    local function parked()
+        local out = {}
+        for _, n in ipairs({ "GossipFrame", "QuestFrame", "MerchantFrame" }) do
+            table.insert(out, n .. "=" .. (_G[n].parent == ns.hidden and "hidden" or "kept"))
+        end
+        return table.concat(out, " ")
+    end
+    print("npc", "box=" .. tostring(box ~= nil), "setting=" .. tostring(ns.db.npcWindows),
+        "chat=" .. tostring(ns.chat ~= nil), parked())
+    -- what Blizzard's merchant frame holds, to show nothing of ours wrote there
+    local function keys(f)
+        local out = {}
+        for k, v in pairs(f) do
+            if type(v) ~= "table" or k == "selectedTab" then table.insert(out, k .. "=" .. tostring(v)) end
+        end
+        table.sort(out)
+        return table.concat(out, ",")
+    end
+    local merchantBefore = keys(MerchantFrame)
+    local merchantFns = {}
+    for k, v in pairs(_G) do
+        if type(k) == "string" and k:match("^MerchantFrame_") then merchantFns[k] = v end
+    end
+    if not box then return end
+    -- the screen in console units, as the bar pass pins it: the cap has a top
+    UIParent.fixed = { -612, -916, 1308, 164 }
+    box:SetHeight(box.h)
+    -- pinned in the console's units, the screen's scale is the console's
+    -- (the mock's tops are all in those units)
+    function UIParent:GetEffectiveScale() return ns.console:GetEffectiveScale() end
+    local tracker = _G.MedalluinQuests
+    local reach = ns.chat.reach
+    -- the tracker's full view drawn before anyone talks: the reach is up
+    ns.chat.Reach(true, 1)
+    local head                       -- the NPC's name, the head's first text
+    for _, c in ipairs(box.all_) do
+        if not head and c.points.TOPRIGHT and c.points.TOPLEFT then
+            for _, t in ipairs(c.all_ or {}) do if not head and t.kind == "FontString" then head = t end end
+        end
+    end
+    local function state(tag)
+        local p = box.points.BOTTOMLEFT
+        print(tag, "shown=" .. tostring(box.shown), "h=" .. tostring(box.h),
+            "anchor=" .. (p and string.format("%s:%s %d,%d", p[1] == ns.chat.box and "chat" or "?", p[2], p[3], p[4])
+                or "-"),
+            "tracker=" .. tostring(tracker and tracker.shown), "reach=" .. tostring(reach.shown),
+            "name=" .. tostring(head and head.text))
+    end
+    -- what the page shows: each visible row and tile, top down, and the foot
+    local function pool(f, out, depth)
+        for _, c in ipairs(f.all_ or {}) do
+            if c.shown and c.data then
+                local d = c.data
+                local text = type(d) == "table" and d.label or "?" .. tostring(d)
+                table.insert(out, { y = -(c.points.TOPLEFT and c.points.TOPLEFT[4] or 0), x = c.points.TOPLEFT
+                    and c.points.TOPLEFT[3] or 0, s = text .. (d.value and d.value ~= "" and " [" .. d.value .. "]" or "")
+                    .. (d.badge and " mark=" .. tostring(d.badge.file or d.badge.atlas or "?"):match("[^\\]+$") or "")
+                    .. (c.mark and c.mark.shown and " *" or ""), c = c })
+            end
+        end
+    end
+    local function page(tag)
+        local child = box.all_ and nil
+        local out = {}
+        for _, s in ipairs(box.all_) do
+            if s.kind == "ScrollFrame" then pool(s.scrollChild, out) end
+        end
+        table.sort(out, function(a, b) if a.y ~= b.y then return a.y < b.y end return a.x < b.x end)
+        local rows = {}
+        for _, r in ipairs(out) do table.insert(rows, r.s) end
+        print(tag .. " rows", table.concat(rows, " | "))
+        return out
+    end
+    local function foot(tag)
+        local f
+        for _, c in ipairs(box.all_) do
+            if c.kind == "Frame" and c.points.BOTTOMLEFT and not c.scrollChild then f = c end
+        end
+        local out = {}
+        for _, b in ipairs(f.all_ or {}) do
+            if b.shown and b.data then
+                table.insert(out, b.data.label .. (b.disabled and "(off)" or ""))
+            end
+        end
+        local left
+        for _, t in ipairs(f.all_ or {}) do if t.kind == "FontString" then left = t.text end end
+        print(tag .. " foot", "left=" .. tostring(left), table.concat(out, " "))
+        return f
+    end
+    local function button(f, label)
+        for _, b in ipairs(f.all_ or {}) do
+            if b.shown and b.data and b.data.label == label then return b end
+        end
+    end
+    local function press(tag, label)
+        local f = foot(tag)
+        local b = button(f, label)
+        if not b then print(tag, "no " .. label) return end
+        if b.disabled then print(tag .. " " .. label, "disabled") return end
+        b.scripts.OnClick(b, "LeftButton")
+    end
+    local function tipOf(label)
+        local f = foot("tip")
+        local b = button(f, label)
+        return b and b.data.tip or "-"
+    end
+    local function calls(tag)
+        print(tag .. " calls", #W.calls > 0 and table.concat(W.calls, "; ") or "none")
+        W.calls = {}
+    end
+    local function click(rows, label, button)
+        for _, r in ipairs(rows) do
+            if r.c.data.label == label then return r.c.scripts.OnClick(r.c, button or "LeftButton") end
+        end
+        print("npc", "no row " .. label)
+    end
+
+    -- gossip: Blizzard shows its frame, then the event
+    state("npc closed")
+    GossipFrame:Show()
+    fire("GOSSIP_SHOW")
+    state("npc gossip")
+    -- the tracker asks for its reach while the box holds the chat: kept for after
+    ns.chat.Reach(true, 0.5)
+    state("npc gossip reach asked")
+    local rows = page("npc gossip")
+    foot("npc gossip")
+    for _, r in ipairs(rows) do click(rows, r.c.data.label) end
+    calls("npc gossip clicks")
+    -- Escape: Blizzard hides its frame, and ours follows
+    GossipFrame:Hide()
+    state("npc gossip escaped")
+    fire("GOSSIP_CLOSED")
+
+    -- the quest pages
+    QuestFrame:Show()
+    fire("QUEST_GREETING")
+    state("npc greeting")
+    rows = page("npc greeting")
+    for _, r in ipairs(rows) do click(rows, r.c.data.label) end
+    calls("npc greeting clicks")
+    fire("QUEST_DETAIL")
+    page("npc detail")
+    press("npc detail", "Accept")
+    press("npc detail", "Decline")
+    calls("npc detail")
+    W.quest.auto = true
+    fire("QUEST_DETAIL")
+    press("npc detail auto", "Okay")
+    calls("npc detail auto")
+    fire("QUEST_PROGRESS")
+    page("npc progress")
+    press("npc progress", "Continue")
+    print("npc progress tip", tipOf("Continue"))
+    W.quest.completable = true
+    fire("QUEST_ITEM_UPDATE")
+    press("npc progress ready", "Continue")
+    calls("npc progress")
+    fire("QUEST_COMPLETE")
+    rows = page("npc reward")
+    press("npc reward", "Complete Quest")
+    print("npc reward tip", tipOf("Complete Quest"))
+    -- the second choice picked: marked, and Complete hands it over
+    click(rows, "choice2")
+    page("npc reward picked")
+    press("npc reward picked", "Complete Quest")
+    calls("npc reward")
+    W.quest.choices = 1
+    fire("QUEST_COMPLETE")
+    press("npc reward one", "Complete Quest")
+    calls("npc reward one")
+    W.quest.choices = 2
+    -- a long text: the box stops at the screen's top, and scrolls
+    W.quest.text = string.rep("A long tale of the pendants and the people who lost them. ", 400)
+    fire("QUEST_DETAIL")
+    state("npc detail long")
+    -- on the screen: the box's top against the screen's (the console's units)
+    print("npc detail long", "top=" .. tostring(math.floor(Region.GetTop(box) + 0.5)) .. "/"
+        .. tostring(math.floor(UIParent:GetTop() + 0.5)),
+        "range=" .. tostring(box.all_ and (function()
+            for _, s in ipairs(box.all_) do if s.kind == "ScrollFrame" then return s:GetVerticalScrollRange() > 0 end end
+        end)()))
+    CloseQuest()
+    fire("QUEST_FINISHED")
+    state("npc quest closed")
+    calls("npc quest closed")
+
+    -- the vendor
+    MerchantFrame:Show()
+    fire("MERCHANT_SHOW")
+    state("npc merchant")
+    rows = page("npc merchant")
+    foot("npc merchant")
+    print("npc merchant tips", "junk=" .. tipOf("Sell junk"), "repair=" .. tipOf("Repair"))
+    -- a plain click buys one bundle; the extended cost and the high price ask
+    click(rows, "Mining Pick")
+    calls("npc merchant pick")
+    click(rows, "Elemental Flux  x5  (3)")
+    foot("npc merchant ask flux")
+    press("npc merchant ask flux", "+")
+    foot("npc merchant ask flux+")
+    press("npc merchant ask flux+", "Buy")
+    calls("npc merchant flux")
+    click(rows, "Swift Mount")
+    foot("npc merchant ask mount")
+    press("npc merchant ask mount", "Cancel")
+    calls("npc merchant mount cancelled")
+    -- Shift asks up to a stack; chat-link and dress-up go elsewhere
+    modsDown.SHIFT = true
+    click(rows, "Elemental Flux  x5  (3)")
+    modsDown.SHIFT = nil
+    foot("npc merchant shift")
+    press("npc merchant shift", "Cancel")
+    W.modified, W.chatOpen = "CHATLINK", true
+    click(rows, "Mining Pick")
+    W.modified = "DRESSUP"
+    click(rows, "Mining Pick")
+    W.modified, W.chatOpen = nil, nil
+    click(rows, "Mining Pick", "RightButton")
+    calls("npc merchant modified")
+    -- the guild bank's repair, where the guild allows it
+    W.guild = true
+    fire("UPDATE_INVENTORY_DURABILITY")
+    press("npc merchant guild", "Guild")
+    press("npc merchant guild", "Repair")
+    calls("npc merchant repair")
+    W.money = 50
+    fire("PLAYER_MONEY")
+    foot("npc merchant poor")
+    W.money, W.repair = 23655, 0
+    fire("UPDATE_INVENTORY_DURABILITY")
+    foot("npc merchant repaired")
+    print("npc merchant repaired tip", tipOf("Repair"))
+    -- sell junk: the game's own where it has it, else each, out of combat
+    press("npc merchant junk", "Sell junk")
+    calls("npc merchant junk each")
+    inCombat = true
+    press("npc merchant junk combat", "Sell junk")
+    calls("npc merchant junk combat")
+    inCombat = false
+    C_MerchantFrame.SellAllJunkItems = function() W.called("SellAllJunkItems") end
+    press("npc merchant junk api", "Sell junk")
+    calls("npc merchant junk api")
+    -- no grey items left: nothing to sell
+    local bag = W.bag
+    W.bag = { [4] = bag[4] }
+    fire("BAG_UPDATE_DELAYED")
+    foot("npc merchant no junk")
+    print("npc merchant no junk tip", tipOf("Sell junk"))
+    W.bag = bag
+    -- the buyback tab
+    click(rows, "Buyback")
+    rows = page("npc buyback")
+    click(rows, "Linen Cloth  x20")
+    calls("npc buyback")
+    -- the character window over the chat: the box hides under it
+    local character = ns.character and ns.character.window
+    if character then
+        character:Show()
+        state("npc under character")
+        character:Hide()
+        state("npc after character")
+    end
+    -- the close cross goes through the game
+    for _, c in ipairs(box.all_) do
+        for _, b in ipairs(c.all_ or {}) do
+            if b.kind == "Button" and b.scripts.OnClick and not b.data and c.points.TOPLEFT then
+                b.scripts.OnClick(b, "LeftButton")
+            end
+        end
+    end
+    fire("MERCHANT_CLOSED")
+    state("npc merchant closed")
+    calls("npc merchant closed")
+    local fns = {}
+    for k, v in pairs(_G) do
+        if type(k) == "string" and k:match("^MerchantFrame_") and merchantFns[k] ~= v then table.insert(fns, k) end
+    end
+    MerchantFrame.shown = false
+    print("npc merchant untouched", tostring(keys(MerchantFrame) == merchantBefore),
+        "fns=" .. (#fns > 0 and table.concat(fns, ",") or "none"))
 end

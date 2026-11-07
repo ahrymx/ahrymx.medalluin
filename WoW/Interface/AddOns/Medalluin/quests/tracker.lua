@@ -93,6 +93,8 @@ local MARKS = {
     dungeon = { file = ns.media .. "strips\\quest-dungeon" },  -- an arched wooden gate, ours
     group = { atlas = "socialqueuing-icon-group", file = GOSSIP .. "AvailableQuestIcon", tint = RED },
     quest = { atlas = "QuestNormal", file = GOSSIP .. "AvailableQuestIcon" },
+    -- taken, not done: only the NPC windows show these (npc/gossip.lua)
+    incomplete = { file = GOSSIP .. "IncompleteQuestIcon" },
 }
 local LEAD = 12                         -- an objective's bullet or branch (character/list.lua)
 
@@ -253,8 +255,16 @@ end
 
 local function Mark(q)
     local m = q.state == 1 and (q.daily and MARKS.dailyReady or MARKS.ready)
+        or q.incomplete and MARKS.incomplete
         or q.daily and MARKS.daily or MARKS[q.kind or "quest"] or MARKS.quest
     return { atlas = m.atlas, file = m.file, tint = m.tint, size = Size() }
+end
+-- The same marks for the NPC windows (npc/gossip.lua, npc/quest.lua): q
+-- has state (1, ready), daily, kind, or incomplete (taken, not done).
+function ns.QuestMark(q, size)
+    local m = Mark(q)
+    m.size = size
+    return m
 end
 
 -- A quest's objectives in their order: the log's, or the tree's (the
@@ -778,12 +788,22 @@ local function Build()
     -- seconds while Questie is there
     C_Timer.NewTicker(5, function() if Q.Questie() then Dirty() end end)
 
-    -- under the character window
-    local character = ns.character.window
-    if character then
-        character:HookScript("OnShow", function() frame:Hide() end)
-        character:HookScript("OnHide", function() frame:Show() end)
+    -- under the character window, and the NPC windows (npc/window.lua,
+    -- built after us, cover it through ns.quests.Cover): hidden while any
+    -- of them is shown
+    local covers = {}
+    local function Covered()
+        local on = false
+        for _, f in ipairs(covers) do on = on or f:IsShown() end
+        frame:SetShown(not on)
     end
+    function ns.quests.Cover(f)
+        table.insert(covers, f)
+        f:HookScript("OnShow", Covered)
+        f:HookScript("OnHide", Covered)
+        if f:IsShown() then Covered() end
+    end
+    if ns.character.window then ns.quests.Cover(ns.character.window) end
     frame:HookScript("OnShow", Dirty)
     frame:HookScript("OnHide", function() ns.OutOfCombat(Place) end)
     Layout()

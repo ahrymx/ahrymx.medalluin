@@ -144,6 +144,7 @@ local function Badge(t, b)
     end
     t:SetDesaturated(not atlas and b.tint ~= nil)
 end
+ns.character.Badge = Badge     -- the NPC windows' quest marks too (npc/window.lua)
 
 -- The lead at x, w wide, in the label's colour: a dot, or a stem (the
 -- whole row, or down to the middle for the last) and a branch from it.

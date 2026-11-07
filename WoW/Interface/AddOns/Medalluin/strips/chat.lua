@@ -12,7 +12,8 @@
 -- The quest tracker's full view stands over the box, up to the screen's
 -- top, in a box of its own on it (Reach): its foot is the chat box's top
 -- edge, so the two read as one, and it fades with the tracker, and goes
--- when the tracker goes minimal.
+-- when the tracker goes minimal. A gossip, quest or vendor window takes
+-- its place while it is open (npc/window.lua, Hold).
 --
 -- Nothing of the chat is replaced. The docked chat frames (they all follow
 -- ChatFrame1) are anchored into the panel and their backgrounds and borders
@@ -535,11 +536,28 @@ local function Build()
         if point:find("^TOP") then for _, t in ipairs(lines) do table.insert(corners, t) end end
     end
     -- up: the reach shown, as much of it as alpha (the tracker's fade)
-    function ns.chat.Reach(up, alpha)
+    local function Draw(up, alpha)
         alpha = up and (alpha or 1) or 0
         reach:SetShown(up and true or false)
         reach:SetAlpha(alpha)
         for _, t in ipairs(corners) do t:SetAlpha(1 - alpha) end
+    end
+    -- An NPC window (npc/window.lua) stands on the box in the reach's
+    -- place, a box of its own as tall as it needs: held, the reach is gone
+    -- and the box's top corners with it, the tracker's asks kept for after.
+    local wanted, held = { false }, false
+    function ns.chat.Reach(up, alpha)
+        wanted = { up, alpha }
+        if not held then Draw(up, alpha) end
+    end
+    function ns.chat.Hold(on)
+        held = on and true or false
+        if held then
+            reach:Hide()
+            for _, t in ipairs(corners) do t:SetAlpha(0) end
+        else
+            Draw(wanted[1], wanted[2])
+        end
     end
     ns.chat.reach = reach
     ns.chat.Reach(false)
