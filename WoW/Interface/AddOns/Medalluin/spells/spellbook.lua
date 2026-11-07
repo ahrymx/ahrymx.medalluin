@@ -45,6 +45,8 @@ local MISSING = { 0.85, 0.3, 0.2 }      -- the edge of a spell on no bar
 local SLOTS = 180                       -- the action slots looked through
 local LINES = 4                         -- the specialisations' and General's tabs
 local ROW, ICON, GAP = 40, 34, 8        -- a cell, its icon, the gap between the columns
+local GUTTER = 10                       -- the trainer's scroll bar, left of its list
+local STEP = ROW * 1.5                  -- a turn of the wheel there
 local BANK = Enum and Enum.SpellBookSpellBank or { Player = 0, Pet = 1 }
 local TYPE = Enum and Enum.SpellBookItemType or { None = 0, Spell = 1, FutureSpell = 2, PetAction = 3, Flyout = 4 }
 
@@ -298,7 +300,7 @@ local function Tiles(c, icon, width)
 end
 
 local function Cell(p, i)
-    local c = CreateFrame("Button", nil, p.body)
+    local c = CreateFrame("Button", nil, p.child or p.body)
     c:SetHeight(ROW)
     c.icon = c:CreateTexture(nil, "ARTWORK")
     c.icon:SetSize(ICON, ICON)
@@ -354,9 +356,15 @@ local function Rows(p)
     return math.max(1, math.floor((p.body:GetHeight() or 0) / ROW))
 end
 
-local function Place(p)
-    local rows = Rows(p)
-    local width = (W.width - GAP) / 2
+-- the cells' width across: the body's, less the trainer's scroll bar
+local function Width(p) return p.child and W.width - GUTTER or W.width end
+
+-- count: every item at once (the trainer's, which scroll), or a page's
+-- worth of rows (the rest, which turn)
+local function Place(p, count)
+    local rows = count and math.max(1, math.ceil(count / 2)) or Rows(p)
+    local width = (Width(p) - GAP) / 2
+    if p.child then p.child:SetSize(Width(p), rows * ROW) end
     for i = 1, rows * 2 do
         local c = p.cells[i] or Cell(p, i)
         local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
@@ -379,7 +387,7 @@ local function Secure(i)
     b:SetAttribute("useOnKeyDown", false)
     b:RegisterForDrag("LeftButton")
     b:SetScript("OnDragStart", function(self)
-        if self.item and self.item.slot and not InCombatLockdown() then
+        if self.item and not InCombatLockdown() then
             SB.PickupSpellBookItem(self.item.slot, self.item.bank)
         end
     end)
@@ -415,7 +423,9 @@ end
 local function Follow()
     if not layer or InCombatLockdown() then return end
     local p = W.Current()
-    local cells = open and p and p.cells or {}
+    -- the trainer's cells cast nothing, and they scroll: no secure buttons,
+    -- the cells answer the mouse themselves
+    local cells = open and p and not p.child and p.cells or {}
     for i = 1, math.max(#cells, #layer.buttons) do
         local c = cells[i]
         if c and c:IsShown() and c.item then
@@ -463,10 +473,85 @@ local function Summary(p, items, chosen)
     p.details:Set(nil)
 end
 
+-- ------------------------------------------------------- the trainer's scroll
+-- The trainer's list scrolls, a whole list in the scroll frame's child:
+-- the wheel eases to where it is sent, and the bar at the left follows, or
+-- is dragged.
+local function Thumb(p)
+    local scroll, bar = p.scroll, p.bar
+    local range = scroll:GetVerticalScrollRange() or 0
+    bar:SetShown(range > 0)
+    if range <= 0 then return end
+    local h = scroll:GetHeight()
+    local size = math.max(16, h * h / (h + range))
+    bar.thumb:SetHeight(size)
+    bar.thumb:ClearAllPoints()
+    bar.thumb:SetPoint("TOP", bar, "TOP", 0, -(h - size) * (p.offset or 0) / range)
+    bar.size = size
+end
+
+-- to where the list is sent, in range; now: there at once (the bar dragged)
+local function Scroll(p, to, now)
+    local range = p.scroll:GetVerticalScrollRange() or 0
+    p.target = math.max(0, math.min(range, to))
+    p.offset = math.max(0, math.min(range, p.offset or 0))
+    if now then p.offset = p.target end
+    p.scroll:SetVerticalScroll(p.offset)
+    Thumb(p)
+    p.scroll:SetScript("OnUpdate", p.offset ~= p.target and function(_, elapsed)
+        p.offset = p.offset + (p.target - p.offset) * math.min(1, elapsed * 12)
+        if math.abs(p.target - p.offset) < 0.5 then
+            p.offset = p.target
+            p.scroll:SetScript("OnUpdate", nil)
+        end
+        p.scroll:SetVerticalScroll(p.offset)
+        Thumb(p)
+    end or nil)
+end
+
+local function Scroller(p, body)
+    local scroll = CreateFrame("ScrollFrame", nil, body)
+    scroll:SetPoint("TOPLEFT", GUTTER, 0)
+    scroll:SetPoint("BOTTOMRIGHT")
+    local child = CreateFrame("Frame", nil, scroll)
+    child:SetSize(W.width - GUTTER, 1)
+    scroll:SetScrollChild(child)
+    local bar = CreateFrame("Frame", nil, body)
+    bar:SetPoint("TOPLEFT")
+    bar:SetPoint("BOTTOMLEFT")
+    bar:SetWidth(GUTTER - 4)
+    local track = bar:CreateTexture(nil, "BACKGROUND")
+    track:SetPoint("TOP")
+    track:SetPoint("BOTTOM")
+    track:SetWidth(1)
+    track:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.6)
+    bar.thumb = bar:CreateTexture(nil, "ARTWORK")
+    bar.thumb:SetWidth(3)
+    bar.thumb:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+    -- pressed: the thumb's middle goes to the cursor, and follows it
+    local function Drag()
+        local range = scroll:GetVerticalScrollRange() or 0
+        local h, size = scroll:GetHeight(), bar.size or 16
+        if range <= 0 or h <= size then return end
+        local _, y = GetCursorPosition()
+        y = y / bar:GetEffectiveScale()
+        Scroll(p, (bar:GetTop() - y - size / 2) / (h - size) * range, true)
+    end
+    bar:EnableMouse(true)
+    bar:SetScript("OnMouseDown", function()
+        Drag()
+        bar:SetScript("OnUpdate", Drag)
+    end)
+    bar:SetScript("OnMouseUp", function() bar:SetScript("OnUpdate", nil) end)
+    bar:SetScript("OnHide", function() bar:SetScript("OnUpdate", nil) end)
+    bar:Hide()
+    p.scroll, p.child, p.bar = scroll, child, bar
+end
+
 local Band
 local function Refresh(p)
     local items = Items(p)
-    local per = Place(p)
+    local per = Place(p, p.child and #items)
     local pages = math.max(1, math.ceil(#items / per))
     p.at = math.min(math.max(1, p.at or 1), pages)
     local first = (p.at - 1) * per
@@ -487,8 +572,8 @@ local function Refresh(p)
             local s = item.heading
             c.item = nil
             c:Show()
-            c:SetWidth(W.width)
-            Tiles(c, s.icon or 136243, W.width)
+            c:SetWidth(Width(p))
+            Tiles(c, s.icon or 136243, Width(p))
             c.title:SetText(s.name)
             c.count:SetText(item.now > 0 and format("%d to train now", item.now) or "")
             c.title:ClearAllPoints()
@@ -525,6 +610,7 @@ local function Refresh(p)
         if item.info and item.info.actionID == p.chosen then chosen = item end
     end
     p.pages = pages
+    if p.child then Scroll(p, p.target or 0) end
     Band(p)
     if p.trainer then
         Summary(p, items, chosen)
@@ -592,12 +678,15 @@ local function Controls(p, band)
     p.allRanks, p.trainerButton = all, trainer
 end
 
--- the margin's state: All ranks marked while on (and away from the
--- trainer's page, where it means nothing), Trainer while its page shows
+-- the margin's state: All ranks marked while on, and greyed and deaf on
+-- the trainer's page, where it means nothing; Trainer while its page shows
 function Band(p)
     if not p.allRanks then return end
-    p.allRanks:SetShown(not p.trainer)
-    p.allRanks.mark:SetShown(ns.db.spellbookAllRanks and true or false)
+    local all = p.allRanks
+    all:EnableMouse(not p.trainer)
+    all:SetAlpha(p.trainer and 0.4 or 1)
+    all.label:SetTextColor(unpack(p.trainer and ns.colors.dim or ns.colors.text))
+    all.mark:SetShown(not p.trainer and ns.db.spellbookAllRanks and true or false)
     p.trainerButton:SetShown(ns.trainers.Visited())
     p.trainerButton.mark:SetShown(p.trainer and true or false)
 end
@@ -628,7 +717,12 @@ local function Page(spec)
         p.footHeight = p.details.height
         Controls(p, band)
         body:EnableMouseWheel(true)
-        body:SetScript("OnMouseWheel", function(_, delta) Turn(p, delta > 0 and -1 or 1) end)
+        if p.trainer then
+            Scroller(p, body)
+            body:SetScript("OnMouseWheel", function(_, delta) Scroll(p, (p.target or 0) - delta * STEP) end)
+        else
+            body:SetScript("OnMouseWheel", function(_, delta) Turn(p, delta > 0 and -1 or 1) end)
+        end
     end
     function p.Refresh() Refresh(p) end
     function p.Showing(on)

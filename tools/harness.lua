@@ -9309,7 +9309,11 @@ if spellPass then
                 end
             end
         end
-        local function button(b) return b.shown == false and "-" or (b.mark.shown and "on" or "off") end
+        local function button(b)
+            return b.shown == false and "-" or (b.mark.shown and "on" or "off")
+                .. (b.mouse == false and string.format("/grey %.1f %s", b.alpha or 1,
+                    table.concat(b.label.textColor or {}, ",")) or "")
+        end
         print(tag, "page=" .. p.at .. "/" .. p.pages, "band=ranks:" .. button(p.allRanks)
             .. ",trainer:" .. button(p.trainerButton), table.concat(list, " "))
     end
@@ -9642,11 +9646,57 @@ if spellPass then
     cells("book.trainer")
     details("book.trainer summary")
     -- the first cell a heading: the first spell is the third
+    -- All ranks on: still unmarked here, where it means nothing
+    ns.SetOption("spellbookAllRanks", true)
+    cells("book.trainer all ranks on")
+    ns.SetOption("spellbookAllRanks", false)
+    -- no secure buttons over a list that scrolls: the cells answer
+    local armed = 0
+    for _, b in ipairs(layer.buttons) do if b.shown then armed = armed + 1 end end
+    print("book.trainer secure buttons", armed)
     tr.cells[3].scripts.OnEnter(tr.cells[3])
-    layer.buttons[3].scripts.PostClick(layer.buttons[3], "LeftButton")
+    print("book.trainer tooltip", tostring(GameTooltip.shown))
+    tr.cells[3].scripts.OnClick(tr.cells[3])
     details("book.trainer chosen")
-    print("book.trainer drag", tostring(pcall(layer.buttons[3].scripts.OnDragStart, layer.buttons[3])))
-    print("book.trainer heading armed", tostring(layer.buttons[1] and layer.buttons[1].shown or false))
+    -- a short body: the list scrolls, the bar at the left
+    local function scrolled(tag)
+        local bar, th = tr.bar, tr.bar.thumb
+        print(tag, string.format("range=%d at=%.1f target=%.1f easing=%s bar=%s thumb=%.1f@%.1f", 
+            tr.scroll:GetVerticalScrollRange(), tr.scroll:GetVerticalScroll(), tr.target or 0,
+            tostring(tr.scroll.scripts.OnUpdate ~= nil), tostring(bar.shown), th.h or 0,
+            th.points.TOP and th.points.TOP[4] or 0), "bar@" .. tostring(bar.points.TOPLEFT and bar.points.TOPLEFT[3]),
+            "list@" .. tostring(tr.scroll.points.TOPLEFT[3]), "cells in list=" .. tostring(tr.cells[1].parent == tr.child))
+    end
+    scrolled("book.trainer tall")
+    local trH = tr.body.h
+    tr.body.h = 3 * 40
+    tr.scroll.h = 3 * 40         -- the mock's GetHeight does not resolve anchors
+    tr.Refresh()
+    scrolled("book.trainer short")
+    tr.body.scripts.OnMouseWheel(tr.body, -1)
+    scrolled("book.trainer wheel")
+    tr.scroll.scripts.OnUpdate(tr.scroll, 0.05)
+    scrolled("book.trainer easing")
+    for _ = 1, 40 do if tr.scroll.scripts.OnUpdate then tr.scroll.scripts.OnUpdate(tr.scroll, 0.05) end end
+    scrolled("book.trainer eased")
+    for _ = 1, 10 do tr.body.scripts.OnMouseWheel(tr.body, -1) end
+    for _ = 1, 80 do if tr.scroll.scripts.OnUpdate then tr.scroll.scripts.OnUpdate(tr.scroll, 0.05) end end
+    scrolled("book.trainer bottom")
+    -- the bar pressed at its top: the list there at once, and following
+    local cursorAt = GetCursorPosition
+    -- the cursor in the screen's units, as the game gives it
+    function GetCursorPosition() return 0, tr.bar:GetTop() * tr.bar:GetEffectiveScale() end
+    tr.bar.scripts.OnMouseDown(tr.bar)
+    scrolled("book.trainer bar pressed")
+    function GetCursorPosition() return 0, tr.bar:GetBottom() * tr.bar:GetEffectiveScale() end
+    tr.bar.scripts.OnUpdate(tr.bar, 0.05)
+    scrolled("book.trainer bar dragged")
+    tr.bar.scripts.OnMouseUp(tr.bar)
+    print("book.trainer bar let go", tostring(tr.bar.scripts.OnUpdate ~= nil))
+    GetCursorPosition = cursorAt
+    tr.body.h, tr.scroll.h = trH, 0
+    tr.Refresh()
+    scrolled("book.trainer tall again")
     -- a level later: Frost Shock's time comes
     function UnitLevel() return 20 end
     tr.Refresh()
