@@ -359,7 +359,7 @@ end
 
 local function UpdatePartyPet(pet)
     if not pet then return end
-    if ns.db and ns.PartyOption("partyPets") == false then
+    if ns.db and not ns.PartyPets() then
         pet.stub = nil
         ns.OutOfCombat(function()
             if UnregisterUnitWatch then UnregisterUnitWatch(pet) end
@@ -1045,8 +1045,7 @@ ns.OnSetting("simParty", UpdatePartyFrames)
 ns.OnSetting("partyPets", UpdatePartyFrames)
 ns.OnSetting("partyRange", UpdatePartyRange)
 -- the Party widget's own (settings.lua: ns.PartyOption), and the layout
--- choosing between them
-ns.OnSetting("partyWidgetPets", UpdatePartyFrames)
+-- choosing between them (the widget has no pets: ns.PartyPets)
 ns.OnSetting("partyWidgetRange", UpdatePartyRange)
 ns.OnSetting("partyLayout", function()
     UpdatePartyFrames()

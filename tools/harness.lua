@@ -5563,7 +5563,8 @@ if args[2] == "widgets" or args[3] == "widgets" then
     state("party layout: widget")
     HarnessCrowns("  crowns")
     -- the skin to the last member shown, in combat too: one joins, a pet
-    -- comes, they go; then the editor's taller cell
+    -- comes (the widget has none: the skin stays), they go; then the
+    -- editor's taller cell
     inCombat = true
     exists.party3 = true
     watchTick()
@@ -5653,13 +5654,26 @@ if args[2] == "widgets" or args[3] == "widgets" then
     S.arenaMoverHover:Set(true)
     movers("arena on mouseover")
     S.arenaMoverHover:Set(false)
-    -- the console's pets option is not the widget's
+    -- the console's pets option: the widget has no pets either way
     S.partyPets:Set(false)
-    state("console pets off: the widget keeps them")
+    state("console pets off")
     S.partyPets:Set(true)
-    S.partyWidgetPets:Set(false)
-    state("pets off")
-    S.partyWidgetPets:Set(true)
+    -- a member's pet: none in the widget, shown on the console
+    exists.partypet1 = true
+    ns.UpdatePartyFrames()
+    watchTick()
+    print("  party pet in the widget", "shown=" .. tostring(ns.units.party1.pet.shown))
+    S.partyLayout:Set("console")
+    watchTick()
+    print("  party pet on the console", "shown=" .. tostring(ns.units.party1.pet.shown))
+    S.partyPets:Set(false)
+    watchTick()
+    print("  party pet, console's off", "shown=" .. tostring(ns.units.party1.pet.shown))
+    S.partyPets:Set(true)
+    S.partyLayout:Set("widget")
+    exists.partypet1 = nil
+    ns.UpdatePartyFrames()
+    watchTick()
     -- the range the party fades at: the widget's, not the console's
     local wasSim = ns.db.simParty
     S.simParty:Set(true)
@@ -5691,22 +5705,6 @@ if args[2] == "widgets" or args[3] == "widgets" then
         S.partyWidgetRange:Set(40)
         ns.units.party2.stub.inRange = nil
         ns.UpdatePartyRange()
-        local function pets()
-            local o = {}
-            for i = 1, 4 do
-                if ns.units["party" .. i].pet.shown then table.insert(o, "party" .. i) end
-            end
-            return table.concat(o, ",")
-        end
-        print("  party pets", pets())
-        S.partyPets:Set(false)
-        stateTick()
-        print("  party pets, console's off", pets())
-        S.partyWidgetPets:Set(false)
-        stateTick()
-        print("  party pets, widget's off", pets())
-        S.partyPets:Set(true)
-        S.partyWidgetPets:Set(true)
     end
     S.simParty:Set(wasSim)
     stateTick()

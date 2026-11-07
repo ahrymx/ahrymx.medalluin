@@ -459,7 +459,7 @@ function ns.OptionPages()
                             Range("partyRange", "party"), Pets("partyPets"),
                             Glow("auraGlow"), CC("auraCC", "the"), Buffs("auraBuffs"), BossDebuffs("auraBoss")),
                         Group("Widget (shared by every profile)",
-                            Range("partyWidgetRange", "party"), Pets("partyWidgetPets"),
+                            Range("partyWidgetRange", "party"),
                             Glow("partyWidgetGlow"), CC("partyWidgetCC", "the"), Buffs("partyWidgetBuffs"),
                             BossDebuffs("partyWidgetBoss"), Movers("partyWidgetMoverHover", "Party")),
                     },

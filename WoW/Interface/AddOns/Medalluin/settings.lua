@@ -140,9 +140,9 @@ local DEFAULTS = {
     bossMine = true,        -- your debuffs on the overhead's bosses
     -- The widgets' (Unit Frames' Widget groups and the Raid, Battleground and
     -- Arena tabs; console/auras.lua), shared by every profile: the Party
-    -- widget's own range, pets and auras (ns.PartyOption), the raid's out of
+    -- widget's own range and auras (ns.PartyOption; it has no pets), the raid's out of
     -- battlegrounds and in one, the Boss widget's and the arena's
-    partyWidgetRange = 40, partyWidgetPets = true, partyWidgetGlow = true, partyWidgetCC = true,
+    partyWidgetRange = 40, partyWidgetGlow = true, partyWidgetCC = true,
     partyWidgetBuffs = true, partyWidgetBoss = true,
     raidRange = 40, raidGlow = true, raidCC = true, raidBoss = true,
     bgRange = 40, bgGlow = true, bgCC = true,
@@ -231,13 +231,16 @@ ns.PER_PROFILE = PER_PROFILE
 -- it), or, while the Party layout is the widget, the widget's own (shared).
 -- The player's and target's frames keep the console's.
 local PARTY_WIDGET = {
-    partyRange = "partyWidgetRange", partyPets = "partyWidgetPets", auraGlow = "partyWidgetGlow",
+    partyRange = "partyWidgetRange", auraGlow = "partyWidgetGlow",
     auraCC = "partyWidgetCC", auraBuffs = "partyWidgetBuffs", auraBoss = "partyWidgetBoss",
 }
 function ns.PartyKey(key)
     return ns.db.partyLayout == "widget" and PARTY_WIDGET[key] or key
 end
 function ns.PartyOption(key) return ns.db[ns.PartyKey(key)] end
+-- The party's pets: the console's option; the widget shows none (it is for
+-- competitive play, where they are not wanted).
+function ns.PartyPets() return ns.db.partyLayout ~= "widget" and ns.db.partyPets ~= false end
 
 local function Profile()
     return MedalluinDB and PROFILES[MedalluinDB.consoleProfile] and MedalluinDB.consoleProfile or "default"
@@ -381,7 +384,7 @@ local function Migrate()
             for name in pairs(PROFILES) do db.profiles[name][key] = nil end
         end
         local from = {
-            partyWidgetRange = "partyRange", partyWidgetPets = "partyPets", partyWidgetGlow = "auraGlow",
+            partyWidgetRange = "partyRange", partyWidgetGlow = "auraGlow",
             partyWidgetCC = "auraCC", partyWidgetBuffs = "auraBuffs", partyWidgetBoss = "auraBoss",
             raidRange = "partyRange", bgRange = "partyRange", bossWidgetMine = "bossMine",
         }

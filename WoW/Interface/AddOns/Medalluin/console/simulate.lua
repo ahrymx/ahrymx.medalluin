@@ -250,7 +250,7 @@ local function PartyPage(page)
     Row("pet", "Pet", function(s) return s.pet == true end, function(s) s.pet = not s.pet end,
         function(name, s) return name .. (s.pet and " has a pet. Click to dismiss it." or
             " has no pet. Click to summon one.") end,
-        function() return ns.PartyOption("partyPets") ~= false end)
+        function() return ns.PartyPets() end)
     y = Auras(page, y - 4, "party", { "glow", "cc", "boss", "buffs" })
     local half = (IW - 4) / 2
     Button(page, 0, y - 4, half, { id = "party.ready", label = "Ready check",
@@ -376,7 +376,7 @@ end
 
 ns.On("PLAYER_LOGIN", Shown)
 ns.OnSetting("simParty", Shown)
-for _, key in ipairs({ "partyRange", "partyWidgetRange", "partyLayout", "partyPets", "partyWidgetPets",
+for _, key in ipairs({ "partyRange", "partyWidgetRange", "partyLayout", "partyPets",
     "raidRange", "bgRange" }) do
     ns.OnSetting(key, function() if panel then Paint() end end)
 end
