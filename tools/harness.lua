@@ -168,6 +168,8 @@ Region.__index = function(self, k)
         return function() end
     end
 end
+-- a cooldown's Clear (the game's; not a verb the stub knows)
+function Region:Clear() self.start, self.duration = nil, nil end
 local all = {}
 local function new(kind, parent, name)
     local r = setmetatable({ kind = kind, parent = parent, points = {}, w = 0, h = 0,
@@ -1631,6 +1633,12 @@ local function AuraData(b)
     return b and { auraInstanceID = b.id, icon = b.icon, applications = b.count or 0,
         expirationTime = b.timed and 160 or 0 }
 end
+-- loss of control: none until a pass hands one over (lossOfControl)
+local lossOfControl
+C_LossOfControl = {
+    GetActiveLossOfControlDataCount = function() return lossOfControl and 1 or 0 end,
+    GetActiveLossOfControlData = function() return lossOfControl end,
+}
 if modern then
     C_UnitAuras = {
         GetAuraDataByIndex = function(_, i) return AuraData(buffs[i]) end,
@@ -2284,7 +2292,6 @@ if questPass then
     C_Timer.NewTicker = function(_, fn) table.insert(W.tickers, fn) end
     function GameTooltip:SetItemByID(id) self.item = id end
     function Region:SetCooldown(start, duration) self.start, self.duration = start, duration end
-    function Region:Clear() self.start, self.duration = nil, nil end
     function ChatEdit_InsertLink(link) called("link " .. link) end
     -- Blizzard's tracker: protected when the pass says
     ObjectiveTrackerFrame = new("Frame", UIParent, "ObjectiveTrackerFrame")
@@ -6921,6 +6928,31 @@ end
 out("minimap", Minimap)
 print("secrets handed to widgets", secretsUsed)
 if modern then
+    -- stunned in combat: the loss of control's times are secret, so the
+    -- player's CC mark takes its spiral from the aura's duration object;
+    -- out of combat, from its times
+    local cc = ns.units.player.ccWidget
+    function Region:SetCooldownFromDurationObject(dur) self.start, self.duration = "object", dur.aura end
+    local setCooldown = rawget(Region, "SetCooldown")
+    function Region:SetCooldown(start, duration) self.start, self.duration = start, duration end
+    local function stunned(tag)
+        for _, f in ipairs(events.LOSS_OF_CONTROL_ADDED or {}) do f.scripts.OnEvent(f, "LOSS_OF_CONTROL_ADDED") end
+        print(tag, "shown=" .. tostring(cc and cc.shown), "icon=" .. tostring(cc and cc.icon.texture),
+            "spiral=" .. tostring(cc and cc.cooldown.start) .. "/" .. tostring(cc and cc.cooldown.duration),
+            "expires=" .. tostring(cc and cc.expires))
+    end
+    C_UnitAuras.GetAuraDuration = function(_, id) return { aura = id } end
+    lossOfControl = { iconTexture = 132091, startTime = 100, duration = 4, auraInstanceID = 77, priority = 5,
+        displayType = 2 }
+    stunned("cc stunned")
+    lossOfControl = { iconTexture = secret(), startTime = secret(), duration = secret(), auraInstanceID = 77,
+        priority = 5, displayType = 2 }
+    stunned("cc stunned secret")
+    C_UnitAuras.GetAuraDuration = nil
+    stunned("cc stunned secret, no duration")
+    lossOfControl = nil
+    stunned("cc free")
+    Region.SetCooldownFromDurationObject, Region.SetCooldown = nil, setCooldown
     local pBuffs = 0
     for _, btn in ipairs(ns.units.player.buffWidgets or {}) do if btn.shown then pBuffs = pBuffs + 1 end end
     print("player.buffs", pBuffs)
@@ -9678,7 +9710,8 @@ if questPass then
                 local d = r.data
                 table.insert(out, d.header and (r.sign.text .. plain(r.label.text) .. (d.bright and "(bright)" or "")
                     .. (r.fill.gradient and string.format(" a=%.2f", r.fill.gradient[2][4]) or ""))
-                    or (string.rep(">", d.depth or 0) .. (r.badge.shown and ("{" .. tostring(r.badge.atlas) .. "} ") or "")
+                    or (string.rep(">", d.depth or 0) .. (r.badge.shown and ("{" .. tostring(r.badge.atlas or tostring(r.badge.texture):match("[^\\]+$")) .. "} ")
+                        or "")
                         .. (LEADS[d.lead] or "") .. plain(r.label.text)
                         .. (d.quest and ("(" .. c3(r.label.textColor) .. ")") or (d.dim and "(dim)" or ""))
                         .. (d.quest and r.value.text ~= "" and (" @" .. r.value.text) or "")))
@@ -10215,7 +10248,7 @@ if questPass then
         local out = {}
         for _, d in ipairs(list.data) do
             if d.group == id then
-                table.insert(out, (d.badge and ("{" .. d.badge.atlas .. "} ") or "") .. (LEADS[d.lead] or "")
+                table.insert(out, (d.badge and ("{" .. (d.badge.atlas or d.badge.file:match("[^\\]+$")) .. "} ") or "") .. (LEADS[d.lead] or "")
                     .. plain(d.label) .. (d.dim and "(dim)" or ""))
             end
         end

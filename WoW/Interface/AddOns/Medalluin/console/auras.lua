@@ -509,6 +509,15 @@ local function Read(unit, i, filter)
     return nil
 end
 
+-- A cooldown's spiral from its aura's duration object, for times that are
+-- secret: SetCooldown takes no secret from an addon, the object it may.
+-- Cleared, and left so where the client has neither call (or no aura).
+local function Spiral(cd, unit, id)
+    cd:Clear()
+    local ok, dur = pcall(Auras and Auras.GetAuraDuration, unit, id)
+    if ok then pcall(cd.SetCooldownFromDurationObject, cd, dur) end
+end
+
 -- Live aura scanning for active units
 local function ScanUnitAuras(b)
     local unit = b.unit
@@ -552,10 +561,15 @@ local function ScanUnitAuras(b)
             if count and count > 0 then
                 local loc = LossOfControl.GetActiveLossOfControlData(1)
                 if loc and loc.iconTexture then
+                    -- its times are secret in combat: no sum of them then
+                    -- (the spiral comes from its aura's duration instead)
+                    local start, duration = loc.startTime, loc.duration
+                    local open = not ns.IsSecret(start) and not ns.IsSecret(duration)
                     ccAura = {
                         icon = loc.iconTexture,
-                        duration = loc.duration,
-                        expirationTime = loc.startTime and loc.duration and (loc.startTime + loc.duration),
+                        duration = duration,
+                        expirationTime = open and start and duration and (start + duration) or nil,
+                        auraInstanceID = loc.auraInstanceID,
                     }
                 end
             end
@@ -584,6 +598,7 @@ local function ScanUnitAuras(b)
             else
                 b.ccWidget.expires = nil
                 b.ccWidget.timer:SetText("")
+                Spiral(b.ccWidget.cooldown, unit, ccAura.auraInstanceID)
             end
             b.ccWidget:Show()
         else

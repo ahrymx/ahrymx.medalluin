@@ -42,7 +42,8 @@
 -- A quest's mark, before its level: ? once it can be handed in, else its
 -- kind's: a dungeon's, a group's (or elite), or the plain !. A daily's !
 -- and ? are blue. The game's own quest art: its atlas where the client
--- has one, else the gossip window's, tinted.
+-- has one, else the gossip window's, tinted; the dungeon's is ours, an
+-- arched wooden gate (art/strips/gen_strips.py gate).
 --
 -- Its objectives under it, bulleted; or, as a tree (questsTree), on the
 -- branches of one (├ └), the finished ones risen to the top. The quest
@@ -89,7 +90,7 @@ local MARKS = {
     ready = { atlas = "QuestTurnin", file = GOSSIP .. "ActiveQuestIcon" },
     dailyReady = { atlas = "QuestRepeatableTurnin", file = GOSSIP .. "ActiveQuestIcon", tint = BLUE },
     daily = { atlas = "QuestDaily", file = GOSSIP .. "AvailableQuestIcon", tint = BLUE },
-    dungeon = { atlas = "Dungeon", file = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull" },
+    dungeon = { file = ns.media .. "strips\\quest-dungeon" },  -- an arched wooden gate, ours
     group = { atlas = "socialqueuing-icon-group", file = GOSSIP .. "AvailableQuestIcon", tint = RED },
     quest = { atlas = "QuestNormal", file = GOSSIP .. "AvailableQuestIcon" },
 }

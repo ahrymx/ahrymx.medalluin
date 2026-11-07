@@ -337,6 +337,47 @@ def part(name, inner, size=32):
     subprocess.run(["rsvg-convert", "-o", os.path.join(parts, name + ".png")], input=doc.encode(), check=True)
 
 
+# The quest tracker's mark for a dungeon's or a raid's quest: an arched
+# wooden gate in a gold frame, the doors' planks and iron bands. Its own
+# colours (not the glyphs' gold fill), drawn at 64 so it stays clear at the
+# 14-20 pixels a quest's mark is drawn at.
+def gate(size=64):
+    s = size / 20
+    frame = ("M1.5,19.5 L1.5,9 C1.5,4 5.5,0.5 10,0.5 C14.5,0.5 18.5,4 18.5,9 L18.5,19.5 Z"
+             "M4.3,19.5 L4.3,9.4 C4.3,6 6.8,3.4 10,3.4 C13.2,3.4 15.7,6 15.7,9.4 L15.7,19.5 Z")
+    door = "M4.3,19.5 L4.3,9.4 C4.3,6 6.8,3.4 10,3.4 C13.2,3.4 15.7,6 15.7,9.4 L15.7,19.5 Z"
+    seams = "M7.15,4.6 L7.15,19.5 M12.85,4.6 L12.85,19.5"
+    return (f'<g transform="scale({s})">'
+            f'<path d="{door}" fill="url(#wood)"/>'
+            f'<path d="{seams}" stroke="#2e1a08" stroke-width="0.55"/>'
+            f'<path d="M10,3.4 L10,19.5" stroke="#1c0f04" stroke-width="0.9"/>'
+            f'<path d="M4.3,8.6 L15.7,8.6 M4.3,15.6 L15.7,15.6" stroke="#2a2724" stroke-width="1.3"/>'
+            f'<circle cx="8.9" cy="12.3" r="0.65" fill="url(#gold)"/>'
+            f'<circle cx="11.1" cy="12.3" r="0.65" fill="url(#gold)"/>'
+            f'<path d="{frame}" fill="url(#gold)" fill-rule="evenodd" stroke="#2a1e08" stroke-width="0.6"/>'
+            f'</g>')
+
+
+def gate_part():
+    """assets/strips/quest-dungeon.png, and a look at it in render/gate.png:
+    at 4x, and at the sizes the tracker draws it over its ink."""
+    doc = svg(gate()).replace(f'width="{W}" height="{H}"', 'width="64" height="64"').replace(
+        "</defs>", '<linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9a6634"/>'
+        '<stop offset="1" stop-color="#5c3a18"/></linearGradient></defs>')
+    parts = os.path.join(ROOT, "assets", "strips")
+    path = os.path.join(parts, "quest-dungeon.png")
+    subprocess.run(["rsvg-convert", "-o", path], input=doc.encode(), check=True)
+    im = Image.open(path).convert("RGBA")
+    os.makedirs(OUT, exist_ok=True)
+    sheet = Image.new("RGBA", (256 + 3 * 40 + 40, 264), (18, 17, 16, 255))
+    sheet.alpha_composite(im.resize((256, 256), Image.LANCZOS), (4, 4))
+    for i, n in enumerate((14, 18, 22)):
+        sheet.alpha_composite(im.resize((n, n), Image.LANCZOS), (280 + i * 40, 120))
+    out = os.path.join(OUT, "gate.png")
+    sheet.save(out)
+    print(out)
+
+
 def glyphs():
     """The glyph parts alone (layer3 untouched), and a sheet of them at 4x
     in render/glyphs.png to look at."""
@@ -538,5 +579,7 @@ if __name__ == "__main__":
         layer3()
     elif sys.argv[1:2] == ["glyphs"]:
         glyphs()
+    elif sys.argv[1:2] == ["gate"]:
+        gate_part()
     else:
         main()
