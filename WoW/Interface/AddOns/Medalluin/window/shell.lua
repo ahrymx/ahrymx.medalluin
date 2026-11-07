@@ -30,6 +30,7 @@
 --                        closeTip, Close(), Open(page) (ask Blizzard),
 --                        Lifted() -> the medallion's buttons }
 --   w.Page{ key, label, tip, glyph, icon, frame (Blizzard's page), order,
+--           tabless (no tab: the page's own controls Select it),
 --           Available() (or Blizzard's frame exists), height, footHeight,
 --           flex, bandUsed, events = { ... }, Build(body, foot, band),
 --           Fit(height), Refresh(), OnEvent(event, ...), Shown(),
@@ -403,7 +404,7 @@ function ns.Window(spec)
     local function Tabs()
         local shown = {}
         for _, p in ipairs(pages) do
-            if p.available then table.insert(shown, p) end
+            if p.available and not p.tabless then table.insert(shown, p) end
             p.tab = nil
         end
         local room = WIDTH - 2 * PAD - 2 * (TAB + 4)

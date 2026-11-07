@@ -9285,12 +9285,33 @@ if spellPass then
                 local b = layer.buttons[i]
                 local arm = b and b.shown and b.item == c.item
                     and ((b.attrs.type or "none") .. ":" .. tostring(b.attrs.spell)) or "unarmed"
-                table.insert(list, string.format("%s(%s,%.1f%s)[%s]", c.name.text, c.sub.text, c.icon.alpha or 1,
-                    c.mark.shown and ",chosen" or "", arm))
+                if c.head.shown then
+                    -- a heading: its title and count, and the tile under them
+                    -- the tiles: how many show, where the first and last
+                    -- sit, how wide, and the last one's crop
+                    local at, n = select(2, next(c.title.points)) or {}, 0
+                    for _, t in ipairs(c.tiles) do if t.shown then n = n + 1 end end
+                    local t1, tn = c.tiles[1], c.tiles[n]
+                    local function tile(t)
+                        local q = t.points.TOPLEFT or {}
+                        return string.format("%s@%d+%d[%.3f-%.3f,%.2f-%.2f]", tostring(t.texture), q[3] or -1,
+                            t.w or 0, t.coords[1], t.coords[2], t.coords[3], t.coords[4])
+                    end
+                    table.insert(list, string.format("#%s(%s)[%s]cell=%d,w=%d,mouse=%s,shown=%s,title=%s %d,"
+                        .. "tiles=%d/%d %s..%s %s@%s:%s", c.title.text, c.count.text, arm, i, c.w or 0,
+                        tostring(c.mouse), table.concat({ tostring(c.icon.shown), tostring(c.name.shown),
+                            tostring(c.sub.shown), tostring(c.edge.shown) }, ","), tostring(at[2] or at[1]), at[4] or 0,
+                        n, #c.tiles, tile(t1), tile(tn), tostring(t1.desaturated), tostring(t1.alpha),
+                        table.concat(t1.vertex or {}, ",")))
+                else
+                    table.insert(list, string.format("%s(%s,%.1f%s)[%s]", c.name.text, c.sub.text, c.icon.alpha or 1,
+                        c.mark.shown and ",chosen" or "", arm))
+                end
             end
         end
-        print(tag, "pager=" .. p.pager.text.text, string.format("prev=%.1f next=%.1f", p.pager.prev.alpha or 1,
-            p.pager.next.alpha or 1), table.concat(list, " "))
+        local function button(b) return b.shown == false and "-" or (b.mark.shown and "on" or "off") end
+        print(tag, "page=" .. p.at .. "/" .. p.pages, "band=ranks:" .. button(p.allRanks)
+            .. ",trainer:" .. button(p.trainerButton), table.concat(list, " "))
     end
     local function details(tag)
         local p = B.Current()
@@ -9365,11 +9386,11 @@ if spellPass then
     cells("book.short")
     elem.body.scripts.OnMouseWheel(elem.body, -1)
     cells("book.short next")
-    elem.pager.next.scripts.OnClick(elem.pager.next)
+    elem.body.scripts.OnMouseWheel(elem.body, -1)
     cells("book.short past end")
-    elem.pager.prev.scripts.OnClick(elem.pager.prev)
+    elem.body.scripts.OnMouseWheel(elem.body, 1)
     cells("book.short back")
-    elem.pager.next.scripts.OnClick(elem.pager.next)
+    elem.body.scripts.OnMouseWheel(elem.body, -1)
     UIParent.GetHeight = height
     -- on page 2 when the window grows back: one page, and it is the first
     elem.body.h = 10 * 40
@@ -9520,14 +9541,17 @@ if spellPass then
     frame()
     cells("book.ranks enhancement")
     edges("book.bars enhancement")
-    -- every rank: both Rockbiters, and the future Earth Shock
-    ns.SetOption("spellbookAllRanks", true)
+    -- every rank: both Rockbiters, and the future Earth Shock; the margin's
+    -- All ranks is the same option, both ways
+    enh.allRanks.scripts.OnClick(enh.allRanks)
+    print("book.band all ranks", "option=" .. tostring(ns.db.spellbookAllRanks))
     cells("book.all ranks")
     edges("book.all ranks bars")
     elem.tab.scripts.OnClick(elem.tab)
     frame()
     cells("book.all ranks elemental")
-    ns.SetOption("spellbookAllRanks", false)
+    elem.allRanks.scripts.OnClick(elem.allRanks)
+    print("book.band all ranks off", "option=" .. tostring(ns.db.spellbookAllRanks))
     -- no marks when asked for none
     ns.SetOption("spellbookMissing", false)
     edges("book.no marks")
@@ -9574,6 +9598,7 @@ if spellPass then
         { "Rockbiter Weapon", "used", 9, 1, "Rank 3", 0 }, { "Flame Shock", "available", 8, 10, "Rank 1", 800 },
         { "Frost Shock", "unavailable", 7, 20, "Rank 1", 1500 }, { "Purge", "available", 6, 12, "", 900 },
         { "Lightning Shield", "available", 5, 8, "", 100 }, { "Ghost Wolf", "used", 4, 10, "", 0 },
+        { "Earth Shock", "unavailable", 3, 30, "Rank 3", 2000 }, { "Rockbiter Weapon", "available", 9, 12, "Rank 4", 600 },
     }
     -- as the game: an empty list at TRAINER_SHOW, the services with the
     -- TRAINER_UPDATE after; the filter Blizzard's window left, Available only
@@ -9601,15 +9626,27 @@ if spellPass then
     print("book.trainer read", "filter=" .. tostring(tfilter.available) .. "/" .. tostring(tfilter.unavailable)
         .. "/" .. tostring(tfilter.used))
     tabs("book.trainer tabs")
+    -- no tab of its own: the margin's Trainer opens it, and goes back
     local tr = pageOf("trainer")
-    tr.tab.scripts.OnClick(tr.tab)
+    print("book.trainer tab", tostring(tr.tab ~= nil))
+    local from = B.Current()
+    cells("book.band before trainer")
+    from.trainerButton.scripts.OnClick(from.trainerButton)
+    frame()
+    print("book.band trainer", "current=" .. B.Current().key)
+    tr.trainerButton.scripts.OnClick(tr.trainerButton)
+    print("book.band back", "current=" .. B.Current().key, "same=" .. tostring(B.Current() == from))
+    cells("book.band after trainer")
+    from.trainerButton.scripts.OnClick(from.trainerButton)
     frame()
     cells("book.trainer")
     details("book.trainer summary")
-    tr.cells[1].scripts.OnEnter(tr.cells[1])
-    layer.buttons[1].scripts.PostClick(layer.buttons[1], "LeftButton")
+    -- the first cell a heading: the first spell is the third
+    tr.cells[3].scripts.OnEnter(tr.cells[3])
+    layer.buttons[3].scripts.PostClick(layer.buttons[3], "LeftButton")
     details("book.trainer chosen")
-    print("book.trainer drag", tostring(pcall(layer.buttons[1].scripts.OnDragStart, layer.buttons[1])))
+    print("book.trainer drag", tostring(pcall(layer.buttons[3].scripts.OnDragStart, layer.buttons[3])))
+    print("book.trainer heading armed", tostring(layer.buttons[1] and layer.buttons[1].shown or false))
     -- a level later: Frost Shock's time comes
     function UnitLevel() return 20 end
     tr.Refresh()

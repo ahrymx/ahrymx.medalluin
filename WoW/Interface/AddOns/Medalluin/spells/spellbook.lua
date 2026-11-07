@@ -11,13 +11,16 @@
 --   ---------------------------------------------------------------
 --   the chosen spell's name, rank and description
 --   ---------------------------------------------------------------
---   (backpack)              [<]  2 / 3  [>]
+--   [All ranks] [Trainer]                                (backpack)
 --
 -- A tab per skill line the book shows (General, then each specialisation),
--- the game's own icons, Pet only while the pet has spells, and Trainer once
--- a class trainer has been visited (spells/trainers.lua): what is still to
--- learn, now or at a later level. A page holds as many rows as the window's
--- height gives it; the margin pages through.
+-- the game's own icons, and Pet only while the pet has spells. A page holds
+-- as many rows as the window's height gives it; the wheel turns the pages.
+-- The margin holds All ranks (spellbookAllRanks) and, once a class trainer
+-- has been visited (spells/trainers.lua), Trainer: a page without a tab,
+-- of what is still to learn, now or at a later level, a section for each
+-- skill line its spells belong to (Other for the rest); Trainer again goes
+-- back.
 --
 -- A spell is listed once, at its highest rank learned, unless every rank
 -- is asked for (spellbookAllRanks). One not on any action bar, nor in a
@@ -59,12 +62,43 @@ local SB = C_SpellBook
 
 -- ------------------------------------------------------------- the items
 -- The trainer's services still to learn, as items: no slot, nothing to cast.
+-- A section for each skill line, in the book's order: the line a spell's
+-- name is in (a rank learned, or one the book lists as to come), and Other
+-- last. A section's heading takes a whole row (a filler after it, and
+-- before it when the row is half full).
 local function Trained()
-    local out = {}
+    local lines, of = {}, {}
+    for l = 1, SB.GetNumSpellBookSkillLines() do
+        local line = SB.GetSpellBookSkillLineInfo(l)
+        if line and not line.shouldHide then
+            lines[l] = { name = line.name, icon = line.iconID, items = {} }
+            for slot = line.itemIndexOffset + 1, line.itemIndexOffset + line.numSpellBookItems do
+                local info = SB.GetSpellBookItemInfo(slot, BANK.Player)
+                if info and not of[info.name] then of[info.name] = l end
+            end
+        end
+    end
+    local other = { name = "Other", items = {} }
     for _, t in ipairs(ns.trainers.Class()) do
         local e = t.entry
-        table.insert(out, { trainer = e, now = t.now, info = { name = e.name, subName = e.rank or "",
+        local section = lines[of[e.name]] or other
+        table.insert(section.items, { trainer = e, now = t.now, info = { name = e.name, subName = e.rank or "",
             iconID = e.icon, actionID = e.name .. "|" .. (e.rank or "") } })
+    end
+    local out, order = {}, {}
+    for l = 1, SB.GetNumSpellBookSkillLines() do
+        if lines[l] then table.insert(order, lines[l]) end
+    end
+    table.insert(order, other)
+    for _, section in ipairs(order) do
+        if #section.items > 0 then
+            if #out % 2 == 1 then table.insert(out, { filler = true }) end
+            local now = 0
+            for _, item in ipairs(section.items) do if item.now then now = now + 1 end end
+            table.insert(out, { heading = section, now = now })
+            table.insert(out, { filler = true })
+            for _, item in ipairs(section.items) do table.insert(out, item) end
+        end
     end
     return out
 end
@@ -234,6 +268,35 @@ local function Choose(p, item)
     W.Refresh()
 end
 
+-- A heading's icon, a square at a time along its row, the last cut short.
+-- Textures, not one repeating: Forever's icons share sheets, and a repeat
+-- runs on into the neighbours.
+local CROP = 0.08
+local function Tiles(c, icon, width)
+    local n = icon and math.ceil(width / ROW) or 0
+    for k = 1, math.max(n, #c.tiles) do
+        local t = c.tiles[k]
+        if k <= n then
+            if not t then
+                t = c:CreateTexture(nil, "BACKGROUND", nil, -2)
+                t:SetDesaturated(true)
+                t:SetVertexColor(GOLD_D[1], GOLD_D[2], GOLD_D[3])
+                t:SetAlpha(0.5)
+                c.tiles[k] = t
+            end
+            local w = math.min(ROW, width - (k - 1) * ROW)
+            t:SetTexture(icon)
+            t:SetTexCoord(CROP, CROP + (1 - 2 * CROP) * w / ROW, CROP, 1 - CROP)
+            t:ClearAllPoints()
+            t:SetPoint("TOPLEFT", (k - 1) * ROW, 0)
+            t:SetSize(w, ROW)
+            t:Show()
+        elseif t then
+            t:Hide()
+        end
+    end
+end
+
 local function Cell(p, i)
     local c = CreateFrame("Button", nil, p.body)
     c:SetHeight(ROW)
@@ -249,6 +312,19 @@ local function Cell(p, i)
     c.mark:SetAllPoints()
     c.mark:SetColorTexture(0.541, 0.439, 0.204, 0.3)
     c.mark:Hide()
+    -- a section's heading: a band across the row, the line's icon repeated
+    -- along it in the theme's brown, and its name centred over them
+    c.head = c:CreateTexture(nil, "BACKGROUND", nil, -3)
+    c.head:SetAllPoints()
+    c.head:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.18)
+    c.head:Hide()
+    c.tiles = {}
+    c.title = ns.Text(c, 13)
+    c.title:SetJustifyH("CENTER")
+    c.title:SetTextColor(unpack(GOLD))
+    c.count = ns.Text(c, 11)
+    c.count:SetPoint("TOP", c.title, "BOTTOM", 0, -2)
+    c.count:SetTextColor(unpack(ns.colors.dim))
     -- a spell on no bar: a wash under the cell (with the icon's red ring)
     c.miss = c:CreateTexture(nil, "BACKGROUND", nil, -2)
     c.miss:SetAllPoints()
@@ -374,16 +450,20 @@ local function Summary(p, items, chosen)
                 .. ", at your class trainer." })
         return
     end
-    local n, cost = 0, 0
+    local n, cost, soonest = 0, 0, nil
     for _, item in ipairs(items) do
-        if item.now then n, cost = n + 1, cost + (item.trainer.cost or 0) end
+        if item.trainer then
+            if item.now then n, cost = n + 1, cost + (item.trainer.cost or 0) end
+            if not soonest or item.trainer.level < soonest then soonest = item.trainer.level end
+        end
     end
-    p.details.nothing:SetText(#items == 0 and "Nothing left to train."
-        or n == 0 and "Nothing to train yet: the next at level " .. items[1].trainer.level .. "."
+    p.details.nothing:SetText(not soonest and "Nothing left to train."
+        or n == 0 and "Nothing to train yet: the next at level " .. soonest .. "."
         or format("Train now: %d |4spell:spells;, %s in all.", n, Money(cost)))
     p.details:Set(nil)
 end
 
+local Band
 local function Refresh(p)
     local items = Items(p)
     local per = Place(p)
@@ -394,8 +474,32 @@ local function Refresh(p)
     local macros = Macros()
     for i, c in ipairs(p.cells) do
         local item = i <= per and items[first + i]
-        c.item = item or nil
-        c:SetShown(item and true or false)
+        if item and item.filler then item = nil end
+        local heading = item and item.heading and true or false
+        for _, r in ipairs({ c.head, c.title, c.count }) do r:SetShown(heading) end
+        if not heading then Tiles(c, nil, 0) end
+        for _, r in ipairs({ c.icon, c.edge, c.name, c.sub }) do r:SetShown(not heading) end
+        -- a heading answers no click: it would only drop the spell chosen
+        c:EnableMouse(not (item and item.heading))
+        if item and item.heading then
+            -- a trainer's section: the line's name centred on its icon,
+            -- repeated a square at a time along the row
+            local s = item.heading
+            c.item = nil
+            c:Show()
+            c:SetWidth(W.width)
+            Tiles(c, s.icon or 136243, W.width)
+            c.title:SetText(s.name)
+            c.count:SetText(item.now > 0 and format("%d to train now", item.now) or "")
+            c.title:ClearAllPoints()
+            c.title:SetPoint("CENTER", 0, item.now > 0 and 7 or 0)
+            c.mark:Hide()
+            c.miss:Hide()
+            item = nil
+        else
+            c.item = item or nil
+            c:SetShown(item and true or false)
+        end
         if item then
             local info = item.info
             c.icon:SetTexture(info.iconID)
@@ -418,12 +522,10 @@ local function Refresh(p)
         end
     end
     for _, item in ipairs(items) do
-        if item.info.actionID == p.chosen then chosen = item end
+        if item.info and item.info.actionID == p.chosen then chosen = item end
     end
-    p.pager.text:SetText(format("%d / %d", p.at, pages))
-    p.pager.prev:SetAlpha(p.at > 1 and 1 or 0.4)
-    p.pager.next:SetAlpha(p.at < pages and 1 or 0.4)
     p.pages = pages
+    Band(p)
     if p.trainer then
         Summary(p, items, chosen)
     elseif chosen then
@@ -455,27 +557,49 @@ local function Turn(p, by)
     Refresh(p)
 end
 
-local function Pager(p, band)
-    local pager = CreateFrame("Frame", nil, band)
-    pager:SetSize(160, 24)
-    pager:SetPoint("CENTER", 0, -1)
-    pager.text = ns.Text(pager, 13)
-    pager.text:SetPoint("CENTER")
-    pager.text:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-    local function Arrow(dir)
-        local b = ns.window.Button(pager, 28, function() Turn(p, dir) end,
-            function() return dir < 0 and "The page before." or "The next page." end)
-        b:SetHeight(24)
-        b.icon = b:CreateTexture(nil, "ARTWORK")
-        b.icon:SetSize(14, 14)
-        b.icon:SetPoint("CENTER")
-        b.icon:SetTexture(ns.media .. "strips\\chevron-down")
-        b.icon:SetRotation(dir < 0 and -math.pi / 2 or math.pi / 2)
-        b:SetPoint(dir < 0 and "LEFT" or "RIGHT")
-        return b
-    end
-    pager.prev, pager.next = Arrow(-1), Arrow(1)
-    p.pager = pager
+-- The margin: All ranks (a toggle), and Trainer once a class trainer has
+-- been read, which opens its page and, from it, goes back.
+local trainerPage, back
+local function Controls(p, band)
+    local all = ns.window.Button(band, 86, function()
+        ns.SetOption("spellbookAllRanks", not ns.db.spellbookAllRanks)
+    end, function()
+        return ns.db.spellbookAllRanks and "List each spell once, at its highest rank."
+            or "List every rank of each spell."
+    end)
+    all.label:SetText("All ranks")
+    all:SetHeight(24)
+    all:SetPoint("LEFT", 4, -1)
+    local trainer = ns.window.Button(band, 86, function()
+        if W.Current() == trainerPage then
+            -- the page it came from, or the first with a tab
+            local to = back and back.available and back
+            for _, page in ipairs(W.pages) do
+                if not to and page.available and not page.tabless then to = page end
+            end
+            if to then W.Select(to) end
+        else
+            back = W.Current()
+            W.Select(trainerPage)
+        end
+    end, function()
+        return W.Current() == trainerPage and "Back to your spells."
+            or "What your class trainer has still to teach you."
+    end)
+    trainer.label:SetText("Trainer")
+    trainer:SetHeight(24)
+    trainer:SetPoint("LEFT", all, "RIGHT", 4, 0)
+    p.allRanks, p.trainerButton = all, trainer
+end
+
+-- the margin's state: All ranks marked while on (and away from the
+-- trainer's page, where it means nothing), Trainer while its page shows
+function Band(p)
+    if not p.allRanks then return end
+    p.allRanks:SetShown(not p.trainer)
+    p.allRanks.mark:SetShown(ns.db.spellbookAllRanks and true or false)
+    p.trainerButton:SetShown(ns.trainers.Visited())
+    p.trainerButton.mark:SetShown(p.trainer and true or false)
 end
 
 local function Page(spec)
@@ -491,7 +615,7 @@ local function Page(spec)
             click = function(on)
                 local chosen
                 for _, item in ipairs(Items(p)) do
-                    if item.info.actionID == p.chosen then chosen = item end
+                    if item.info and item.info.actionID == p.chosen then chosen = item end
                 end
                 if not chosen then return end
                 MedalluinCharDB = MedalluinCharDB or {}
@@ -502,7 +626,7 @@ local function Page(spec)
             end } } or nil
         p.details = ns.character.Details(foot, ticks, p.trainer and "" or "Choose a spell to read it.", 4)
         p.footHeight = p.details.height
-        Pager(p, band)
+        Controls(p, band)
         body:EnableMouseWheel(true)
         body:SetScript("OnMouseWheel", function(_, delta) Turn(p, delta > 0 and -1 or 1) end)
     end
@@ -538,10 +662,11 @@ end
 
 -- what the class trainers have still to teach, once one has been visited
 do
-    local p = { key = "trainer", trainer = true, order = LINES + 2, label = "Trainer", frame = "SpellBookFrame",
-        icon = 136243 }
+    local p = { key = "trainer", trainer = true, tabless = true, order = LINES + 2, label = "Trainer",
+        frame = "SpellBookFrame", icon = 136243 }
     function p.Available() return ns.trainers.Visited() end
     Page(p)
+    trainerPage = p
 end
 
 function W.Refresh()
@@ -573,13 +698,18 @@ local function Start()
         Follow()
         if pending then UpRank() end
     end)
-    -- a rank learned rises on the bars; a trainer read brings its tab
+    -- a rank learned rises on the bars; a trainer read brings its button
     for _, e in ipairs({ "LEARNED_SPELL_IN_SKILL_LINE", "SPELLS_CHANGED" }) do ns.On(e, UpRank) end
     ns.OnSetting("spellbookUpRankAll", function(on) if on then UpRank() end end)
     for _, key in ipairs({ "spellbookAllRanks", "spellbookMissing", "spellbookUpRankAll" }) do
         ns.OnSetting(key, function() W.Refresh() end)
     end
-    for _, e in ipairs({ "TRAINER_SHOW", "TRAINER_UPDATE" }) do ns.On(e, function() W.Retab() end) end
+    for _, e in ipairs({ "TRAINER_SHOW", "TRAINER_UPDATE" }) do
+        ns.On(e, function()
+            W.Retab()
+            W.Refresh()
+        end)
+    end
     ns.PlayerSpellsTab("SpellBook", W)
 end
 
