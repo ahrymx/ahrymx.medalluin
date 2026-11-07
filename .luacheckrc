@@ -30,6 +30,7 @@ read_globals = {
     "SetTrainerServiceTypeFilter", "GetTrainerServiceLevelReq", "GetTrainerServiceSkillReq",
     "GetTrainerServiceTypeFilter", "IsTradeskillTrainer", "GetTrainerServiceSkillLine", "GetMacroSpell",
     "GetMaxLevelForPlayerExpansion",
+    "BankFrame", "C_Bank",
     "GetTrainerServiceNumAbilityReq", "GetTrainerServiceAbilityReq", "GetTrainerGreetingText", "GetTrainerServiceIcon",
     "GetTrainerServiceDescription", "CloseTrainer", "BuyTrainerService", "ExpandTrainerSkillLine",
     "RepairAllItems", "SelectActiveQuest", "SelectAvailableQuest",

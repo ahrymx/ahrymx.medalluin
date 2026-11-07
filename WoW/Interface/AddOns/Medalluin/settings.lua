@@ -81,6 +81,10 @@ local DEFAULTS = {
     bagsColumns = 10,       -- slots across the window (not on the page: the window's corner sets it, 8 to 24)
     bagsItemLevel = true,   -- item levels on weapons and armour
     bagsPoint = false,      -- where the window was dragged to: { point, relativePoint, x, y } (not on the page)
+    bank = true,            -- Medalluin's bank window instead of Blizzard's (Forever)
+    bankView = "grid",      -- as bagsView, for the bank
+    bankDetails = true,     -- the bank window's details: its bag slots and the purchase
+    bankPlace = false,      -- detached: { detached, point, relative, x, y, w, h, scale } (not on the page)
     character = true,       -- Medalluin's character window instead of Blizzard's
     characterDetails = true, -- its pages' details open (the window's chevron sets it too)
     spellbook = true,       -- Medalluin's spellbook instead of Blizzard's (Forever)
@@ -481,7 +485,7 @@ local PAGES = {
     overhead = "console/overhead", top = "console/overhead",
     chat = "chat",
     side = "side/general", meter = "side/meter", loot = "side/loot", auras = "side/auras",
-    bags = "bags", bag = "bags", inventory = "bags",
+    bags = "bags", bag = "bags", inventory = "bags", bank = "bank",
     character = "character", char = "character",
     spellbook = "spellbook", spells = "spellbook", book = "spellbook",
     talents = "talents", talent = "talents",

@@ -28,14 +28,26 @@
 --
 --   local w = ns.Window{ name, side (-1 left, 1 right), detailsKey,
 --                        closeTip, Close(), Open(page) (ask Blizzard),
---                        Lifted() -> the medallion's buttons }
+--                        Lifted() -> the medallion's buttons,
+--                        place (a setting: the window detaches, below) }
 --   w.Page{ key, label, tip, glyph, icon, frame (Blizzard's page), order,
 --           tabless (no tab: the page's own controls Select it),
 --           Available() (or Blizzard's frame exists), height, footHeight,
 --           flex, bandUsed, events = { ... }, Build(body, foot, band),
 --           Fit(height), Refresh(), OnEvent(event, ...), Shown(),
 --           Showing(on) }
---   w.Build(), w.Select(page), w.ByFrame(name), w.Retab(), w.SetShown(on)
+--   w.Build(), w.Select(page), w.ByFrame(name), w.Retab(), w.SetShown(on),
+--   w.Detached()
+--
+-- A window with a place has two views, as the quest tracker has, switched
+-- by a glyph left of the chevron: docked, on its strip as every window
+-- stands; detached, a box of its own (the bank's), dragged by its ink,
+-- sized by the grip in its corner, scaled with Ctrl and the wheel over it.
+-- Detached it has no medallion, its band runs edge to edge, and it is as
+-- tall as it was sized, not the screen. Its place is the setting:
+-- { detached, point, relative, x, y, w, h, scale }. Not in combat. A window
+-- that detaches has no secure layer (Layer stands where the docked window
+-- does).
 --
 -- Build draws into body (the page), foot (its details) and, when the page
 -- says bandUsed, the margin beside the medallion; Refresh redraws
@@ -61,6 +73,9 @@ local OVER = ART.height - L.stripHeight         -- how far the medallion stands 
 local BAND = OVER + 4                           -- the margin, up to its rule
 local BOTTOM = BAND + RULE                      -- the page's (or its details') foot
 local LIFT = 20                                 -- the medallion's buttons' level over the window's
+local HEIGHT, LEAST = 480, { WIDTH, 240 }        -- a detached window's first height, its least size
+local SCALES = { 0.6, 1.4, 0.05 }               -- a detached window's scale: least, most, a step
+local GRIP = 14
 local GAME_ICON = 0.08                          -- the game's icons' border, trimmed
 
 ns.window = { width = WIDTH - 2 * PAD, pad = PAD, band = BAND }
@@ -299,7 +314,7 @@ function ns.Window(spec)
     local w = { pages = pages, width = WIDTH - 2 * PAD, side = side,
         band = { left = side < 0 and MEDALLION + PAD or PAD, right = side < 0 and PAD or MEDALLION + PAD,
             height = BAND } }
-    local window, chevron, close, footRule, medal
+    local window, chevron, close, footRule, medal, view, grip
     local current, dirty
     local tabs = {}
     local listener = CreateFrame("Frame")
@@ -311,12 +326,17 @@ function ns.Window(spec)
 
     local function Details() return ns.db[spec.detailsKey] and true or false end
 
+    -- the detached view's place (none for a window that stays docked)
+    local function At() return spec.place and type(ns.db[spec.place]) == "table" and ns.db[spec.place] or {} end
+    function w.Detached() return At().detached and true or false end
+
     -- -------------------------------------------------------- medallion
     -- The medallion's buttons lifted to the window's strata while the
     -- window is open, under a copy of the medallion's art; put back when
     -- it closes. The copy fades with the strip.
     local function Lift(on)
         local strip = ns.strips[side]
+        if on and w.Detached() then on = false end
         for i, f in ipairs(spec.Lifted()) do
             if not (f:IsProtected() and InCombatLockdown()) then
                 if on then
@@ -348,6 +368,7 @@ function ns.Window(spec)
     -- ----------------------------------------------------------- layout
     -- How tall the window is: the screen above the strip.
     local function Room()
+        if w.Detached() then return At().h or HEIGHT end
         local strip = ns.strips[side]
         local scale = strip:GetEffectiveScale() / UIParent:GetEffectiveScale()
         return UIParent:GetHeight() / scale - L.stripHeight
@@ -389,6 +410,70 @@ function ns.Window(spec)
         window:SetHeight(total)
         chevron.icon:SetTexture(ns.media .. "strips\\" .. (details and "chevron-down" or "chevron-up"))
         dirty = true            -- a list's rows follow its height
+    end
+
+    -- ------------------------------------------------------------ place
+    local Tabs                  -- below: the tab row, shared out
+    -- The view's place, scale and medallion, then the layout; out of combat.
+    local function Place()
+        if not window then return end
+        if InCombatLockdown() then
+            ns.OutOfCombat(Place)
+            return
+        end
+        local strip, at, off = ns.strips[side], At(), w.Detached()
+        window:ClearAllPoints()
+        if off then
+            window:SetScale(at.scale or 1)
+            window:SetWidth(math.max(LEAST[1], at.w or WIDTH))
+            window:SetPoint(at.point or "TOPLEFT", UIParent, at.relative or "TOPLEFT", at.x or 40, at.y or -80)
+        else
+            window:SetScale(1)
+            window:SetWidth(WIDTH)
+            window:SetPoint(Outer(side, "BOTTOM"), strip, Outer(side, "BOTTOM"), 0, L.stripHeight)
+        end
+        medal:SetShown(not off)
+        if grip then grip:SetShown(off) end
+        if view then view.icon:SetTexture(ns.media .. "strips\\" .. (off and "view-full" or "view-minimal")) end
+        for _, p in ipairs(pages) do
+            if p.band then
+                p.band:ClearAllPoints()
+                p.band:SetPoint("BOTTOMLEFT", off and PAD or w.band.left, 0)
+                p.band:SetPoint("BOTTOMRIGHT", -(off and PAD or w.band.right), 0)
+            end
+        end
+        if window:IsShown() then Lift(not off) end
+        Tabs()
+        Layout()
+        if spec.Placed then spec.Placed(off) end
+    end
+    w.Place = Place
+
+    -- The detached place, kept: the anchor as the game left it after a drag
+    -- or the grip, the size and the scale, with the changes asked.
+    local function Keep(changes)
+        local at = At()
+        local keep = { detached = at.detached, point = at.point, relative = at.relative, x = at.x, y = at.y,
+            w = at.w, h = at.h, scale = at.scale }
+        -- docked, the window's anchor is the strip's: the saved place stands
+        if w.Detached() then
+            local point, _, relative, x, y = window:GetPoint()
+            keep.point, keep.relative, keep.x, keep.y = point, relative, x, y
+        end
+        for k, v in pairs(changes or {}) do keep[k] = v end
+        ns.SetOption(spec.place, keep)
+    end
+
+    -- Ctrl and the wheel: the scale, in steps, the anchor kept where it is on
+    -- the screen (its offsets are in the window's own units)
+    local function Rescale(delta)
+        local at = At()
+        local old = at.scale or 1
+        local new = math.max(SCALES[1], math.min(SCALES[2], old + delta * SCALES[3]))
+        new = math.floor(new / SCALES[3] + 0.5) * SCALES[3]
+        if math.abs(new - old) < 0.001 then return end
+        local point, _, relative, x, y = window:GetPoint()
+        Keep({ point = point, relative = relative, x = (x or 0) * old / new, y = (y or 0) * old / new, scale = new })
     end
 
     -- ------------------------------------------------------------ pages
@@ -467,8 +552,8 @@ function ns.Window(spec)
         p.foot:SetPoint("BOTTOMLEFT", PAD, BOTTOM)
         p.foot:SetPoint("BOTTOMRIGHT", -PAD, BOTTOM)
         p.band = CreateFrame("Frame", nil, window)
-        p.band:SetPoint("BOTTOMLEFT", w.band.left, 0)
-        p.band:SetPoint("BOTTOMRIGHT", -w.band.right, 0)
+        p.band:SetPoint("BOTTOMLEFT", w.Detached() and PAD or w.band.left, 0)
+        p.band:SetPoint("BOTTOMRIGHT", -(w.Detached() and PAD or w.band.right), 0)
         p.band:SetHeight(BAND)
         p.body:Hide()
         p.foot:Hide()
@@ -483,13 +568,13 @@ function ns.Window(spec)
 
     -- the row less the chevron and the cross, shared out among the pages
     -- that are there; the tabs overlap a pixel, sharing their edges
-    local function Tabs()
+    function Tabs()
         local shown = {}
         for _, p in ipairs(pages) do
             if p.available and not p.tabless then table.insert(shown, p) end
             p.tab = nil
         end
-        local room = WIDTH - 2 * PAD - 2 * (TAB + 4)
+        local room = (window:GetWidth() or WIDTH) - 2 * PAD - (spec.place and 3 or 2) * (TAB + 4)
         local width = math.floor((room + #shown - 1) / #shown)
         local prev
         for i, p in ipairs(shown) do
@@ -551,6 +636,9 @@ function ns.Window(spec)
         -- do, but not the console's fading
         window:SetIgnoreParentAlpha(true)
         window:SetFrameStrata("MEDIUM")
+        -- over the chat's cog and drawer, MEDIUM too (strips/chat.lua)
+        local cog = ns.chat and ns.chat.cog
+        if cog then window:SetFrameLevel(math.max(window:GetFrameLevel(), cog:GetFrameLevel() + 1)) end
         window:EnableMouse(true)
         window:SetWidth(WIDTH)
         window:SetPoint(Outer(side, "BOTTOM"), strip, Outer(side, "BOTTOM"), 0, L.stripHeight)
@@ -588,6 +676,65 @@ function ns.Window(spec)
         Glyph(chevron)
         chevron:SetPoint("RIGHT", close, "LEFT", -4, 0)
         window.close, window.chevron = close, chevron
+        if spec.place then
+            view = Button(window, TAB, function()
+                if InCombatLockdown() then return end
+                local at = At()
+                if at.detached then
+                    Keep({ detached = false })
+                else
+                    -- the first time detached: its top left where the docked
+                    -- window's stood (the docked anchor is the strip's, not
+                    -- the screen's); after that, where it was left
+                    local left, top = window:GetLeft(), window:GetTop()
+                    local first = not at.point and left and top
+                        and { point = "TOPLEFT", relative = "BOTTOMLEFT", x = left, y = top } or {}
+                    first.detached, first.w, first.h = true, at.w or WIDTH, at.h or HEIGHT
+                    Keep(first)
+                end
+            end, function()
+                return w.Detached() and "Docked: on the strip, as tall as the screen."
+                    or "Detached: a box of its own, to move and size."
+            end)
+            Glyph(view)
+            view:SetPoint("RIGHT", chevron, "LEFT", -4, 0)
+            window.view = view
+            window:SetMovable(true)
+            window:SetResizable(true)
+            window:SetClampedToScreen(true)
+            if window.SetResizeBounds then window:SetResizeBounds(LEAST[1], LEAST[2]) end
+            window:RegisterForDrag("LeftButton")
+            window:SetScript("OnDragStart", function()
+                if w.Detached() and not InCombatLockdown() then window:StartMoving() end
+            end)
+            window:SetScript("OnDragStop", function()
+                window:StopMovingOrSizing()
+                if w.Detached() then Keep() end
+            end)
+            window:EnableMouseWheel(true)
+            window:SetScript("OnMouseWheel", function(_, delta)
+                if IsControlKeyDown() and w.Detached() and not InCombatLockdown() then Rescale(delta) end
+            end)
+            grip = CreateFrame("Button", nil, window)
+            grip:SetSize(GRIP, GRIP)
+            grip:SetPoint("BOTTOMRIGHT", -2, 2)
+            grip:SetFrameLevel(window:GetFrameLevel() + LIFT + 4)
+            for _, part in ipairs({ { 14, 2 }, { 2, 14 } }) do
+                local t = grip:CreateTexture(nil, "ARTWORK")
+                t:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.8)
+                t:SetSize(part[1], part[2])
+                t:SetPoint("BOTTOMRIGHT")
+            end
+            grip:SetScript("OnMouseDown", function()
+                if w.Detached() and not InCombatLockdown() then window:StartSizing("BOTTOMRIGHT") end
+            end)
+            grip:SetScript("OnMouseUp", function()
+                window:StopMovingOrSizing()
+                if w.Detached() then Keep({ w = window:GetWidth(), h = window:GetHeight() }) end
+            end)
+            window.grip = grip
+            ns.OnSetting(spec.place, Place)
+        end
 
         table.sort(pages, function(a, b) return a.order < b.order end)
         for _, p in ipairs(pages) do
@@ -618,6 +765,7 @@ function ns.Window(spec)
             end
         end)
         ns.OnSetting(spec.detailsKey, Layout)
+        if spec.place then Place() end
         -- the screen's height is the window's
         for _, e in ipairs({ "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED" }) do
             ns.On(e, function() if window:IsShown() then Layout() end end)
@@ -633,9 +781,10 @@ function ns.Window(spec)
     -- Never anchored to the window or anything in it: a frame a protected
     -- frame is anchored to is protected too, and so is whatever that one is
     -- anchored to, up to the window, which then cannot open or close in
-    -- combat. The layer stands where the window does, at its foot; Over(b,
-    -- region) sets b over region by numbers, out of combat (false when the
-    -- region is not laid out).
+    -- combat. The layer stands where the docked window does, at its foot;
+    -- Over(b, region) sets b over region by numbers from the layer's own
+    -- corner and scale, so a detached, scaled window is met too; out of
+    -- combat (false when the region is not laid out).
     function w.Layer(name)
         local strip = ns.strips[side]
         local layer = CreateFrame("Frame", name, strip)
@@ -649,11 +798,13 @@ function ns.Window(spec)
         return layer
     end
     function w.Over(b, region)
-        local x, y, wx, wy = region:GetLeft(), region:GetBottom(), window:GetLeft(), window:GetBottom()
-        if not (x and y and wx and wy) then return false end
+        local layer = b:GetParent()
+        local x, y, lx, ly = region:GetLeft(), region:GetBottom(), layer:GetLeft(), layer:GetBottom()
+        if not (x and y and lx and ly) then return false end
+        local k = region:GetEffectiveScale() / layer:GetEffectiveScale()
         b:ClearAllPoints()
-        b:SetPoint("BOTTOMLEFT", b:GetParent(), "BOTTOMLEFT", x - wx, y - wy)
-        b:SetSize(region:GetWidth(), region:GetHeight())
+        b:SetPoint("BOTTOMLEFT", layer, "BOTTOMLEFT", x * k - lx, y * k - ly)
+        b:SetSize(region:GetWidth() * k, region:GetHeight() * k)
         return true
     end
 

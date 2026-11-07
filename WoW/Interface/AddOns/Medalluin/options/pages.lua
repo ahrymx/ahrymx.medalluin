@@ -593,7 +593,7 @@ function ns.OptionPages()
             id = "bags", name = "Bags", intro = "Shared by every profile.",
             master = Check("bags", "Bags window",
                 "Your backpack, bags and reagent bag in one window, with a search, the game's sort and the items "
-                .. "in groups if you like. The bank stays the game's. Untick it to keep the game's bags, or to use "
+                .. "in groups if you like. Untick it to keep the game's bags, or to use "
                 .. "a bag addon.", true),
             groups = {
                 Group("Window",
@@ -605,6 +605,25 @@ function ns.OptionPages()
                     }, "The window's Bags, Grid and Groups buttons switch this too. Kept across reloads."),
                     Check("bagsItemLevel", "Item levels",
                         "The item level in the corner of each weapon and piece of armour, in its quality's colour.")),
+            },
+        },
+        {
+            id = "bank", name = "Bank", intro = "Forever only. Shared by every profile.",
+            master = Check("bank", "Bank window",
+                "The bank in a window of Medalluin's own, standing on the chat panel or, detached, wherever you "
+                .. "drag it: the same views and search as the bags window, the game's sort, and the bank's bag "
+                .. "slots and their purchase below. Untick it to keep the game's bank.", true),
+            groups = {
+                Group("Window",
+                    Choice("bankView", "Show", {
+                        { "bags", "Bags", "Each bank bag on rows of its own, under its name." },
+                        { "grid", "Grid", "Every slot, bag by bag." },
+                        { "groups", "Groups", "The items in groups: new, equipment, consumables, quest items, trade "
+                            .. "goods, other and junk, with one slot for the free ones." },
+                    }, "The window's Bags, Grid and Groups buttons switch this too. Kept across reloads."),
+                    Check("bankDetails", "Details",
+                        "The bank's bag slots and the next one's price, under the slots. The window's arrow folds "
+                        .. "them too.")),
             },
         },
         {

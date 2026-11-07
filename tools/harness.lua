@@ -64,6 +64,12 @@ local sidePass = args[2] == "side"
 local savedNoSide = args[3] == "noside"
 local bagsPass = args[2] == "bags"
 local savedNoBags = args[3] == "nobags"
+-- "bank" (with "modern") plays the bank (inventory/bank.lua) over a stubbed
+-- C_Bank: Blizzard's BankFrame parked and followed, the views, the search,
+-- Sort, the bag slots and Purchase, the window detached and docked, the
+-- character window standing over it, the tracker and the NPC box under it,
+-- and the Warband page. "bank nobank" plays the option off.
+local bankPass = args[2] == "bank"
 -- "character" (with "modern": Forever's six pages; "modern retail": retail's
 -- three) plays the character window (character/): Blizzard's window kept
 -- under ns.hidden and followed, its page switches, the tabs, the details'
@@ -264,6 +270,7 @@ function Region:SetShown(s)
     if s then self:Show() else self:Hide() end
 end
 function Region:SetScript(k, f) self.scripts[k] = f end
+function Region:GetScript(k) return self.scripts[k] end
 function Region:SetAttribute(k, v) self.attrs[k] = v end
 function Region:RegisterForClicks(...) self.clicks = { ... } end
 function Region:GetAttribute(k) return self.attrs[k] end
@@ -1762,7 +1769,8 @@ MedalluinDB = profilesPass and args[3] == "saved" and { consoleProfile = "light"
     or savedBare and { bareIcons = true } or savedNoChat and { chat = false }
     or savedBeam and { xpCast = true, repCast = true }
     or savedSimParty and { simParty = true } or savedNoSide and { side = false }
-    or savedNoBags and { bags = false } or savedNoCharacter and { character = false }
+    or savedNoBags and { bags = false } or bankPass and args[3] == "nobank" and { bank = false }
+    or savedNoCharacter and { character = false }
     or npcPass and args[3] == "nonpc" and { npcWindows = false } or nil
 if modern then
     function CreateColor(r, g, b, a) return { r, g, b, a } end
@@ -1780,7 +1788,7 @@ if bagsPass and not modern then
     C_Container = { GetContainerNumSlots = function() return 16 end, GetContainerNumFreeSlots = function() return 16 end,
         GetContainerItemInfo = function() end }
 end
-if bagsPass and modern then
+if (bagsPass or bankPass) and modern then
     bagWorld = { sizes = { [0] = 16, [1] = 12, [2] = 0, [3] = 10, [4] = 10, [5] = 8 }, items = {},
         new = {}, removed = {}, sorted = 0, search = nil, reads = 0 }
     Enum.BagIndex = { Backpack = 0, ReagentBag = 5 }
@@ -1902,7 +1910,7 @@ end
 -- three), its gear slot buttons, a shaman's gear and stats on Forever and a
 -- rogue's on retail. Only for the character pass.
 local charWorld
-if characterPass or questPass or npcPass then
+if characterPass or questPass or npcPass or bankPass then
     charWorld = { toggles = {} }
     function Region:SetUnit(u) self.unit, self.unitSets = u, (self.unitSets or 0) + 1 end
     function Region:SetFacing(f) self.facing = f end
@@ -2257,6 +2265,63 @@ if characterPass or questPass or npcPass then
         charWorld.popup = { which = which, data = data }
         return {}
     end
+end
+
+-- ------------------------------------------------------------- the bank
+-- Forever's bank: the bank (container 6, 98 slots: taller than the window) and one bag slot bought
+-- of three (container 7, a bag of 12: an item in Characterbanktab's slot 2); the warband's
+-- (containers 12 and 13) seen only once bankWorld.account is set.
+if bankPass and modern then
+    bankWorld = { calls = {}, account = false, worn = { ["-2:2"] = 4242 }, active = 0 }
+    local B = bankWorld
+    local function called(s) table.insert(B.calls, s) end
+    Enum.BankType = { Character = 0, Account = 2 }
+    Enum.BagIndex.Characterbanktab, Enum.BagIndex.Accountbanktab = -2, -3
+    B.tabs = { [0] = { { ID = 6, name = "" }, { ID = 7, name = "" } },
+        [2] = { { ID = 12, name = "Warband" }, { ID = 13, name = "" } } }
+    B.max = { [0] = 4, [2] = 3 }
+    B.next = { [0] = 6 + 2, [2] = 14 }                 -- the next container each buys
+    bagWorld.sizes[6], bagWorld.sizes[7], bagWorld.sizes[12], bagWorld.sizes[13] = 98, 12, 20, 20
+    bagWorld.put(6, 1, 105, 20); bagWorld.put(6, 2, 108, 7); bagWorld.put(6, 4, 103, 5)
+    bagWorld.put(7, 1, 109, 2); bagWorld.put(12, 1, 110, 9)
+    C_Container.SortBankBags = function() called("SortBankBags") end
+    C_Container.PickupContainerItem = function(bag, slot) called("PickupContainerItem " .. bag .. " " .. slot) end
+    C_Item.DoesItemExist = function(at) return B.worn[at.bag .. ":" .. at.slot] ~= nil end
+    C_Item.GetItemIcon = function(at) return B.worn[at.bag .. ":" .. at.slot] end
+    C_Bank = {
+        FetchPurchasedBankTabData = function(kind) return B.tabs[kind] end,
+        FetchMaxNumBankTabs = function(kind) return B.max[kind] end,
+        ShouldUsePlayerBagsInBank = function() return true end,
+        FetchNextPurchasableBankTabData = function(kind)
+            if #B.tabs[kind] < B.max[kind] then
+                return { tabCost = 100000 * #B.tabs[kind], canAfford = B.poor ~= true }
+            end
+        end,
+        PurchaseBankTab = function(kind)
+            called("PurchaseBankTab " .. kind)
+            table.insert(B.tabs[kind], { ID = B.next[kind], name = "" })
+            bagWorld.sizes[B.next[kind]] = 0               -- bought, and empty: no bag in it
+            B.next[kind] = B.next[kind] + 1
+        end,
+        CanViewBank = function(kind) return kind == 0 or B.account end,
+        DoesBankTypeSupportAutoDeposit = function(kind) return kind == 2 end,
+        AutoDepositItemsIntoBank = function(kind) called("AutoDeposit " .. kind) end,
+        CloseBankFrame = function() called("CloseBankFrame"); BankFrame:Hide() end,
+    }
+    BankFrame = new("Frame", UIParent, "BankFrame")
+    BankFrame.shown = false
+    function GameTooltip:SetBagItem(bag, slot) self.item = "bag" .. bag .. ":" .. slot end
+    -- Blizzard's panel, its bank tab, and its Purchase: a click is its popup,
+    -- whose Yes the test gives
+    BankFrame.BankPanel = new("Frame", BankFrame, "BankPanel")
+    function BankFrame.BankPanel:GetActiveBankType() return B.active end
+    local purchase = new("Button", BankFrame.BankPanel, "BankFramePurchaseButton")
+    BankFrame.BankPanel.PurchaseButton = purchase
+    purchase.scripts.OnClick = function() called("popup CONFIRM_BUY_BANK_TAB " .. B.active) end
+    -- the next frame's timers, run by the pass's frame()
+    B.timers = {}
+    C_Timer = C_Timer or {}
+    C_Timer.After = function(_, fn) table.insert(B.timers, fn) end
 end
 
 -- ------------------------------------------------------------ the quest log
@@ -2808,7 +2873,7 @@ end
 -- bought back, a repair bill and two grey items in the bags. Every act is
 -- logged in npcWorld.calls. Only for the npc pass.
 local npcWorld
-if npcPass then
+if npcPass or bankPass then
     npcWorld = { calls = {}, combat = false }
     local W = npcWorld
     local function called(...)
@@ -2917,7 +2982,7 @@ if npcPass then
     -- two grey items in the backpack, one that sells for nothing
     W.bag = { [1] = { itemID = 701, quality = 0, stackCount = 3 }, [2] = { itemID = 702, quality = 0, stackCount = 1 },
         [3] = { itemID = 703, quality = 0, hasNoValue = true }, [4] = { itemID = 704, quality = 2 } }
-    C_Container = {
+    C_Container = bankPass and C_Container or {     -- the bank's pass keeps the bags'
         GetContainerNumSlots = function(bag) return bag == 0 and 4 or 0 end,
         GetContainerNumFreeSlots = function() return 0 end,
         GetContainerItemInfo = function(bag, slot) return bag == 0 and W.bag[slot] or nil end,
@@ -8285,6 +8350,446 @@ if bagsPass then
     local p = w.points.TOPLEFT
     print("bags.old point", p and (p[2] .. "," .. p[3] .. "," .. p[4]))
     CloseAllBags()
+end
+
+-- --------------------------------------------------------------- the bank
+if bankPass then
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local B = bankWorld
+    local W = ns.bank and ns.bank.W
+    local w = _G.MedalluinBank
+    print("bank", "window=" .. tostring(w ~= nil), "setting=" .. tostring(ns.db.bank),
+        "parked=" .. tostring(BankFrame.parent == ns.hidden), "cover=" .. tostring(_G.MedalluinBankCover ~= nil))
+    if not w then return end
+    local function frame()
+        local now = B.timers
+        B.timers = {}
+        for _, fn in ipairs(now) do fn() end
+        if w.shown and w.scripts.OnUpdate then w.scripts.OnUpdate(w, 0) end
+    end
+    local function find(root, test)
+        for _, r in ipairs(root.all_ or {}) do
+            if test(r) then return r end
+            local deeper = find(r, test)
+            if deeper then return deeper end
+        end
+    end
+    local function button(root, label)
+        return find(root, function(r) return r.kind == "Button" and r.label and r.label.text == label end)
+    end
+    local function click(b, ...) b.scripts.OnClick(b, ...) end
+    local function where(r)
+        local point, p = next(r.points)
+        if not point then return "nowhere" end
+        return string.format("%s %s %s %g,%g", point, p[1] and (p[1].name or "?") or "-", p[2] or "-",
+            p[3] or 0, p[4] or 0)
+    end
+    local function calls()
+        local out = table.concat(B.calls, ", ")
+        B.calls = {}
+        return out == "" and "none" or out
+    end
+    local function state(tag)
+        local p = W.Current()
+        print(tag, "shown=" .. tostring(w.shown), "blizzard=" .. tostring(BankFrame.shown),
+            "cover=" .. tostring(_G.MedalluinBankCover.shown), "tracker=" .. tostring(_G.MedalluinQuests
+            and _G.MedalluinQuests.shown), "npc=" .. tostring(_G.MedalluinNPC and _G.MedalluinNPC.shown),
+            "page=" .. (p and p.key or "none"), "detached=" .. tostring(W.Detached()),
+            "medal=" .. tostring(w.medal.shown), "grip=" .. tostring(w.grip.shown),
+            string.format("scale=%g", w.scale or 1), "at=" .. where(w),
+            "band=" .. (p and p.band and tostring(p.band.points.BOTTOMLEFT[3]) or "-"),
+            "portrait=" .. tostring(CharacterMicroButton.strata) .. "/" .. tostring(CharacterMicroButton.level))
+    end
+    local function tabs(tag)
+        local list = {}
+        for _, p in ipairs(W.pages) do
+            if p.tab and p.tab.shown then
+                table.insert(list, p.label .. (p.tab.mark.shown and "*" or "") .. "@" .. tostring(p.tab.w))
+            end
+        end
+        print(tag, table.concat(list, " "))
+    end
+    local function slots(tag, p)
+        local list = {}
+        for _, bag in ipairs({ 6, 7, 8, 12, 13 }) do
+            local h = p.set.holders[bag]
+            if h then
+                local n, items = 0, {}
+                for i, b in pairs(p.set.slots[bag]) do
+                    if b.shown then
+                        n = n + 1
+                        if b.hasItem then
+                            local pt = b.points.TOPLEFT
+                            table.insert(items, string.format("%d@%d,%d%s", i, pt[3] / 41, -pt[4],
+                                b.matches == false and " dim" or ""))
+                        end
+                    end
+                end
+                table.sort(items)
+                table.insert(list, string.format("%d:%d/%d[%s]", bag, n, h:GetID(), table.concat(items, " ")))
+            end
+        end
+        local heads = {}
+        for _, r in ipairs(p.scroller.child.all_ or {}) do
+            if r.kind == "FontString" and r.shown and r.text and r.text ~= "" then
+                table.insert(heads, r.text .. "@" .. -r.points.TOPLEFT[4])
+            end
+        end
+        print(tag, "body=" .. p.scroller.child.w .. "x" .. p.scroller.child.h, table.concat(list, " "),
+            "headings=" .. (#heads > 0 and table.concat(heads, ",") or "none"))
+    end
+    local function bags(tag, p)
+        local list = {}
+        for i, b in ipairs(p.bags) do
+            if b.shown then
+                table.insert(list, string.format("%d:%s at=%d:%d %s a=%g%s", i, b.bought and "bought" or "locked",
+                    b.page.kind == 2 and -3 or -2, b.index + 1, tostring(b.icon.texture):gsub(".*\\", ""), b.icon.alpha or 1,
+                    b.icon.desaturated and " grey" or ""))
+            end
+        end
+        print(tag, table.concat(list, "; "), "price=" .. tostring(p.price.text),
+            "purchase=" .. tostring(p.purchase.shown) .. "/" .. tostring(p.purchase.label.text)
+            .. string.format("@%g", p.purchase.alpha or 1))
+    end
+    local function band(tag, p)
+        local list = {}
+        for _, r in ipairs(p.band.all_ or {}) do
+            if r.kind == "Button" and r.label and r.shown then
+                table.insert(list, r.label.text .. (r.mark and r.mark.shown and "*" or ""))
+            end
+        end
+        print(tag, table.concat(list, "|"), "search=" .. tostring(p.search and p.search.name))
+    end
+
+    -- 1. at login: built, Blizzard's parked, nothing shown
+    state("bank.login")
+    -- over the chat's cog and its drawer, MEDIUM all three
+    print("bank.levels", "window=" .. tostring(w.strata) .. "/" .. tostring(w.level),
+        "cog=" .. tostring(ns.chat.cog and ns.chat.cog.strata) .. "/" .. tostring(ns.chat.cog and ns.chat.cog.level),
+        "drawer=" .. tostring(ns.chat.drawer and ns.chat.drawer.level))
+    tabs("bank.tabs at login")
+
+    -- 2. the banker: Blizzard shows its frame, ours follows
+    BankFrame:Show()
+    frame()
+    state("bank.open")
+    tabs("bank.tabs")
+    local p = W.Current()
+    slots("bank.grid", p)
+    band("bank.band", p)
+    bags("bank.bag slots", p)
+    print("bank.foot", "details=" .. tostring(ns.db.bankDetails), "foot=" .. tostring(p.foot.shown),
+        "foot h=" .. tostring(p.foot.h))
+
+    -- 3. the views, the band's buttons and the option's
+    click(button(p.band, "Bags"))
+    frame()
+    print("bank.view", ns.db.bankView, "saved=" .. tostring(MedalluinDB.global.bankView))
+    slots("bank.by bag", p)
+    band("bank.band bags", p)
+    click(button(p.band, "Groups"))
+    frame()
+    slots("bank.groups", p)
+    page.settings.bankView:Set("grid")
+    print("bank.view option", ns.db.bankView)
+    slots("bank.view option grid", p)
+    frame()
+    local tip = button(p.band, "Grid")
+    tip.scripts.OnEnter(tip)
+    print("bank.view tip", tostring(GameTooltip.text))
+
+    -- 4. the search, the client's; Sort, the bank's own; Deposit only where the bank takes it
+    p.search.text = "potion"
+    p.search.scripts.OnTextChanged(p.search)
+    fire("INVENTORY_SEARCH_UPDATE")
+    frame()
+    print("bank.search", tostring(bagWorld.search))
+    slots("bank.searched", p)
+    p.search.text = ""
+    p.search.scripts.OnTextChanged(p.search)
+    frame()
+    click(button(p.band, "Sort"))
+    print("bank.sort", calls(), "deposit=" .. tostring(p.deposit.shown))
+
+    -- 5. the bag slots, as Blizzard's: a bag in the bank-tab container's
+    -- slot (the first tab is the bank, so bag slot 1 is its slot 2); a
+    -- click, a drag and a drop all pick up there (the game swaps); a locked
+    -- slot answers nothing
+    local one, two = p.bags[1], p.bags[2]
+    click(one)
+    one.scripts.OnDragStart(one)
+    one.scripts.OnReceiveDrag(one)
+    print("bank.bag slot 1", calls())
+    click(two)
+    two.scripts.OnReceiveDrag(two)
+    two.scripts.OnDragStart(two)
+    print("bank.bag slot 2", calls())
+    one.scripts.OnEnter(one)
+    print("bank.bag tip 1", tostring(GameTooltip.item), tostring(GameTooltip.shown))
+    two.scripts.OnEnter(two)
+    print("bank.bag tip 2", tostring(GameTooltip.text))
+    two.scripts.OnLeave(two)
+
+    -- 6. Purchase: Blizzard's own, pressed by a secure button over ours (the
+    -- game refuses PurchaseBankTab to addons); its popup's Yes buys
+    local layer = ns.bank.layer
+    local function buy(tag)
+        local b = _G.MedalluinBankPurchase
+        print(tag, "secure=" .. tostring(b ~= nil), "shown=" .. tostring(b and b.shown),
+            "over=" .. tostring(b and b.shown and harnessOver(b, p.purchase)),
+            "type=" .. tostring(b and b.attrs.type),
+            "clicks=" .. tostring(b and b.attrs.clickbutton and b.attrs.clickbutton.name),
+            "layer=" .. tostring(layer.shown) .. "/" .. tostring(layer.stateDrivers and layer.stateDrivers.visibility),
+            "face=" .. tostring(p.purchase.label.text))
+    end
+    buy("bank.purchase")
+    local secure = _G.MedalluinBankPurchase
+    secure.scripts.OnEnter(secure)
+    print("bank.purchase tip", tostring(GameTooltip.text))
+    -- the secure click presses Blizzard's button; its popup's Yes buys
+    secure.attrs.clickbutton.scripts.OnClick(secure.attrs.clickbutton)
+    C_Bank.PurchaseBankTab(B.active)
+    print("bank.purchase pressed", calls())
+    fire("BANK_TABS_CHANGED")
+    frame()
+    bags("bank.bought", p)
+    slots("bank.bought grid", p)
+    B.poor = true
+    fire("PLAYER_MONEY")
+    frame()
+    bags("bank.poor", p)
+    p.purchase.scripts.OnEnter(p.purchase)
+    print("bank.poor tip", tostring(GameTooltip.text))
+    B.poor = false
+    -- in combat: the layer's driver hides it; nothing moves until it ends
+    inCombat = true
+    harnessHolds.combat = true
+    stateTick()
+    fire("BANK_TABS_CHANGED")
+    frame()
+    buy("bank.purchase in combat")
+    p.purchase.scripts.OnEnter(p.purchase)
+    print("bank.purchase combat tip", tostring(GameTooltip.text))
+    -- the game's bank turned to its other tab in combat: the button waits
+    B.active = 2
+    fire("BANK_TABS_CHANGED")
+    frame()
+    buy("bank.purchase tab in combat")
+    inCombat = false
+    harnessHolds.combat = nil
+    stateTick()
+    fire("PLAYER_REGEN_ENABLED")
+    buy("bank.purchase tab after combat")
+    B.active = 0
+    fire("BANK_TABS_CHANGED")
+    frame()
+    -- the last slot bought: no Purchase, no secure button
+    C_Bank.PurchaseBankTab(0)
+    fire("BANK_TABS_CHANGED")
+    frame()
+    print("bank.last", calls())
+    bags("bank.every slot", p)
+    buy("bank.purchase none left")
+    -- one more bag slot to buy, for the rest of the pass
+    B.max[0] = 5
+    fire("BANK_TABS_CHANGED")
+    frame()
+    buy("bank.purchase another")
+
+    -- 7. the details fold
+    click(w.chevron)
+    frame()
+    print("bank.details folded", "details=" .. tostring(ns.db.bankDetails), "foot=" .. tostring(p.foot.shown))
+    buy("bank.purchase folded")
+    click(w.chevron)
+    frame()
+
+    -- 8. the character window stands over it; the tracker and the NPC box under it
+    CharacterFrame:Show()
+    state("bank.character")
+    CharacterFrame:Hide()
+    state("bank.character closed")
+    GossipFrame:Show()
+    frame()
+    state("bank.with gossip")
+    BankFrame:Hide()
+    state("bank.gossip alone")
+    -- the NPC box first, then the bank over it
+    BankFrame:Show()
+    frame()
+    state("bank.over gossip")
+    GossipFrame:Hide()
+
+    -- 9. detached: a box of its own, covering nothing
+    -- the screen's edges, as the game has them (the harness's screen is not)
+    function w:GetLeft() return 0 end
+    function w:GetTop() return 1050 end
+    w.view.scripts.OnEnter(w.view)
+    print("bank.view glyph", tostring(w.view.icon.texture):gsub(".*\\", ""), tostring(GameTooltip.text))
+    click(w.view)
+    frame()
+    state("bank.detached")
+    buy("bank.purchase detached")
+    print("bank.place", string.format("w=%s h=%s", tostring(ns.db.bankPlace.w), tostring(ns.db.bankPlace.h)),
+        "size=" .. w.w .. "x" .. w.h, "saved=" .. tostring(type(MedalluinDB.global.bankPlace)))
+    tabs("bank.detached tabs")
+    CharacterFrame:Show()
+    state("bank.detached character")
+    CharacterFrame:Hide()
+    -- a drag, the grip, and Ctrl+wheel
+    harnessDropAt = { "TOPLEFT", "TOPLEFT", 300, -150 }
+    w.scripts.OnDragStart(w)
+    w.scripts.OnDragStop(w)
+    print("bank.dragged", where(w), string.format("saved=%s,%s", tostring(ns.db.bankPlace.x),
+        tostring(ns.db.bankPlace.y)))
+    harnessSizeTo = { 560, 400 }
+    w.grip.scripts.OnMouseDown(w.grip)
+    w.grip.scripts.OnMouseUp(w.grip)
+    frame()
+    print("bank.sized", "size=" .. w.w .. "x" .. w.h, string.format("saved=%sx%s", tostring(ns.db.bankPlace.w),
+        tostring(ns.db.bankPlace.h)))
+    slots("bank.sized grid", p)
+    -- the wheel over the slots, the box shorter than they are: two rows a notch, no further than the end
+    print("bank.scroll", "view=" .. tostring(p.body.h), "target=" .. tostring(p.scroller.target))
+    p.body.scripts.OnMouseWheel(p.body, -1)
+    print("bank.scroll down", "target=" .. tostring(p.scroller.target))
+    for _ = 1, 20 do p.body.scripts.OnMouseWheel(p.body, -1) end
+    print("bank.scroll end", "target=" .. tostring(p.scroller.target))
+    -- the list shorter than the scroll: back within it
+    page.settings.bankView:Set("groups")
+    print("bank.scroll shorter", "target=" .. tostring(p.scroller.target))
+    page.settings.bankView:Set("grid")
+    p.body.scripts.OnMouseWheel(p.body, 30)
+    print("bank.scroll top", "target=" .. tostring(p.scroller.target))
+    w.scripts.OnMouseWheel(w, 1)
+    print("bank.wheel alone", string.format("scale=%g", w.scale or 1))
+    modsDown.CTRL = true
+    w.scripts.OnMouseWheel(w, 1)
+    w.scripts.OnMouseWheel(w, 1)
+    -- scaled: the game measures a frame in its own scale (the harness in the
+    -- screen's), so the face's and the layer's edges as the game gives them:
+    -- the face at 400,300 on the screen in a window of 1.1, the layer at
+    -- 0,30 in one of 1. The button must stand at 400,270 from the layer,
+    -- 92x22 times 1.1.
+    do
+        local face = p.purchase
+        function face:GetLeft() return 400 / 1.1 end
+        function face:GetBottom() return 300 / 1.1 end
+        function face:GetEffectiveScale() return 1.1 end
+        function layer:GetLeft() return 0 end
+        function layer:GetBottom() return 30 end
+        function layer:GetEffectiveScale() return 1 end
+        fire("BANK_TABS_CHANGED")
+        frame()
+        local b = _G.MedalluinBankPurchase
+        local at = b.points.BOTTOMLEFT
+        print("bank.purchase scaled", string.format("at=%.1f,%.1f size=%.1fx%.1f on=%s", at[3], at[4], b.w, b.h,
+            tostring(at[1] == layer)))
+        face.GetLeft, face.GetBottom, face.GetEffectiveScale = nil, nil, nil
+        layer.GetLeft, layer.GetBottom, layer.GetEffectiveScale = nil, nil, nil
+    end
+    print("bank.wheel", string.format("scale=%g saved=%.17g", w.scale or 1, ns.db.bankPlace.scale or 1), where(w))
+    for _ = 1, 20 do w.scripts.OnMouseWheel(w, 1) end
+    print("bank.wheel most", string.format("scale=%.17g", w.scale or 1))
+    for _ = 1, 30 do w.scripts.OnMouseWheel(w, -1) end
+    print("bank.wheel least", string.format("scale=%.17g", w.scale or 1))
+    for _ = 1, 10 do w.scripts.OnMouseWheel(w, 1) end
+    print("bank.wheel back", string.format("scale=%.17g", w.scale or 1), where(w))
+    -- in combat: no drag, no grip, no wheel, no switch
+    inCombat = true
+    w.scripts.OnMouseWheel(w, -1)
+    harnessDropAt = { "TOPLEFT", "TOPLEFT", 10, -10 }
+    w.scripts.OnDragStart(w)
+    w.scripts.OnDragStop(w)
+    w.grip.scripts.OnMouseDown(w.grip)
+    print("bank.combat", string.format("scale=%g", w.scale or 1), where(w), "sizing=" .. tostring(w.isSizing))
+    click(w.view)
+    print("bank.combat switch", "detached=" .. tostring(W.Detached()))
+    -- a place set in combat (a profile switched) waits for its end
+    local before = ns.db.bankPlace
+    local moved = {}
+    for k, v in pairs(before) do moved[k] = v end
+    moved.x, moved.y = 500, -400
+    ns.SetOption("bankPlace", moved)
+    print("bank.combat place", where(w))
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    print("bank.combat place after", where(w))
+    ns.SetOption("bankPlace", before)
+    modsDown.CTRL = nil
+    -- docked again: on the strip, its scale 1, the place kept for next time
+    click(w.view)
+    frame()
+    state("bank.docked")
+    print("bank.kept", string.format("w=%s scale=%s detached=%s", tostring(ns.db.bankPlace.w),
+        tostring(ns.db.bankPlace.scale), tostring(ns.db.bankPlace.detached)))
+    click(w.view)
+    frame()
+    state("bank.detached again")
+    BankFrame:Hide()
+    BankFrame:Show()
+    frame()
+    state("bank.reopened detached")
+    click(w.view)
+    frame()
+
+    -- 10. the warband's bank, once the game lets you see it
+    BankFrame:Hide()
+    B.account = true
+    BankFrame:Show()
+    frame()
+    tabs("bank.warband tabs")
+    local wb = W.pages[2]
+    W.Select(wb)
+    frame()
+    state("bank.warband")
+    slots("bank.warband grid", wb)
+    band("bank.warband band", wb)
+    bags("bank.warband bag slots", wb)
+    page.settings.bankView:Set("bags")
+    slots("bank.warband by bag", wb)
+    page.settings.bankView:Set("grid")
+    click(wb.deposit)
+    print("bank.deposit", calls())
+    -- Blizzard's panel on its Bank tab: no secure button over the warband's
+    buy("bank.warband purchase")
+    wb.purchase.scripts.OnEnter(wb.purchase)
+    print("bank.warband purchase tip", tostring(GameTooltip.text))
+    -- reopened at the banker, the page it was on
+    BankFrame:Hide()
+    BankFrame:Show()
+    frame()
+    state("bank.reopened")
+    -- the warband's gone (another character): back to the bank
+    BankFrame:Hide()
+    B.account = false
+    BankFrame:Show()
+    frame()
+    state("bank.no warband")
+    tabs("bank.no warband tabs")
+    -- a warband bank not yet begun: its first tab is bought elsewhere
+    BankFrame:Hide()
+    B.account = true
+    local saved = B.tabs[2]
+    B.tabs[2] = {}
+    BankFrame:Show()
+    frame()
+    W.Select(wb)
+    frame()
+    bags("bank.warband unbegun", wb)
+    slots("bank.warband unbegun grid", wb)
+    B.tabs[2] = saved
+    B.account = false
+    W.Select(W.pages[1])
+    frame()
+
+    -- 11. closed with ours: the game's close
+    click(w.close)
+    state("bank.closed")
+    buy("bank.purchase closed")
+    print("bank.close", calls())
 end
 
 -- ---------------------------------------------------- the character window

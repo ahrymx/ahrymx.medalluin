@@ -59,6 +59,7 @@ strips\side.lua
 strips\loot.lua
 strips\meter.lua
 strips\auras.lua
+inventory\slots.lua
 inventory\bags.lua
 window\shell.lua
 character\window.lua
@@ -86,6 +87,7 @@ npc\quest.lua
 npc\merchant.lua
 npc\trainer.lua
 npc\flight.lua
+inventory\bank.lua
 keybind.lua
 diag.lua
 

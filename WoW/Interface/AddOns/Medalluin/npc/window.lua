@@ -551,7 +551,8 @@ function ns.npc.Sync()
         end
     end
     local character = ns.character and ns.character.window
-    local on = current ~= nil and not (character and character:IsShown())
+    local bank = ns.bank and ns.bank.cover          -- the bank, docked on the strip
+    local on = current ~= nil and not (character and character:IsShown()) and not (bank and bank:IsShown())
     local own = on and current.own
     box:SetShown(on and not own)
     for _, p in ipairs(order) do
