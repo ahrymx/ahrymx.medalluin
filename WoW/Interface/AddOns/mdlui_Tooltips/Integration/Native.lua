@@ -97,11 +97,15 @@ end
 -- while it is still parked; the game or another addon may already have moved it.
 -- A shown tooltip keeps its points through SetOwner, so the game's own anchor
 -- can land beside the parked one, stretching the tooltip to zero height.
+-- In combat too: a tooltip parked as a fight began (a unit's, fading as the
+-- player pulled it) would otherwise stay off the screen, and every tooltip
+-- with it, until the fight ended. Moving the game's tooltip is allowed in
+-- combat (follow cursor does it every frame); canModify keeps out a
+-- protected or forbidden one.
 local function unpark(tooltip)
     local panel = panels[tooltip]
     local parked = panel and panel.parked
     if not parked or not util.canModify(tooltip) then return end
-    if InCombatLockdown and InCombatLockdown() then return end
     local points = util.framePoints(tooltip)
     if not points then return end
     local kept = {}
