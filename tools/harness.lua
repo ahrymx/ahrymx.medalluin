@@ -1073,7 +1073,9 @@ local function watchTick()
     watchWalking = true
     local ok, err = pcall(function()
         for f in pairs(watchedFrames) do
-            if f.watched and f.unit then f:SetShown(UnitExists(f.unit) and true or false) end
+            -- as the game's: a frame shown or hidden only when that changes
+            local want = UnitExists(f.unit) and true or false
+            if f.watched and f.unit and (f.shown and true or false) ~= want then f:SetShown(want) end
         end
     end)
     watchWalking = false
@@ -5490,6 +5492,29 @@ if args[2] == "widgets" or args[3] == "widgets" then
     S.partyLayout:Set("widget")
     state("party layout: widget")
     HarnessCrowns("  crowns")
+    -- the skin to the last member shown, in combat too: one joins, a pet
+    -- comes, they go; then the editor's taller cell
+    inCombat = true
+    exists.party3 = true
+    watchTick()
+    widget("party joined in combat", ns.partyWidget)
+    exists.partypet3 = true
+    watchTick()
+    widget("party pet in combat", ns.partyWidget)
+    exists.party3, exists.partypet3 = nil, nil
+    watchTick()
+    widget("party left in combat", ns.partyWidget)
+    -- the whole party gone: the box is hidden, its skin left as it was
+    grouped = false
+    watchTick()
+    widget("party gone in combat", ns.partyWidget)
+    grouped = true
+    watchTick()
+    inCombat = false
+    local wasCell = ns.db.editPartyWidget
+    ns.SetOption("editPartyWidget", { cell = { w = 160, h = 50 } })
+    widget("party taller cell", ns.partyWidget)
+    ns.SetOption("editPartyWidget", wasCell)
     -- the lead passes to the first member: no roster change comes with it
     harnessLeader = "party1"
     fire("PARTY_LEADER_CHANGED")

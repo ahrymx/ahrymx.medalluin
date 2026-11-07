@@ -3,6 +3,11 @@
 -- "Party" tab, with each member's pet in a strip under it. The console then
 -- draws no party: the medallion's solo art, the light console's plate
 -- without the row. In a raid the box gives way to the Raid widget.
+--
+-- The buttons hang in four fixed rows (the holder is sized for them all, out
+-- of combat); the skin ends under the last member shown, and under its pet's
+-- strip only while that pet shows, so a box of three has no empty fourth row.
+-- It follows the buttons' showing and hiding, in combat too.
 local _, ns = ...
 
 local W = ns.WIDGET
@@ -32,6 +37,20 @@ local function Show()
     ns.OutOfCombat(function() ns.WidgetVisibility(box, Conditional()) end)
 end
 
+-- The skin to the last member shown: a row, and its pet's strip if shown.
+local function Skin()
+    if not ns.units.party1.inWidget then return end
+    local CELL_W, UNIT_H = ns.CellSize("partyWidget")
+    local last
+    for i = 1, 4 do
+        if ns.units["party" .. i]:IsShown() then last = i end
+    end
+    if not last then return end             -- no party: the box is hidden
+    -- (a pet shows only with the widget's pets option on)
+    local pet = ns.units["party" .. last].pet:IsShown()
+    ns.WidgetSkin(box, { "Party" }, CELL_W, (last - 1) * Step() + UNIT_H + (pet and PET_GAP + PET_H or 0))
+end
+
 -- Called by ns.RelayoutUnits (units.lua) while the layout is the widget.
 function ns.LayoutPartyWidget()
     local step = Step()
@@ -39,7 +58,6 @@ function ns.LayoutPartyWidget()
     local CELL_W, UNIT_H = ns.CellSize("partyWidget")
     ns.OutOfCombat(function()
         ns.WidgetHolder(box, ns.WidgetSize(1, CELL_W, height))
-        ns.WidgetSkin(box, { "Party" }, CELL_W, height)
         for i = 1, 4 do
             local b = ns.units["party" .. i]
             local x, y = ns.WidgetColumnX(1, CELL_W), ns.WidgetRowY(i, step)
@@ -94,6 +112,7 @@ function ns.LayoutPartyWidget()
             ns.editor.Relaid(b, "name", "level", "role", "leader", "value", "buffs")
             ns.ApplyEdits(b)
         end
+        Skin()
     end)
     Show()
 end
@@ -143,6 +162,14 @@ ns.OnSetting("editPartyWidget", function()
     if ns.PartyWidgetLayout() then Relayout() end
 end)
 ns.OnWidgetUpdate(Show)
+-- the skin follows the members and their pets as they show and hide
+for i = 1, 4 do
+    local b = ns.units["party" .. i]
+    for _, f in ipairs({ b, b.pet }) do
+        f:HookScript("OnShow", Skin)
+        f:HookScript("OnHide", Skin)
+    end
+end
 -- the medallion lays its party out at load; the widget takes it at login
 ns.On("PLAYER_LOGIN", function()
     if ns.PartyWidgetLayout() and not ns.units.party1.inWidget then Relayout() end

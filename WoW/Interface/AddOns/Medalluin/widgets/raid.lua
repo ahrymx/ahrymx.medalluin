@@ -4,16 +4,18 @@
 -- itself, in combat too, so a member joining mid-fight still shows. Columns
 -- move only out of combat: a group that first fills in combat shows in the
 -- column it was last given, the skin widened to it with no tab over the
--- empty columns between, and the box closes up when combat ends.
+-- empty columns between, and the box closes up when combat ends. The skin
+-- is as tall as the fullest group (the holder keeps room for five).
 local _, ns = ...
 
 local W = ns.WIDGET
 local ROWS = 5
 -- a cell is 112x36 until the editor sizes it (ns.CellSize, editor.lua)
 local function Size() return ns.CellSize("raid") end
-local function Height()
+local function Height(rows)
     local _, h = Size()
-    return ROWS * h + (ROWS - 1) * W.gap
+    rows = rows or ROWS
+    return rows * h + (rows - 1) * W.gap
 end
 
 local box = ns.WidgetBox("MedalluinRaidWidget", "raidWidgetPoint", { "TOPLEFT", "TOPLEFT", 40, -240 },
@@ -96,18 +98,21 @@ local function Preview(i)
     return b
 end
 
--- The groups with members now, in order.
+-- The groups with members now, in order, and the most any of them has.
 local function Groups()
-    local used = {}
+    local used, most = {}, 1
     if IsInRaid() then
         for i = 1, GetNumGroupMembers() do
             local _, _, group = GetRaidRosterInfo(i)
-            if group then used[group] = true end
+            if group then
+                used[group] = (used[group] or 0) + 1
+                most = math.max(most, used[group])
+            end
         end
     end
     local list = {}
     for g = 1, 8 do if used[g] then table.insert(list, g) end end
-    return list
+    return list, most
 end
 
 -- Each group's column, as last laid out (out of combat).
@@ -133,10 +138,10 @@ local function Update()
     local CELL_W, CELL_H = Size()
     local HEIGHT = Height()
     local preview = ns.db.simParty and not IsInRaid()
-    local groups = Groups()
+    local groups, rows = Groups()
     local n = 0
     if preview then
-        groups = {}
+        groups, rows = {}, ROWS
         for g = 1, ns.sim.raid.groups do groups[g] = g end
         n = #groups * ROWS
     end
@@ -177,7 +182,7 @@ local function Update()
         ns.WidgetHolder(box, ns.WidgetSize(math.max(#groups, 1), CELL_W, HEIGHT))
         ns.WidgetVisibility(box, preview and "show" or "[group:raid] show; hide")
     end)
-    ns.WidgetSkin(box, Titles(groups, preview), CELL_W, HEIGHT)
+    ns.WidgetSkin(box, Titles(groups, preview), CELL_W, Height(rows))
 end
 ns.OnWidgetUpdate(Update)
 -- the preview's out-of-range cells fade by the range that counts
