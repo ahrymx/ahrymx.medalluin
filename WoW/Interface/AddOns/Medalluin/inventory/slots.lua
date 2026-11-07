@@ -23,6 +23,13 @@
 -- Alt+click locks or unlocks it. The click is hooked, never replaced: the
 -- template's own OnClick runs first and does nothing with Alt.
 --
+-- At a vendor the template's right click sells, and it cannot be stopped
+-- without tainting it. So while a vendor is open a guard of our own covers
+-- each locked slot and takes its clicks: a left click or a drag picks the
+-- item up or puts the held one down (PickupContainerItem, as the template
+-- would), Shift+click links it, Alt+click unlocks it, and a right click
+-- only says why nothing happened.
+--
 -- The views:
 --   grid    every slot in order, a container Apart on rows of its own
 --   bags    each container on rows of its own, under its name
@@ -70,6 +77,13 @@ local function Level(b, info, bag, slot)
     if c then b.itemLevel:SetTextColor(c.r, c.g, c.b) end
 end
 
+-- A slot's padlock, and its guard while a vendor is open
+local function Locked(b)
+    local locked = ns.locks.Is(b.itemID)
+    b.lock:SetShown(locked)
+    b.guard:SetShown(locked and ns.locks.vendor or false)
+end
+
 -- A slot as Blizzard's bags draw it (ContainerFrameMixin:UpdateItems), each
 -- step only where the client has it.
 local function Fill(b, bag, slot, info)
@@ -93,19 +107,56 @@ local function Fill(b, bag, slot, info)
     Level(b, info, bag, slot)
     b.spare:SetText("")
     b.itemID = info and info.itemID
-    b.lock:SetShown(ns.locks.Is(b.itemID))
+    Locked(b)
 end
 
 -- every slot made, of every set, for the padlocks to follow a lock
 local all = {}
 ns.locks.Watch(function()
-    for _, b in ipairs(all) do b.lock:SetShown(ns.locks.Is(b.itemID)) end
+    for _, b in ipairs(all) do Locked(b) end
 end)
 
 -- Alt+click, alone and with nothing held: the item's lock turned over
 local function Lock(b)
     if not IsAltKeyDown() or IsShiftKeyDown() or IsControlKeyDown() or CursorHasItem() then return end
     if b.itemID then ns.locks.Toggle(b.itemID) end
+    return true
+end
+
+local function Where(b) return b:GetParent():GetID(), b:GetID() end
+
+local function Guard(b)
+    local g = CreateFrame("Button", nil, b)
+    g:SetAllPoints()
+    g:SetFrameLevel(b:GetFrameLevel() + 6)
+    g:RegisterForClicks("AnyUp")
+    g:RegisterForDrag("LeftButton")
+    g:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    g:SetScript("OnClick", function(_, button)
+        if Lock(b) then return end
+        local bag, slot = Where(b)
+        if button == "RightButton" then
+            local info = C_Container.GetContainerItemInfo(bag, slot)
+            ns.locks.Say(format("%s is locked and is not sold. Alt+click it to unlock it.",
+                info and info.itemName or "That item"))
+        elseif IsModifiedClick("CHATLINK") then
+            local link = C_Container.GetContainerItemLink(bag, slot)
+            if link and ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow() then ChatEdit_InsertLink(link) end
+        else
+            C_Container.PickupContainerItem(bag, slot)
+        end
+    end)
+    local function Pick() C_Container.PickupContainerItem(Where(b)) end
+    g:SetScript("OnDragStart", Pick)
+    g:SetScript("OnReceiveDrag", Pick)
+    g:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetBagItem(Where(b))
+        GameTooltip:Show()
+    end)
+    g:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    g:Hide()
+    return g
 end
 
 -- The game's own padlock (quest sharing's), greyed and tinted blue; a copy
@@ -162,6 +213,7 @@ function ns.Slots(spec)
         b.spare:SetPoint("CENTER")
         b.spare:SetTextColor(unpack(ns.colors.dim))
         b.lock = Padlock(b)
+        b.guard = Guard(b)
         b:HookScript("OnClick", Lock)
         table.insert(all, b)
         slots[bag][slot] = b

@@ -20,7 +20,7 @@
 -- nothing of it called (npc/window.lua, Taint).
 --
 -- A locked item (inventory/locks.lua) is on neither Sell nor Sell junk, and
--- one sold anyway, by a right click in the bags, is bought back.
+-- its right click in the bags is guarded (inventory/slots.lua).
 local _, ns = ...
 
 local HIGH = MERCHANT_HIGH_PRICE_COST or 1500000      -- the game's own: 150 gold
@@ -296,17 +296,12 @@ ns.npc.Page{
     Start = function()
         ns.On("MERCHANT_SHOW", function()
             tab, pending = "merchant", nil
-            ns.locks.Seen()
             ns.npc.Show("merchant")
         end)
         ns.On("MERCHANT_CLOSED", function()
             pending = nil
-            ns.locks.Seen(false)
             ns.npc.Sync()
         end)
-        -- a locked item sold comes back before the page is drawn again
-        ns.On("MERCHANT_UPDATE", ns.locks.Rescue)
-        ns.On("BAG_UPDATE_DELAYED", ns.locks.Rescue)
         for _, e in ipairs({ "MERCHANT_UPDATE", "MERCHANT_FILTER_ITEM_UPDATE", "UPDATE_INVENTORY_DURABILITY",
             "PLAYER_MONEY", "BAG_UPDATE_DELAYED", "GET_ITEM_INFO_RECEIVED" }) do
             ns.On(e, Update)

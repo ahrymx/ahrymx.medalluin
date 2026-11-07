@@ -579,7 +579,10 @@ local function readModel(tooltip, data, game)
     local addAppended = ns.TooltipData.extrasAdder(model.extras)
     for _, row in ipairs(appended) do
         local trimmed = row.left:match("^%s*(.-)%s*$")
-        if isStockChange(row.left) then
+        if trimmed ~= "" and trimmed == _G.Medalluin_LockedLine then
+            -- Medalluin's item lock, said on the binding line instead.
+            model.locked = trimmed
+        elseif isStockChange(row.left) then
             addAppended(row)
         elseif model.created and not model.reagents and reagentList(trimmed) then
             model.reagents = reagentList(trimmed)
@@ -620,6 +623,15 @@ local function readModel(tooltip, data, game)
     if ns.disenchantFor and classID and not recipe then
         local itemLevel = game.itemLevel(itemInfo) or model.level
         model.disenchant = ns.disenchantFor(classID, model.quality, tonumber(itemLevel), equipLoc, itemID, game)
+    end
+    if model.locked then
+        local locked = "|cff73bfff" .. model.locked .. "|r"
+        local row = model.header[1]
+        if row and row.left ~= "" then
+            row.left = row.left .. " \194\183 " .. locked
+        else
+            add(model.header, locked, "")
+        end
     end
     local level = model.levelRequirement
     if level then

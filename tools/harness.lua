@@ -277,6 +277,7 @@ function Region:SetScript(k, f) self.scripts[k] = f end
 function Region:GetScript(k) return self.scripts[k] end
 function Region:SetAttribute(k, v) self.attrs[k] = v end
 function Region:RegisterForClicks(...) self.clicks = { ... } end
+function Region:RegisterForDrag(...) self.drag = { ... } end
 function Region:GetAttribute(k) return self.attrs[k] end
 function Region:SetFrameRef(k, f) self.refs = self.refs or {}; self.refs[k] = f end
 function Region:GetFrameRef(k) return self.refs and self.refs[k] end
@@ -1865,6 +1866,20 @@ if (bagsPass or bankPass) and modern then
             end
         end,
         SortBags = function() bagWorld.sorted = bagWorld.sorted + 1 end,
+        GetContainerItemLink = function(bag, slot)
+            local info = bagWorld.items[bag .. ":" .. slot]
+            return info and info.hyperlink
+        end,
+        PickupContainerItem = function(bag, slot) table.insert(bagWorld.picked, bag .. ":" .. slot) end,
+    }
+    bagWorld.picked = {}
+    IsModifiedClick = IsModifiedClick or function() return false end
+    function GameTooltip:SetBagItem(bag, slot) self.item = "bag" .. bag .. ":" .. slot end
+    -- the item tooltips' post-calls (inventory/locks.lua's "Locked")
+    bagWorld.posts = {}
+    Enum.TooltipDataType = { Item = 0 }
+    TooltipDataProcessor = {
+        AddTooltipPostCall = function(kind, fn) table.insert(bagWorld.posts, { kind = kind, fn = fn }) end,
     }
     C_NewItems = {
         IsNewItem = function(bag, slot) return bagWorld.new[bag .. ":" .. slot] == true end,
@@ -2991,7 +3006,6 @@ if npcPass or bankPass then
     function GetNumBuybackItems() return #W.buyback end
     function GetBuybackItemInfo(i) local b = W.buyback[i] return b[1], b[2], b[3], b[4], nil, true end
     function BuybackItem(i) called("BuybackItem", i) end
-    function GetBuybackItemLink(i) return W.buyback[i][5] end
     function CanMerchantRepair() return W.canRepair end
     function CanGuildBankRepair() return W.guild end
     function GetRepairAllCost() return W.repair, W.repair > 0 end
@@ -8416,6 +8430,83 @@ if bagsPass then
         slot(4, 3).scripts.OnClick(slot(4, 3), "LeftButton")
         modsDown.ALT = nil
         marks("bags.unlocked")
+
+        -- the tooltip: "Locked" under a locked item's, in the padlock's blue
+        local function tip(tag, id)
+            local lines = {}
+            local t = { AddLine = function(_, text, r, g, b)
+                table.insert(lines, string.format("%s(%.2f,%.2f,%.2f)", text, r, g, b))
+            end }
+            for _, post in ipairs(W.posts) do
+                if post.kind == Enum.TooltipDataType.Item then post.fn(t, { id = id }) end
+            end
+            print(tag, "lines=" .. (#lines > 0 and table.concat(lines, " / ") or "none"),
+                "shared=" .. tostring(Medalluin_LockedLine))
+        end
+        ns.locks.Toggle(107)
+        tip("bags.tip locked", 107)
+        tip("bags.tip not locked", 103)
+        -- a secret id is never a key: the game refuses one
+        setmetatable(MedalluinCharDB.lockedItems, { __index = function(_, k)
+            if isSecret(k) then error("a secret value as a table key") end
+        end })
+        tip("bags.tip secret", secret())
+        setmetatable(MedalluinCharDB.lockedItems, nil)
+        tip("bags.tip no id", nil)
+
+        -- at a vendor: a guard over each locked slot takes its clicks, so the
+        -- template's right click (a sale) never runs
+        local function guards(tag)
+            local on = {}
+            for bag = 0, 5 do
+                for i = 1, 20 do
+                    local b = slot(bag, i)
+                    if b and b.guard.shown then table.insert(on, bag .. ":" .. i) end
+                end
+            end
+            print(tag, "guards=" .. (#on > 0 and table.concat(on, ",") or "none"))
+        end
+        guards("bags.guard before a vendor")
+        fire("MERCHANT_SHOW")
+        guards("bags.guard at a vendor")
+        local g = stone.guard
+        print("bags.guard", "covers=" .. tostring(g.all == stone),
+            "above padlock=" .. tostring((g.level or 0) > (stone.lock.level or 0)),
+            "clicks=" .. tostring(g.clicks and table.concat(g.clicks, ",")),
+            "drag=" .. tostring(g.drag and table.concat(g.drag, ",")))
+        local errors = UIErrorsFrame
+        W.said = {}
+        UIErrorsFrame = { AddMessage = function(_, m) table.insert(W.said, m) end }
+        local modified, inserted = IsModifiedClick, {}
+        local chat, insert = ChatEdit_GetActiveWindow, ChatEdit_InsertLink
+        ChatEdit_GetActiveWindow = function() return true end
+        ChatEdit_InsertLink = function(l) table.insert(inserted, l) end
+        W.picked = {}
+        g.scripts.OnClick(g, "RightButton")
+        g.scripts.OnClick(g, "LeftButton")
+        g.scripts.OnDragStart(g, "LeftButton")
+        g.scripts.OnReceiveDrag(g)
+        IsModifiedClick = function(action) return action == "CHATLINK" end
+        g.scripts.OnClick(g, "LeftButton")
+        IsModifiedClick = modified
+        g.scripts.OnEnter(g)
+        print("bags.guard clicks", "said=" .. table.concat(W.said, " / "), "picked=" .. table.concat(W.picked, ","),
+            "linked=" .. table.concat(inserted, ","), "tip=" .. tostring(GameTooltip.item))
+        g.scripts.OnLeave(g)
+        ChatEdit_GetActiveWindow, ChatEdit_InsertLink = chat, insert
+        UIErrorsFrame = errors
+        -- a lock made at the vendor is guarded at once; Alt+click on the guard unlocks
+        modsDown.ALT = true
+        ore.scripts.OnClick(ore, "LeftButton")
+        guards("bags.guard locked at the vendor")
+        W.picked = {}
+        ore.guard.scripts.OnClick(ore.guard, "LeftButton")
+        modsDown.ALT = nil
+        guards("bags.guard unlocked at the vendor")
+        print("bags.guard alt picks up", #W.picked > 0 and table.concat(W.picked, ",") or "nothing")
+        fire("MERCHANT_CLOSED")
+        guards("bags.guard vendor gone")
+        ns.locks.Toggle(107)
         W.items["4:3"] = nil
         fire("BAG_UPDATE_DELAYED")
         w.scripts.OnUpdate(w, 0.02)
@@ -12657,41 +12748,6 @@ if npcPass then
     W.calls = {}
     press("npc sell locked", "Sell junk")
     calls("npc sell locked junk")
-    -- one sold anyway (a bag's right click): bought straight back; one sold
-    -- before the vendor opened, or not locked, stays sold
-    W.buyback[2][5] = "|Hitem:705|h"                -- sold earlier, then locked
-    fire("MERCHANT_SHOW")
-    W.calls = {}
-    table.insert(W.buyback, { "Linen Cloth", 4, 13, 20, "|Hitem:707|h" })
-    table.insert(W.buyback, { "Star Ruby", 55, 400, 2, "|Hitem:705|h" })
-    fire("MERCHANT_UPDATE")
-    calls("npc sold locked")
-    fire("BAG_UPDATE_DELAYED")                      -- a look before the client's list has caught up
-    table.remove(W.buyback, 4)                      -- the client's list, after the buyback
-    fire("MERCHANT_UPDATE")
-    calls("npc sold locked, again")
-    -- one locked after it was sold here: it stays sold
-    ns.locks.Toggle(707)
-    fire("MERCHANT_UPDATE")
-    calls("npc locked after selling")
-    ns.locks.Toggle(707)
-    -- two sold between looks: both back, the newest first
-    W.calls = {}
-    table.insert(W.buyback, { "Star Ruby", 55, 400, 1, "|Hitem:705|h" })
-    table.insert(W.buyback, { "junk701", 6, 25, 3, "|Hitem:701|h" })
-    fire("BAG_UPDATE_DELAYED")
-    calls("npc sold two locked")
-    table.remove(W.buyback, 5)
-    table.remove(W.buyback, 4)
-    fire("MERCHANT_UPDATE")                         -- the client's list caught up
-    -- the vendor gone: nothing bought back
-    fire("MERCHANT_CLOSED")
-    table.insert(W.buyback, { "Star Ruby", 55, 400, 1, "|Hitem:705|h" })
-    W.calls = {}
-    fire("MERCHANT_UPDATE")
-    calls("npc sold locked, closed")
-    table.remove(W.buyback)
-    W.buyback[2][5], W.buyback[3] = nil, nil
     ns.locks.Toggle(705)
     ns.locks.Toggle(701)
     fire("MERCHANT_SHOW")

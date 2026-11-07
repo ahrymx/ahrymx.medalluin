@@ -111,7 +111,7 @@ read_globals = {
     "IsInRaid", "ColorPickerFrame", "GetAddOnMetadata", "UISpecialFrames", "IsInInstance", "GetNumGroupMembers", "GetRaidRosterInfo",
     -- the action slots (bars/skills.lua)
     "GetActionInfo", "GetActionText", "GetMacroInfo", "GetMacroIndexByName", "PickupMacro", "PickupAction",
-    "PlaceAction", "ClearCursor", "CursorHasItem", "GetCursorInfo", "PickupSpell", "PickupItem", "C_Item", "C_MountJournal",
+    "PlaceAction", "TooltipDataProcessor", "ClearCursor", "CursorHasItem", "GetCursorInfo", "PickupSpell", "PickupItem", "C_Item", "C_MountJournal",
     "C_PetJournal", "C_SpellBook", "C_EquipmentSet", "C_SpecializationInfo", "GetSpecialization",
     "GetActiveTalentGroup", "Enum",
     -- the character window (character/)
@@ -135,8 +135,8 @@ read_globals = {
     "ObjectiveTrackerFrame", "QuestWatchFrame", "WatchFrame",
 }
 -- the saved variables, the slash command, the reset popup's key and the
--- tooltip spec mdlui_Tooltips reads (core.lua)
-globals = { "_G", "Medalluin_TooltipSpec", "MedalluinDB", "MedalluinCharDB", "SLASH_MEDALLUIN1", "SLASH_MEDALLUIN2", "SLASH_MDLUI1", "SlashCmdList",
+-- tooltip spec and the locked line mdlui_Tooltips reads (core.lua, inventory/locks.lua)
+globals = { "_G", "Medalluin_TooltipSpec", "Medalluin_LockedLine", "MedalluinDB", "MedalluinCharDB", "SLASH_MEDALLUIN1", "SLASH_MEDALLUIN2", "SLASH_MDLUI1", "SlashCmdList",
     "StaticPopupDialogs" }
 
 -- mdlui_Tooltips companion addon settings

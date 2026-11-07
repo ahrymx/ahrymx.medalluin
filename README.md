@@ -77,7 +77,7 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 - **Automatic Category Grouping**: Organize items into intuitive categories: *New*, *Equipment*, *Consumables*, *Quest items*, *Trade goods*, *Junk*, and *Other*.
 - **Blizzard Search & Sorting**: Full native support for text search, item quality dimming, and one-click bag sorting.
 - **Responsive Resizing**: Drag the bottom-right corner dots to change columns across, with automatic window height scaling.
-- **Item Locking**: Alt+click an item in your bags or bank to lock it. A padlock appears in its corner, and the item can no longer be destroyed or sold: it is left out of the vendor's Sell tab and Sell junk, and if it is sold anyway it is bought straight back.
+- **Item Locking**: Alt+click an item in your bags or bank to lock it. A padlock appears in its corner, its tooltip says "Locked", and it can no longer be destroyed or sold: it is left out of the vendor's Sell tab and Sell junk, and its right click does nothing at a vendor.
 
 ---
 

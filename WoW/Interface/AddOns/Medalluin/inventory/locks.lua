@@ -1,19 +1,20 @@
 -- Items kept from the vendor and from destroying: Alt+click one in the bags
 -- or the bank (inventory/slots.lua) and every one of that item (by itemID,
 -- so it follows the item from bag to bag) is locked on this character,
--- marked with a padlock in its slot's bottom left corner. Alt+click again
--- unlocks it.
+-- marked with a padlock in its slot's bottom left corner and a "Locked" line
+-- in its tooltip. Alt+click again unlocks it.
 --
 -- Locked items are
 --   destroyed: never. The game asks first (DELETE_ITEM_CONFIRM, synchronous)
 --              and its question closes when the cursor is empty, so the
 --              item is put back (ClearCursor) and nothing is deleted.
---   sold:      not by us: the Sell tab and Sell junk leave them out
---              (npc/merchant.lua). A sale we cannot stop without tainting
---              the bags' click (a right click, a drop on the vendor) is
---              bought straight back (ns.locks.Rescue).
+--   sold:      never. The Sell tab and Sell junk leave them out
+--              (npc/merchant.lua), and while a vendor is open a guard over
+--              a locked slot takes its clicks (inventory/slots.lua), so the
+--              bags' right click never reaches the sale.
 --
---   ns.locks.Is(itemID), ns.locks.Toggle(itemID), ns.locks.Watch(fn)
+--   ns.locks.Is(itemID), ns.locks.Toggle(itemID), ns.locks.Watch(fn),
+--   ns.locks.vendor (a vendor is open)
 local _, ns = ...
 
 local locks = {}
@@ -31,7 +32,7 @@ function locks.Toggle(id)
     local store = MedalluinCharDB.lockedItems or {}
     MedalluinCharDB.lockedItems = store
     store[id] = not store[id] or nil
-    for _, fn in ipairs(watchers) do fn(id) end
+    for _, fn in ipairs(watchers) do fn() end
 end
 
 function locks.Watch(fn) table.insert(watchers, fn) end
@@ -54,48 +55,26 @@ ns.On("DELETE_ITEM_CONFIRM", function(_, name)
     Say(format("%s is locked. Alt+click it in your bags to unlock it.", name or "That item"))
 end)
 
--- --------------------------------------------------------------- selling
--- What the vendor had bought back from us, by link, the last time we looked.
-local seen
+-- ---------------------------------------------------------------- the vendor
+local function Notify() for _, fn in ipairs(watchers) do fn() end end
+ns.On("MERCHANT_SHOW", function()
+    locks.vendor = true
+    Notify()
+end)
+ns.On("MERCHANT_CLOSED", function()
+    locks.vendor = false
+    Notify()
+end)
 
-local function Sold()
-    local list = {}
-    for i = 1, GetNumBuybackItems and GetNumBuybackItems() or 0 do
-        list[i] = GetBuybackItemLink and GetBuybackItemLink(i) or false
-    end
-    return list
+-- ---------------------------------------------------------------- the tooltip
+-- "Locked" under any locked item's tooltip. mdlui_Tooltips knows the line by
+-- this text and moves it onto the item's binding line.
+Medalluin_LockedLine = "Locked"
+local function Line(tooltip, id)
+    if not ns.IsSecret(id) and locks.Is(id) then tooltip:AddLine(Medalluin_LockedLine, 0.45, 0.75, 1) end
 end
-
--- At the vendor's opening: what is already there was sold before, locked or
--- not, and is never bought back. Seen(false) at its closing: nothing more.
-function locks.Seen(open)
-    if open == false then seen = nil else seen = Sold() end
-end
-
--- After a sale: anything new on the buyback list that is locked comes back
--- (the newest first, so the indices below it stay put). What is bought back
--- stays seen until the client's list loses it (BuybackItem is the server's
--- to do), so a second look before then never buys it twice.
-function locks.Rescue()
-    if not seen then return end
-    local list, before = Sold(), {}
-    for _, link in ipairs(seen) do before[link] = (before[link] or 0) + 1 end
-    local fresh = {}
-    for i, link in ipairs(list) do
-        if link and (before[link] or 0) > 0 then
-            before[link] = before[link] - 1
-        else
-            table.insert(fresh, i)
-        end
-    end
-    for k = #fresh, 1, -1 do
-        local i = fresh[k]
-        local link = list[i]
-        if locks.Is(ItemID(link)) then
-            local name = GetBuybackItemInfo(i)
-            BuybackItem(i)
-            Say(format("%s is locked: bought back.", name or "The item"))
-        end
-    end
-    seen = list
+if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall then
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        Line(tooltip, data and data.id)
+    end)
 end
