@@ -29,6 +29,7 @@ read_globals = {
     "ERR_TAXINOPATHS", "TAXINODEYOUAREHERE", "FLIGHT_MAP", "UIErrorsFrame",
     "SetTrainerServiceTypeFilter", "GetTrainerServiceLevelReq", "GetTrainerServiceSkillReq",
     "GetTrainerServiceTypeFilter", "IsTradeskillTrainer", "GetTrainerServiceSkillLine", "GetMacroSpell",
+    "GetMaxLevelForPlayerExpansion",
     "GetTrainerServiceNumAbilityReq", "GetTrainerServiceAbilityReq", "GetTrainerGreetingText", "GetTrainerServiceIcon",
     "GetTrainerServiceDescription", "CloseTrainer", "BuyTrainerService", "ExpandTrainerSkillLine",
     "RepairAllItems", "SelectActiveQuest", "SelectAvailableQuest",

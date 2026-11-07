@@ -105,6 +105,88 @@ local function Button(parent, width, click, tip, template)
 end
 ns.window.Button = Button
 
+-- ------------------------------------------------------------- scrolling
+-- A list that scrolls, in a scroll frame filling the body but for a gutter
+-- at the left, where its bar stands: a track and a gold thumb, which a
+-- press or a drag places. To(y) eases the list there (the wheel), or sends
+-- it at once (now: the bar dragged). Lay the list out in s.child, and call
+-- To(s.target) as it changes, to keep it in range.
+local function Scroller(body, gutter)
+    local s = { target = 0, offset = 0 }
+    local scroll = CreateFrame("ScrollFrame", nil, body)
+    scroll:SetPoint("TOPLEFT", gutter, 0)
+    scroll:SetPoint("BOTTOMRIGHT")
+    local child = CreateFrame("Frame", nil, scroll)
+    child:SetSize(1, 1)
+    scroll:SetScrollChild(child)
+    local bar = CreateFrame("Frame", nil, body)
+    bar:SetPoint("TOPLEFT")
+    bar:SetPoint("BOTTOMLEFT")
+    bar:SetWidth(gutter - 4)
+    local track = bar:CreateTexture(nil, "BACKGROUND")
+    track:SetPoint("TOP")
+    track:SetPoint("BOTTOM")
+    track:SetWidth(1)
+    track:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.6)
+    bar.thumb = bar:CreateTexture(nil, "ARTWORK")
+    bar.thumb:SetWidth(3)
+    bar.thumb:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+    s.scroll, s.child, s.bar = scroll, child, bar
+
+    -- the bar: shown while there is more than fits, its thumb as long as
+    -- the share that shows, as far down as the list is
+    function s.Thumb()
+        local range = scroll:GetVerticalScrollRange() or 0
+        bar:SetShown(range > 0)
+        if range <= 0 then return end
+        local h = scroll:GetHeight()
+        local size = math.max(16, h * h / (h + range))
+        bar.thumb:SetHeight(size)
+        bar.thumb:ClearAllPoints()
+        bar.thumb:SetPoint("TOP", bar, "TOP", 0, -(h - size) * s.offset / range)
+        bar.size = size
+    end
+
+    local function Ease(_, elapsed)
+        s.offset = s.offset + (s.target - s.offset) * math.min(1, elapsed * 12)
+        if math.abs(s.target - s.offset) < 0.5 then
+            s.offset = s.target
+            scroll:SetScript("OnUpdate", nil)
+        end
+        scroll:SetVerticalScroll(s.offset)
+        s.Thumb()
+    end
+    function s.To(to, now)
+        local range = scroll:GetVerticalScrollRange() or 0
+        s.target = math.max(0, math.min(range, to or 0))
+        s.offset = math.max(0, math.min(range, s.offset))
+        if now then s.offset = s.target end
+        scroll:SetVerticalScroll(s.offset)
+        s.Thumb()
+        scroll:SetScript("OnUpdate", s.offset ~= s.target and Ease or nil)
+    end
+
+    -- pressed: the thumb's middle goes to the cursor, and follows it
+    local function Drag()
+        local range = scroll:GetVerticalScrollRange() or 0
+        local h, size = scroll:GetHeight(), bar.size or 16
+        if range <= 0 or h <= size then return end
+        local _, y = GetCursorPosition()
+        y = y / bar:GetEffectiveScale()
+        s.To((bar:GetTop() - y - size / 2) / (h - size) * range, true)
+    end
+    bar:EnableMouse(true)
+    bar:SetScript("OnMouseDown", function()
+        Drag()
+        bar:SetScript("OnUpdate", Drag)
+    end)
+    bar:SetScript("OnMouseUp", function() bar:SetScript("OnUpdate", nil) end)
+    bar:SetScript("OnHide", function() bar:SetScript("OnUpdate", nil) end)
+    bar:Hide()
+    return s
+end
+ns.window.Scroller = Scroller
+
 -- ---------------------------------------------------------- decoration
 -- A divider: a gold rule each side of a diamond, or of a word.
 local function Ornament(parent, label)

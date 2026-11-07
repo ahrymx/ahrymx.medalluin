@@ -2555,6 +2555,10 @@ if talentPass then
     end }
     local byID = {}
     for _, n in ipairs(NODES) do byID[n[1]] = n end
+    -- Elemental Mastery's gate is a condition: 8 points in Elemental, where
+    -- its tier alone would ask 15
+    local CONDS = { [4] = { 904 } }
+    T.names = NAMES
     T.committed = { [1] = { [1] = 5 }, [2] = {} }
     T.staged = { [1] = {}, [2] = {} }
     T.points = 12
@@ -2604,7 +2608,10 @@ if talentPass then
                 activeEntry = r > 0 and { entryID = id * 10, rank = r } or nil, ranksPurchased = r,
                 maxRanks = d[5], isVisible = true, isAvailable = available, meetsEdgeRequirements = ok,
                 canPurchaseRank = available and ok and r < d[5] and T.points - spent(config) > 0,
-                canRefundRank = (T.staged[config][id] or 0) > 0, visibleEdges = edges }
+                canRefundRank = (T.staged[config][id] or 0) > 0, visibleEdges = edges, conditionIDs = CONDS[id] or {} }
+        end,
+        GetConditionInfo = function(_, cond)
+            if cond == 904 then return { condID = 904, isGate = true, type = 0, spentAmountRequired = 8 } end
         end,
         GetEntryInfo = function(_, entry) return { definitionID = entry } end,
         GetDefinitionInfo = function(def) return { spellID = def, overrideName = "", overrideIcon = 0 } end,
@@ -9677,41 +9684,41 @@ if spellPass then
     details("book.trainer chosen")
     -- a short body: the list scrolls, the bar at the left
     local function scrolled(tag)
-        local bar, th = tr.bar, tr.bar.thumb
+        local bar, th = tr.scroller.bar, tr.scroller.bar.thumb
         print(tag, string.format("range=%d at=%.1f target=%.1f easing=%s bar=%s thumb=%.1f@%.1f", 
-            tr.scroll:GetVerticalScrollRange(), tr.scroll:GetVerticalScroll(), tr.target or 0,
-            tostring(tr.scroll.scripts.OnUpdate ~= nil), tostring(bar.shown), th.h or 0,
+            tr.scroller.scroll:GetVerticalScrollRange(), tr.scroller.scroll:GetVerticalScroll(), tr.scroller.target or 0,
+            tostring(tr.scroller.scroll.scripts.OnUpdate ~= nil), tostring(bar.shown), th.h or 0,
             th.points.TOP and th.points.TOP[4] or 0), "bar@" .. tostring(bar.points.TOPLEFT and bar.points.TOPLEFT[3]),
-            "list@" .. tostring(tr.scroll.points.TOPLEFT[3]), "cells in list=" .. tostring(tr.cells[1].parent == tr.child))
+            "list@" .. tostring(tr.scroller.scroll.points.TOPLEFT[3]), "cells in list=" .. tostring(tr.cells[1].parent == tr.scroller.child))
     end
     scrolled("book.trainer tall")
     local trH = tr.body.h
     tr.body.h = 3 * 40
-    tr.scroll.h = 3 * 40         -- the mock's GetHeight does not resolve anchors
+    tr.scroller.scroll.h = 3 * 40         -- the mock's GetHeight does not resolve anchors
     tr.Refresh()
     scrolled("book.trainer short")
     tr.body.scripts.OnMouseWheel(tr.body, -1)
     scrolled("book.trainer wheel")
-    tr.scroll.scripts.OnUpdate(tr.scroll, 0.05)
+    tr.scroller.scroll.scripts.OnUpdate(tr.scroller.scroll, 0.05)
     scrolled("book.trainer easing")
-    for _ = 1, 40 do if tr.scroll.scripts.OnUpdate then tr.scroll.scripts.OnUpdate(tr.scroll, 0.05) end end
+    for _ = 1, 40 do if tr.scroller.scroll.scripts.OnUpdate then tr.scroller.scroll.scripts.OnUpdate(tr.scroller.scroll, 0.05) end end
     scrolled("book.trainer eased")
     for _ = 1, 10 do tr.body.scripts.OnMouseWheel(tr.body, -1) end
-    for _ = 1, 80 do if tr.scroll.scripts.OnUpdate then tr.scroll.scripts.OnUpdate(tr.scroll, 0.05) end end
+    for _ = 1, 80 do if tr.scroller.scroll.scripts.OnUpdate then tr.scroller.scroll.scripts.OnUpdate(tr.scroller.scroll, 0.05) end end
     scrolled("book.trainer bottom")
     -- the bar pressed at its top: the list there at once, and following
     local cursorAt = GetCursorPosition
     -- the cursor in the screen's units, as the game gives it
-    function GetCursorPosition() return 0, tr.bar:GetTop() * tr.bar:GetEffectiveScale() end
-    tr.bar.scripts.OnMouseDown(tr.bar)
+    function GetCursorPosition() return 0, tr.scroller.bar:GetTop() * tr.scroller.bar:GetEffectiveScale() end
+    tr.scroller.bar.scripts.OnMouseDown(tr.scroller.bar)
     scrolled("book.trainer bar pressed")
-    function GetCursorPosition() return 0, tr.bar:GetBottom() * tr.bar:GetEffectiveScale() end
-    tr.bar.scripts.OnUpdate(tr.bar, 0.05)
+    function GetCursorPosition() return 0, tr.scroller.bar:GetBottom() * tr.scroller.bar:GetEffectiveScale() end
+    tr.scroller.bar.scripts.OnUpdate(tr.scroller.bar, 0.05)
     scrolled("book.trainer bar dragged")
-    tr.bar.scripts.OnMouseUp(tr.bar)
-    print("book.trainer bar let go", tostring(tr.bar.scripts.OnUpdate ~= nil))
+    tr.scroller.bar.scripts.OnMouseUp(tr.scroller.bar)
+    print("book.trainer bar let go", tostring(tr.scroller.bar.scripts.OnUpdate ~= nil))
     GetCursorPosition = cursorAt
-    tr.body.h, tr.scroll.h = trH, 0
+    tr.body.h, tr.scroller.scroll.h = trH, 0
     tr.Refresh()
     scrolled("book.trainer tall again")
     -- a level later: Frost Shock's time comes
@@ -9785,7 +9792,8 @@ if talentPass then
             if b.shown and b.node then
                 local pt = b.points.CENTER
                 table.insert(list, string.format("%s@%d,%d %s%s edge=%s", b.talent.name, pt[3], -pt[4], b.rank.text,
-                    b.icon.desaturated and " dim" or "", c3(b.edge.color)))
+                    b.icon.desaturated and " dim" or "", c3(b.edge.color))
+                    .. (b.halo.shown and string.format(" halo=%.2f", b.halo.color[4]) or ""))
             end
         end
         print(tag, "body=" .. p.body.w .. "x" .. p.body.h, table.concat(list, " | "))
@@ -9951,7 +9959,171 @@ if talentPass then
     frame()
     foot("talents.after combat")
 
-    -- 7. the book takes the frame, and the talents take it back
+    -- 7. the plan. Elemental, with Convection 5/5 and Concussion 1/3 learned
+    local elemT = pageOf("tree1")
+    elemT.tab.scripts.OnClick(elemT.tab)
+    frame()
+    local function plan(tag)
+        local list = {}
+        for _, id in ipairs(MedalluinCharDB.talentPlan[1] or {}) do
+            table.insert(list, T.names[id])
+        end
+        print(tag, #list .. ": " .. table.concat(list, ", "))
+    end
+    local function strip(tag)
+        local p = W.Current()
+        print(tag, "points=" .. p.points.text, "plan=" .. (p.planButton.mark.shown and "on" or "off"),
+            "follow=" .. tostring(p.follow.shown) .. "@" .. where(p.follow),
+            "next=" .. (p.details.nothing.shown and p.details.nothing.text or "-"))
+    end
+    -- Plan: the plan starts from what is learned, tier by tier (Call of
+    -- Flame, a tier down, learned too: it comes after Concussion, though it
+    -- stands further left)
+    T.committed[1][3] = 1
+    elemT.planButton.scripts.OnClick(elemT.planButton)
+    frame()
+    plan("talents.plan seeded")
+    tree("talents.plan tree")
+    strip("talents.plan strip")
+    -- the gate: 8 points in Elemental (the condition's), 6 planned
+    click("Elemental Mastery")
+    plan("talents.plan gate refused")
+    foot("talents.plan gate why")
+    tip("talents.plan tip", "Elemental Mastery")
+    click("Concussion")
+    click("Concussion")
+    click("Concussion")
+    plan("talents.plan ranks")
+    foot("talents.plan every rank")
+    click("Elemental Mastery")
+    click("Call of Flame")
+    plan("talents.plan gate met")
+    tree("talents.plan full")
+    -- a rank of Convection off: Call of Flame needs it whole, and the gate
+    -- its point, so both go
+    click("Convection", "RightButton")
+    plan("talents.plan cascade")
+    tree("talents.plan cascade tree")
+    -- the cap: the top level less 9
+    GetMaxLevelForPlayerExpansion = function() return 17 end
+    click("Convection")
+    click("Call of Flame")
+    plan("talents.plan capped")
+    foot("talents.plan cap why")
+    GetMaxLevelForPlayerExpansion = nil
+    -- the gate met again (8 in Elemental), and a talent the game refuses
+    -- to stage: Elemental Mastery, locked by its tier
+    click("Elemental Mastery")
+    plan("talents.plan mastery")
+    -- the tiers' own gate where no condition says: Shamanistic Focus, six
+    -- tiers down, wants 30 in Enhancement
+    local enhT = pageOf("tree2")
+    enhT.tab.scripts.OnClick(enhT.tab)
+    frame()
+    click("Shamanistic Focus")
+    foot("talents.plan tier gate")
+    elemT.tab.scripts.OnClick(elemT.tab)
+    frame()
+    -- out of the mode: the planned glow, the next brightest; Follow stages
+    -- the next entries for Apply
+    elemT.chosen = nil
+    elemT.planButton.scripts.OnClick(elemT.planButton)
+    frame()
+    tree("talents.plan glow")
+    strip("talents.plan next")
+    T.calls = {}
+    elemT.follow.scripts.OnClick(elemT.follow)
+    frame()
+    tree("talents.followed")
+    strip("talents.followed")
+    foot("talents.followed")
+    elemT.reset.scripts.OnClick(elemT.reset)
+    frame()
+    -- one point left: Follow stages one
+    local points = T.points
+    T.points = T.points - 4       -- 7 spent: one left
+    T.calls = {}
+    elemT.follow.scripts.OnClick(elemT.follow)
+    frame()
+    print("talents.followed one", table.concat(T.calls, ","))
+    elemT.reset.scripts.OnClick(elemT.reset)
+    frame()
+    T.points = points
+    -- not while the talents in view are not in use
+    T.groups = 2
+    local sec2 = W.Current().specs[2]
+    sec2.scripts.OnClick(sec2)
+    frame()
+    strip("talents.plan secondary")
+    -- its own plan; Follow stages nothing in talents not in use
+    elemT.planButton.scripts.OnClick(elemT.planButton)
+    click("Convection")
+    elemT.planButton.scripts.OnClick(elemT.planButton)
+    T.calls = {}
+    elemT.follow.scripts.OnClick(elemT.follow)
+    print("talents.plan secondary follow", "calls=" .. table.concat(T.calls, ","),
+        "plans=" .. #(MedalluinCharDB.talentPlan[1] or {}) .. "/" .. #(MedalluinCharDB.talentPlan[2] or {}))
+    local prim2 = W.Current().specs[1]
+    prim2.scripts.OnClick(prim2)
+    frame()
+    -- Order: the plan as a list, no tab of its own
+    local ord = pageOf("order")
+    print("talents.order tab", tostring(ord.tab ~= nil))
+    elemT.order.scripts.OnClick(elemT.order)
+    frame()
+    local function order(tag)
+        local p = W.Current()
+        local list = {}
+        for _, r in ipairs(p.rows) do
+            if r.shown then
+                table.insert(list, string.format("%s %s%s%s/%s", r.at.text, r.name.text, r.tick.shown and " ✓" or "",
+                    r.mark.shown and " <" or "", r.tree.text))
+            end
+        end
+        print(tag, "page=" .. p.key, "points=" .. p.points.text, "clear=" .. tostring(p.clear.shown)
+            .. "(" .. p.clear.label.text .. ")",
+            "order=" .. tostring(p.order.mark.shown), "rows: " .. table.concat(list, "; "))
+        print(tag .. " foot", p.details.nothing.text)
+    end
+    order("talents.order")
+    -- a short window: the list scrolls under the wheel
+    local ordH = ord.body.h
+    ord.body.h = 120
+    ord.list.scroll.h = 120 - 26
+    ord.Refresh()
+    local area = ord.list.scroll.parent
+    area.scripts.OnMouseWheel(area, -1)
+    print("talents.order scroll", "range=" .. ord.list.scroll:GetVerticalScrollRange(), "target=" .. ord.list.target,
+        "bar=" .. tostring(ord.list.bar.shown))
+    ord.list.To(0, true)
+    ord.body.h, ord.list.scroll.h = ordH, 0
+    ord.Refresh()
+    -- a row opens its talent's tree, the talent chosen
+    ord.rows[6].scripts.OnClick(ord.rows[6])
+    frame()
+    foot("talents.order opened")
+    -- Order from Enhancement, and back to it
+    enhT.tab.scripts.OnClick(enhT.tab)
+    frame()
+    W.Current().order.scripts.OnClick(W.Current().order)
+    frame()
+    ord.order.scripts.OnClick(ord.order)
+    frame()
+    print("talents.order back", "page=" .. W.Current().key)
+    -- Clear plan asks twice; leaving disarms it
+    W.Current().order.scripts.OnClick(W.Current().order)
+    frame()
+    ord.clear.scripts.OnClick(ord.clear)
+    print("talents.clear armed", ord.clear.label.text, #MedalluinCharDB.talentPlan[1])
+    ord.clear.scripts.OnLeave(ord.clear)
+    ord.clear.scripts.OnClick(ord.clear)
+    ord.clear.scripts.OnClick(ord.clear)
+    frame()
+    order("talents.cleared")
+    ord.order.scripts.OnClick(ord.order)
+    frame()
+
+    -- 8. the book takes the frame, and the talents take it back
     bookWorld.Toggle("spellbook")
     frame()
     state("talents.book")
@@ -9962,7 +10134,7 @@ if talentPass then
     frame()
     state("talents.closed")
 
-    -- 8. Forever's own N with another panel open (the parked character
+    -- 9. Forever's own N with another panel open (the parked character
     -- frame): Blizzard minimises the frame onto the book; ours turns it back
     bookWorld.others = true
     PlayerSpellsUtil.TogglePlayerSpellsFrame(PlayerSpellsUtil.FrameTabs.ClassTalents)

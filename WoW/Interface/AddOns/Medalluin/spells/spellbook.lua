@@ -300,7 +300,7 @@ local function Tiles(c, icon, width)
 end
 
 local function Cell(p, i)
-    local c = CreateFrame("Button", nil, p.child or p.body)
+    local c = CreateFrame("Button", nil, p.scroller and p.scroller.child or p.body)
     c:SetHeight(ROW)
     c.icon = c:CreateTexture(nil, "ARTWORK")
     c.icon:SetSize(ICON, ICON)
@@ -357,14 +357,14 @@ local function Rows(p)
 end
 
 -- the cells' width across: the body's, less the trainer's scroll bar
-local function Width(p) return p.child and W.width - GUTTER or W.width end
+local function Width(p) return p.scroller and W.width - GUTTER or W.width end
 
 -- count: every item at once (the trainer's, which scroll), or a page's
 -- worth of rows (the rest, which turn)
 local function Place(p, count)
     local rows = count and math.max(1, math.ceil(count / 2)) or Rows(p)
     local width = (Width(p) - GAP) / 2
-    if p.child then p.child:SetSize(Width(p), rows * ROW) end
+    if p.scroller then p.scroller.child:SetSize(Width(p), rows * ROW) end
     for i = 1, rows * 2 do
         local c = p.cells[i] or Cell(p, i)
         local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
@@ -425,7 +425,7 @@ local function Follow()
     local p = W.Current()
     -- the trainer's cells cast nothing, and they scroll: no secure buttons,
     -- the cells answer the mouse themselves
-    local cells = open and p and not p.child and p.cells or {}
+    local cells = open and p and not p.scroller and p.cells or {}
     for i = 1, math.max(#cells, #layer.buttons) do
         local c = cells[i]
         if c and c:IsShown() and c.item then
@@ -471,85 +471,10 @@ local function Summary(p, items, chosen)
     p.details:Set(nil)
 end
 
--- ------------------------------------------------------- the trainer's scroll
--- The trainer's list scrolls, a whole list in the scroll frame's child:
--- the wheel eases to where it is sent, and the bar at the left follows, or
--- is dragged.
-local function Thumb(p)
-    local scroll, bar = p.scroll, p.bar
-    local range = scroll:GetVerticalScrollRange() or 0
-    bar:SetShown(range > 0)
-    if range <= 0 then return end
-    local h = scroll:GetHeight()
-    local size = math.max(16, h * h / (h + range))
-    bar.thumb:SetHeight(size)
-    bar.thumb:ClearAllPoints()
-    bar.thumb:SetPoint("TOP", bar, "TOP", 0, -(h - size) * (p.offset or 0) / range)
-    bar.size = size
-end
-
--- to where the list is sent, in range; now: there at once (the bar dragged)
-local function Scroll(p, to, now)
-    local range = p.scroll:GetVerticalScrollRange() or 0
-    p.target = math.max(0, math.min(range, to))
-    p.offset = math.max(0, math.min(range, p.offset or 0))
-    if now then p.offset = p.target end
-    p.scroll:SetVerticalScroll(p.offset)
-    Thumb(p)
-    p.scroll:SetScript("OnUpdate", p.offset ~= p.target and function(_, elapsed)
-        p.offset = p.offset + (p.target - p.offset) * math.min(1, elapsed * 12)
-        if math.abs(p.target - p.offset) < 0.5 then
-            p.offset = p.target
-            p.scroll:SetScript("OnUpdate", nil)
-        end
-        p.scroll:SetVerticalScroll(p.offset)
-        Thumb(p)
-    end or nil)
-end
-
-local function Scroller(p, body)
-    local scroll = CreateFrame("ScrollFrame", nil, body)
-    scroll:SetPoint("TOPLEFT", GUTTER, 0)
-    scroll:SetPoint("BOTTOMRIGHT")
-    local child = CreateFrame("Frame", nil, scroll)
-    child:SetSize(W.width - GUTTER, 1)
-    scroll:SetScrollChild(child)
-    local bar = CreateFrame("Frame", nil, body)
-    bar:SetPoint("TOPLEFT")
-    bar:SetPoint("BOTTOMLEFT")
-    bar:SetWidth(GUTTER - 4)
-    local track = bar:CreateTexture(nil, "BACKGROUND")
-    track:SetPoint("TOP")
-    track:SetPoint("BOTTOM")
-    track:SetWidth(1)
-    track:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.6)
-    bar.thumb = bar:CreateTexture(nil, "ARTWORK")
-    bar.thumb:SetWidth(3)
-    bar.thumb:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
-    -- pressed: the thumb's middle goes to the cursor, and follows it
-    local function Drag()
-        local range = scroll:GetVerticalScrollRange() or 0
-        local h, size = scroll:GetHeight(), bar.size or 16
-        if range <= 0 or h <= size then return end
-        local _, y = GetCursorPosition()
-        y = y / bar:GetEffectiveScale()
-        Scroll(p, (bar:GetTop() - y - size / 2) / (h - size) * range, true)
-    end
-    bar:EnableMouse(true)
-    bar:SetScript("OnMouseDown", function()
-        Drag()
-        bar:SetScript("OnUpdate", Drag)
-    end)
-    bar:SetScript("OnMouseUp", function() bar:SetScript("OnUpdate", nil) end)
-    bar:SetScript("OnHide", function() bar:SetScript("OnUpdate", nil) end)
-    bar:Hide()
-    p.scroll, p.child, p.bar = scroll, child, bar
-end
-
 local Band
 local function Refresh(p)
     local items = Items(p)
-    local per = Place(p, p.child and #items)
+    local per = Place(p, p.scroller and #items)
     local pages = math.max(1, math.ceil(#items / per))
     p.at = math.min(math.max(1, p.at or 1), pages)
     local first = (p.at - 1) * per
@@ -608,7 +533,7 @@ local function Refresh(p)
         if item.info and item.info.actionID == p.chosen then chosen = item end
     end
     p.pages = pages
-    if p.child then Scroll(p, p.target or 0) end
+    if p.scroller then p.scroller.To(p.scroller.target) end
     Band(p)
     if p.trainer then
         Summary(p, items, chosen)
@@ -716,8 +641,8 @@ local function Page(spec)
         Controls(p, band)
         body:EnableMouseWheel(true)
         if p.trainer then
-            Scroller(p, body)
-            body:SetScript("OnMouseWheel", function(_, delta) Scroll(p, (p.target or 0) - delta * STEP) end)
+            p.scroller = ns.window.Scroller(body, GUTTER)
+            body:SetScript("OnMouseWheel", function(_, delta) p.scroller.To(p.scroller.target - delta * STEP) end)
         else
             body:SetScript("OnMouseWheel", function(_, delta) Turn(p, delta > 0 and -1 or 1) end)
         end
