@@ -182,7 +182,7 @@ local function Colour(q)
 end
 
 local function Tip(row, q)
-    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+    ns.window.Outside(row)
     local link = GetQuestLink and GetQuestLink(q.id)
     if link then
         GameTooltip:SetHyperlink(link)
@@ -360,7 +360,7 @@ local function Secure(i)
     glow:SetColorTexture(1, 1, 1, 0.15)
     b:SetScript("OnEnter", function(self)
         if not self.item then return end
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        ns.window.Outside(self)
         GameTooltip:SetItemByID(self.item)
         GameTooltip:Show()
     end)
@@ -568,6 +568,7 @@ end
 local function Build()
     local strip = ns.strips[-1]
     frame = CreateFrame("Frame", "MedalluinQuests", strip)
+    ns.window.Mark(frame, -1)                    -- its tooltips beside it
     frame:SetIgnoreParentAlpha(true)
     frame:SetFrameStrata("LOW")
     frame:EnableMouse(false)
@@ -641,7 +642,7 @@ local function Build()
         end
     end)
     head:SetScript("OnEnter", function(self)
-        ns.Tip(self, "ANCHOR_RIGHT", { title = "Quests", color = GOLD,
+        ns.Tip(self, ns.window.Outside, { title = "Quests", color = GOLD,
             { "body", ns.db.questsMinimised and "Click: show the quests."
                 or "Click: fold the tracker to this heading." },
             not Full() and { "body", "Drag: move it.  Ctrl-wheel: its size.  The corner's grip: its shape." } or false,
@@ -739,6 +740,7 @@ local function Build()
     end
 
     layer = CreateFrame("Frame", "MedalluinQuestItems", strip)
+    ns.window.Mark(layer, -1)                    -- over the list: its tooltips beside it too
     layer:SetFrameStrata("LOW")
     layer:SetFrameLevel(frame:GetFrameLevel() + 10)
     layer:SetIgnoreParentAlpha(true)

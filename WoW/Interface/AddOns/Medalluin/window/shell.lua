@@ -34,7 +34,11 @@
 --                        closeTip, Close(), Open(page) (ask Blizzard),
 --                        Lifted() -> the medallion's buttons,
 --                        place (a setting: the window detaches, below),
---                        detachedOnly (with a place: never docked, no view glyph) }
+--                        detachedOnly (with a place: never docked, no view glyph),
+--                        tabs ("open": tabs with no box, a gold underline
+--                        on the one in use, rows on fading hairs) }
+--   Its tooltips stand outside it (ns.window.Outside; w.Beside for an owner
+--   not inside it).
 --   w.Page{ key, label, tip, glyph, icon, frame (Blizzard's page), order, row,
 --           tabless (no tab: the page's own controls Select it),
 --           Available() (or Blizzard's frame exists), height, footHeight,
@@ -81,6 +85,7 @@ local LIFT = 20                                 -- the medallion's buttons' leve
 local HEIGHT, LEAST = 480, { WIDTH, 240 }        -- a detached window's first height, its least size
 local SCALES = { 0.6, 1.4, 0.05 }               -- a detached window's scale: least, most, a step
 local GRIP = 14
+local BESIDE = 4                                -- a tooltip outside the window: its gap
 local GAME_ICON = 0.08                          -- the game's icons' border, trimmed
 
 ns.window = { width = WIDTH - 2 * PAD, pad = PAD, band = BAND }
@@ -115,15 +120,115 @@ local function Face(b, to, soft)
 end
 ns.window.Face = Face           -- the chat's tabs wear it too (strips/chat.lua)
 
+-- A gold line that fades out at both ends: a parting that is not a box.
+-- Anchor it as a frame; across, its height is 1, down, its width.
+local function Hair(parent, down, alpha)
+    local f = CreateFrame("Frame", nil, parent)
+    if down then f:SetWidth(1) else f:SetHeight(1) end
+    alpha = alpha or 1
+    local lit, clear
+    if CreateColor then
+        lit = CreateColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], alpha)
+        clear = CreateColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0)
+    end
+    f.halves = {}
+    for i = 1, 2 do
+        local t = f:CreateTexture(nil, "ARTWORK")
+        t:SetPoint(down and (i == 1 and "TOPLEFT" or "BOTTOMLEFT") or (i == 1 and "TOPLEFT" or "TOPRIGHT"))
+        t:SetPoint(down and (i == 1 and "BOTTOMRIGHT" or "TOPRIGHT") or (i == 1 and "BOTTOMRIGHT" or "BOTTOMLEFT"),
+            f, down and "RIGHT" or "BOTTOM")
+        if t.SetGradient and lit then
+            t:SetColorTexture(1, 1, 1, 1)
+            -- across: clear at the ends; down: VERTICAL runs bottom to top
+            if down then
+                t:SetGradient("VERTICAL", i == 1 and lit or clear, i == 1 and clear or lit)
+            else
+                t:SetGradient("HORIZONTAL", i == 1 and clear or lit, i == 1 and lit or clear)
+            end
+        else
+            t:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], alpha * 0.6)
+        end
+        f.halves[i] = t
+    end
+    return f
+end
+ns.window.Hair = Hair
+
+-- A round icon in a gold rim: the icon (returned, to texture and place),
+-- with a gold disc and an ink one under it, all three masked round (the
+-- bags' round mask, strips/bags.lua). A mask texture, not SetMask: a
+-- texture SetMask has rounded refuses tex coords, and the icon trims its
+-- border with them.
+local function Ring(parent, size)
+    local function Disc(sub, grow)
+        local t = parent:CreateTexture(nil, "ARTWORK", nil, sub)
+        t:SetSize(size + grow, size + grow)
+        if parent.CreateMaskTexture then
+            local mask = parent:CreateMaskTexture()
+            mask:SetTexture(ns.media .. "strips\\round", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            mask:SetAllPoints(t)
+            t:AddMaskTexture(mask)
+            t.round = mask
+        end
+        return t
+    end
+    local rim, well, icon = Disc(1, 4), Disc(2, 2), Disc(3, 0)
+    rim:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    well:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 1)
+    rim:SetPoint("CENTER", icon)
+    well:SetPoint("CENTER", icon)
+    icon:SetTexCoord(GAME_ICON, 1 - GAME_ICON, GAME_ICON, 1 - GAME_ICON)
+    icon.rim, icon.well = rim, well
+    return icon
+end
+ns.window.Ring = Ring
+
+-- A tab with no box (spec.tabs = "open"): its mark a gold underline and a
+-- glow rising from it, under the face (b.top), where the glyph is drawn.
+local function Bare(b)
+    b.mark = CreateFrame("Frame", nil, b)
+    b.mark:SetAllPoints()
+    b.mark:Hide()
+    b.top = CreateFrame("Frame", nil, b)
+    b.top:SetAllPoints()
+    b.top:SetFrameLevel(b.mark:GetFrameLevel() + 1)
+    local rise = b.mark:CreateTexture(nil, "BACKGROUND")
+    rise:SetPoint("TOPLEFT", 10, -2)
+    rise:SetPoint("BOTTOMRIGHT", -10, 0)
+    if rise.SetGradient and CreateColor then
+        rise:SetColorTexture(1, 1, 1, 1)
+        rise:SetGradient("VERTICAL", CreateColor(GOLD[1], GOLD[2], GOLD[3], 0.2),
+            CreateColor(GOLD[1], GOLD[2], GOLD[3], 0))
+    else
+        rise:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.08)
+    end
+    local line = b.mark:CreateTexture(nil, "ARTWORK")
+    line:SetPoint("BOTTOMLEFT", 10, 0)
+    line:SetPoint("BOTTOMRIGHT", -10, 0)
+    line:SetHeight(2)
+    line:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+    b.mark.line = line
+    local glow = b:CreateTexture(nil, "HIGHLIGHT")
+    glow:SetPoint("TOPLEFT", 4, -2)
+    glow:SetPoint("BOTTOMRIGHT", -4, 0)
+    glow:SetColorTexture(1, 1, 1, 0.06)
+end
+
+-- soft: Face's soft look; "open": Bare's
+-- a button's tooltip: beside the window it is in (ns.window.Outside), or
+-- over it
+function ns.window.OutsideTop(owner) ns.window.Outside(owner, "ANCHOR_TOP") end
+local OutsideTop = function(owner) ns.window.OutsideTop(owner) end
+
 local function Button(parent, width, click, tip, template, soft)
     local b = CreateFrame("Button", nil, parent, template)
     b:SetSize(width, TAB)
-    Face(b, nil, soft)
+    if soft == "open" then Bare(b) else Face(b, nil, soft) end
     b.label = ns.Text(b, 12)
     b.label:SetPoint("CENTER")
     if click then b:SetScript("OnClick", click) end
     b:SetScript("OnEnter", function(self)
-        ns.Tip(self, "ANCHOR_TOP", { title = tip(), color = ns.colors.white, wrap = true })
+        ns.Tip(self, self.tipAt or OutsideTop, { title = tip(), color = ns.colors.white, wrap = true })
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     return b
@@ -211,6 +316,82 @@ local function Scroller(body, gutter)
     return s
 end
 ns.window.Scroller = Scroller
+
+-- GameTooltip for owner, outside frame: beside its inner edge (side 1, a
+-- frame on the right strip: its left; -1: its right), its top level with
+-- the owner's; the offset is in the tooltip's own scale. Done in place of
+-- SetOwner, and an anchor ns.Tip takes. The windows' (w.Beside,
+-- ns.window.Outside), the side panel's (ns.side.Beside).
+local placing                                  -- PlaceTip's own SetPoint (the hook below)
+local function PlaceTip(frame, owner, side)
+    placing = true
+    GameTooltip:ClearAllPoints()
+    local top, edge = owner:GetTop(), frame:GetTop()
+    local dy = top and edge and (top - edge) * frame:GetEffectiveScale() / GameTooltip:GetEffectiveScale() or 0
+    if side > 0 then
+        GameTooltip:SetPoint("TOPRIGHT", frame, "TOPLEFT", -BESIDE, dy)
+    else
+        GameTooltip:SetPoint("TOPLEFT", frame, "TOPRIGHT", BESIDE, dy)
+    end
+    placing = false
+end
+
+function ns.window.Beside(frame, owner, side)
+    GameTooltip:SetOwner(owner, "ANCHOR_NONE")
+    PlaceTip(frame, owner, side)
+end
+
+-- A frame tooltips stand outside: side its default (1: it stands on the
+-- right, -1: the left), taken from where it is when it can be (a window
+-- dragged across); at: the frame they stand beside instead (a cast layer
+-- marks its window). ns.window.Outside(owner, fallback) is GameTooltip for
+-- an owner inside one, beside the nearest such frame up its parents, on the
+-- side towards the screen's middle; outside any, SetOwner by fallback
+-- ("ANCHOR_RIGHT" when not given). An anchor ns.Tip takes, as is.
+function ns.window.Mark(frame, side, at) frame.beside, frame.besideAt = side, at end
+
+local function Facing(frame)
+    local l, r, w = frame:GetLeft(), frame:GetRight(), UIParent:GetWidth()
+    if not (l and r and w and w > 0) then return frame.beside end
+    return (l + r) / 2 * frame:GetEffectiveScale() > w * UIParent:GetEffectiveScale() / 2 and 1 or -1
+end
+
+-- the marked frame owner is inside (or the one it marks), or nil
+local function Marked(owner)
+    local f = owner
+    while f and not f.beside do f = f.GetParent and f:GetParent() end
+    return f and (f.besideAt or f)
+end
+
+function ns.window.Outside(owner, fallback)
+    local f = Marked(owner)
+    if f then return ns.window.Beside(f, owner, Facing(f)) end
+    GameTooltip:SetOwner(owner, type(fallback) == "string" and fallback or "ANCHOR_RIGHT")
+end
+
+-- Blizzard's own buttons in a marked frame (the gear slots, the bags' items)
+-- own the tooltip by their own Lua, on every refresh too: by an anchor the
+-- game applies again as the text fills it (ANCHOR_RIGHT), or by points of
+-- their own set after SetOwner (beside the bag item, the default place).
+-- So: once owned, no anchor of the game's (SetAnchorType, which keeps the
+-- text); and whenever it is placed by anyone else while its owner is under
+-- the mouse, placed back beside the frame. The tooltip's C methods alone.
+-- Not under the mouse: a tooltip fading out, or parked by mdlui_Tooltips.
+local function Own(owner)
+    local f = owner and Marked(owner)
+    if not f then return end
+    if GameTooltip.SetAnchorType then GameTooltip:SetAnchorType("ANCHOR_NONE") end
+    PlaceTip(f, owner, Facing(f))
+end
+hooksecurefunc(GameTooltip, "SetOwner", function(_, owner) Own(owner) end)
+hooksecurefunc(GameTooltip, "SetPoint", function(self)
+    if placing then return end
+    local owner = self:GetOwner()
+    if owner and owner.IsMouseOver and owner:IsMouseOver() then Own(owner) end
+end)
+-- for mdlui_Tooltips: true when the tooltip owner shows stands beside a
+-- window of ours, placed here (its cursor-following leaves it alone)
+function Medalluin_TooltipBeside(owner) return owner ~= nil and Marked(owner) ~= nil end
 
 -- ---------------------------------------------------------- decoration
 -- A divider: a gold rule each side of a diamond, or of a word.
@@ -325,6 +506,7 @@ function ns.Window(spec)
         band = { left = side < 0 and MEDALLION + PAD or PAD, right = side < 0 and PAD or MEDALLION + PAD,
             height = BAND } }
     local window, chevron, close, rule, footRule, medal, view, grip
+    local hairs                         -- open tabs: the hairs under the rows
     local pageTop = TOP                 -- the page's top: a row lower with a second row of tabs
     local current, dirty
     local tabs = {}
@@ -539,6 +721,9 @@ function ns.Window(spec)
 
     function w.Current() return current end
 
+    -- the tooltip outside this window (ns.window.Beside)
+    function w.Beside(owner) ns.window.Beside(window, owner, side) end
+
     function w.ByFrame(name)
         for _, p in ipairs(pages) do
             if p.frame == name then return p end
@@ -610,8 +795,8 @@ function ns.Window(spec)
             local b = tabs[i]
             if not b then
                 b = Button(window, width, function(self) Open(self.page) end,
-                    function() return tabs[i].page.tip or tabs[i].page.label end)
-                b.icon = b:CreateTexture(nil, "ARTWORK")
+                    function() return tabs[i].page.tip or tabs[i].page.label end, nil, spec.tabs)
+                b.icon = (b.top or b):CreateTexture(nil, "ARTWORK")
                 b.icon:SetSize(GLYPH, GLYPH)
                 b.icon:SetPoint("CENTER")
                 tabs[i] = b
@@ -637,11 +822,22 @@ function ns.Window(spec)
             p.tab, prev = b, b
         end
         for i = #shown + 1, #tabs do tabs[i]:Hide() end
-        -- the rule and the pages under the last row
+        -- the rule and the pages under the last row; open tabs stand on
+        -- fading hairs instead, one under each row
         pageTop = TOP + (#second > 0 and TAB - 1 or 0)
         rule:ClearAllPoints()
         rule:SetPoint("TOPLEFT", PAD, -(pageTop - RULE / 2))
         rule:SetPoint("TOPRIGHT", -PAD, -(pageTop - RULE / 2))
+        if hairs then
+            rule:Hide()
+            hairs[1]:ClearAllPoints()
+            hairs[1]:SetPoint("TOPLEFT", rule, "TOPLEFT")
+            hairs[1]:SetPoint("TOPRIGHT", rule, "TOPRIGHT")
+            hairs[2]:SetShown(#second > 0)
+            hairs[2]:ClearAllPoints()
+            hairs[2]:SetPoint("TOPLEFT", PAD, -(PAD + TAB - 1))
+            hairs[2]:SetPoint("TOPRIGHT", -PAD, -(PAD + TAB - 1))
+        end
         for _, p in ipairs(pages) do
             if p.body then
                 p.body:ClearAllPoints()
@@ -677,6 +873,7 @@ function ns.Window(spec)
         local strip = ns.strips[side]
         window = CreateFrame("Frame", spec.name, strip)
         w.window = window
+        ns.window.Mark(window, side)
         -- the strip's scale, so it stands on the strip as the side panels
         -- do, but not the console's fading
         window:SetIgnoreParentAlpha(true)
@@ -700,6 +897,10 @@ function ns.Window(spec)
         rule:SetPoint("TOPLEFT", PAD, -(PAD + TAB + RULE / 2))
         rule:SetPoint("TOPRIGHT", -PAD, -(PAD + TAB + RULE / 2))
         rule:SetHeight(1)
+        if spec.tabs == "open" then
+            hairs = { Hair(window), Hair(window) }
+            window.hairs = hairs
+        end
         footRule = window:CreateTexture(nil, "ARTWORK")
         footRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
         footRule:SetHeight(1)
@@ -713,7 +914,7 @@ function ns.Window(spec)
         Corners(window, 3, 12)
         Medal()
 
-        close = Button(window, TAB, function() spec.Close() end, function() return spec.closeTip end)
+        close = Button(window, TAB, function() spec.Close() end, function() return spec.closeTip end, nil, spec.tabs)
         Glyph(close, "close")
         close:SetPoint("TOPRIGHT", -PAD, -PAD)
         if spec.detailsKey then
@@ -837,6 +1038,7 @@ function ns.Window(spec)
     function w.Layer(name)
         local strip = ns.strips[side]
         local layer = CreateFrame("Frame", name, strip)
+        ns.window.Mark(layer, side, window)      -- its buttons' tooltips beside the window
         layer:SetFrameStrata("MEDIUM")
         layer:SetFrameLevel(window:GetFrameLevel() + 10)
         layer:SetIgnoreParentAlpha(true)

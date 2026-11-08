@@ -132,7 +132,7 @@ function sets.Refresh()
                     sets.Refresh()
                 end,
                 enter = function(r)
-                    GameTooltip:SetOwner(r, "ANCHOR_RIGHT")
+                    ns.window.Outside(r)
                     GameTooltip:SetEquipmentSet(s.id)
                     GameTooltip:Show()
                 end })

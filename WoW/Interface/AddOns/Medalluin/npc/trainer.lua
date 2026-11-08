@@ -128,7 +128,7 @@ local function Blocks()
                 ns.npc.Update("trainer")
             end,
             enter = function(row)
-                GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+                ns.window.Outside(row)
                 GameTooltip:SetTrainerService(i)
                 GameTooltip:Show()
             end })

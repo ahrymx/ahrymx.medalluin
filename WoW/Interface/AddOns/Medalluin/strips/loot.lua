@@ -341,7 +341,7 @@ local function Row(parent)
     r:RegisterForClicks("LeftButtonUp")
     r:SetScript("OnEnter", function(self)
         if not self.item then return end
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        ns.side.Beside(self)
         GameTooltip:SetHyperlink(self.item.link)
         GameTooltip:Show()
     end)

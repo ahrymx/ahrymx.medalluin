@@ -451,7 +451,7 @@ end
 local function Tooltip(owner, n)
     local text, lock = Describe(n), Lock(n.node)
     local plan = planning and n.planned
-    ns.Tip(owner, "ANCHOR_RIGHT", { title = n.talent.name, color = GOLD,
+    ns.Tip(owner, ns.window.Outside, { title = n.talent.name, color = GOLD,
         { "body", format("Rank %d/%d", n.node.ranksPurchased, n.node.maxRanks)
             .. (plan and format("  ·  Planned %d/%d", n.planned, n.node.maxRanks) or ""), ns.colors.dim },
         text ~= "" and { "body", text } or false,

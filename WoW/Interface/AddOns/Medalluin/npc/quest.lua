@@ -28,7 +28,7 @@ local Money = ns.npc.Money
 
 local function Tip(kind, i)
     return function(tile)
-        GameTooltip:SetOwner(tile, "ANCHOR_RIGHT")
+        ns.window.Outside(tile)
         GameTooltip:SetQuestItem(kind, i)
         GameTooltip:Show()
     end

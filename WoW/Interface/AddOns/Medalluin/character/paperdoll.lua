@@ -383,6 +383,17 @@ end
 
 local function Build(frame, foot, band)
     body = frame
+    -- Blizzard's slot hover opens the equipment flyout (Alt) with the
+    -- settings its parent holds: the slots' parent is this page now, so it
+    -- holds a copy of Blizzard's, the flyout shown over this window (theirs
+    -- is only read; the 0.20 flyoutSettings error)
+    local theirs = PaperDollItemsFrame and PaperDollItemsFrame.flyoutSettings
+    if type(theirs) == "table" then
+        local mine = {}
+        for k, v in pairs(theirs) do mine[k] = v end
+        mine.parent = body
+        body.flyoutSettings = mine
+    end
     name = ns.Text(body, 18)
     name:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
     line = ns.Text(body, 12)

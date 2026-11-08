@@ -250,13 +250,13 @@ end
 local function Tooltip(owner, item)
     if item.trainer then
         local e = item.trainer
-        ns.Tip(owner, "ANCHOR_RIGHT", { title = e.name, color = GOLD,
+        ns.Tip(owner, ns.window.Outside, { title = e.name, color = GOLD,
             e.rank and { "body", e.rank, ns.colors.dim } or false,
             { "body", item.now and "You can train it now." or format("Train it at level %d.", e.level) },
             (e.cost or 0) > 0 and { "body", "Costs " .. Money(e.cost) } or false })
         return
     end
-    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    ns.window.Outside(owner)
     GameTooltip:SetSpellBookItem(item.slot, item.bank)
     if item.missing then
         GameTooltip:AddLine(item.lowerOn and format("%s is on your bars.", item.lowerOn) or "Not on your action bars.",

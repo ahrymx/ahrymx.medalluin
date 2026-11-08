@@ -82,7 +82,7 @@ local function Where(p, i)
 end
 
 local function BagTip(b)
-    GameTooltip:SetOwner(b, "ANCHOR_TOP")
+    ns.window.Outside(b, "ANCHOR_TOP")
     if b.bought and b.worn then
         GameTooltip:SetBagItem(Where(b.page, b.index))
     elseif b.bought then

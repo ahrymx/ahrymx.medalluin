@@ -34,9 +34,10 @@
 -- character: MedalluinCharDB.recipesUnknownHidden), and the search filters
 -- it as the recipes.
 --
--- Over it all, the profession's banner: its icon, its name, its next rank
--- as the Overview's card says it, and its skill as a bar across; under it,
--- the window's ornament.
+-- Over it all, the profession's banner: its icon in a gold ring, its name
+-- and under it its next rank as the Overview's pillar says it, then its
+-- skill as a bar across, a gold diamond at each end; under it, the
+-- window's ornament.
 -- Mining's and Herbalism's pages list the nodes they gather (character/
 -- nodes.lua), coloured by the chance one gives a skill point; one is read
 -- in the details: the skill it needs and where it grows.
@@ -52,7 +53,8 @@ local GOLD_D = { 0.541, 0.439, 0.204 }
 local Money = function(c) return ns.npc and ns.npc.Money(c) or tostring(c) end
 local SLOTS = 5                         -- with Overview, six tabs at most
 local SEARCH = 24
-local BANNER, BANNER_ICON, HAIR = 42, 36, 14    -- the banner, its icon, the ornament's room under it
+local BANNER, BANNER_ICON, HAIR = 66, 36, 14    -- the banner, its icon, the ornament's room under it
+local CAP = 6                                   -- the bar's diamond ends
 local HEAD = BANNER + HAIR + SEARCH             -- the list's top
 -- the game's colours, by Enum.TradeskillRelativeDifficulty
 local DIFFICULTY = {
@@ -106,7 +108,7 @@ local function Recipe(p, info)
             p.Refresh()
         end,
         enter = function(row)
-            GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+            W.Beside(row)
             GameTooltip:SetSpellByID(info.recipeID)
             GameTooltip:AddLine(Favourites()[info.recipeID] and "Right-click: take its star off."
                 or "Right-click: star it, to list it first.", unpack(ns.colors.dim))
@@ -373,14 +375,14 @@ end
 -- holds Have materials.
 local function Band(p, foot, band)
     p.have = ns.character.Tick(band, { label = "Have materials",
-        tip = "Only the recipes the bags hold the reagents for.",
+        tip = "Only the recipes the bags hold the reagents for.", at = W.Beside,
         click = function(on)
             C_TradeSkillUI.SetOnlyShowMakeableRecipes(on)
             p.Refresh()
         end })
     p.have:SetPoint("LEFT", 4, 0)
     p.unknown = ns.character.Tick(band, { label = "Show unknown",
-        tip = "The recipes its trainer teaches that you have not learned, at the list's end.",
+        tip = "The recipes its trainer teaches that you have not learned, at the list's end.", at = W.Beside,
         click = function(on)
             MedalluinCharDB = MedalluinCharDB or {}
             MedalluinCharDB.recipesUnknownHidden = not on or nil
@@ -394,6 +396,7 @@ local function Band(p, foot, band)
         end, function() return tip end)
         b:SetHeight(24)
         b.label:SetText(label)
+        b.tipAt = W.Beside
         return b
     end
     local less = Step(-1, "-", "One fewer.")
@@ -408,11 +411,13 @@ local function Band(p, foot, band)
     p.create = ns.window.Button(foot, 72, function() Craft(p, false) end,
         function() return InCombatLockdown() and "Not in combat." or "Make as many as the count says." end)
     p.create:SetHeight(24)
+    p.create.tipAt = W.Beside
     p.create.label:SetText("Create")
     p.create:SetPoint("LEFT", more, "RIGHT", 10, 0)
     p.createAll = ns.window.Button(foot, 88, function() Craft(p, true) end,
         function() return InCombatLockdown() and "Not in combat." or "Make as many as the bags can." end)
     p.createAll:SetHeight(24)
+    p.createAll.tipAt = W.Beside
     p.createAll.label:SetText("Create all")
     p.createAll:SetPoint("LEFT", p.create, "RIGHT", 4, 0)
 end
@@ -502,18 +507,25 @@ for i = 1, SLOTS do
         banner:SetHeight(BANNER)
         banner:SetPoint("TOPLEFT")
         banner:SetPoint("TOPRIGHT")
-        banner.icon = banner:CreateTexture(nil, "ARTWORK")
-        banner.icon:SetSize(BANNER_ICON, BANNER_ICON)
-        banner.icon:SetPoint("LEFT", 2, 0)
-        banner.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        banner.name = ns.Text(banner, 14)
-        banner.name:SetPoint("TOPLEFT", banner.icon, "TOPRIGHT", 8, -1)
+        banner.icon = ns.window.Ring(banner, BANNER_ICON)
+        banner.icon:SetPoint("TOPLEFT", 4, -4)
+        banner.name = ns.Text(banner, 15)
+        banner.name:SetPoint("TOPLEFT", banner.icon, "TOPRIGHT", 10, 0)
         banner.name:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
         banner.rank = ns.Text(banner, 12)
-        banner.rank:SetPoint("TOPRIGHT", -2, -4)
+        banner.rank:SetPoint("TOPLEFT", banner.name, "BOTTOMLEFT", 0, -4)
         banner.bar = ns.character.Bar(banner, 100)
-        banner.bar:SetPoint("BOTTOMLEFT", banner.icon, "BOTTOMRIGHT", 8, 1)
-        banner.bar:SetPoint("RIGHT", -2, 0)
+        banner.bar:SetPoint("BOTTOMLEFT", 2 * CAP, 4)
+        banner.bar:SetPoint("RIGHT", -2 * CAP, 0)
+        banner.caps = {}
+        for k, side in ipairs({ "LEFT", "RIGHT" }) do
+            local cap = banner:CreateTexture(nil, "ARTWORK")
+            cap:SetSize(CAP, CAP)
+            cap:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+            cap:SetRotation(math.pi / 4)
+            cap:SetPoint("CENTER", banner.bar, side, (k == 1 and -1 or 1) * CAP, 0)
+            banner.caps[k] = cap
+        end
         p.banner = banner
         local hair = ns.window.Ornament(body)
         hair:SetPoint("TOPLEFT", 0, -(BANNER + 1))

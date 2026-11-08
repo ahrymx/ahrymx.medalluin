@@ -282,8 +282,9 @@ local fill = {
     warn = function(p) Line(p[2], WARN, true) end,
 }
 
+-- anchor: SetOwner's, or a function that owns and places it (w.Beside)
 function ns.Tip(owner, anchor, spec)
-    GameTooltip:SetOwner(owner, anchor)
+    if type(anchor) == "function" then anchor(owner) else GameTooltip:SetOwner(owner, anchor) end
     local c = spec.color
     GameTooltip:SetText(spec.title, c and c[1], c and c[2], c and c[3], c and 1, spec.wrap)
     for _, p in ipairs(spec) do

@@ -155,7 +155,7 @@ local function List(option)
     head:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     head:SetScript("OnClick", function(_, mouse) Step(list, mouse == "RightButton" and -1 or 1) end)
     head:SetScript("OnEnter", function(self)
-        ns.Tip(self, "ANCHOR_LEFT", { title = Metric(list).name,
+        ns.Tip(self, ns.side.Beside, { title = Metric(list).name,
             { "body", "Click for the next thing to show; right click for the one before." } })
     end)
     head:SetScript("OnLeave", function() GameTooltip:Hide() end)

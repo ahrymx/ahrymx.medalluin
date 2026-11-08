@@ -31,7 +31,8 @@
 --   ns.character.Details(foot, ticks, nothing, lines) -> details
 --     details:Set{ title, sub, bar, text, lines }   (nil hides the lot; empty says so)
 --     ticks = { { label, tip, click(on) } ... }: details.ticks[i]:Set(on, enabled)
---   ns.character.Tick(parent, { label, tip, click(on) }) -> one such tick, alone
+--   ns.character.Tick(parent, { label, tip, click(on), at (its tooltip's
+--   anchor, as ns.Tip takes) }) -> one such tick, alone
 --     nothing: what it says with nothing chosen; lines: how many its text runs to (3)
 --
 -- The list fills the body; the wheel scrolls it a row at a time, and a thin
@@ -444,7 +445,7 @@ local function Tick(foot, spec)
         if self.enabled then spec.click(not self.on) end
     end)
     b:SetScript("OnEnter", function(self)
-        ns.Tip(self, "ANCHOR_TOP", { title = spec.tip, color = ns.colors.white, wrap = true })
+        ns.Tip(self, spec.at or "ANCHOR_TOP", { title = spec.tip, color = ns.colors.white, wrap = true })
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     function b:Set(on, enabled)

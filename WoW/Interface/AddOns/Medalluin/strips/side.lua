@@ -102,9 +102,12 @@ local function Paint(b)
     if spec.tint then b.glyph:SetVertexColor(spec.tint()) end
 end
 
+-- a tooltip outside the panel, at its left (it stands on the right strip)
+function ns.side.Beside(owner) ns.window.Beside(panel, owner, 1) end
+
 local function Tip(b)
     local title, line = b.spec.tip()
-    ns.Tip(b, "ANCHOR_LEFT", { title = title, line and { "body", line } or false })
+    ns.Tip(b, ns.side.Beside, { title = title, line and { "body", line } or false })
 end
 
 local function Button(view, spec, y, from)

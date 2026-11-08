@@ -2,15 +2,19 @@
 -- the professions' cards): the camp's buffs, timed, and the camp objects
 -- of the professions known, each at the best tier learned.
 --
---   [icon] Camp Benefits     [icon] Well Fed          [icon] Boosted Rest
---          42 min                   None                     None
---   [icon] Incense Candle   +   [icon] Lodestone            +
---          Tier 1 of 3 · 2 in bags      Tier 1 of 3
---   [icon] Basic Campfire   +   ...
+--   [buff] 42 min  [buff] None  [buff] None  :  (obj)  (obj)  (obj)  (obj)
+--                                            : 1/3     20     20      1
+--   +-------------------------------------------------------------------+
+--   | (icon) Basic Campfire (tier 1)                           Learn it |
+--   |        Room for 3 objects.                                        |
 --
--- A tile's + opens its drawer: the profession's tiers, each with the skill
--- it needs and what it gives; a tier known is clicked to its profession's
--- tab, chosen there, to make. Which tiers are known is read when a
+-- One strip: the camp's three buffs, timed (their names in their
+-- tooltips), and an icon per object line, at its best tier known, its
+-- corner saying the tier ("1/3") or the skill its first tier needs (dim
+-- and grey until known); more than a row's worth go on under the first.
+-- An icon opens its drawer under the strip: the profession's tiers, each
+-- with the skill it needs and what it gives; a tier known is clicked to its
+-- profession's tab, chosen there, to make. Which tiers are known is read when a
 -- profession is open (its recipes, professions/crafting.lua) and kept per
 -- character (MedalluinCharDB.camp, by object); until then a tile says
 -- what it would take.
@@ -25,7 +29,9 @@ local _, ns = ...
 local W = ns.professions
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
-local GAP, BUFF_H, TILE_H, ICON, ROW = 6, 36, 40, 28, 40
+local ICON, ROW = 28, 40                -- a drawer row's icon, and the row
+local BUFF_W, BUFF, OBJ, OBJ_W, STRIP = 96, 24, 28, 42, 40     -- a buff's room and icon; an object's; a row
+local FROM = 3 * BUFF_W + 16            -- the objects' left: past the buffs and their hair
 
 -- by the profession's skill line, in the cards' order: each line's tiers
 -- { object, skill, what it adds }, and the buff tier 1 gives
@@ -212,23 +218,24 @@ function W.Camp(body)
     local c = CreateFrame("Frame", nil, body)
     c.slots, c.tiles = {}, {}
     local width = ns.window.width
-    local third = (width - 2 * GAP) / 3
     for i, spec in ipairs(SLOTS) do
         local s = CreateFrame("Frame", nil, c)
         s.spec = spec
-        s:SetSize(third, BUFF_H)
-        s:SetPoint("TOPLEFT", (i - 1) * (third + GAP), 0)
+        s:SetSize(BUFF_W, STRIP)
+        s:SetPoint("TOPLEFT", (i - 1) * BUFF_W, 0)
         s:EnableMouse(true)
-        s.icon = Icon(s, ICON)
-        s.icon:SetPoint("LEFT", 2, 0)
-        s.name = ns.Text(s, 12)
-        s.name:SetPoint("TOPLEFT", s.icon, "TOPRIGHT", 6, -1)
-        s.name:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-        s.name:SetText(spec.name)
+        s.edge = s:CreateTexture(nil, "BACKGROUND")
+        s.icon = Icon(s, BUFF)
+        s.icon:SetPoint("LEFT", 4, 0)
+        s.edge:SetPoint("TOPLEFT", s.icon, -1, 1)
+        s.edge:SetPoint("BOTTOMRIGHT", s.icon, 1, -1)
+        s.edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
         s.time = ns.Text(s, 11)
-        s.time:SetPoint("BOTTOMLEFT", s.icon, "BOTTOMRIGHT", 6, 1)
+        s.time:SetPoint("LEFT", s.icon, "RIGHT", 6, 0)
+        s.time:SetWidth(BUFF_W - BUFF - 16)
+        s.time:SetJustifyH("LEFT")
         s:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            W.Beside(self)
             if self.aura and self.aura.auraInstanceID and GameTooltip.SetUnitBuffByAuraInstanceID then
                 GameTooltip:SetUnitBuffByAuraInstanceID("player", self.aura.auraInstanceID, "HELPFUL")
             else
@@ -242,7 +249,11 @@ function W.Camp(body)
         c.slots[i] = s
     end
 
-    -- the drawer: one, under the tile that opened it, over what follows
+    c.split = ns.window.Hair(c, true)
+    c.split:SetPoint("TOPLEFT", FROM - 8, -4)
+    c.split:SetHeight(STRIP - 8)
+
+    -- the drawer: one, under the strip
     local drawer = CreateFrame("Frame", nil, c)
     drawer:SetFrameLevel(c:GetFrameLevel() + 10)
     drawer:SetWidth(width)
@@ -281,32 +292,49 @@ function W.Camp(body)
     end
     c.drawer = drawer
 
+    -- an object: its ring, its corner, a gold underline while its drawer is open
     function c.Tile(i)
         local t = c.tiles[i]
         if t then return t end
-        local half = (width - GAP) / 2
         t = CreateFrame("Button", nil, c)
-        t:SetSize(half, TILE_H)
-        ns.window.Face(t)
-        t.icon = Icon(t, ICON)
-        t.icon:SetPoint("LEFT", 6, 0)
-        t.name = ns.Text(t, 12)
-        t.name:SetPoint("TOPLEFT", t.icon, "TOPRIGHT", 6, -1)
-        t.name:SetPoint("RIGHT", -18, 0)
-        t.name:SetJustifyH("LEFT")
-        t.name:SetWordWrap(false)
-        t.sub = ns.Text(t, 11)
-        t.sub:SetPoint("BOTTOMLEFT", t.icon, "BOTTOMRIGHT", 6, 1)
-        t.sub:SetPoint("RIGHT", -18, 0)
-        t.sub:SetJustifyH("LEFT")
-        t.sub:SetWordWrap(false)
-        t.sign = ns.Text(t, 14)
-        t.sign:SetPoint("RIGHT", -6, 0)
-        t.sign:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+        t:SetSize(OBJ_W, STRIP)
+        t.icon = ns.window.Ring(t, OBJ)
+        t.icon:SetPoint("CENTER", 0, 2)
+        t.mark = t:CreateTexture(nil, "ARTWORK", nil, 4)
+        t.mark:SetPoint("BOTTOMLEFT", 5, 0)
+        t.mark:SetPoint("BOTTOMRIGHT", -5, 0)
+        t.mark:SetHeight(2)
+        t.mark:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+        local glow = t:CreateTexture(nil, "HIGHLIGHT")
+        glow:SetPoint("TOPLEFT", 3, 0)
+        glow:SetPoint("BOTTOMRIGHT", -3, 0)
+        glow:SetColorTexture(1, 1, 1, 0.06)
+        -- the corner: on an ink pill in a gold edge, over the ring's foot
+        t.corner = ns.Text(t, 10)
+        t.corner:SetPoint("BOTTOMRIGHT", t.icon, "BOTTOMRIGHT", 4, -4)
+        t.corner:SetDrawLayer("OVERLAY", 2)
+        t.pill = t:CreateTexture(nil, "OVERLAY", nil, 1)
+        t.pill:SetPoint("TOPLEFT", t.corner, -2, 1)
+        t.pill:SetPoint("BOTTOMRIGHT", t.corner, 2, -1)
+        t.pill:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 1)
+        t.rim = t:CreateTexture(nil, "OVERLAY")
+        t.rim:SetPoint("TOPLEFT", t.pill, -1, 1)
+        t.rim:SetPoint("BOTTOMRIGHT", t.pill, 1, -1)
+        t.rim:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
         t:SetScript("OnClick", function(self)
             c.open = c.open ~= self.line and self.line or nil
-            c.Refresh(c.learned)
+            -- the drawer takes room: the Overview lays out again
+            if c.Changed then c.Changed() else c.Refresh(c.learned) end
         end)
+        t:SetScript("OnEnter", function(self)
+            W.Beside(self)
+            GameTooltip:SetText(self.name, unpack(self.known and GOLD or ns.colors.dim))
+            GameTooltip:AddLine(self.sub, unpack(self.subColor))
+            GameTooltip:AddLine(c.open == self.line and "Click: close its tiers." or "Click: its tiers.",
+                unpack(ns.colors.dim))
+            GameTooltip:Show()
+        end)
+        t:SetScript("OnLeave", function() GameTooltip:Hide() end)
         c.tiles[i] = t
         return t
     end
@@ -329,43 +357,44 @@ function W.Camp(body)
                 end
             end
         end
-        local half = (width - GAP) / 2
+        -- the objects, a row's worth across, the rest under the first
+        local across = math.max(1, math.floor((width - FROM) / OBJ_W))
         local opened
         for i, e in ipairs(lines) do
             local t = c.Tile(i)
             local line, prof = e.line, e.prof
             local best = Best(line)
             local tier = line.tiers[best or 1]
-            t.line, t.prof = line, prof
+            t.line, t.prof, t.known = line, prof, best ~= nil
             t:ClearAllPoints()
-            local row = math.floor((i - 1) / 2)
-            t:SetPoint("TOPLEFT", ((i - 1) % 2) * (half + GAP), -(BUFF_H + GAP + row * (TILE_H + GAP)))
+            t:SetPoint("TOPLEFT", FROM + ((i - 1) % across) * OBJ_W, -math.floor((i - 1) / across) * STRIP)
             t.icon:SetTexture(TierIcon(tier, prof))
             t.icon:SetDesaturated(best == nil)
-            t.name:SetText(tier[1])
-            t.name:SetTextColor(unpack(best and GOLD or ns.colors.dim))
+            t.name = tier[1]
             if best then
                 local n = Count(Known()[tier[1]].item)
                 local bags = n > 0 and format("  ·  %d in bags", n) or ""
-                t.sub:SetText(format("Tier %d of %d", best, #line.tiers) .. bags)
-                t.sub:SetTextColor(unpack(ns.colors.text))
+                t.sub, t.subColor = format("Tier %d of %d", best, #line.tiers) .. bags, ns.colors.text
+                t.corner:SetText(format("%d/%d", best, #line.tiers))
+                t.corner:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
             else
-                local words, color = State(tier, prof.rank or 0, 1)
-                t.sub:SetText(words)
-                t.sub:SetTextColor(unpack(color))
+                t.sub, t.subColor = State(tier, prof.rank or 0, 1)
+                t.corner:SetText(tier[2])
+                t.corner:SetTextColor(unpack(ns.colors.dim))
             end
-            t.sign:SetText(c.open == line and "-" or "+")
             t.mark:SetShown(c.open == line)
             t:Show()
             if c.open == line then opened = t end
         end
+        local rows = math.max(1, math.ceil(#lines / across))
+        local height = rows * STRIP
         for i = #lines + 1, #c.tiles do c.tiles[i]:Hide() end
         -- the drawer under its tile, or shut when its line has gone
         drawer:SetShown(opened ~= nil)
         if opened then
             local line, prof = opened.line, opened.prof
             drawer:ClearAllPoints()
-            drawer:SetPoint("TOPLEFT", c, "TOPLEFT", 0, select(5, opened:GetPoint()) - TILE_H - 2)
+            drawer:SetPoint("TOPLEFT", c, "TOPLEFT", 0, -(height + 2))
             for i, r in ipairs(drawer.rows) do
                 local t = line.tiers[i]
                 r:SetShown(t ~= nil)
@@ -384,17 +413,13 @@ function W.Camp(body)
                 end
             end
             drawer:SetHeight(#line.tiers * ROW + 2)
+            height = height + 2 + #line.tiers * ROW + 2
         else
             c.open = nil
         end
-        local rows = math.ceil(#lines / 2)
-        local height = BUFF_H + (rows > 0 and GAP + rows * (TILE_H + GAP) - GAP or 0)
         c:SetHeight(height)
         return height
     end
     return c
 end
 
--- the most the section takes: the buffs and a tile for every line two
--- professions and the three secondaries can have (Cooking has two)
-W.CAMP_MOST = BUFF_H + GAP + 4 * (TILE_H + GAP) - GAP

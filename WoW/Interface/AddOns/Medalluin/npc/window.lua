@@ -722,7 +722,8 @@ local function Foot(spec)
             b.deed:SetColorTexture(DEED[1], DEED[2], DEED[3], 0.9)
             b:SetScript("OnEnter", function(self)
                 if self.data.tip then
-                    ns.Tip(self, "ANCHOR_TOP", { title = self.data.label, color = GOLD, { "body", self.data.tip } })
+                    ns.Tip(self, ns.window.OutsideTop,
+                        { title = self.data.label, color = GOLD, { "body", self.data.tip } })
                 end
             end)
             buttons[i] = b
@@ -936,6 +937,7 @@ end
 local function Build()
     local strip = ns.strips[-1]
     box = CreateFrame("Frame", "MedalluinNPC", strip)
+    ns.window.Mark(box, -1)                      -- its tooltips beside it
     box:SetFrameStrata("BACKGROUND")
     box:SetFrameLevel(ns.chat.box:GetFrameLevel() + 1)
     box:SetWidth(WIDTH)

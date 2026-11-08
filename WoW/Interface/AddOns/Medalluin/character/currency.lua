@@ -43,7 +43,7 @@ local function Rows()
                     Refresh()
                 end
                 row.enter = function(r)
-                    GameTooltip:SetOwner(r, "ANCHOR_RIGHT")
+                    ns.window.Outside(r)
                     GameTooltip:SetCurrencyToken(i)
                     GameTooltip:Show()
                 end

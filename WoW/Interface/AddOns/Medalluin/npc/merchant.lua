@@ -114,7 +114,7 @@ local function Merchant(out)
                 color = item.usable == false and RED or Quality(link),
                 click = Click(i, item, link),
                 enter = function(row)
-                    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+                    ns.window.Outside(row)
                     GameTooltip:SetMerchantItem(i)
                     GameTooltip:Show()
                 end })
@@ -133,7 +133,7 @@ local function Buyback(out)
                 color = usable == false and RED or Quality(GetBuybackItemLink and GetBuybackItemLink(i)),
                 click = function(button) if button ~= "RightButton" then BuybackItem(i) end end,
                 enter = function(row)
-                    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+                    ns.window.Outside(row)
                     GameTooltip:SetBuybackItem(i)
                     GameTooltip:Show()
                 end })
@@ -194,7 +194,7 @@ local function SellList(out)
                 end
             end,
             enter = function(row)
-                GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+                ns.window.Outside(row)
                 GameTooltip:SetBagItem(s.bag, s.slot)
                 GameTooltip:Show()
             end })

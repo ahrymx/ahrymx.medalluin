@@ -295,7 +295,7 @@ local function Inbox(out)
             dim = h.read,
             click = function(button) if button ~= "RightButton" then Read(i) end end,
             enter = function(row)
-                GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+                ns.window.Outside(row)
                 GameTooltip:SetText(h.subject ~= "" and h.subject or h.sender)
                 GameTooltip:AddLine(h.sender, 1, 1, 1)
                 GameTooltip:Show()
@@ -340,7 +340,7 @@ local function Letter(out, i)
                 selected = pending and pending.attachment == a,
                 click = function(button) if button ~= "RightButton" then TakeItem(i, a, name, h.cod) end end,
                 enter = function(tile)
-                    GameTooltip:SetOwner(tile, "ANCHOR_RIGHT")
+                    ns.window.Outside(tile)
                     GameTooltip:SetInboxItem(i, a)
                     GameTooltip:Show()
                 end })
@@ -396,7 +396,7 @@ local function Send(out)
             receive = function() ClickSendMailItemButton(i) end,
             enter = function(well)
                 if not v then return end
-                GameTooltip:SetOwner(well, "ANCHOR_RIGHT")
+                ns.window.Outside(well)
                 GameTooltip:SetSendMailItem(i)
                 GameTooltip:Show()
             end })

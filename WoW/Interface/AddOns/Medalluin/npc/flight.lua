@@ -123,7 +123,7 @@ end
 
 local function Enter(i, owner)
     local kind = Kind(i)
-    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    ns.window.Outside(owner)
     GameTooltip:AddLine(TaxiNodeName(i), nil, nil, nil, true)
     if kind == "REACHABLE" then
         GameTooltip:AddLine(ns.npc.Money(TaxiNodeCost(i)), 1, 1, 1)
@@ -300,6 +300,7 @@ end
 
 local function Build()
     frame = CreateFrame("Frame", "MedalluinFlight", ns.strips[-1])
+    ns.window.Mark(frame, -1)                    -- its tooltips beside it
     frame:SetFrameStrata("BACKGROUND")
     frame:SetFrameLevel(ns.chat.box:GetFrameLevel() + 1)
     frame:SetWidth(WIDTH)

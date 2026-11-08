@@ -4,29 +4,34 @@
 -- one frame, ProfessionsFrame (the book its Overview page); retail keeps
 -- Blizzard's.
 --
---   [Overview][primary][primary]                                [x]
---   [secondary][secondary][secondary]
+--    Overview   primary   primary                                  x
+--   ____                       (open tabs: no boxes, the one in use
+--    secondary   secondary      underlined; rows on fading hairs)
 --   ---------------------------------------------------------------
+--   the character's header, its portrait on its rule (professions/alts.lua)
+--   ------------------------- Alts --------------------------------
+--   [class] an alt  its class          its primary professions
 --   ------------------- Primary professions -----------------------
---   [icon] Blacksmithing                          [spell] [spell]
---          [=========== 142 / 150 ===========]
---          Train Expert now                             [Unlearn]
---   [icon] Mining ...
+--               (icon)            :            (icon)
+--           Blacksmithing         :            Mining
+--      [====== 142 / 150 ======]  :   [====== 87 / 150 ======]
+--          Train Expert now       :   Expert at skill 125, level 20
+--          [spell] [spell]     x  :       [spell] [spell]      x
 --   ------------------ Secondary professions ----------------------
---   [icon] Cooking ...
+--   (icon) Cooking   [========= 5 / 75 =========]  [spell]      x
 --   ------------------------- Camping -----------------------------
---   the camp's buffs, timed; the camp objects (professions/camping.lua)
+--   the camp's buffs and objects, one strip (professions/camping.lua)
 --   ---------------------------------------------------------------
 --
--- Overview is a card per profession learned (and an empty one per primary
--- not learned), the primaries and the secondaries under a heading each
--- (none learned: no heading), then Camping; each other tab is a profession with recipes, crafted here
+-- Overview is a pillar per primary profession (an empty one when not
+-- learned) and a line per secondary learned, under a heading each (none
+-- learned: no heading), then Camping; each other tab is a profession with recipes, crafted here
 -- (professions/crafting.lua). The tabs are Overview and one per profession
 -- that crafts, six at most: Overview and the primaries on the first row,
 -- the secondaries on a second under it (none: no second row); fewer
 -- professions, wider tabs. The details are always open (no chevron).
 --
--- Under a card's bar, its next rank: gold when its skill and level are met
+-- Under a pillar's bar, or in a line's tooltip, its next rank: gold when its skill and level are met
 -- (red when the bar is within 5 of its cap, points about to be wasted),
 -- dim with what it asks otherwise. The ranks are the game's (Journeyman at
 -- skill 50 and level 10, ...), a trainer's own list preferred once read
@@ -45,13 +50,16 @@ local _, ns = ...
 
 local GOLD = { 0.941, 0.831, 0.533 }
 local RED = { 1, 0.3, 0.25 }
-local CARD, GAP, ICON, SPELL = 74, 6, 40, 30
+local GAP, ICON, SPELL, SMALL = 6, 40, 30, 24   -- a pillar's icon and spells; a line's both
+local PILLAR, LINE = 150, 32            -- a primary's pillar, a secondary's line
+local HALF = math.floor((ns.window.width - GAP) / 2)    -- a pillar's width
+local SPELL_Y, NAME_W = 112, 130        -- a pillar's spells' top; a line's icon and name
+local CROSS, FAINT = 16, 0.45           -- Unlearn's cross, and its alpha at rest
 local CARDS = 5                         -- two primaries and three secondaries
-local HEAD = 12 + 2 * GAP               -- a heading (the window's ornament, worded) and its room
 local NONE = "Interface\\Icons\\INV_Scroll_04"
 
 local W = ns.Window{
-    name = "MedalluinProfessions", side = 1,
+    name = "MedalluinProfessions", side = 1, tabs = "open",
     closeTip = "Close the professions.",
     Close = function() HideUIPanel(ProfessionsFrame) end,
     Open = function(page) if page.Open then page.Open() end end,
@@ -136,9 +144,19 @@ function W.RankLine(prof)
 end
 
 -- ----------------------------------------------------------------- cards
-local function Spell(card, i)
+-- A primary stands as a pillar, half the width, centred top to bottom; a
+-- secondary lies on one line, its next rank in its tooltip:
+--
+--              (icon)
+--            Herbalism              (icon) Fishing  [== 1 / 75 ==] [s][s] x
+--     [====== 92 / 150 ======]
+--   Expert at skill 125, level 20
+--         [spell] [spell]     x
+--
+-- Neither has a box: a hair parts the pillars, and the lines.
+local function Spell(card, size)
     local s = CreateFrame("Button", nil, card)
-    s:SetSize(SPELL, SPELL)
+    s:SetSize(size, size)
     s.edge = s:CreateTexture(nil, "BACKGROUND")
     s.edge:SetPoint("TOPLEFT", -1, 1)
     s.edge:SetPoint("BOTTOMRIGHT", 1, -1)
@@ -146,10 +164,9 @@ local function Spell(card, i)
     s.icon = s:CreateTexture(nil, "ARTWORK")
     s.icon:SetAllPoints()
     s.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    s:SetPoint("TOPRIGHT", -6 - (i - 1) * (SPELL + 6), -6)
     s:SetScript("OnEnter", function(self)
         if not self.slot then return end
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        W.Beside(self)
         GameTooltip:SetSpellBookItem(self.slot, Enum.SpellBookSpellBank.Player)
         GameTooltip:Show()
     end)
@@ -157,34 +174,85 @@ local function Spell(card, i)
     return s
 end
 
-local function Card(body)
-    local c = CreateFrame("Frame", nil, body)
-    c:SetHeight(CARD)
-    local fill = c:CreateTexture(nil, "BACKGROUND")
-    fill:SetAllPoints()
-    fill:SetColorTexture(0.541, 0.439, 0.204, 0.12)
-    c.icon = c:CreateTexture(nil, "ARTWORK")
-    c.icon:SetSize(ICON, ICON)
-    c.icon:SetPoint("TOPLEFT", 8, -10)
-    c.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    c.name = ns.Text(c, 14)
-    c.name:SetPoint("TOPLEFT", c.icon, "TOPRIGHT", 10, -2)
-    c.name:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-    c.bar = ns.character.Bar(c, 200)
-    c.bar:SetPoint("BOTTOMLEFT", c.icon, "BOTTOMRIGHT", 10, 2)
-    c.none = ns.Text(c, 12)
-    c.none:SetPoint("BOTTOMLEFT", c.icon, "BOTTOMRIGHT", 10, 4)
-    c.none:SetTextColor(unpack(ns.colors.dim))
-    c.rank = ns.Text(c, 12)
-    c.rank:SetPoint("TOPLEFT", c.bar, "BOTTOMLEFT", 0, -4)
-    c.spells = { Spell(c, 1), Spell(c, 2) }  -- from the right
-    c.unlearn = ns.window.Button(c, 64, function(self)
+-- Unlearn, a faint cross that lights under the mouse; Blizzard's question
+local function Cross(card)
+    local x = CreateFrame("Button", nil, card)
+    x:SetSize(CROSS, CROSS)
+    x.icon = x:CreateTexture(nil, "ARTWORK")
+    x.icon:SetSize(12, 12)
+    x.icon:SetPoint("CENTER")
+    x.icon:SetTexture(ns.media .. "strips\\close")
+    x.icon:SetAlpha(FAINT)
+    x:SetScript("OnClick", function(self)
         local p = self:GetParent().prof
         if p and p.name and not InCombatLockdown() then StaticPopup_Show("UNLEARN_SKILL", p.name, nil, p.skillLine) end
-    end, function() return "Forget this profession, and every recipe of it." end)
-    c.unlearn:SetHeight(20)
-    c.unlearn.label:SetText("Unlearn")
-    c.unlearn:SetPoint("BOTTOMRIGHT", -6, 6)
+    end)
+    x:SetScript("OnEnter", function(self)
+        self.icon:SetAlpha(1)
+        local p = self:GetParent().prof
+        ns.Tip(self, W.Beside, { title = format("Unlearn %s: forget it, and every recipe of it.",
+            p and p.name or ""), color = ns.colors.white, wrap = true })
+    end)
+    x:SetScript("OnLeave", function(self)
+        self.icon:SetAlpha(FAINT)
+        GameTooltip:Hide()
+    end)
+    return x
+end
+
+local function Card(body, pillar)
+    local c = CreateFrame("Frame", nil, body)
+    c.pillar = pillar
+    c:SetHeight(pillar and PILLAR or LINE)
+    c.icon = ns.window.Ring(c, pillar and ICON or SMALL)
+    c.name = ns.Text(c, 14)
+    c.name:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+    c.bar = ns.character.Bar(c, pillar and HALF - 36 or 200)
+    c.none = ns.Text(c, 12)
+    c.none:SetTextColor(unpack(ns.colors.dim))
+    c.rank = ns.Text(c, 12)
+    c.unlearn = Cross(c)
+    c.spells = {}
+    if pillar then
+        c.icon:SetPoint("TOP", 0, -6)
+        c.name:SetPoint("TOP", c.icon, "BOTTOM", 0, -8)
+        c.bar:SetPoint("TOP", c.name, "BOTTOM", 0, -6)
+        c.none:SetPoint("TOP", c.name, "BOTTOM", 0, -8)
+        c.none:SetWidth(HALF - 16)
+        c.rank:SetPoint("TOP", c.bar, "BOTTOM", 0, -5)
+        c.unlearn:SetPoint("BOTTOMRIGHT", -2, 2)
+        for i = 1, 2 do c.spells[i] = Spell(c, SPELL) end
+    else
+        c.icon:SetPoint("LEFT", 6, 0)
+        c.name:SetPoint("LEFT", c.icon, "RIGHT", 10, 0)
+        c.bar:SetPoint("LEFT", NAME_W, 0)
+        c.none:SetPoint("LEFT", NAME_W, 0)
+        c.rank:SetPoint("LEFT", NAME_W, 0)
+        c.unlearn:SetPoint("RIGHT", -2, 0)
+        -- the first at the right
+        for i = 1, 2 do
+            local s = Spell(c, SMALL)
+            s:SetPoint("RIGHT", c.unlearn, "LEFT", -6 - (i - 1) * (SMALL + 4), 0)
+            c.spells[i] = s
+        end
+        c.hair = ns.window.Hair(c, false, 0.6)
+        c.hair:SetPoint("TOPLEFT", 20, GAP / 2)
+        c.hair:SetPoint("TOPRIGHT", -20, GAP / 2)
+        -- the next rank, which a line has no room for
+        c:EnableMouse(true)
+        c:SetScript("OnEnter", function(self)
+            local prof = self.prof
+            if not prof or not prof.name then return end
+            W.Beside(self)
+            GameTooltip:SetText(prof.name, GOLD[1], GOLD[2], GOLD[3])
+            GameTooltip:AddLine(self.bar.text:GetText() or "", 1, 1, 1)
+            if self.rank:GetText() and self.rank:GetText() ~= "" then
+                GameTooltip:AddLine(self.rank:GetText(), unpack(self.rankColor or ns.colors.dim))
+            end
+            GameTooltip:Show()
+        end)
+        c:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
     return c
 end
 
@@ -206,12 +274,11 @@ local function Fill(c, prof)
     end
     local line, color
     if learned then line, color = W.RankLine(prof) end
-    c.rank:SetShown(line and true or false)
-    if line then
-        c.rank:SetText(line)
-        c.rank:SetTextColor(unpack(color))
-    end
-    -- the spells, the first at the right
+    c.rank:SetText(line or "")
+    c.rankColor = color
+    if color then c.rank:SetTextColor(unpack(color)) end
+    -- a line's rank is in its tooltip
+    c.rank:SetShown(c.pillar and line ~= nil or false)
     local n = learned and math.min(prof.spells or 0, #c.spells) or 0
     for i, s in ipairs(c.spells) do
         local slot = i <= n and prof.offset + i or nil
@@ -219,6 +286,17 @@ local function Fill(c, prof)
         s.slot, s.item = item and slot or nil, item
         s:SetShown(item ~= nil)
         if item then s.icon:SetTexture(item.iconID) end
+    end
+    if c.pillar then
+        -- the spells centred, the first at the left
+        local from = (HALF - (n * SPELL + math.max(0, n - 1) * 8)) / 2
+        for i, s in ipairs(c.spells) do
+            s:ClearAllPoints()
+            s:SetPoint("TOPLEFT", from + (i - 1) * (SPELL + 8), -SPELL_Y)
+        end
+    else
+        -- the bar runs up to the spells, or the cross
+        c.bar:SetPoint("RIGHT", n > 0 and c.spells[n] or c.unlearn, "LEFT", -10, 0)
     end
 end
 
@@ -283,14 +361,20 @@ overview.events = { "SKILL_LINES_CHANGED", "SPELLS_CHANGED", "TRADE_SKILL_LIST_U
     "PLAYER_LEVEL_UP", "TRAINER_UPDATE", "BAG_UPDATE_DELAYED" }
 function overview.Available() return true end
 function overview.Build(body)
-    for i = 1, CARDS do overview.cards[i] = Card(body) end
+    for i = 1, CARDS do overview.cards[i] = Card(body, i <= 2) end
+    overview.split = ns.window.Hair(body, true)
     overview.heads = {
         primary = ns.window.Ornament(body, "Primary professions"),
         secondary = ns.window.Ornament(body, "Secondary professions"),
         camp = ns.window.Ornament(body, "Camping"),
     }
     overview.camp = W.Camp(body)
-    overview.height = 3 * HEAD + CARDS * (CARD + GAP) + W.CAMP_MOST
+    overview.camp.Changed = function() overview.Refresh() end
+    overview.banner = W.Banner(body)
+    overview.heads.alts = ns.window.Ornament(body, "Alts")
+    overview.alts = W.AltRows(body)
+    -- what it takes is measured as it is laid out (Refresh); until then, the cards
+    overview.height = PILLAR + (CARDS - 2) * (LINE + GAP)
 end
 function overview.Refresh()
     local learned = W.Learned()
@@ -306,19 +390,44 @@ function overview.Refresh()
         y = y + GAP
         Put(f, 12 + GAP)
     end
-    local secondaries = false
-    for _, prof in ipairs(learned) do
-        if not prof.primary then secondaries = true end
+    local secondaries = learned[3] ~= nil
+    overview.banner.Refresh()
+    Put(overview.banner, W.BANNER_H)
+    -- the alts, under a heading of their own; none: neither
+    local alts = overview.alts
+    local tall = alts.Refresh()
+    overview.heads.alts:SetShown(tall > 0)
+    alts:SetShown(tall > 0)
+    if tall > 0 then
+        Head(overview.heads.alts)
+        Put(alts, tall)
     end
+    -- the primaries side by side (W.Learned has both, learned or not), a
+    -- hair down between them
     Head(overview.heads.primary)
+    local cards = overview.cards
+    for i = 1, 2 do
+        local c = cards[i]
+        Fill(c, learned[i])
+        c:ClearAllPoints()
+        c:SetPoint("TOPLEFT", (i - 1) * (HALF + GAP), -y)
+        c:SetWidth(HALF)
+        c:Show()
+    end
+    overview.split:ClearAllPoints()
+    overview.split:SetPoint("TOP", 0, -(y + 6))
+    overview.split:SetHeight(PILLAR - 12)
+    y = y + PILLAR + GAP
+    -- the secondaries, a line each, a hair between
     overview.heads.secondary:SetShown(secondaries)
-    for i, c in ipairs(overview.cards) do
-        local prof = learned[i]
+    if secondaries then Head(overview.heads.secondary) end
+    for i = 3, CARDS do
+        local c, prof = cards[i], learned[i]
         c:SetShown(prof ~= nil)
         if prof then
-            if not prof.primary and learned[i - 1] and learned[i - 1].primary then Head(overview.heads.secondary) end
             Fill(c, prof)
-            Put(c, CARD + GAP)
+            c.hair:SetShown(i > 3)
+            Put(c, LINE + GAP)
         end
     end
     Head(overview.heads.camp)
@@ -326,8 +435,14 @@ function overview.Refresh()
     camp:ClearAllPoints()
     camp:SetPoint("TOPLEFT", 0, -y)
     camp:SetPoint("TOPRIGHT", 0, -y)
-    camp.Refresh(learned)
+    local need = y + camp.Refresh(learned)
     Follow()
+    -- the window as tall as what is shown, not as the most it could show:
+    -- a fixed page taller than the screen runs the window off its top
+    if need ~= overview.height then
+        overview.height = need
+        W.Retab()
+    end
 end
 function overview.Showing(on)
     open = on                           -- only Overview has spells to cast

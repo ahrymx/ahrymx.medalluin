@@ -35,12 +35,12 @@ read_globals = {
     "TakeInboxItem", "TakeInboxMoney", "AutoLootMailItem", "ReturnInboxItem", "DeleteInboxItem",
     "InboxItemCanDelete", "GetSendMailItem", "GetSendMailPrice", "ClickSendMailItemButton", "ClearSendMail",
     "SetSendMailCOD", "SetSendMailMoney", "SendMail", "SetSendMailShowing", "CloseMail", "MAIL_REPLY_PREFIX",
-    "ATTACHMENTS_MAX_RECEIVE", "ATTACHMENTS_MAX_SEND", "GetRealmName", "UNKNOWN", "GetAutoCompleteResults", "AUTOCOMPLETE_LIST", "AUTOCOMPLETE_FLAG_ALL",
+    "ATTACHMENTS_MAX_RECEIVE", "ATTACHMENTS_MAX_SEND", "GetRealmName", "time", "CLASS_ICON_TCOORDS", "UnitRace", "GetGuildInfo", "UNKNOWN", "GetAutoCompleteResults", "AUTOCOMPLETE_LIST", "AUTOCOMPLETE_FLAG_ALL",
     "GetTrainerServiceNumAbilityReq", "GetTrainerServiceAbilityReq", "GetTrainerGreetingText", "GetTrainerServiceIcon",
     "GetTrainerServiceDescription", "CloseTrainer", "BuyTrainerService", "ExpandTrainerSkillLine",
     "RepairAllItems", "SelectActiveQuest", "SelectAvailableQuest",
     -- frames
-    "UIParent", "Minimap", "MinimapCluster", "GameTooltip", "PlayerFrame", "TargetFrame",
+    "UIParent", "Minimap", "MinimapCluster", "GameTooltip", "PaperDollItemsFrame", "PlayerFrame", "TargetFrame",
     "PartyFrame", "CompactPartyFrame", "MainMenuBar", "CastingBarFrame", "PlayerCastingBarFrame",
     "PetFrame", "FocusFrame", "BuffFrame", "DebuffFrame", "TemporaryEnchantFrame", "TargetFrameToT", "ShapeshiftBarFrame", "PetActionBarFrame",
     "MicroButtonAndBagsBar", "CharacterMicroButton", "MicroButtonPortrait", "MainMenuBarPerformanceBar",
@@ -135,8 +135,9 @@ read_globals = {
     "ObjectiveTrackerFrame", "QuestWatchFrame", "WatchFrame",
 }
 -- the saved variables, the slash command, the reset popup's key and the
--- tooltip spec and the locked line mdlui_Tooltips reads (core.lua, inventory/locks.lua)
-globals = { "_G", "Medalluin_TooltipSpec", "Medalluin_LockedLine", "MedalluinDB", "MedalluinCharDB", "SLASH_MEDALLUIN1", "SLASH_MEDALLUIN2", "SLASH_MDLUI1", "SlashCmdList",
+-- tooltip spec, the locked line and the beside test mdlui_Tooltips reads (core.lua,
+-- inventory/locks.lua, window/shell.lua)
+globals = { "_G", "Medalluin_TooltipSpec", "Medalluin_LockedLine", "Medalluin_TooltipBeside", "MedalluinDB", "MedalluinCharDB", "SLASH_MEDALLUIN1", "SLASH_MEDALLUIN2", "SLASH_MDLUI1", "SlashCmdList",
     "StaticPopupDialogs" }
 
 -- mdlui_Tooltips companion addon settings

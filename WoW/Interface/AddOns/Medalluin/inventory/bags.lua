@@ -145,7 +145,7 @@ local function Button(spec)
     end
     b:SetScript("OnClick", spec.click)
     b:SetScript("OnEnter", function(self)
-        ns.Tip(self, "ANCHOR_TOP", { title = spec.tip(), color = ns.colors.white, wrap = true })
+        ns.Tip(self, ns.window.OutsideTop, { title = spec.tip(), color = ns.colors.white, wrap = true })
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     table.insert(buttons, b)
@@ -322,7 +322,7 @@ local function Title()
     end)
     b:SetScript("OnEnter", function(self)
         self.label:SetTextColor(1, 1, 1)
-        ns.Tip(self, "ANCHOR_TOP", { title = drawer and drawer:IsShown() and "Hide your bags' slots."
+        ns.Tip(self, ns.window.OutsideTop, { title = drawer and drawer:IsShown() and "Hide your bags' slots."
             or "Show your bags' slots: put a bag in, swap one or take one out.", color = ns.colors.white, wrap = true })
     end)
     b:SetScript("OnLeave", function(self)
@@ -382,6 +382,7 @@ end
 
 local function Build()
     window = CreateFrame("Frame", "MedalluinBags", UIParent)
+    ns.window.Mark(window, 1)                    -- its tooltips beside it
     window:SetFrameStrata("MEDIUM")
     window:SetToplevel(true)
     window:SetClampedToScreen(true)

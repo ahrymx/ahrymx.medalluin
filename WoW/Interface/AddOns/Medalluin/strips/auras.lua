@@ -381,7 +381,7 @@ end
 -- ------------------------------------------------------------- the rows
 local function Tip(r)
     if not r.entry then return end
-    GameTooltip:SetOwner(r, "ANCHOR_LEFT")
+    ns.side.Beside(r)
     if GameTooltip.SetUnitAuraByAuraInstanceID then
         GameTooltip:SetUnitAuraByAuraInstanceID("player", r.entry.aura.auraInstanceID)
     end

@@ -502,7 +502,13 @@ function Region:GetVerticalScrollRange()
     local r = resolve(self)
     return math.max(0, c.h - (r[4] - r[2]))
 end
-function Region:SetTexCoord(...) self.coords = { ... } end
+-- the game's rule: a texture rounded by SetMask takes no tex coords (a
+-- mask texture, AddMaskTexture, does)
+function Region:SetMask(path) self.setMask = path end
+function Region:SetTexCoord(...)
+    if self.setMask then error("Texture:SetTexCoord(): Cannot set tex coords when texture has mask.", 2) end
+    self.coords = { ... }
+end
 -- the game's eight corners (UL, LL, UR, LR), from the four-number form
 function Region:GetTexCoord()
     local c = self.coords or { 0, 1, 0, 1 }
@@ -578,6 +584,11 @@ function Region:GetLeft()
     if not ok and tostring(r):find("secret") then return secret() end
     return ok and r and r[1] or nil
 end
+function Region:GetRight()
+    local ok, r = pcall(resolve, self)
+    if not ok and tostring(r):find("secret") then return secret() end
+    return ok and r and r[3] or nil
+end
 -- the top and bottom edges, up from the screen's foot (1080 high)
 function Region:GetTop()
     local ok, r = pcall(resolve, self)
@@ -586,6 +597,63 @@ end
 function Region:GetBottom()
     local ok, r = pcall(resolve, self)
     return ok and r and 1080 - r[4] or nil
+end
+-- Every tooltip a side window shows stands outside it, beside the edge
+-- towards the screen's middle, its top level with what is hovered
+-- (ns.window.Outside): each shown frame in root with a hover that takes the
+-- tooltip, hovered. Prints how many stood beside it (and on which side) and
+-- how many anywhere else. bare: the screen as the harness has it, no width
+-- (the side the window declares decides). from: the frames hovered are
+-- this one's instead (a cast layer over root). owned: they are Blizzard's,
+-- whose own Lua owns the tooltip by SetOwner (the gear slots), or by the
+-- default place when the value is "default" (the gear and bag items on
+-- clients that do), or owned with no anchor and placed beside the button
+-- when it is "button" (the bags' items): that is done, the pointer over it.
+function harnessBeside(tag, root, bare, from, owned)
+    local left, right, other = 0, 0, {}
+    -- the harness's screen is 1920 wide (its UIParent has no width)
+    local width = UIParent.GetWidth
+    if not bare then function UIParent:GetWidth() return 1920 end end
+    local middle = bare and "declared" or (root:GetLeft() + root:GetRight()) / 2 < 1920 / 2 and "right" or "left"
+    local function walk(f)
+        for _, c in ipairs(f.all_ or {}) do
+            if c.shown and (owned and owned[c] or not owned and c.scripts and c.scripts.OnEnter) then
+                GameTooltip.owner, GameTooltip.points = nil, {}
+                local was = mouseOver
+                mouseOver = c
+                if owned and owned[c] == "button" then
+                    GameTooltip:SetOwner(c, "ANCHOR_NONE")
+                    GameTooltip:SetPoint("BOTTOMLEFT", c, "TOPRIGHT")
+                elseif owned and owned[c] == "default" then GameTooltip_SetDefaultAnchor(GameTooltip, c)
+                elseif owned then GameTooltip:SetOwner(c, "ANCHOR_RIGHT") else c.scripts.OnEnter(c) end
+                mouseOver = was
+                if GameTooltip.owner == c and owned and GameTooltip.anchor ~= "ANCHOR_NONE" then
+                    table.insert(other, tostring(c:GetName()) .. ":anchor " .. tostring(GameTooltip.anchor))
+                elseif GameTooltip.owner == c then
+                    local p = GameTooltip.points
+                    local at = p.TOPRIGHT or p.TOPLEFT
+                    local top, edge = c:GetTop(), root:GetTop()
+                    local level = at and type(at[4]) == "number" and top and edge and math.abs(at[4] - (top - edge)
+                        * root:GetEffectiveScale() / GameTooltip:GetEffectiveScale()) < 0.01
+                    if level and p.TOPRIGHT and at[1] == root and at[2] == "TOPLEFT" and at[3] == -4 then
+                        left = left + 1
+                    elseif level and p.TOPLEFT and at[1] == root and at[2] == "TOPRIGHT" and at[3] == 4 then
+                        right = right + 1
+                    else
+                        local name = c.label and c.label.text or c:GetName() or "?"
+                        table.insert(other, tostring(name) .. ":" .. tostring(GameTooltip.anchor))
+                    end
+                end
+                if c.scripts and c.scripts.OnLeave then c.scripts.OnLeave(c) end
+            end
+            if c.shown then walk(c) end
+        end
+    end
+    if owned then walk({ all_ = (function() local t = {} for c in pairs(owned) do t[#t + 1] = c end return t end)() })
+    else walk(from or root) end
+    UIParent.GetWidth = width
+    print(tag, "facing " .. middle, "at its left=" .. left, "at its right=" .. right,
+        "elsewhere: " .. (#other > 0 and table.concat(other, ",") or "none"))
 end
 -- A secure button over a region by numbers, as the windows' cast layers
 -- set them (window/shell.lua, Over): "over" when it covers the region and
@@ -694,11 +762,19 @@ end
 MinimapCluster = new("Frame", UIParent, "MinimapCluster")
 GameTooltip = new("Frame", UIParent, "GameTooltip")
 -- an owner, and the clear every SetOwner fires (core.lua's ns.Tip hooks it)
-function GameTooltip:SetOwner(owner)
-    self.owner = owner
+function GameTooltip:SetOwner(owner, anchor)
+    self.owner, self.anchor = owner, anchor
     if self.scripts.OnTooltipCleared then self.scripts.OnTooltipCleared(self) end
 end
 function GameTooltip:GetOwner() return self.owner end
+-- the anchor the game applies again as the text fills it, changed alone
+function GameTooltip:SetAnchorType(anchor) self.anchor = anchor end
+-- the game's default place: owned with no anchor, then the screen's corner
+function GameTooltip_SetDefaultAnchor(tooltip, parent)
+    tooltip:SetOwner(parent, "ANCHOR_NONE")
+    tooltip:ClearAllPoints()
+    tooltip:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -13, 64)
+end
 function GameTooltip:ClearLines()
     if self.scripts.OnTooltipCleared then self.scripts.OnTooltipCleared(self) end
 end
@@ -2038,6 +2114,8 @@ if characterPass or questPass or npcPass or bankPass then
         or { [1] = { 2, 14 }, [5] = { 1, 10 }, [7] = { 2, 16 }, [16] = { 3, 18 }, [17] = { 2, 15 },
             [4] = { 1, 1 }, [19] = { 1, 1 } }
     local PARENT = new("Frame", PaperDollFrame, "PaperDollItemsFrame")
+    -- the equipment flyout's settings, which the slot hover reads off its parent
+    PARENT.flyoutSettings = { parent = PaperDollFrame, anchorX = 0, anchorY = -3, hasPopouts = true }
     for slotName, id in pairs(SLOTS) do
         local forever = slotName == "Ranged" or slotName == "Ammo"
         if not (characterRetail and forever) then
@@ -4296,6 +4374,44 @@ if sidePass then
         end
     end
 
+    -- every tooltip the panel shows stands outside it, at its left, level
+    -- with what is hovered: each frame in it with a hover that takes the
+    -- tooltip, by its view
+    local function sideTips(tag)
+        local beside, other = {}, {}
+        local panel = side.panel
+        local function walk(f, view)
+            for _, c in ipairs(f.all_ or {}) do
+                local v = view
+                for _, sv in ipairs(side.views) do
+                    if c == sv.body or c == sv.column then v = sv.key end
+                end
+                if c.scripts and c.scripts.OnEnter then
+                    GameTooltip.owner, GameTooltip.points = nil, {}
+                    c.scripts.OnEnter(c)
+                    if GameTooltip.owner == c then
+                        local at = GameTooltip.points.TOPRIGHT
+                        local top, edge = c:GetTop(), panel:GetTop()
+                        local level = at and top and edge and math.abs(at[4] - (top - edge)
+                            * panel:GetEffectiveScale() / GameTooltip:GetEffectiveScale()) < 0.01
+                        local ok = at and at[1] == panel and at[2] == "TOPLEFT" and at[3] == -4 and level
+                        local t = ok and beside or other
+                        t[v or "panel"] = (t[v or "panel"] or 0) + 1
+                    end
+                    if c.scripts.OnLeave then c.scripts.OnLeave(c) end
+                end
+                walk(c, v)
+            end
+        end
+        walk(panel)
+        local function list(t)
+            local o = {}
+            for k, n in pairs(t) do table.insert(o, k .. "=" .. n) end
+            table.sort(o)
+            return #o > 0 and table.concat(o, ",") or "none"
+        end
+        print(tag, "beside: " .. list(beside), "elsewhere: " .. list(other))
+    end
     -- ---------------------------------------------------------- loot
     local L = views.loot
     local function lootState(tag)
@@ -4381,6 +4497,7 @@ if sidePass then
     thumb("loot")
     side.area.scripts.OnMouseWheel(side.area, -3)
     lootState("loot scrolled")
+    sideTips("side tips with loot")
     -- a row passes the wheel on to the panel
     for _, f in ipairs(L.body.all_) do
         if f.kind == "Button" and f.item and f.shown then
@@ -4663,6 +4780,7 @@ if sidePass then
         click(A, 1)
         column(A)
         aurasState("auras one list")
+        sideTips("side tips")
         -- the wheel: eleven auras, fewer rows; a row passes it on
         AL.all_[1].all_[5].scripts.OnMouseWheel(AL.all_[1].all_[5], -2)
         aurasState("auras scrolled two")
@@ -8829,6 +8947,7 @@ if bagsPass then
         guards("bags.guard before a vendor")
         fire("MERCHANT_SHOW")
         guards("bags.guard at a vendor")
+        harnessBeside("bags guard tips", MedalluinBags)
         local g = stone.guard
         print("bags.guard", "covers=" .. tostring(g.all == stone),
             "above padlock=" .. tostring((g.level or 0) > (stone.lock.level or 0)),
@@ -9125,6 +9244,27 @@ if bagsPass then
     CloseAllBags()
     OpenAllBags()
     local p = w.points.TOPLEFT
+    harnessBeside("bags tips", MedalluinBags)
+    do
+        local items = {}
+        for i = 1, 4 do local b = _G["MedalluinBagsItem0_" .. i]; if b then items[b] = "default" end end
+        harnessBeside("bags item default tips", MedalluinBags, nil, nil, items)
+        for b in pairs(items) do items[b] = "button" end
+        harnessBeside("bags item button tips", MedalluinBags, nil, nil, items)
+        -- the pointer gone (a tooltip fading, or parked off the screen): left where it is put
+        GameTooltip:SetOwner(MedalluinBagsItem0_1, "ANCHOR_NONE")
+        GameTooltip:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", -10000, -10000)
+        local park = GameTooltip.points.TOPRIGHT
+        print("bags item parked", "kept=" .. tostring(park and park[1] == UIParent and park[3] == -10000))
+        print("bags item beside", "told=" .. tostring(Medalluin_TooltipBeside(MedalluinBagsItem0_1)),
+            "elsewhere=" .. tostring(Medalluin_TooltipBeside(UIParent)))
+        -- another tooltip in the default place leaves GameTooltip where it is
+        local other = new("Frame", UIParent)
+        function other:SetOwner() end
+        GameTooltip.points = {}
+        GameTooltip_SetDefaultAnchor(other, MedalluinBagsItem0_1)
+        print("bags item other tooltip", "GameTooltip moved=" .. tostring(next(GameTooltip.points) ~= nil))
+    end
     print("bags.old point", p and (p[2] .. "," .. p[3] .. "," .. p[4]))
     CloseAllBags()
 end
@@ -9421,6 +9561,13 @@ if bankPass then
     w.scripts.OnDragStop(w)
     print("bank.dragged", where(w), string.format("saved=%s,%s", tostring(ns.db.bankPlace.x),
         tostring(ns.db.bankPlace.y)))
+    harnessBeside("bank tips", w)
+    -- dragged to the screen's right half: its tooltips go to its left
+    function w:GetLeft() return 1400 end
+    function w:GetRight() return 1800 end
+    harnessBeside("bank tips dragged right", w)
+    function w:GetLeft() return 0 end
+    w.GetRight = nil
     harnessSizeTo = { 560, 400 }
     w.grip.scripts.OnMouseDown(w.grip)
     w.grip.scripts.OnMouseUp(w.grip)
@@ -9612,7 +9759,7 @@ if characterPass then
             if p.tab then
                 local glyph = (p.tab.icon.texture or ""):match("strips\\(.+)$") or "?"
                 table.insert(list, glyph .. (p.tab.mark.shown and "*" or "") .. "@" .. p.tab.w
-                    .. string.format("(%.1f)", p.tab.icon.alpha or 1))
+                    .. string.format("(%.1f)", p.tab.icon.alpha or 1) .. (p.tab.top and "!open" or ""))
             end
         end
         local close = C.window.close
@@ -9950,6 +10097,7 @@ if characterPass then
     fire("EQUIPMENT_SETS_CHANGED")
     frame()
     rows("gear.sets equipped", "sets")
+    harnessBeside("char sets tips", MedalluinCharacter)
     buttons("gear.sets worn")
     -- Save asks first; its answer keeps the set's own ignored slots
     charWorld.sets[2].worn = false
@@ -10032,6 +10180,7 @@ if characterPass then
     tabs("cur.tabs")
     print("cur.blizzard on", TokenFrame.shown and "TokenFrame" or "?")
     rows("cur", "currency")
+    harnessBeside("char currency tips", MedalluinCharacter)
     click("currency", "Honor Points")
     details("cur.honor", "currency")
     click("currency", "Arena Points")
@@ -10165,6 +10314,22 @@ if characterPass then
             .available), "stats=" .. tostring(page("statistics").available))
     end
     HideUIPanel(CharacterFrame)
+    harnessBeside("char tips", MedalluinCharacter)
+    do
+        local p = CharacterFeetSlot.parent
+        local f = p and p.flyoutSettings
+        print("char flyout", "parent ours=" .. tostring(p ~= PaperDollItemsFrame),
+            "settings=" .. tostring(f and f ~= PaperDollItemsFrame.flyoutSettings),
+            "shown over=" .. tostring(f and f.parent == p), "copied=" .. tostring(f and f.anchorY == -3 and f.hasPopouts))
+    end
+    do
+        local gear = {}
+        for _, n in ipairs({ "Head", "Chest", "MainHand", "Trinket0" }) do gear[_G["Character" .. n .. "Slot"]] = true end
+        harnessBeside("char gear tips", MedalluinCharacter, nil, nil, gear)
+        for b in pairs(gear) do gear[b] = "default" end
+        harnessBeside("char gear default tips", MedalluinCharacter, nil, nil, gear)
+    end
+    harnessBeside("char tips, no width", MedalluinCharacter, true)
     state("char.end")
     return
 end
@@ -10711,6 +10876,8 @@ if spellPass then
     print("book.loaded", "parked=" .. tostring(PlayerSpellsFrame.parent == ns.hidden))
     -- the first show: Blizzard's own toggle opens before it turns the tab
     state("book.open")
+    harnessBeside("book open tips", MedalluinSpellbook)
+    harnessBeside("book casts tips", MedalluinSpellbook, nil, MedalluinSpellbookCasts)
     print("book.backpack", tostring(MainMenuBarBackpackButton.strata) .. "/" .. tostring(MainMenuBarBackpackButton.level))
     tabs("book.tabs")
     cells("book.general")
@@ -11083,6 +11250,7 @@ if spellPass then
     print("book.trade trainer", table.concat(trade, " "), "class=" .. class)
     -- 9. the close button
     w.close.scripts.OnClick(w.close)
+    harnessBeside("book tips", MedalluinSpellbook)
     state("book.closed")
     print("book.backpack", tostring(MainMenuBarBackpackButton.strata) .. "/" .. tostring(MainMenuBarBackpackButton.level))
 end
@@ -11729,6 +11897,7 @@ if talentPass then
     PlayerSpellsUtil.OpenToClassTalentsTab()
     frame()
     state("talents.opened to")
+    harnessBeside("talents tips", MedalluinTalents)
     HideUIPanel(PlayerSpellsFrame)
     frame()
     bookWorld.others = false
@@ -11775,7 +11944,15 @@ if profPass then
             end
         end
         local _, _, _, _, top = W.Current().body:GetPoint()
-        print(tag, table.concat(list, " "), "top=" .. top, "chevron=" .. tostring(W.window.chevron ~= nil))
+        -- open tabs: no box (a face over the mark), the rows on hairs
+        local hairs = {}
+        for _, h in ipairs(W.window.hairs or {}) do
+            local _, _, _, _, hy = h:GetPoint()
+            table.insert(hairs, h.shown and tostring(hy) or "hidden")
+        end
+        print(tag, table.concat(list, " "), "top=" .. top, "chevron=" .. tostring(W.window.chevron ~= nil),
+            "open=" .. tostring(W.pages[1].tab.top ~= nil and W.window.close.top ~= nil),
+            "hairs=" .. table.concat(hairs, ","))
     end
     local function c3(c) return c and string.format("%.2f,%.2f,%.2f", c[1], c[2], c[3]) or "-" end
     local function pageOf(key)
@@ -11786,15 +11963,27 @@ if profPass then
     local function cards(tag)
         for i, c in ipairs(pageOf("overview").cards) do
             if c.shown then
+                -- a pillar's spells by their x across it, a line's by their
+                -- place from the right
                 local spells = {}
                 for _, sp in ipairs(c.spells) do
-                    if sp.shown then table.insert(spells, sp.slot .. "@" .. sp.points.TOPRIGHT[3]) end
+                    if sp.shown then
+                        local at = sp.points.TOPLEFT or sp.points.RIGHT
+                        table.insert(spells, sp.slot .. "@" .. at[3] .. (at[1] == c.unlearn and "<x" or ""))
+                    end
                 end
-                print(tag .. i, c.name.text, c.icon.desaturated and "dim" or "lit",
-                    c.bar.shown and c.bar.text.text or ("none: " .. c.none.text),
-                    c.rank.shown and (c.rank.text .. "(" .. c3(c.rank.textColor) .. ")"
-                        .. (c.rank.points.TOPLEFT[1] == c.bar and "" or "!loose")) or "rank=-",
-                    "spells=" .. table.concat(spells, ","), "unlearn=" .. tostring(c.unlearn.shown))
+                local _, _, _, x, y = c:GetPoint()
+                local rank = c.rank.text ~= "" and (c.rank.text .. "(" .. c3(c.rank.textColor) .. ")"
+                    .. (c.rank.shown and ((c.rank.points.TOP or {})[1] == c.bar and "" or "!loose") or ":tip"))
+                    or "rank=-"
+                print(tag .. i, (c.pillar and "pillar" or "line") .. string.format("@%d,%d", x, y)
+                    .. (c.pillar and ("w" .. c.w) or "") .. (c.hair and c.hair.shown and "~" or ""),
+                    c.name.text, c.icon.desaturated and "dim" or "lit",
+                    c.bar.shown and (c.bar.text.text .. (c.bar.points.RIGHT and ">" .. tostring(
+                        c.bar.points.RIGHT[1] == c.unlearn and "x" or c.bar.points.RIGHT[1] == c.spells[1] and "s1"
+                        or c.bar.points.RIGHT[1] == c.spells[2] and "s2" or "?") or ""))
+                        or ("none: " .. c.none.text),
+                    rank, "spells=" .. table.concat(spells, ","), "unlearn=" .. tostring(c.unlearn.shown))
             end
         end
         local secure = {}
@@ -11869,6 +12058,12 @@ if profPass then
     -- a spell's secure button casts; Unlearn asks Blizzard's question
     click(pageOf("overview").cards[2].unlearn)
     print("prof.unlearn", table.concat(P.calls, ","))
+    P.calls = {}
+    -- in combat the cross asks nothing
+    inCombat = true
+    click(pageOf("overview").cards[2].unlearn)
+    print("prof.unlearn combat", table.concat(P.calls, ","))
+    inCombat = false
     P.calls = {}
 
     -- 2b. the next rank: red near the cap, dim when the level or skill is
@@ -12097,16 +12292,20 @@ if profPass then
         for _, c in ipairs(ov.cards) do
             if c.shown then table.insert(cards, c.name.text .. "@" .. y(c)) end
         end
-        print(tag, "primary@" .. y(ov.heads.primary), "secondary@" .. y(ov.heads.secondary),
-            "camp@" .. y(ov.heads.camp) .. "/" .. y(ov.camp), table.concat(cards, " "))
+        -- the header's portrait on its rule; the hair down between the pillars
+        local portrait = ov.banner.portrait.points.CENTER
+        print(tag, "need=" .. ov.height, "window=" .. w.h, "primary@" .. y(ov.heads.primary), "secondary@" .. y(ov.heads.secondary),
+            "camp@" .. y(ov.heads.camp) .. "/" .. y(ov.camp), table.concat(cards, " "),
+            "portrait@" .. -portrait[4] .. "/" .. ov.banner.h, "split@" .. y(ov.split) .. "h" .. ov.split.h)
         local slots, tiles = {}, {}
         for _, s in ipairs(ov.camp.slots) do
-            table.insert(slots, s.name.text .. "=" .. s.time.text .. (s.icon.desaturated and "(grey)" or ""))
+            table.insert(slots, s.spec.name .. "=" .. s.time.text .. (s.icon.desaturated and "(grey)" or ""))
         end
         for _, tile in ipairs(ov.camp.tiles) do
             if tile.shown then
                 local _, _, _, x, ty = tile:GetPoint()
-                table.insert(tiles, string.format("%s[%s]%s@%d,%d", tile.name.text, tile.sub.text, tile.sign.text, x, -ty))
+                table.insert(tiles, string.format("%s[%s|%s]%s@%d,%d", tile.name, tile.sub, tile.corner.text,
+                    tile.mark.shown and "*" or "", x, -ty))
             end
         end
         print(tag .. " camp", table.concat(slots, " | "), "h=" .. ov.camp.h)
@@ -12125,11 +12324,102 @@ if profPass then
         end
     end
     overview("prof.sections")
+    -- every tooltip the window shows stands outside it, at its left, level
+    -- with what is hovered
+    local function beside(tag, region)
+        GameTooltip.points = {}
+        region.scripts.OnEnter(region)
+        local at = GameTooltip.points.TOPRIGHT
+        local top, edge = region:GetTop(), w:GetTop()
+        print(tag, "anchor=" .. tostring(GameTooltip.anchor), at and string.format("TOPRIGHT>%s %s %d,%d",
+            at[1] == w and "window" or "?", at[2], at[3], at[4]) or "unplaced",
+            -- the window's offset, in the tooltip's scale
+            "level=" .. tostring(at and top and edge and math.abs(at[4] - (top - edge) * w:GetEffectiveScale()
+                / GameTooltip:GetEffectiveScale()) < 0.01))
+        region.scripts.OnLeave(region)
+    end
+    beside("prof.tip spell", ov.cards[1].spells[1])
+    beside("prof.tip cross", ov.cards[2].unlearn)
+    beside("prof.tip line", ov.cards[3])
+    beside("prof.tip buff", ov.camp.slots[1])
+    beside("prof.tip object", ov.camp.tiles[1])
+    beside("prof.tip tab", ov.tab)
+    beside("prof.tip close", W.window.close)
+    -- a short screen: the window is as tall as what the Overview shows,
+    -- running past the screen only by that, not by the most it could show
+    do
+        local tall = UIParent.GetHeight
+        UIParent.GetHeight = function() return 400 end
+        W.Retab()
+        frame()
+        overview("prof.short screen")
+        UIParent.GetHeight = tall
+        W.Retab()
+        frame()
+    end
+    -- the banner, and this character as its alts will read it
+    do
+        local b = ov.banner
+        print("prof.banner me", b.name.text, string.format("(%.2f,%.2f,%.2f)", unpack(b.name.textColor or { -1, -1, -1 })),
+            b.levelText.text, b.what.text, "portrait=" .. tostring(b.portrait.portrait))
+        local realm = GetRealmName and GetRealmName() or "?"
+        local me = MedalluinDB.roster[realm][UnitName("player")]
+        local profs = {}
+        for _, p in ipairs(me.primaries) do table.insert(profs, p.name .. " " .. p.rank .. "/" .. p.max) end
+        print("prof.roster me", me.class, me.level, table.concat(profs, ", "))
+        -- two alts recorded: listed, most recently played first, a click opens one's window
+        local roster = MedalluinDB.roster[realm]
+        roster.Barkhide = { class = "DRUID", className = "Druid", level = 40, seen = 5,
+            primaries = { { name = "Herbalism", icon = 1, rank = 200, max = 225 },
+                { name = "Alchemy", icon = 2, rank = 190, max = 225 } } }
+        roster.Medalluin = { class = "PRIEST", className = "Priest", level = 60, seen = 9,
+            primaries = { { name = "Tailoring", icon = 3, rank = 300, max = 300 } } }
+        roster.Newbie = { class = "MAGE", className = "Mage", level = 1, seen = 1, primaries = {} }
+        fire("SKILL_LINES_CHANGED")
+        frame()
+        click(pageOf("overview").tab)
+        frame()
+        local function alts(tag)
+            local o = {}
+            for _, r in ipairs(ov.alts.rows) do
+                if r.shown then
+                    local _, _, _, _, y = r:GetPoint()
+                    local p = {}
+                    for k, q in ipairs(r.profs) do
+                        if q.label.shown then table.insert(p, k .. ":" .. q.label.text) end
+                    end
+                    table.insert(o, string.format("%s %s [%s]@%d", r.name.text, r.what.text, table.concat(p, " "), -y))
+                end
+            end
+            local _, _, _, _, hy = ov.heads.alts:GetPoint()
+            print(tag, "head=" .. (ov.heads.alts.shown and tostring(-hy) or "hidden"), table.concat(o, " | "))
+        end
+        alts("prof.alts")
+        beside("prof.tip alt", ov.alts.rows[1])
+        overview("prof.alts")
+        local aw = function()
+            local f = _G.MedalluinAlt
+            return f and f.shown and W.altWindow.Current().name.text or "closed"
+        end
+        click(ov.alts.rows[1])
+        print("prof.alt open", aw())
+        click(ov.alts.rows[2])
+        print("prof.alt other", aw())
+        click(ov.alts.rows[2])
+        print("prof.alt again", aw())
+        roster.Barkhide, roster.Medalluin, roster.Newbie = nil, nil, nil
+        fire("SKILL_LINES_CHANGED")
+        frame()
+        click(pageOf("overview").tab)
+        frame()
+        alts("prof.alts gone")
+    end
     -- no secondary learned: no heading for them
     P.learned[4], P.learned[5] = nil, nil
     fire("SKILL_LINES_CHANGED")
     frame()
     overview("prof.no secondaries")
+    tabs("prof.no secondaries")
     P.learned[4], P.learned[5] = 4, 5
     fire("SKILL_LINES_CHANGED")
     frame()
@@ -12158,7 +12448,7 @@ if profPass then
     -- an object's drawer: its tiers; a known one is made on its tab
     local cook
     for _, tile in ipairs(ov.camp.tiles) do
-        if tile.shown and tile.name.text == "Basic Campfire" then cook = tile end
+        if tile.shown and tile.name == "Basic Campfire" then cook = tile end
     end
     click(cook)
     overview("prof.drawer")
@@ -12232,9 +12522,23 @@ if profPass then
     do
         local b = W.Current().banner
         local _, _, _, hx, hy = W.Current().hair:GetPoint()
+        -- the rank under the name; a diamond at each end of the bar
+        local under = b.rank.points.TOPLEFT and b.rank.points.TOPLEFT[1] == b.name
+        local caps = {}
+        for _, cap in ipairs(b.caps) do
+            local _, rel, rp, cx = cap:GetPoint()
+            table.insert(caps, (rel == b.bar and rp or "?") .. cx)
+        end
         print("prof.banner", b.name.text, b.rank.shown and b.rank.text or "-", b.bar.text.text,
             "bar=" .. tostring(b.bar.bar.value) .. "/" .. tostring(b.bar.bar.max),
-            "hair@" .. hx .. "," .. hy)
+            "hair@" .. hx .. "," .. hy, "rank=" .. (under and "under" or "loose"), "caps=" .. table.concat(caps, ","))
+        beside("prof.tip tick", W.Current().have)
+        beside("prof.tip create", W.Current().create)
+        local first
+        for _, r in ipairs(W.Current().list.rows) do
+            if r.shown and not r.data.header and not first then first = r end
+        end
+        beside("prof.tip recipe", first)
     end
     -- ornate headings: a rim, a margin above and below; the list scrolls
     -- to its last row whatever the rows' heights
@@ -12467,6 +12771,7 @@ if questPass then
     tick(4)
     shaded("quests.shade, gone")
     items("quests.items")
+    harnessBeside("quests item tips", ns.quests.layer)
 
     -- 2. Questie ready: its set, its items, its distances
     if Z then
@@ -13017,6 +13322,7 @@ if questPass then
     items("quests.type items")
     ns.SetOption("questsObjectiveFont", "lsm:Gone")
     frame()
+    harnessBeside("quests tips", MedalluinQuests)
     type_("quests.type font gone")
 end
 
@@ -13266,6 +13572,7 @@ if npcPass then
     W.gossip.options, W.gossip.active, W.gossip.available = options, active, available
     fire("GOSSIP_SHOW")
     -- Escape: Blizzard hides its frame, and ours follows
+    harnessBeside("npc gossip tips", MedalluinNPC)
     GossipFrame:Hide()
     state("npc gossip escaped")
     fire("GOSSIP_CLOSED")
@@ -13353,6 +13660,7 @@ if npcPass then
     calls("npc progress")
     fire("QUEST_COMPLETE")
     rows = page("npc reward")
+    harnessBeside("npc reward tips", MedalluinNPC)
     bound("npc reward")
     -- back to the greeting: its rows again, and no button for Space
     fire("QUEST_GREETING")
@@ -13395,6 +13703,7 @@ if npcPass then
     fire("MERCHANT_SHOW")
     state("npc merchant")
     rows = page("npc merchant")
+    harnessBeside("npc buy tips", MedalluinNPC)
     shop("npc merchant")
     foot("npc merchant")
     -- the uncached item arrives
@@ -13473,6 +13782,7 @@ if npcPass then
         if r.c.data.label == "Star Ruby  x2" then r.c.scripts.OnEnter(r.c) end
     end
     print("npc sell tip", tostring(GameTooltip.item))
+    harnessBeside("npc vendor beside", MedalluinNPC)
     -- never in combat, and never once the vendor has gone
     inCombat = true
     click(rows, "junk701  x3")
@@ -13498,6 +13808,7 @@ if npcPass then
     -- the buyback tab
     click(rows, "Buyback")
     rows = page("npc buyback")
+    harnessBeside("npc buyback tips", MedalluinNPC)
     click(rows, "Linen Cloth  x20")
     calls("npc buyback")
     -- locked items (inventory/locks.lua): on neither Sell nor Sell junk, and
@@ -13616,6 +13927,7 @@ if npcPass then
     fire("TRAINER_UPDATE")
     rows = page("npc trainer list moved")
     -- Escape: the game hides its frame, the box follows
+    harnessBeside("npc trainer tips", MedalluinNPC)
     ClassTrainerFrame:Hide()
     state("npc trainer escaped")
     fire("TRAINER_CLOSED")
@@ -13750,6 +14062,7 @@ if npcPass then
     W.money = 20000
     fire("PLAYER_MONEY")
     frows("npc flight richer")
+    harnessBeside("npc flight tips", MedalluinFlight)
     -- Escape: the game hides its frame; ours follows and tells the game
     W.calls = {}
     TaxiFrame:Hide()
@@ -13940,6 +14253,7 @@ if mailPass then
     calls("mail take linen")
     M.Answer()
     shown("mail read cloth after")
+    harnessBeside("mail letter tips", MedalluinNPC)
     press("mail read cloth", "Take all")
     calls("mail take all")
     click("mail read cloth", "‹ Inbox")
@@ -14126,6 +14440,7 @@ if mailPass then
     press("mail stop opening", "Stop")
     M.Answer()
     M.Tick(2)
+    harnessBeside("mail tips", MedalluinNPC)
     calls("mail stopped")
     foot("mail stopped")
     -- the mailbox closes mid-way
@@ -14215,6 +14530,7 @@ if mailPass then
     fire("MAIL_SEND_INFO_UPDATE")
     calls("mail dropped")
     shown("mail attached")
+    harnessBeside("mail attached tips", MedalluinNPC)
     foot("mail attached")
     inBags[6949] = true
     C_Item.PickupItem(6949)
