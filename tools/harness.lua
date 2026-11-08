@@ -12133,6 +12133,33 @@ if profPass then
             "bar=" .. tostring(b.bar.bar.value) .. "/" .. tostring(b.bar.bar.max),
             "hair@" .. hx .. "," .. hy)
     end
+    -- ornate headings: a rim, a margin above and below; the list scrolls
+    -- to its last row whatever the rows' heights
+    do
+        local list = W.Current().list
+        local function geometry(tag)
+            local o = {}
+            for _, r in ipairs(list.rows) do
+                if r.shown then
+                    local _, _, _, _, y = r:GetPoint()
+                    local _, _, _, _, fy = r.fill:GetPoint()
+                    table.insert(o, string.format("%s@%d h%d%s", r.label.text, -y, r.h,
+                        r.rim.TOP.shown and string.format(" rim fill%d", -fy) or ""))
+                end
+            end
+            print(tag, "offset=" .. list.offset, "track=" .. tostring(list.track.shown), table.concat(o, " | "))
+        end
+        geometry("prof.ornate")
+        local tall = list.body.h
+        list.body.h = 100
+        list:Draw()
+        geometry("prof.ornate short")
+        list:Scroll(99)
+        geometry("prof.ornate end")
+        list:Scroll(-99)
+        list.body.h = tall
+        list:Draw()
+    end
     -- Mining's nodes: read one; the search finds them, Have materials hides them
     row("Tin Vein")
     foot("prof.node")

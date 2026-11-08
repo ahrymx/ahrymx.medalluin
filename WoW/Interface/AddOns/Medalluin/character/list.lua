@@ -23,6 +23,9 @@
 --     list:Draw()      again, at the same scroll (after the body's height changes)
 --     list.fade = true  headings fade out to the right (the quest tracker's,
 --                       over the world), where the client has gradients
+--     list.ornate = true  headings in a gold metal rim, a margin above and
+--                       below each (the professions'): a heading's row is
+--                       taller, its band inset, so rows are no longer even
 --     list.row          a row's height (22)
 --
 --   ns.character.Details(foot, ticks, nothing, lines) -> details
@@ -37,6 +40,9 @@ local _, ns = ...
 
 local ROW, INDENT, BAR_W, BAR_H, ICON = 22, 12, 150, 16, 18
 local LEAD, STEM, DOT = 12, 1, 4        -- a lead's room, its stem's width, a bullet's size
+local MARGIN = 6                        -- an ornate heading's room above and below its band
+local METAL_LIT = { 0.98, 0.88, 0.58 }  -- the rim's lit edge
+local METAL_DARK = { 0.36, 0.27, 0.10 } -- its shadowed edge
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 
@@ -93,6 +99,17 @@ local function Row(list)
     r.lit:SetAllPoints()
     r.lit:SetColorTexture(1, 1, 1, 0.06)
     r.lit:Hide()
+    -- an ornate heading's rim: lit along the top, shadowed along the
+    -- bottom, its sides running from one to the other; a shine inside
+    r.rim = {}
+    for _, side in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
+        local t = r:CreateTexture(nil, "BORDER")
+        r.rim[side] = t
+        t:Hide()
+    end
+    r.shine = r:CreateTexture(nil, "BORDER")
+    r.shine:SetHeight(1)
+    r.shine:Hide()
     r.icon = r:CreateTexture(nil, "ARTWORK")
     r.icon:SetSize(ICON, ICON)
     r.badge = r:CreateTexture(nil, "ARTWORK")
@@ -166,8 +183,52 @@ local function Lead(r, d, x, w, c)
     r.branch:SetPoint("RIGHT", r, "LEFT", x + w - 2, 0)
 end
 
+-- An ornate heading's band, inset by the margin, in its metal rim; any
+-- other row's band is the whole row, and no rim.
+local function Rim(r, on)
+    local inset = on and MARGIN or 0
+    for _, t in ipairs({ r.fill, r.mark, r.glow, r.lit }) do
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", 0, -inset)
+        t:SetPoint("BOTTOMRIGHT", 0, inset)
+    end
+    for _, t in pairs(r.rim) do t:SetShown(on) end
+    r.shine:SetShown(on)
+    if not on then return end
+    local rim = r.rim
+    rim.TOP:ClearAllPoints()
+    rim.TOP:SetPoint("TOPLEFT", 0, -inset)
+    rim.TOP:SetPoint("TOPRIGHT", 0, -inset)
+    rim.TOP:SetHeight(1)
+    rim.TOP:SetColorTexture(METAL_LIT[1], METAL_LIT[2], METAL_LIT[3], 1)
+    rim.BOTTOM:ClearAllPoints()
+    rim.BOTTOM:SetPoint("BOTTOMLEFT", 0, inset)
+    rim.BOTTOM:SetPoint("BOTTOMRIGHT", 0, inset)
+    rim.BOTTOM:SetHeight(1)
+    rim.BOTTOM:SetColorTexture(METAL_DARK[1], METAL_DARK[2], METAL_DARK[3], 1)
+    for _, side in ipairs({ "LEFT", "RIGHT" }) do
+        local t = rim[side]
+        t:ClearAllPoints()
+        t:SetPoint("TOP" .. side, 0, -inset)
+        t:SetPoint("BOTTOM" .. side, 0, inset)
+        t:SetWidth(1)
+        if t.SetGradient and CreateColor then
+            t:SetColorTexture(1, 1, 1, 1)
+            t:SetGradient("VERTICAL", CreateColor(METAL_DARK[1], METAL_DARK[2], METAL_DARK[3], 1),
+                CreateColor(METAL_LIT[1], METAL_LIT[2], METAL_LIT[3], 1))
+        else
+            t:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+        end
+    end
+    r.shine:ClearAllPoints()
+    r.shine:SetPoint("TOPLEFT", 1, -(inset + 1))
+    r.shine:SetPoint("TOPRIGHT", -1, -(inset + 1))
+    r.shine:SetColorTexture(METAL_LIT[1], METAL_LIT[2], METAL_LIT[3], 0.35)
+end
+
 local function Paint(r, d, list)
     r.data = d
+    Rim(r, list.ornate and d.header and true or false)
     local depth = d.depth or 0
     local x = 6 + depth * INDENT + (d.pad or 0)
     local font = d.font or { ns.font, 12 }
@@ -201,7 +262,11 @@ local function Paint(r, d, list)
     r.label:SetText(d.label or "")
     if d.header then
         local a = d.bright and 0.55 or depth == 0 and 0.30 or 0.15
-        if list.fade and r.fill.SetGradient and CreateColor then
+        if list.ornate and r.fill.SetGradient and CreateColor then
+            r.fill:SetColorTexture(1, 1, 1, 1)
+            r.fill:SetGradient("VERTICAL", CreateColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], a * 0.5),
+                CreateColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], a * 1.5))
+        elseif list.fade and r.fill.SetGradient and CreateColor then
             r.fill:SetColorTexture(1, 1, 1, 1)
             r.fill:SetGradient("HORIZONTAL", CreateColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], a),
                 CreateColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0))
@@ -239,13 +304,66 @@ function List:Light(group)
     end
 end
 
+-- a row's height: an ornate heading's takes its margins
+function List:Height(d)
+    return self.ornate and d.header and self.row + 2 * MARGIN or self.row
+end
+
+-- the furthest the list scrolls: the first row from which the rest fit
+function List:Most()
+    if not self.ornate then return math.max(0, #self.data - self:Shown()) end
+    local room, y = self.body:GetHeight() or 0, 0
+    for k = #self.data, 1, -1 do
+        y = y + self:Height(self.data[k])
+        if y > room then return k end
+    end
+    return 0
+end
+
 function List:Scroll(lines)
-    local most = math.max(0, #self.data - self:Shown())
+    local most = self:Most()
     self.offset = math.max(0, math.min(most, self.offset + lines))
     self:Draw()
 end
 
+-- An ornate list's rows, each as tall as it is, down to the body's foot
+-- (one at least).
+function List:DrawOrnate()
+    self.offset = math.max(0, math.min(self.offset, self:Most()))
+    local room, y, n = self.body:GetHeight() or 0, 0, 0
+    for k = self.offset + 1, #self.data do
+        local d = self.data[k]
+        local h = self:Height(d)
+        if n > 0 and y + h > room then break end
+        n = n + 1
+        local r = self.rows[n]
+        if not r then
+            r = Row(self)
+            self.rows[n] = r
+        end
+        r:SetHeight(h)
+        r:ClearAllPoints()
+        r:SetPoint("TOPLEFT", 0, -y)
+        r:SetPoint("TOPRIGHT", -6, -y)
+        r:Show()
+        Paint(r, d, self)
+        y = y + h
+    end
+    for i = n + 1, #self.rows do self.rows[i]:Hide() end
+    local total, most = #self.data, self:Most()
+    self.empty:SetShown(total == 0)
+    self.track:SetShown(most > 0)
+    if most > 0 then
+        local h = room
+        local size = math.max(12, h * n / total)
+        self.thumb:SetHeight(size)
+        self.thumb:ClearAllPoints()
+        self.thumb:SetPoint("TOP", self.track, "TOP", 0, -(h - size) * self.offset / most)
+    end
+end
+
 function List:Draw()
+    if self.ornate then return self:DrawOrnate() end
     local shown = self:Shown()
     self.offset = math.max(0, math.min(self.offset, #self.data - shown))
     for i = 1, shown do
