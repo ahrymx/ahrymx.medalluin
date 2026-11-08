@@ -1428,6 +1428,7 @@ local function ChatWindow(i)
     for _, k in ipairs(TAB_ART) do tab[k] = new("Texture", tab) end
     tab.w, tab.h = 60, 32
     tab.Text = new("FontString", tab)
+    tab.Text:SetText(i == 1 and "General" or i == 2 and "Combat Log" or ("Chat " .. i))
     tab.Text:SetPoint("CENTER", tab, "CENTER", 0, -5)     -- under the pill's middle
     table.insert(CHAT_FRAMES, name)
     return f
@@ -4328,9 +4329,9 @@ if sidePass then
         for _, v in ipairs(side.views) do
             if v.tab and v.tab.shown then
                 local l, _, r, b = rect(v.tab)
-                local c = v.tab.label.textColor
-                table.insert(list, string.format("%s@%.0f-%.0f,%.0f(%.2f)%s", v.tab.label.text, l, r, b,
-                    c and c[1] or -1, v.tab.mark.shown and "*" or ""))
+                local name = v.tab.glyph.texture:match("side%-(.*)$") or v.key
+                table.insert(list, string.format("%s@%.0f-%.0f,%.0f(%.2f)%s", name, l, r, b,
+                    v.tab.glyph.alpha or 1, v.tab.mark.shown and "*" or ""))
             end
         end
         print("tabs", p.shown and "panel" or "panel hidden", string.format("h=%d", p:GetHeight()),
@@ -5161,14 +5162,18 @@ if stripsPass then
         local slot = ""
         if t.medalluinSlot and f.isDocked and next(t.points) then
             local sr, hr = resolve(t.medalluinSlot), resolve(ns.chat.head)
-            slot = string.format(" slot=%.1f high, %.1f over the hairline, text=%s", sr[4] - sr[2], hr[4] - sr[4],
+            slot = string.format(" slot=%.1f..%.1f, %.1f high, %.1f over the hairline, text=%s",
+                sr[1] + 612, sr[3] + 612, sr[4] - sr[2], hr[4] - sr[4],
                 tostring(t.Text.points.CENTER and t.Text.points.CENTER[1] == t.medalluinSlot))
         end
         local faced = "-"
         for _, g in ipairs({ t:GetRegions() }) do
             if g.all == t.medalluinSlot and t.medalluinSlot then faced = "slot" end
         end
-        return "regions=" .. select("#", t:GetRegions()) .. " face=" .. faced .. slot .. string.format(" alpha=%g", t:GetAlpha()) .. " blizzard=" .. (#lit > 0 and table.concat(lit, ",") or "none") .. " selected="
+        local w = t.medalluinWell and t.medalluinWell.color
+        return "regions=" .. select("#", t:GetRegions()) .. " face=" .. faced .. slot
+            .. (w and string.format(" well=%.2f,%.2f,%.2f", w[1], w[2], w[3]) or "")
+            .. string.format(" alpha=%g", t:GetAlpha()) .. " blizzard=" .. (#lit > 0 and table.concat(lit, ",") or "none") .. " selected="
             .. tostring(t.medalluin and t.mark.shown)
             .. (c and string.format(" text=%.2f,%.2f,%.2f", c[1], c[2], c[3]) or "")
     end
@@ -5187,7 +5192,8 @@ if stripsPass then
             if g.h == 1 then hairline = "1px" end
         end
         screen("head", chat.head, "column art=" .. tostring(ChatFrame1ButtonFrameBackground.shown) .. " hairline=" .. hairline)
-        screen("  cog", chat.cog, string.format("lit=%s strata=%s level=%s over the chat=%s regions=%d",
+        screen("  cog", chat.cog, string.format("glyph=%s lit=%s strata=%s level=%s over the chat=%s regions=%d",
+            chat.cog.glyph and chat.cog.glyph.texture:match("[^\\]+$") or "-",
             tostring(chat.cog.highlightLocked), tostring(chat.cog.strata), tostring(chat.cog.level),
             tostring(chat.cog.level > ChatFrame1:GetFrameLevel()), select("#", chat.cog:GetRegions())))
         screen("  drawer", chat.drawer, string.format("shown=%s strata=%s level=%s regions=%d", tostring(chat.drawer.shown),

@@ -44,12 +44,15 @@ local L = ns.stripLayout
 local PARTS = ns.media .. "strips\\"
 local PAD, RULE, TABS = 8, 6, 24    -- the box's edge, the gap over the margin's rule, the tabs' height
 local SHORTER = 3                   -- the margin, less than the windows' (the edit box's height)
-local SLIM, FOOT = 18, 3            -- a tab's box, and its foot over the hairline
-local BOX = TABS - FOOT             -- the cog's box and its drawer's: up to the tab row's top
+local BOX = TABS + PAD              -- the head's height: the tabs, the cog and its drawer, flush to the box's top
 local GAP = 4                       -- either side of the divider between the tabs and the cog
-local GLYPH = BOX + 4               -- a glyph in a box (its art is 20 of the 32)
+local GLYPH = 28                    -- a glyph in a box (its art is 20 of the 32)
+local TAB_PAD, TAB_MIN = 16, 36     -- a tab's width: its text plus padding
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
+local COMBAT_WELL = { 0.141, 0.063, 0.055, 1 }
+local COMBAT_MARK = { 0.361, 0.133, 0.102, 0.65 }
+local COMBAT_TEXT = { 1.00, 0.67, 0.55 }
 local DIM = ns.colors.dim
 
 -- A Blizzard region taken out of sight, and kept out: Blizzard's code shows
@@ -110,19 +113,17 @@ local HEAD = {
     { name = "ChatFrameToggleVoiceMuteButton" },
 }
 
--- The dock (Blizzard's tab row) along the chat's top, stopping short of
--- the divider before the cog. Blizzard hangs it from ChatFrame1's
--- background, which runs past the chat's right edge, under the cog; so it
--- is anchored here to ChatFrame1 itself. And it is raised, or lowered,
--- until its tabs' slim boxes stand on the hairline: the first tab's middle
--- is measured from the chat's top (the hairline: both in the chat's own
--- units, so no scale is mixed in) and the dock moved by what is missing.
--- The tabs are fitted to its width again.
+-- The dock (Blizzard's tab row) along the head's foot, from the box's left
+-- edge to short of the divider before the cog. It is raised, or lowered,
+-- until its tabs' boxes fill the head from the hairline to the box's top:
+-- the first tab's middle is measured from the chat's top (the hairline:
+-- both in the chat's own units, so no scale is mixed in) and the dock
+-- moved by what is missing.
 local function Dock(width)
     local dock = GENERAL_CHAT_DOCK
     if not dock then return end
     local function Set()
-        dock:SetPoint("BOTTOMLEFT", ChatFrame1, "TOPLEFT", 0, lift)
+        dock:SetPoint("BOTTOMLEFT", head, "BOTTOMLEFT", 0, lift)
         dock:SetPoint("BOTTOMRIGHT", ChatFrame1, "TOPRIGHT", L.chatRight - width, lift)
     end
     Set()
@@ -130,7 +131,7 @@ local function Dock(width)
     local tab = _G.ChatFrame1Tab
     local top, bottom, chat = tab:GetTop(), tab:GetBottom(), ChatFrame1:GetTop()
     if top and bottom and chat then
-        local miss = (FOOT + SLIM / 2) / Ratio() - ((top + bottom) / 2 - chat)
+        local miss = (BOX / 2) / Ratio() - ((top + bottom) / 2 - chat)
         if math.abs(miss) > 0.5 then
             lift = lift + miss
             Set()
@@ -151,7 +152,7 @@ end
 local function Row()
     local r = Ratio()
     placing = true
-    Dock((BOX + GAP + 1 + GAP) / r)
+    Dock((BOX - PAD + GAP + 1 + GAP) / r)
     if cog then
         if open then cog:LockHighlight() else cog:UnlockHighlight() end
         local shown, friends = {}, nil
@@ -229,21 +230,32 @@ end
 local TAB_ART = { "Left", "Middle", "Right", "ActiveLeft", "ActiveMiddle", "ActiveRight",
     "HighlightLeft", "HighlightMiddle", "HighlightRight" }
 
--- The selected tab marked and its name in gold, the others dim; after
--- Blizzard's colours (FCFTab_UpdateColors).
+-- The selected tab marked and its name in gold (or ember for the combat
+-- log), the others dim; after Blizzard's colours (FCFTab_UpdateColors).
 local function Selected(tab, selected)
     if not tab.medalluin then return end
     tab.mark:SetShown(selected and true or false)
     local text = tab.Text or _G[tab:GetName() .. "Text"]
-    local c = selected and GOLD or DIM
+    local c = selected and (tab.medalluinCombat and COMBAT_TEXT or GOLD) or DIM
     if text then text:SetTextColor(c[1], c[2], c[3]) end
 end
 
--- The windows' box tab (ns.window.Face) instead of Blizzard's pill, slim:
--- on a slot across the middle of Blizzard's taller tab, its name centred
--- in it (Row stands the slots on the hairline).
+-- The windows' box tab (ns.window.Face) instead of Blizzard's pill, filling
+-- the head from the hairline to the box's top edge, as wide as its text.
 local function Slot(tab)
-    tab.medalluinSlot:SetHeight(SLIM / Ratio())
+    tab.medalluinSlot:SetHeight(BOX / Ratio())
+end
+
+local function FitTab(tab)
+    if not tab or not tab.medalluin then return end
+    local text = tab.Text or _G[tab:GetName() .. "Text"]
+    if not text then return end
+    if text.SetWidth then text:SetWidth(0) end
+    local w = text.GetUnboundedStringWidth and text:GetUnboundedStringWidth()
+        or text.GetStringWidth and text:GetStringWidth() or 0
+    if not ns.IsSecret(w) and w > 0 then
+        tab:SetWidth(math.max(TAB_MIN, math.ceil(w) + TAB_PAD))
+    end
 end
 
 local function SkinTab(tab)
@@ -254,14 +266,21 @@ local function SkinTab(tab)
     slot:SetPoint("RIGHT")
     tab.medalluinSlot = slot
     Slot(tab)
-    ns.window.Face(tab, slot)
+    local well = ns.window.Face(tab, slot)
+    local frame = _G[tab:GetName():gsub("Tab$", "")]
+    if frame == _G.ChatFrame2 then
+        well:SetColorTexture(unpack(COMBAT_WELL))
+        tab.mark:SetColorTexture(unpack(COMBAT_MARK))
+        tab.medalluinCombat = true
+    end
+    tab.medalluinWell = well
     local text = tab.Text or _G[tab:GetName() .. "Text"]
     if text then
         text:ClearAllPoints()
         text:SetPoint("CENTER", slot, "CENTER")
     end
     tab.medalluin = true
-    local frame = _G[tab:GetName():gsub("Tab$", "")]
+    FitTab(tab)
     Selected(tab, frame and FCFDock_GetSelectedWindow
         and frame == FCFDock_GetSelectedWindow(GENERAL_CHAT_DOCK))
 end
@@ -521,17 +540,18 @@ local function Cog()
     cog:SetFrameStrata("MEDIUM")
     cog:SetFrameLevel(ChatFrame1:GetFrameLevel() + 5)
     cog:SetSize(BOX, BOX)
-    cog:SetPoint("BOTTOMRIGHT", head, "BOTTOMRIGHT", 0, FOOT)
+    cog:SetPoint("BOTTOMRIGHT", head, "BOTTOMRIGHT", 0, 0)
     ns.window.Face(cog)
     local g = cog:CreateTexture(nil, "ARTWORK")
-    g:SetTexture(PARTS .. "menu")
+    g:SetTexture(PARTS .. "chat-tools")
     g:SetSize(GLYPH, GLYPH)
     g:SetPoint("CENTER")
     local lit = cog:CreateTexture(nil, "HIGHLIGHT")
-    lit:SetTexture(PARTS .. "menu")
+    lit:SetTexture(PARTS .. "chat-tools")
     lit:SetBlendMode("ADD")
     lit:SetAlpha(0.35)
     lit:SetAllPoints(g)
+    cog.glyph = g
     cog:SetScript("OnClick", function()
         open = not open
         Row()
@@ -606,11 +626,12 @@ local function Build()
     edit = CreateFrame("Frame", nil, chatBox)
     edit:SetPoint("BOTTOMLEFT", L.chatLeft + PAD / 2, 2)
     edit:SetPoint("TOPRIGHT", chatBox, "BOTTOMRIGHT", -PAD, margin - 2)
-    -- the tab row, over the panel: the cog at its right end
+    -- the tab row, over the panel up to the box's top edge, edge to edge:
+    -- the cog at its right end
     head = CreateFrame("Frame", nil, chatBox)
-    head:SetPoint("BOTTOMLEFT", panel, "TOPLEFT")
-    head:SetPoint("BOTTOMRIGHT", panel, "TOPRIGHT")
-    head:SetHeight(TABS)
+    head:SetPoint("BOTTOMLEFT", chatBox, "BOTTOMLEFT", 0, foot + L.chatHeight)
+    head:SetPoint("BOTTOMRIGHT", chatBox, "BOTTOMRIGHT", 0, foot + L.chatHeight)
+    head:SetHeight(BOX)
     -- the hairline between the tabs and the messages
     local line = head:CreateTexture(nil, "ARTWORK")
     line:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
@@ -672,6 +693,25 @@ local function Build()
         end
     end
     ns.BuffRow({ x = L.chatLeft + PAD, y = ns.stripArt.height - L.stripHeight - margin / 2 })
+
+    local function FitTabs()
+        local prev
+        for _, frame in ipairs(Frames()) do
+            local tab = _G[frame:GetName() .. "Tab"]
+            if tab and tab.medalluin then
+                FitTab(tab)
+                if frame == ChatFrame1 or frame.isDocked then
+                    if prev and tab:GetNumPoints() > 0 then
+                        tab:ClearAllPoints()
+                        tab:SetPoint("LEFT", prev, "RIGHT", -1, 0)
+                    end
+                    prev = tab
+                end
+            end
+        end
+    end
+    if FCFDock_UpdateTabs then hooksecurefunc("FCFDock_UpdateTabs", FitTabs) end
+    if _G.PanelTemplates_TabResize then hooksecurefunc("PanelTemplates_TabResize", FitTab) end
 
     Measure()
     Place()

@@ -9,12 +9,13 @@
 --   |                          [o]       the OUTER edge (the right), the
 --   |                          [o]       scroll bar on the inner edge
 --   ---------------------------------
---          [Auras][Meter][Loot]  (bag)   <- the margin: the tabs, beside
---                                           the backpack's medallion
+--   [  *  |  =  |  #  ] |     (bag)   <- the margin: the tabs edge to edge,
+--                                        up to a break divider before the bag
 --
--- The tabs run inward from the medallion in the views' order: Loot
--- outermost, then Meter, then Auras. They and the column's buttons wear
--- the windows' box (ns.window.Face), a view's button marked while it is lit.
+-- The tabs run inward from the break divider in the views' order: Loot
+-- outermost, then Meter, then Auras, sharing the row edge to edge. They and
+-- the column's buttons wear the windows' box (ns.window.Face), a view's
+-- button marked while it is lit.
 --
 -- A view hands the panel its tab label, the option that switches it, its
 -- column buttons (top down, and one at the foot), and draws itself into a
@@ -37,9 +38,7 @@ local INNER = L.chatPad + L.chatColumn + 5      -- the body's outer edge, the sa
 local PITCH = 30                                -- column buttons, top down
 local BUTTON, GLYPH = 24, 28                    -- a button's box, and its glyph's 32x32 art in it
 local PAD, RULE, TABS = 8, 6, 24                -- as the chat box's (chat.lua)
-local SLIM = 18                                 -- a tab's box, as the chat's
 local SHORTER = 3                               -- the margin, as the chat's
-local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 
 local views = {}
@@ -135,7 +134,7 @@ end
 -- ----------------------------------------------------------------- tabs
 local function Selected(view, on)
     view.tab.mark:SetShown(on)
-    view.tab.label:SetTextColor(unpack(on and GOLD or ns.colors.dim))
+    view.tab.glyph:SetAlpha(on and 1 or 0.6)
 end
 
 local function Select(view)
@@ -154,38 +153,50 @@ local function Select(view)
     ns.side.Changed()
 end
 
--- The tabs that are on, from the outer end inward; the panel goes when
--- none is.
+-- The tabs that are on, from the outer end inward, sharing the row edge to
+-- edge; the panel goes when none is.
 local function Arrange()
-    local prev, pick, first
+    local shown, pick = {}, nil
     for _, v in ipairs(views) do
         if v.available then
             local on = On(v)
             v.tab:SetShown(on)
             if on then
-                v.tab:ClearAllPoints()
-                if prev then
-                    v.tab:SetPoint("RIGHT", prev.tab, "LEFT", 1, 0)
-                else
-                    v.tab:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-                end
-                prev, first = v, first or v
+                table.insert(shown, v)
                 if v.key == ns.db.sideTab then pick = v end
             end
         end
     end
-    panel:SetShown(first ~= nil)
-    Select(pick or first)
+    local n, full, prev = #shown, row:GetWidth(), nil
+    for i, v in ipairs(shown) do
+        local x0 = math.floor((i - 1) * (full - 1) / n)
+        local x1 = math.floor(i * (full - 1) / n) + 1
+        v.tab:SetWidth(x1 - x0)
+        v.tab:ClearAllPoints()
+        if prev then
+            v.tab:SetPoint("RIGHT", prev.tab, "LEFT", 1, 0)
+        else
+            v.tab:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        end
+        prev = v
+    end
+    panel:SetShown(n > 0)
+    Select(pick or shown[1])
 end
 
 local function Tab(view)
     local tab = CreateFrame("Button", nil, row)
+    tab:SetHeight(row:GetHeight())
     ns.window.Face(tab)
-    tab.label = ns.Text(tab, 11)
-    tab.label:SetPoint("CENTER")
-    tab.label:SetText(view.label)
-    tab:SetSize(math.max(L.tabTex, math.floor(tab.label:GetStringWidth() + 28)), SLIM)
+    tab.glyph = tab:CreateTexture(nil, "ARTWORK")
+    tab.glyph:SetSize(GLYPH, GLYPH)
+    tab.glyph:SetPoint("CENTER")
+    tab.glyph:SetTexture(PARTS .. "side-" .. view.key)
     tab:SetScript("OnClick", function() Select(view) end)
+    tab:SetScript("OnEnter", function(self)
+        ns.Tip(self, ns.side.Beside, { title = view.label })
+    end)
+    tab:SetScript("OnLeave", function() GameTooltip:Hide() end)
     view.tab = tab
 end
 
@@ -221,17 +232,22 @@ local function Build()
     panel:SetWidth(width)
     panel:SetHeight(foot + tall + PAD)
     panel:SetPoint("BOTTOMRIGHT", strip, "BOTTOMRIGHT", 0, L.stripHeight)
+    local breakAt = ns.stripWell.x + L.ringRadius + 5
     local dress = ns.window.Dress(panel, margin, true)
+    dress.rule:SetPoint("BOTTOMLEFT", 0, margin)
+    dress.rule:SetPoint("BOTTOMRIGHT", 0, margin)
+    for _, t in ipairs(dress.corners.BOTTOMLEFT or {}) do t:Hide() end
     -- the body's room, the old panel's: the column at its right
     area = CreateFrame("Frame", nil, panel)
     area:SetPoint("BOTTOMRIGHT", -PAD, foot)
     area:SetSize(width - 2 * PAD, tall)
     area:EnableMouseWheel(true)
     area:SetScript("OnMouseWheel", function(_, delta) Wheel(delta) end)
-    -- the tabs' row beside the medallion, under the margin's rule
+    -- the tabs' row, edge to edge under the margin's rule up to a break
+    -- divider before the backpack's medallion
     row = CreateFrame("Frame", nil, panel)
-    row:SetPoint("BOTTOMRIGHT", -(L.chatLeft + PAD / 2), 2)
-    row:SetSize(width - PAD - L.chatLeft - PAD / 2, margin - 4)
+    row:SetPoint("BOTTOMRIGHT", -breakAt, 0)
+    row:SetSize(width - breakAt, margin + 1)
 
     -- the scroll bar's track, where the chat's is on the other side
     track = area:CreateTexture(nil, "BORDER")

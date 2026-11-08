@@ -117,6 +117,7 @@ local function Face(b, to, soft)
     glow:SetPoint("TOPLEFT", to, "TOPLEFT", 1, -1)
     glow:SetPoint("BOTTOMRIGHT", to, "BOTTOMRIGHT", -1, 1)
     glow:SetColorTexture(1, 1, 1, a.glow)
+    return well, edge
 end
 ns.window.Face = Face           -- the chat's tabs wear it too (strips/chat.lua)
 

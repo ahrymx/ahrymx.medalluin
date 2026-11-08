@@ -127,6 +127,11 @@ def glyph(kind, x, y):
         return P("M1,2 L19,2 L19,18 L1,18 Z M2.6,3.6 L17.4,3.6 L17.4,16.4 L2.6,16.4 Z M4.2,5.2 L9,5.2 L9,14.8 "
                  "L4.2,14.8 Z", "evenodd")
     # the chat box's head (strips/chat.lua)
+    if kind == "chat-tools":    # a speech bubble with action lines: the chat buttons drawer
+        return P("M2,2.5 L18,2.5 C19.2,2.5 19.8,3.1 19.8,4.5 L19.8,13 C19.8,14.4 19.2,15 18,15 L9,15 L4,19 "
+                 "L5.2,15 L2,15 C0.8,15 0.2,14.4 0.2,13 L0.2,4.5 C0.2,3.1 0.8,2.5 2,2.5 Z "
+                 "M4.5,6 L15.5,6 L15.5,7.6 L4.5,7.6 Z "
+                 "M4.5,9.2 L15.5,9.2 L15.5,10.8 L4.5,10.8 Z", "evenodd")
     if kind == "chat":          # a speech bubble, its tail at the lower left
         return P("M3,2.5 L17,2.5 C18.4,2.5 19,3.1 19,4.5 L19,12.5 C19,13.9 18.4,14.5 17,14.5 L9,14.5 L4,18.5 "
                  "L5,14.5 L3,14.5 C1.6,14.5 1,13.9 1,12.5 L1,4.5 C1,3.1 1.6,2.5 3,2.5 Z")
@@ -138,6 +143,27 @@ def glyph(kind, x, y):
         return P("M3,1.5 L13,1.5 L17,5.5 L17,18.5 L3,18.5 Z M12.4,2.6 L12.4,6.1 L15.9,6.1 Z"
                  "M5.5,8 L14.5,8 L14.5,9.6 L5.5,9.6 Z M5.5,11.2 L14.5,11.2 L14.5,12.8 L5.5,12.8 Z"
                  "M5.5,14.4 L11.5,14.4 L11.5,16 L5.5,16 Z M5.5,4.8 L10.5,4.8 L10.5,6.4 L5.5,6.4 Z", "evenodd")
+    # the side panel's tabs (strips/side.lua)
+    if kind == "side-auras":    # a radiant starburst around a glowing core
+        import math
+        p = []
+        for i in range(16):
+            a = i * math.pi / 8 - math.pi / 2
+            r = 9.2 if i % 2 == 0 else (6.6 if i % 4 == 2 else 3.8)
+            p.append(f"{10 + r * math.cos(a):.2f},{10 + r * math.sin(a):.2f}")
+        return P("M" + " L".join(p) + " Z "
+                 "M6.8,10 a3.2,3.2 0 1,0 6.4,0 a3.2,3.2 0 1,0 -6.4,0 Z "
+                 "M8.3,10 a1.7,1.7 0 1,0 3.4,0 a1.7,1.7 0 1,0 -3.4,0 Z", "evenodd")
+    if kind == "side-meter":    # three ranked horizontal bars on a vertical rule
+        return P("M1.5,1.5 L3.3,1.5 L3.3,18.5 L1.5,18.5 Z "
+                 "M4.5,2.5 L18.5,2.5 L18.5,6.2 L4.5,6.2 Z "
+                 "M4.5,8.1 L14.5,8.1 L14.5,11.9 L4.5,11.9 Z "
+                 "M4.5,13.8 L10,13.8 L10,17.5 L4.5,17.5 Z")
+    if kind == "side-loot":     # a treasure chest: arched lid, base and clasp
+        return P("M2,8.5 C2,4 5.2,2 10,2 C14.8,2 18,4 18,8.5 L12.2,8.5 L12.2,7.2 L7.8,7.2 L7.8,8.5 Z "
+                 "M2.5,10.2 L7.8,10.2 L7.8,13.5 L12.2,13.5 L12.2,10.2 L17.5,10.2 L16.6,18 L3.4,18 Z "
+                 "M8.6,8 L11.4,8 L11.4,12.6 L8.6,12.6 Z "
+                 "M9.4,9.8 L10.6,9.8 L10.6,11.4 L9.4,11.4 Z", "evenodd")
     # the character window's tabs (character/window.lua)
     if kind == "character":     # head and shoulders
         return P("M6,6.5 a4,4.5 0 1,0 8,0 a4,4.5 0 1,0 -8,0 Z M1.5,19 C1.5,13 5,11.5 10,11.5 C15,11.5 18.5,13 18.5,19 Z")
@@ -382,10 +408,10 @@ def render(kind):
 # ----------------------------------------------------------------- layer3
 GLYPHS = ["spellbook", "talents", "quests", "social", "guild", "lfg", "map", "menu", "help",
           "profession", "achievement", "housing", "collections", "journal", "store", "legacy", "misc"]
-# the character window's tabs, its controls, the quest tracker's footer and the chat box's head
+# the character window's tabs, its controls, the quest tracker's footer, the chat box's head and the side panel's tabs
 TABS = ["character", "reputation", "currency", "skills", "pvp", "statistics",
         "chevron-down", "chevron-up", "chevron-double", "close", "questlog", "sort", "view-minimal", "view-full",
-        "chat", "channels", "log"]
+        "chat-tools", "chat", "channels", "log", "side-auras", "side-meter", "side-loot"]
 
 
 def part(name, inner, size=32):
