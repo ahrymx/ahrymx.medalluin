@@ -41,7 +41,7 @@
 --           flex, bandUsed, events = { ... }, Build(body, foot, band),
 --           Fit(height), Refresh(), OnEvent(event, ...), Shown(),
 --           Showing(on) }
---   w.Build(), w.Select(page), w.ByFrame(name), w.Retab(), w.SetShown(on),
+--   w.Build(), w.Select(page), w.Open(page) (as its tab does), w.ByFrame(name), w.Retab(), w.SetShown(on),
 --   w.Detached()
 --
 -- A window with a place has two views, as the quest tracker has, switched
@@ -551,6 +551,7 @@ function ns.Window(spec)
         if not InCombatLockdown() and spec.Open then spec.Open(page) end
         if current ~= page then Select(page) end
     end
+    w.Open = Open
 
     -- ------------------------------------------------------------ build
     local function Available(p)

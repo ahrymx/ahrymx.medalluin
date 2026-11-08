@@ -1734,8 +1734,8 @@ local function Buff(id)
     end
 end
 local function AuraData(b)
-    return b and { auraInstanceID = b.id, icon = b.icon, applications = b.count or 0,
-        expirationTime = b.timed and 160 or 0 }
+    return b and { auraInstanceID = b.id, icon = b.icon, applications = b.count or 0, name = b.name,
+        expirationTime = b.expires or b.timed and 160 or 0 }
 end
 -- loss of control: none until a pass hands one over (lossOfControl)
 local lossOfControl
@@ -2851,12 +2851,13 @@ if profPass then
             { 3115, "Rough Sharpening Stone", 2, 0, { { 2835, 1 } } },
             { 7408, "Heavy Copper Maul", 1, 1, { { 2840, 12 }, { 2880, 1 } } } },
         [186] = { { 2657, "Smelt Copper", 3, 2, { { 2770, 1 } } } },
-        [185] = { { 2538, "Charred Wolf Meat", 4, 3, { { 2672, 1 } } } },
+        [185] = { { 2538, "Charred Wolf Meat", 4, 3, { { 2672, 1 } } },
+            { 9001, "Basic Campfire Kit", 6, 2, { { 2589, 1 } } } },
         [129] = { { 3275, "Linen Bandage", 5, 0, { { 2589, 1 } } } },
     }
     -- where a recipe greys, its points a craft, whether it can skill up at all
     P.trivial = { [2662] = { 165, 1 }, [7408] = { 170, 2 }, [3115] = { 95, 1, false }, [2657] = { 70, 1 } }
-    local CATS = { "Armor", "Materials", "Smelting", "Meat", "Bandages" }
+    local CATS = { "Armor", "Materials", "Smelting", "Meat", "Bandages", "Camping" }
     local ITEMS = { [2840] = "Copper Bar", [2835] = "Rough Stone", [2880] = "Weak Flux", [2770] = "Copper Ore",
         [2672] = "Stringy Wolf Meat", [2589] = "Linen Cloth" }
     P.bags = { [2840] = 10, [2835] = 3, [2770] = 5, [2672] = 0, [2589] = 7 }
@@ -12084,6 +12085,108 @@ if profPass then
     -- Overview turns our page alone
     click(pageOf("overview").tab)
     state("prof.overview")
+
+    -- 6b. the Overview's sections: the primaries, the secondaries, Camping
+    local ov = pageOf("overview")
+    local function overview(tag)
+        local function y(f)
+            local _, _, _, _, at = f:GetPoint()
+            return f.shown and tostring(-at) or "hidden"
+        end
+        local cards = {}
+        for _, c in ipairs(ov.cards) do
+            if c.shown then table.insert(cards, c.name.text .. "@" .. y(c)) end
+        end
+        print(tag, "primary@" .. y(ov.heads.primary), "secondary@" .. y(ov.heads.secondary),
+            "camp@" .. y(ov.heads.camp) .. "/" .. y(ov.camp), table.concat(cards, " "))
+        local slots, tiles = {}, {}
+        for _, s in ipairs(ov.camp.slots) do
+            table.insert(slots, s.name.text .. "=" .. s.time.text .. (s.icon.desaturated and "(grey)" or ""))
+        end
+        for _, tile in ipairs(ov.camp.tiles) do
+            if tile.shown then
+                local _, _, _, x, ty = tile:GetPoint()
+                table.insert(tiles, string.format("%s[%s]%s@%d,%d", tile.name.text, tile.sub.text, tile.sign.text, x, -ty))
+            end
+        end
+        print(tag .. " camp", table.concat(slots, " | "), "h=" .. ov.camp.h)
+        print(tag .. " objects", table.concat(tiles, " | "))
+        local d = ov.camp.drawer
+        if d.shown then
+            local rows = {}
+            for _, r in ipairs(d.rows) do
+                if r.shown then
+                    table.insert(rows, r.name.text .. " {" .. r.state.text .. "} " .. r.what.text
+                        .. (r.tier and " (makes)" or ""))
+                end
+            end
+            local _, _, _, _, dy = d:GetPoint()
+            print(tag .. " drawer", "@" .. -dy, "h=" .. d.h, table.concat(rows, " | "))
+        end
+    end
+    overview("prof.sections")
+    -- no secondary learned: no heading for them
+    P.learned[4], P.learned[5] = nil, nil
+    fire("SKILL_LINES_CHANGED")
+    frame()
+    overview("prof.no secondaries")
+    P.learned[4], P.learned[5] = 4, 5
+    fire("SKILL_LINES_CHANGED")
+    frame()
+    click(pageOf("overview").tab)
+    frame()
+    -- the camp's buffs: near the fire, settling in, then Camp Benefits and food, ticking down
+    local camp = { name = "Campfire Nearby", id = 90, icon = "fire" }
+    table.insert(buffs, camp)
+    now = now + 1
+    frame()
+    overview("prof.camp near")
+    camp.name = "Welcoming Campfire"
+    now = now + 1
+    frame()
+    overview("prof.camp welcome")
+    camp.name, camp.expires = "Camp Benefits", now + 3600
+    table.insert(buffs, { name = "Well Fed", id = 91, icon = "fed", expires = now + 600 })
+    now = now + 1
+    frame()
+    overview("prof.camp benefits")
+    now = now + 1200
+    frame()
+    overview("prof.camp later")
+    table.remove(buffs)
+    table.remove(buffs)
+    -- an object's drawer: its tiers; a known one is made on its tab
+    local cook
+    for _, tile in ipairs(ov.camp.tiles) do
+        if tile.shown and tile.name.text == "Basic Campfire" then cook = tile end
+    end
+    click(cook)
+    overview("prof.drawer")
+    click(cook)
+    overview("prof.drawer shut")
+    click(cook)
+    P.calls = {}
+    local made = ov.camp.drawer.rows[1]
+    made.scripts.OnClick(made, "LeftButton")
+    frame()
+    P.Show(185)
+    frame()
+    print("prof.drawer made", "page=" .. W.Current().key, "chosen=" .. tostring(W.Current().chosen),
+        "calls=" .. table.concat(P.calls, ","))
+    foot("prof.drawer made")
+    -- the kit forgotten: the tile says how to learn it
+    local kit = P.recipes[185][2]
+    table.remove(P.recipes[185])
+    fire("TRADE_SKILL_LIST_UPDATE")
+    frame()
+    click(pageOf("overview").tab)
+    frame()
+    overview("prof.kit forgotten")
+    table.insert(P.recipes[185], kit)
+    P.Show(185)
+    frame()
+    click(pageOf("overview").tab)
+    frame()
 
     -- 7. First Aid learned: a fifth tab, the others narrower
     P.learned[3] = 3

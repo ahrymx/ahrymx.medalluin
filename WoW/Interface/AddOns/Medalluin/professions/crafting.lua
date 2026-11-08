@@ -159,7 +159,7 @@ local function Rows(p)
     for _, id in ipairs(C_TradeSkillUI.GetFilteredRecipeIDs() or {}) do
         local info = C_TradeSkillUI.GetRecipeInfo(id)
         if info and info.learned then
-            learned[info.name] = true
+            learned[info.name] = id
             if starred[id] then
                 table.insert(favs, info)
             else
@@ -176,8 +176,9 @@ local function Rows(p)
     -- a recipe the filters hide is still learned
     for _, id in ipairs(C_TradeSkillUI.GetAllRecipeIDs and C_TradeSkillUI.GetAllRecipeIDs() or {}) do
         local info = C_TradeSkillUI.GetRecipeInfo(id)
-        if info and info.learned then learned[info.name] = true end
+        if info and info.learned then learned[info.name] = id end
     end
+    W.CampLearned(p.skillLine, learned)            -- the camp objects it knows (camping.lua)
     if #favs > 0 and Heading(p, rows, "favourites", "Favourites") then
         for _, info in ipairs(favs) do table.insert(rows, Recipe(p, info)) end
     end

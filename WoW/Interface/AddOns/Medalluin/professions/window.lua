@@ -7,14 +7,20 @@
 --   [Overview][primary][primary]                                [x]
 --   [secondary][secondary][secondary]
 --   ---------------------------------------------------------------
+--   ------------------- Primary professions -----------------------
 --   [icon] Blacksmithing                          [spell] [spell]
 --          [=========== 142 / 150 ===========]
 --          Train Expert now                             [Unlearn]
 --   [icon] Mining ...
+--   ------------------ Secondary professions ----------------------
+--   [icon] Cooking ...
+--   ------------------------- Camping -----------------------------
+--   the camp's buffs, timed; the camp objects (professions/camping.lua)
 --   ---------------------------------------------------------------
 --
 -- Overview is a card per profession learned (and an empty one per primary
--- not learned); each other tab is a profession with recipes, crafted here
+-- not learned), the primaries and the secondaries under a heading each
+-- (none learned: no heading), then Camping; each other tab is a profession with recipes, crafted here
 -- (professions/crafting.lua). The tabs are Overview and one per profession
 -- that crafts, six at most: Overview and the primaries on the first row,
 -- the secondaries on a second under it (none: no second row); fewer
@@ -41,6 +47,7 @@ local GOLD = { 0.941, 0.831, 0.533 }
 local RED = { 1, 0.3, 0.25 }
 local CARD, GAP, ICON, SPELL = 74, 6, 40, 30
 local CARDS = 5                         -- two primaries and three secondaries
+local HEAD = 12 + 2 * GAP               -- a heading (the window's ornament, worded) and its room
 local NONE = "Interface\\Icons\\INV_Scroll_04"
 
 local W = ns.Window{
@@ -150,11 +157,9 @@ local function Spell(card, i)
     return s
 end
 
-local function Card(body, i)
+local function Card(body)
     local c = CreateFrame("Frame", nil, body)
     c:SetHeight(CARD)
-    c:SetPoint("TOPLEFT", 0, -(i - 1) * (CARD + GAP))
-    c:SetPoint("TOPRIGHT", 0, -(i - 1) * (CARD + GAP))
     local fill = c:CreateTexture(nil, "BACKGROUND")
     fill:SetAllPoints()
     fill:SetColorTexture(0.541, 0.439, 0.204, 0.12)
@@ -274,20 +279,54 @@ end
 -- -------------------------------------------------------------- Overview
 overview = { key = "overview", label = "Overview", glyph = "profession", order = 0, frame = "ProfessionsFrame" }
 overview.cards = {}
-overview.height = CARDS * CARD + (CARDS - 1) * GAP
 overview.events = { "SKILL_LINES_CHANGED", "SPELLS_CHANGED", "TRADE_SKILL_LIST_UPDATE", "PLAYER_REGEN_ENABLED",
-    "PLAYER_LEVEL_UP", "TRAINER_UPDATE" }
+    "PLAYER_LEVEL_UP", "TRAINER_UPDATE", "BAG_UPDATE_DELAYED" }
 function overview.Available() return true end
 function overview.Build(body)
-    for i = 1, CARDS do overview.cards[i] = Card(body, i) end
+    for i = 1, CARDS do overview.cards[i] = Card(body) end
+    overview.heads = {
+        primary = ns.window.Ornament(body, "Primary professions"),
+        secondary = ns.window.Ornament(body, "Secondary professions"),
+        camp = ns.window.Ornament(body, "Camping"),
+    }
+    overview.camp = W.Camp(body)
+    overview.height = 3 * HEAD + CARDS * (CARD + GAP) + W.CAMP_MOST
 end
 function overview.Refresh()
     local learned = W.Learned()
+    local y = 0
+    local function Put(f, height)
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", 0, -y)
+        f:SetPoint("TOPRIGHT", 0, -y)
+        f:Show()
+        y = y + height
+    end
+    local function Head(f)
+        y = y + GAP
+        Put(f, 12 + GAP)
+    end
+    local secondaries = false
+    for _, prof in ipairs(learned) do
+        if not prof.primary then secondaries = true end
+    end
+    Head(overview.heads.primary)
+    overview.heads.secondary:SetShown(secondaries)
     for i, c in ipairs(overview.cards) do
         local prof = learned[i]
         c:SetShown(prof ~= nil)
-        if prof then Fill(c, prof) end
+        if prof then
+            if not prof.primary and learned[i - 1] and learned[i - 1].primary then Head(overview.heads.secondary) end
+            Fill(c, prof)
+            Put(c, CARD + GAP)
+        end
     end
+    Head(overview.heads.camp)
+    local camp = overview.camp
+    camp:ClearAllPoints()
+    camp:SetPoint("TOPLEFT", 0, -y)
+    camp:SetPoint("TOPRIGHT", 0, -y)
+    camp.Refresh(learned)
     Follow()
 end
 function overview.Showing(on)
@@ -348,6 +387,17 @@ end
 local function Start()
     if not ns.db.professions or not SpellbookMicroButton or not C_TradeSkillUI or not GetProfessions then return end
     W.Build()
+    -- the camp's timers, each second while the Overview shows (hooked
+    -- once built: the shell sets the window's own OnUpdate as it builds)
+    local second
+    W.window:HookScript("OnUpdate", function()
+        if not (overview.body and overview.body:IsVisible()) then return end
+        local now = math.floor(GetTime())
+        if now ~= second then
+            second = now
+            overview.camp.Tick()
+        end
+    end)
     layer = W.Layer("MedalluinProfessionsCasts")
     W.layer = layer
     W.Select(overview)
