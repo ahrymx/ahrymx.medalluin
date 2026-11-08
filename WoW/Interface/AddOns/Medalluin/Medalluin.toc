@@ -72,6 +72,7 @@ character\sets.lua
 character\paperdoll.lua
 character\reputation.lua
 character\currency.lua
+character\nodes.lua
 character\skills.lua
 character\pvp.lua
 character\statistics.lua

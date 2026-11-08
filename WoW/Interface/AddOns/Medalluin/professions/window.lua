@@ -4,7 +4,8 @@
 -- one frame, ProfessionsFrame (the book its Overview page); retail keeps
 -- Blizzard's.
 --
---   [Overview][prof][prof][prof]...                         [v] [x]
+--   [Overview][primary][primary]                                [x]
+--   [secondary][secondary][secondary]
 --   ---------------------------------------------------------------
 --   [icon] Blacksmithing                          [spell] [spell]
 --          [=========== 142 / 150 ===========]
@@ -15,7 +16,9 @@
 -- Overview is a card per profession learned (and an empty one per primary
 -- not learned); each other tab is a profession with recipes, crafted here
 -- (professions/crafting.lua). The tabs are Overview and one per profession
--- that crafts, six at most, sharing the row: fewer professions, wider tabs.
+-- that crafts, six at most: Overview and the primaries on the first row,
+-- the secondaries on a second under it (none: no second row); fewer
+-- professions, wider tabs. The details are always open (no chevron).
 --
 -- Under a card's bar, its next rank: gold when its skill and level are met
 -- (red when the bar is within 5 of its cap, points about to be wasted),
@@ -41,7 +44,7 @@ local CARDS = 5                         -- two primaries and three secondaries
 local NONE = "Interface\\Icons\\INV_Scroll_04"
 
 local W = ns.Window{
-    name = "MedalluinProfessions", side = 1, detailsKey = "professionsDetails",
+    name = "MedalluinProfessions", side = 1,
     closeTip = "Close the professions.",
     Close = function() HideUIPanel(ProfessionsFrame) end,
     Open = function(page) if page.Open then page.Open() end end,

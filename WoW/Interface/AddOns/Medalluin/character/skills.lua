@@ -6,13 +6,23 @@
 -- lines (no parent), and not the class's own heading. A bonus to a rank
 -- (gear, a buff) is shown after it in green; defense's comes from
 -- UnitDefenseSkill, as Blizzard's does.
+--
+-- Under them, Gathering: the nodes of each gathering profession known
+-- (character/nodes.lua), coloured as the game colours a recipe, by the
+-- chance a node gives a skill point; the details say the skill it needs
+-- and where it grows.
 local _, ns = ...
 
 local CLASS_SKILLS = 7                  -- the category Blizzard leaves out
+local PROFESSIONS = 11                  -- the heading the gathering professions are under
 local DEFENSE = 95
 local BLUE = { 0.25, 0.40, 0.90 }
 local list, details
-local selected                          -- a skillID
+local selected                          -- a skillID, or a node's "profession:name"
+local known = {}                        -- a gathering profession's skill line, by skillID
+local folded = {}                       -- Gathering's own headings, folded
+
+local Chance = ns.GatheringChance
 
 local Refresh
 
@@ -32,19 +42,57 @@ local function Rank(s)
     return { min = 0, max = s.maxRank, cur = s.rank, color = BLUE, text = text }
 end
 
+-- The nodes of each gathering profession known, under one heading, and a
+-- heading each.
+local function Gathering(rows)
+    local any = false
+    for _, prof in ipairs(ns.gatheringNodes) do
+        if known[prof.skillID] then any = true end
+    end
+    if not any then return end
+    local function Heading(key, label, depth)
+        table.insert(rows, { header = true, label = label, collapsed = folded[key], depth = depth,
+            click = function()
+                folded[key] = not folded[key]
+                Refresh()
+            end })
+        return not folded[key]
+    end
+    if not Heading("Gathering", "Gathering", 0) then return end
+    for _, prof in ipairs(ns.gatheringNodes) do
+        local s = known[prof.skillID]
+        if s and Heading(prof.name, prof.name, 1) then
+            for _, n in ipairs(prof.nodes) do
+                local key = prof.name .. ":" .. n[1]
+                table.insert(rows, { label = n[1], depth = 2, value = tostring(n[2]),
+                    color = (Chance(s.rank or 0, n[2])), selected = key == selected,
+                    click = function()
+                        selected = key
+                        Refresh()
+                    end })
+            end
+        end
+    end
+end
+
 local function Rows()
     local rows = {}
+    -- the gathering professions seen; while the Professions heading is
+    -- folded their lines are not given, and the last seen stand
+    local seen, open = {}, false
     for i = 1, C_SkillInfo.GetNumSkillLines() do
         local s = Info(i)
         if s then
             local row = { label = s.name }
             if s.isHeader then
+                if s.skillLineCategoryID == PROFESSIONS and not s.isCollapsed then open = true end
                 row.header, row.collapsed, row.depth = true, s.isCollapsed, 0
                 row.click = function()
                     if s.isCollapsed then C_SkillInfo.ExpandSkillHeader(i) else C_SkillInfo.CollapseSkillHeader(i) end
                     Refresh()
                 end
             else
+                seen[s.skillID] = s
                 row.depth = 1
                 row.bar = Rank(s)
                 row.selected = s.skillID == selected
@@ -56,7 +104,24 @@ local function Rows()
             table.insert(rows, row)
         end
     end
+    for _, prof in ipairs(ns.gatheringNodes) do
+        local id = prof.skillID
+        if seen[id] or open then known[id] = seen[id] end
+    end
+    Gathering(rows)
     return rows
+end
+
+-- the node chosen: its profession, that profession's line, and the node
+local function Node()
+    for _, prof in ipairs(ns.gatheringNodes) do
+        local s = known[prof.skillID]
+        if s then
+            for _, n in ipairs(prof.nodes) do
+                if prof.name .. ":" .. n[1] == selected then return prof, s, n end
+            end
+        end
+    end
 end
 
 local function Chosen()
@@ -69,6 +134,13 @@ end
 
 Refresh = function()
     list:Set(Rows())
+    local prof, line, node = Node()
+    if node then
+        local _, say = Chance(line.rank or 0, node[2])
+        details:Set({ title = node[1], sub = format("Needs %s %d", prof.name, node[2]), bar = Rank(line),
+            text = say .. "\nFound in: " .. node[3] })
+        return
+    end
     local s = Chosen()
     if not s then
         selected = nil
@@ -81,7 +153,8 @@ end
 local page
 local function Build(body, foot)
     list = ns.character.List(body, "No skills yet.")
-    details = ns.character.Details(foot, nil, "Choose a skill to see its details.")
+    -- four lines: a node's zones run long
+    details = ns.character.Details(foot, nil, "Choose a skill to see its details.", 4)
     page.footHeight = details.height
     page.list, page.details = list, details
 end

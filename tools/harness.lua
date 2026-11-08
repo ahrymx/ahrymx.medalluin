@@ -2219,6 +2219,7 @@ if characterPass or questPass or npcPass or bankPass then
                 description = "Higher herbalism skill allows you to harvest more difficult herbs." },
             { name = "Apprentice Herbalism", skillID = 9182, rank = 1, maxRank = 1, parentSkillLineID = 182,
                 skillLineCategoryID = 11 },
+            { name = "Mining", skillID = 186, rank = 140, maxRank = 150, modifier = 0, skillLineCategoryID = 11 },
         }
         charWorld.skills = skills
         local function skShown()
@@ -2854,7 +2855,7 @@ if profPass then
         [129] = { { 3275, "Linen Bandage", 5, 0, { { 2589, 1 } } } },
     }
     -- where a recipe greys, its points a craft, whether it can skill up at all
-    P.trivial = { [2662] = { 165, 1 }, [7408] = { 170, 2 }, [3115] = { 95, 1, false } }
+    P.trivial = { [2662] = { 165, 1 }, [7408] = { 170, 2 }, [3115] = { 95, 1, false }, [2657] = { 70, 1 } }
     local CATS = { "Armor", "Materials", "Smelting", "Meat", "Bandages" }
     local ITEMS = { [2840] = "Copper Bar", [2835] = "Rough Stone", [2880] = "Weak Flux", [2770] = "Copper Ore",
         [2672] = "Stringy Wolf Meat", [2589] = "Linen Cloth" }
@@ -2874,7 +2875,7 @@ if profPass then
     C_TradeSkillUI = {
         CanTradeSkillShowCraftingUI = function(spell) return crafts[spell] or false end,
         GetBaseProfessionInfo = function() return { professionID = P.open } end,
-        IsDataSourceChanging = function() return false end,
+        IsDataSourceChanging = function() return P.changing or false end,
         OpenTradeSkill = function(line)
             table.insert(P.calls, "open " .. line)
             return true
@@ -2903,7 +2904,9 @@ if profPass then
             for _, g in ipairs(byID[id][5]) do
                 table.insert(slots, { reagents = { { itemID = g[1] } }, quantityRequired = g[2], required = true })
             end
-            return { recipeID = id, quantityMax = id == 3115 and 2 or 1, reagentSlotSchematics = slots }
+            -- smelting names its bar; the others are the item they are named for
+            return { recipeID = id, quantityMax = id == 3115 and 2 or 1, reagentSlotSchematics = slots,
+                outputItemID = id == 2657 and 2840 or nil }
         end,
         GetRecipeCooldown = function(id) return id == 7408 and 3600 or nil end,
         CraftRecipe = function(id, n) table.insert(P.calls, "craft " .. id .. " x" .. n) end,
@@ -10072,6 +10075,61 @@ if characterPass then
         click("skills", "Weapon Skills")
         rows("skills.folded", "skills")
         calls("skills.calls")
+        -- Gathering: the nodes of the gathering professions known, coloured
+        -- by the chance of a skill point (Herbalism 45, Mining 140)
+        local function nodes(tag)
+            local out = {}
+            for _, r in ipairs(page("skills").list.data) do
+                if not r.header and r.depth == 2 then
+                    table.insert(out, string.format("%s=%s(%.2f,%.2f,%.2f)", r.label, r.value, unpack(r.color)))
+                end
+            end
+            print(tag, #out, table.concat(out, " "))
+        end
+        local function heading(label)
+            for _, r in ipairs(page("skills").list.rows) do
+                if r.shown and r.data.header and r.data.label == label and r.data.depth == 1 then
+                    r.scripts.OnClick(r, "LeftButton")
+                    frame()
+                    return
+                end
+            end
+            print("  no heading " .. label)
+        end
+        rows("skills.gathering", "skills")
+        nodes("skills.nodes")
+        for _, name in ipairs({ "Iron Deposit", "Tin Vein", "Copper Vein", "Indurium Mineral Vein", "Mageroyal",
+            "Earthroot", "Peacebloom" }) do
+            click("skills", name)
+            details("skills.node " .. name, "skills")
+        end
+        -- the Professions heading folded: its lines are not given, the nodes stay
+        click("skills", "Professions")
+        nodes("skills.professions folded")
+        details("skills.professions folded", "skills")
+        click("skills", "Professions")
+        -- a profession's heading, then Gathering's, folded
+        heading("Mining")
+        nodes("skills.mining folded")
+        heading("Mining")
+        click("skills", "Gathering")
+        rows("skills.gathering folded", "skills")
+        click("skills", "Gathering")
+        -- Herbalism unlearned: its nodes go, and the chosen one with them
+        local herb = table.remove(charWorld.skills, 7)
+        fire("SKILL_LINES_CHANGED")
+        frame()
+        nodes("skills.herbalism unlearned")
+        details("skills.herbalism unlearned", "skills")
+        -- none known: no Gathering
+        local mining = table.remove(charWorld.skills, 8)
+        fire("SKILL_LINES_CHANGED")
+        frame()
+        rows("skills.none gathering", "skills")
+        table.insert(charWorld.skills, 7, herb)
+        table.insert(charWorld.skills, mining)
+        fire("SKILL_LINES_CHANGED")
+        frame()
 
         ToggleCharacter("PVPRankFrame")
         frame()
@@ -11708,11 +11766,15 @@ if profPass then
         local list = {}
         for _, p in ipairs(W.pages) do
             if p.tab and p.tab.shown then
+                -- a row's first tab says where the row stands
+                local at, _, _, _, y = p.tab:GetPoint()
                 table.insert(list, p.label .. "=" .. tostring(p.tab.icon.texture):gsub(".*\\", "")
-                    .. (p.tab.mark.shown and "*" or "") .. "@" .. p.tab.w)
+                    .. (p.tab.mark.shown and "*" or "") .. "@" .. p.tab.w
+                    .. (at == "TOPLEFT" and ("," .. y) or ""))
             end
         end
-        print(tag, table.concat(list, " "))
+        local _, _, _, _, top = W.Current().body:GetPoint()
+        print(tag, table.concat(list, " "), "top=" .. top, "chevron=" .. tostring(W.window.chevron ~= nil))
     end
     local function c3(c) return c and string.format("%.2f,%.2f,%.2f", c[1], c[2], c[3]) or "-" end
     local function pageOf(key)
@@ -11759,9 +11821,22 @@ if profPass then
     local function foot(tag)
         local p = W.Current()
         local d = p.details
+        -- the tree: its rows, then "> product" at the stem's x and row
+        local tree = {}
+        if p.tree.shown then
+            for _, fs in ipairs(p.tree.lines) do
+                if fs.shown then table.insert(tree, fs.text) end
+            end
+            local _, _, _, sx, sy = p.tree.stem:GetPoint()
+            local _, _, _, ax, ay = p.tree.arm:GetPoint()
+            local _, _, _, px, py = p.tree.product:GetPoint()
+            table.insert(tree, string.format("stem@%d,%d h%d arm@%d,%d > %s@%d,%d", sx, sy, p.tree.stem.h, ax, ay,
+                p.tree.product.text, px, py))
+        end
         print(tag, d.nothing.shown and ("nothing: " .. d.nothing.text)
-            or (d.title.text .. " | " .. d.sub.text .. " | " .. d.text.text:gsub("\n", "; ")),
-            "tick=" .. tostring(d.ticks[1].on), "count=" .. p.counter.text,
+            or (d.title.text .. " | " .. d.sub.text .. " | " .. d.text.text:gsub("\n", "; ")
+                .. (#tree > 0 and " | " .. table.concat(tree, "; ") or "")),
+            "tick=" .. tostring(p.have.on), "count=" .. p.counter.text,
             string.format("create=%.1f all=%.1f", p.create.alpha or 1, p.createAll.alpha or 1),
             "calls=" .. table.concat(P.calls, ","))
     end
@@ -11852,6 +11927,9 @@ if profPass then
     row("Copper Chain Pants")
     rows("prof.chosen")
     foot("prof.pants")
+    -- the craft buttons along the foot's bottom, under the tree; the tick in the band
+    print("prof.foot", "height=" .. smith.footHeight, "create in foot=" .. tostring(smith.create.parent == smith.foot),
+        "have in band=" .. tostring(smith.have.parent == smith.band))
     click(smith.create)
     for _ = 1, 3 do click(smith.more) end
     foot("prof.count 4")
@@ -11866,9 +11944,9 @@ if profPass then
     foot("prof.stone")
 
     -- 5. the filters: Have materials, the search, a heading folded
-    click(smith.details.ticks[1])
+    click(smith.have)
     rows("prof.makeable")
-    click(smith.details.ticks[1])
+    click(smith.have)
     smith.search:SetText("copper")
     smith.search.scripts.OnTextChanged(smith.search)
     rows("prof.search")
@@ -11955,9 +12033,18 @@ if profPass then
     rows("prof.trainer search")
     smith.search:SetText("")
     smith.search.scripts.OnTextChanged(smith.search)
-    click(smith.details.ticks[1])
+    click(smith.have)
     rows("prof.trainer makeable")
-    click(smith.details.ticks[1])
+    print("prof.unknown makeable", "on=" .. tostring(smith.unknown.on), "enabled=" .. tostring(smith.unknown.enabled))
+    click(smith.have)
+    -- Show unknown unticked: the trainer's services go, until ticked again
+    click(smith.unknown)
+    frame()
+    rows("prof.unknown off")
+    print("prof.unknown off", "on=" .. tostring(smith.unknown.on), "enabled=" .. tostring(smith.unknown.enabled),
+        "kept=" .. tostring(MedalluinCharDB.recipesUnknownHidden))
+    click(smith.unknown)
+    frame()
     row("At the trainer (4)")
     rows("prof.trainer folded")
     row("At the trainer (4)")
@@ -12038,6 +12125,75 @@ if profPass then
     frame()
     state("prof.after combat")
     rows("prof.mining")
+    -- the banner: the profession, its next rank, its skill across
+    do
+        local b = W.Current().banner
+        local _, _, _, hx, hy = W.Current().hair:GetPoint()
+        print("prof.banner", b.name.text, b.rank.shown and b.rank.text or "-", b.bar.text.text,
+            "bar=" .. tostring(b.bar.bar.value) .. "/" .. tostring(b.bar.bar.max),
+            "hair@" .. hx .. "," .. hy)
+    end
+    -- Mining's nodes: read one; the search finds them, Have materials hides them
+    row("Tin Vein")
+    foot("prof.node")
+    -- a service at the trainer, read next, is the one row chosen
+    MedalluinCharDB.trainer = { class = {}, trade = {} }
+    MedalluinCharDB.trainer.trade.Mining = {
+        ["Smelt Iron|"] = { name = "Smelt Iron", level = 1, skill = 125, cost = 500, icon = 17 } }
+    fire("TRAINER_UPDATE")
+    frame()
+    row("Smelt Iron")
+    rows("prof.node to trainer")
+    MedalluinCharDB.trainer = nil
+    fire("TRAINER_UPDATE")
+    frame()
+    row("Tin Vein")
+    local mine = W.Current()
+    mine.search:SetText("silver")
+    mine.search.scripts.OnTextChanged(mine.search)
+    frame()
+    rows("prof.node search")
+    mine.search:SetText("")
+    mine.search.scripts.OnTextChanged(mine.search)
+    P.makeable = true
+    fire("TRADE_SKILL_LIST_UPDATE")
+    frame()
+    rows("prof.node makeable")
+    foot("prof.node makeable")
+    P.makeable = false
+    fire("TRADE_SKILL_LIST_UPDATE")
+    frame()
+    -- a node hidden is let go: back, it is not read again
+    foot("prof.node back")
+    -- a recipe read next is the one read
+    row("Tin Vein")
+    -- smelting says where it turns yellow, green and grey
+    row("Smelt Copper")
+    foot("prof.smelt copper")
+    -- an open on its way: the game says no profession is open; the tab
+    -- chosen again asks nothing (a second open would close it)
+    local overviewTab, smeltTab = W.pages[1].tab, W.Current().tab
+    P.changing, P.open = true, 0
+    P.calls = {}
+    click(overviewTab)
+    click(smeltTab)
+    print("prof.open on its way", "calls=" .. table.concat(P.calls, ","), "page=" .. W.Current().key)
+    -- it came, another profession's: the tab chosen meanwhile opens now
+    P.changing, P.open = false, 164
+    fire("TRADE_SKILL_LIST_UPDATE")
+    frame()
+    print("prof.open came", "calls=" .. table.concat(P.calls, ","))
+    P.Show(186)
+    frame()
+    -- six reagents share the tree's five rows
+    local copper = P.recipes[186][1][5]
+    for _, item in ipairs({ 2835, 2880, 2672, 2589, 2840 }) do table.insert(copper, { item, 1 }) end
+    fire("BAG_UPDATE_DELAYED")
+    frame()
+    foot("prof.six reagents")
+    for _ = 1, 5 do table.remove(copper) end
+    fire("BAG_UPDATE_DELAYED")
+    frame()
 
     -- 9. one window on the right strip: the book closes ours, ours the book
     bookWorld.Toggle("spellbook")

@@ -100,7 +100,6 @@ local DEFAULTS = {
     spellbookUpRankAll = false, -- every spell kept on its highest rank on the bars (else only those ticked)
     talents = true,         -- Medalluin's talents instead of Blizzard's (Forever)
     professions = true,     -- Medalluin's professions instead of Blizzard's (Forever)
-    professionsDetails = true, -- its recipes' details open (the window's chevron sets it too)
     quests = true,          -- Medalluin's quest tracker on the left; its full view stands in the chat box
     questsSort = "level",   -- "level", "zone" or "distance" (Questie's; the tracker's button sets it too)
     questsFolded = false,   -- the zone headings folded: { [zone] = true } (not on the page)

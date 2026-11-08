@@ -692,12 +692,7 @@ function ns.OptionPages()
                 "Your professions in one window standing on the side panel: an overview, and a tab for each "
                 .. "profession that crafts, with its recipes and Create. Crafting and the overview's spells work "
                 .. "out of combat. Untick it to keep the game's professions.", true),
-            groups = {
-                Group("Window",
-                    Check("professionsDetails", "Details",
-                        "The chosen recipe's reagents, had and needed, under the recipes. The window's arrow folds "
-                        .. "it too.")),
-            },
+            groups = {},
         },
         {
             id = "quests", name = "Quests", intro = "Shared by every profile.",

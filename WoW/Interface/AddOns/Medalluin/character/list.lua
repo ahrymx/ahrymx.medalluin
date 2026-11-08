@@ -28,6 +28,7 @@
 --   ns.character.Details(foot, ticks, nothing, lines) -> details
 --     details:Set{ title, sub, bar, text, lines }   (nil hides the lot; empty says so)
 --     ticks = { { label, tip, click(on) } ... }: details.ticks[i]:Set(on, enabled)
+--   ns.character.Tick(parent, { label, tip, click(on) }) -> one such tick, alone
 --     nothing: what it says with nothing chosen; lines: how many its text runs to (3)
 --
 -- The list fills the body; the wheel scrolls it a row at a time, and a thin
@@ -336,6 +337,8 @@ local function Tick(foot, spec)
     end
     return b
 end
+
+ns.character.Tick = Tick
 
 function ns.character.Details(foot, ticks, nothing, lines)
     local d = { ticks = {} }

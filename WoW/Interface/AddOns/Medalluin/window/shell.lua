@@ -24,7 +24,9 @@
 -- (named by its key, or glyph), or the game's own icon (icon). The chevron
 -- and the cross are glyphs of the same set. A window whose pages come and
 -- go (a pet's spells, a profession learned) asks for Retab, and the row is
--- shared out again.
+-- shared out again. A page with row = 2 has its tab on a second row under
+-- the first, shared out across the whole width; while there is one, the
+-- rule and the page stand a row lower.
 --
 --   local w = ns.Window{ name, side (-1 left, 1 right),
 --                        detailsKey (the setting the chevron folds the
@@ -33,7 +35,7 @@
 --                        Lifted() -> the medallion's buttons,
 --                        place (a setting: the window detaches, below),
 --                        detachedOnly (with a place: never docked, no view glyph) }
---   w.Page{ key, label, tip, glyph, icon, frame (Blizzard's page), order,
+--   w.Page{ key, label, tip, glyph, icon, frame (Blizzard's page), order, row,
 --           tabless (no tab: the page's own controls Select it),
 --           Available() (or Blizzard's frame exists), height, footHeight,
 --           flex, bandUsed, events = { ... }, Build(body, foot, band),
@@ -322,7 +324,8 @@ function ns.Window(spec)
     local w = { pages = pages, width = WIDTH - 2 * PAD, side = side,
         band = { left = side < 0 and MEDALLION + PAD or PAD, right = side < 0 and PAD or MEDALLION + PAD,
             height = BAND } }
-    local window, chevron, close, footRule, medal, view, grip
+    local window, chevron, close, rule, footRule, medal, view, grip
+    local pageTop = TOP                 -- the page's top: a row lower with a second row of tabs
     local current, dirty
     local tabs = {}
     local listener = CreateFrame("Frame")
@@ -403,9 +406,9 @@ function ns.Window(spec)
         end
         local foot = Foot(current, details)
         local room = Room()
-        local total = math.max(TOP + least + BOTTOM, room)
-        if current.flex then total = math.max(TOP + 80 + foot + BOTTOM, math.min(total, room)) end
-        local height = total - TOP - foot - BOTTOM
+        local total = math.max(pageTop + least + BOTTOM, room)
+        if current.flex then total = math.max(pageTop + 80 + foot + BOTTOM, math.min(total, room)) end
+        local height = total - pageTop - foot - BOTTOM
         current.body:SetHeight(height)
         if current.Fit then current.Fit(height) end
         local shown = foot > 0
@@ -413,8 +416,8 @@ function ns.Window(spec)
         footRule:SetShown(shown)
         if shown then
             footRule:ClearAllPoints()
-            footRule:SetPoint("TOPLEFT", PAD, -(TOP + height + RULE))
-            footRule:SetPoint("TOPRIGHT", -PAD, -(TOP + height + RULE))
+            footRule:SetPoint("TOPLEFT", PAD, -(pageTop + height + RULE))
+            footRule:SetPoint("TOPRIGHT", -PAD, -(pageTop + height + RULE))
             current.foot:SetHeight(current.footHeight)
         end
         window:SetHeight(total)
@@ -558,8 +561,8 @@ function ns.Window(spec)
     -- a page's frames, built the first time it is there
     local function Make(p)
         p.body = CreateFrame("Frame", nil, window)
-        p.body:SetPoint("TOPLEFT", PAD, -TOP)
-        p.body:SetPoint("TOPRIGHT", -PAD, -TOP)
+        p.body:SetPoint("TOPLEFT", PAD, -pageTop)
+        p.body:SetPoint("TOPRIGHT", -PAD, -pageTop)
         p.foot = CreateFrame("Frame", nil, window)
         p.foot:SetPoint("BOTTOMLEFT", PAD, BOTTOM)
         p.foot:SetPoint("BOTTOMRIGHT", -PAD, BOTTOM)
@@ -579,18 +582,30 @@ function ns.Window(spec)
     end
 
     -- the row less the chevron and the cross, shared out among the pages
-    -- that are there; the tabs overlap a pixel, sharing their edges
+    -- that are there, and the second row, if any, across the whole width;
+    -- the tabs overlap a pixel, sharing their edges, row on row too
     function Tabs()
-        local shown = {}
+        local shown, first, second = {}, {}, {}
         for _, p in ipairs(pages) do
-            if p.available and not p.tabless then table.insert(shown, p) end
+            if p.available and not p.tabless then
+                table.insert(p.row == 2 and second or first, p)
+            end
             p.tab = nil
         end
+        for _, p in ipairs(first) do table.insert(shown, p) end
+        for _, p in ipairs(second) do table.insert(shown, p) end
         local controls = 1 + (spec.detailsKey and 1 or 0) + (spec.place and not spec.detachedOnly and 1 or 0)
-        local room = (window:GetWidth() or WIDTH) - 2 * PAD - controls * (TAB + 4)
-        local width = math.floor((room + #shown - 1) / #shown)
+        local full = (window:GetWidth() or WIDTH) - 2 * PAD
+        local room = full - controls * (TAB + 4)
+        local width
         local prev
         for i, p in ipairs(shown) do
+            local row2 = i > #first
+            if i == 1 or i == #first + 1 then
+                local n = row2 and #second or #first
+                width = math.floor(((row2 and full or room) + n - 1) / n)
+                prev = nil
+            end
             local b = tabs[i]
             if not b then
                 b = Button(window, width, function(self) Open(self.page) end,
@@ -610,13 +625,29 @@ function ns.Window(spec)
                 b.icon:SetTexCoord(0, 1, 0, 1)
             end
             b:ClearAllPoints()
-            if prev then b:SetPoint("LEFT", prev, "RIGHT", -1, 0) else b:SetPoint("TOPLEFT", PAD, -PAD) end
+            if prev then
+                b:SetPoint("LEFT", prev, "RIGHT", -1, 0)
+            else
+                b:SetPoint("TOPLEFT", PAD, -(PAD + (row2 and TAB - 1 or 0)))
+            end
             b.mark:SetShown(p == current)
             b.icon:SetAlpha(p == current and 1 or 0.6)
             b:Show()
             p.tab, prev = b, b
         end
         for i = #shown + 1, #tabs do tabs[i]:Hide() end
+        -- the rule and the pages under the last row
+        pageTop = TOP + (#second > 0 and TAB - 1 or 0)
+        rule:ClearAllPoints()
+        rule:SetPoint("TOPLEFT", PAD, -(pageTop - RULE / 2))
+        rule:SetPoint("TOPRIGHT", -PAD, -(pageTop - RULE / 2))
+        for _, p in ipairs(pages) do
+            if p.body then
+                p.body:ClearAllPoints()
+                p.body:SetPoint("TOPLEFT", PAD, -pageTop)
+                p.body:SetPoint("TOPRIGHT", -PAD, -pageTop)
+            end
+        end
     end
 
     -- Which pages are there now: a page that has come is built, one that
@@ -663,7 +694,7 @@ function ns.Window(spec)
         bg:SetPoint("TOPLEFT", 1, -1)
         bg:SetPoint("BOTTOMRIGHT", -1, 1)
         bg:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 0.94)
-        local rule = window:CreateTexture(nil, "ARTWORK")
+        rule = window:CreateTexture(nil, "ARTWORK")
         rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
         rule:SetPoint("TOPLEFT", PAD, -(PAD + TAB + RULE / 2))
         rule:SetPoint("TOPRIGHT", -PAD, -(PAD + TAB + RULE / 2))
