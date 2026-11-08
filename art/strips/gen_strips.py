@@ -134,6 +134,10 @@ def glyph(kind, x, y):
         return P("M1.5,7 L5.5,7 L11,2 L11,18 L5.5,13 L1.5,13 Z"
                  "M13,6.6 C14.6,8.2 14.6,11.8 13,13.4 L14.4,14.8 C16.8,12.4 16.8,7.6 14.4,5.2 Z"
                  "M15.6,3.8 C19.2,7.2 19.2,12.8 15.6,16.2 L17,17.6 C21.4,13.4 21.4,6.6 17,2.4 Z")
+    if kind == "log":           # a page of lines, its corner folded: the chat's log
+        return P("M3,1.5 L13,1.5 L17,5.5 L17,18.5 L3,18.5 Z M12.4,2.6 L12.4,6.1 L15.9,6.1 Z"
+                 "M5.5,8 L14.5,8 L14.5,9.6 L5.5,9.6 Z M5.5,11.2 L14.5,11.2 L14.5,12.8 L5.5,12.8 Z"
+                 "M5.5,14.4 L11.5,14.4 L11.5,16 L5.5,16 Z M5.5,4.8 L10.5,4.8 L10.5,6.4 L5.5,6.4 Z", "evenodd")
     # the character window's tabs (character/window.lua)
     if kind == "character":     # head and shoulders
         return P("M6,6.5 a4,4.5 0 1,0 8,0 a4,4.5 0 1,0 -8,0 Z M1.5,19 C1.5,13 5,11.5 10,11.5 C15,11.5 18.5,13 18.5,19 Z")
@@ -381,7 +385,7 @@ GLYPHS = ["spellbook", "talents", "quests", "social", "guild", "lfg", "map", "me
 # the character window's tabs, its controls, the quest tracker's footer and the chat box's head
 TABS = ["character", "reputation", "currency", "skills", "pvp", "statistics",
         "chevron-down", "chevron-up", "chevron-double", "close", "questlog", "sort", "view-minimal", "view-full",
-        "chat", "channels"]
+        "chat", "channels", "log"]
 
 
 def part(name, inner, size=32):

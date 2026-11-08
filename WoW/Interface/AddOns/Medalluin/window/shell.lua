@@ -31,7 +31,8 @@
 --                        details by; none: they stay open, no chevron),
 --                        closeTip, Close(), Open(page) (ask Blizzard),
 --                        Lifted() -> the medallion's buttons,
---                        place (a setting: the window detaches, below) }
+--                        place (a setting: the window detaches, below),
+--                        detachedOnly (with a place: never docked, no view glyph) }
 --   w.Page{ key, label, tip, glyph, icon, frame (Blizzard's page), order,
 --           tabless (no tab: the page's own controls Select it),
 --           Available() (or Blizzard's frame exists), height, footHeight,
@@ -337,7 +338,7 @@ function ns.Window(spec)
 
     -- the detached view's place (none for a window that stays docked)
     local function At() return spec.place and type(ns.db[spec.place]) == "table" and ns.db[spec.place] or {} end
-    function w.Detached() return At().detached and true or false end
+    function w.Detached() return (spec.detachedOnly or At().detached) and true or false end
 
     -- -------------------------------------------------------- medallion
     -- The medallion's buttons lifted to the window's strata while the
@@ -585,7 +586,7 @@ function ns.Window(spec)
             if p.available and not p.tabless then table.insert(shown, p) end
             p.tab = nil
         end
-        local controls = 1 + (spec.detailsKey and 1 or 0) + (spec.place and 1 or 0)
+        local controls = 1 + (spec.detailsKey and 1 or 0) + (spec.place and not spec.detachedOnly and 1 or 0)
         local room = (window:GetWidth() or WIDTH) - 2 * PAD - controls * (TAB + 4)
         local width = math.floor((room + #shown - 1) / #shown)
         local prev
@@ -690,7 +691,7 @@ function ns.Window(spec)
             chevron:SetPoint("RIGHT", close, "LEFT", -4, 0)
         end
         window.close, window.chevron = close, chevron
-        if spec.place then
+        if spec.place and not spec.detachedOnly then
             view = Button(window, TAB, function()
                 if InCombatLockdown() then return end
                 local at = At()
@@ -713,6 +714,8 @@ function ns.Window(spec)
             Glyph(view)
             view:SetPoint("RIGHT", chevron or close, "LEFT", -4, 0)
             window.view = view
+        end
+        if spec.place then
             window:SetMovable(true)
             window:SetResizable(true)
             window:SetClampedToScreen(true)

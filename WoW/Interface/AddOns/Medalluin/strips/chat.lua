@@ -98,12 +98,14 @@ end
 local placing = false
 
 -- The drawer's buttons, from the left: the chat menu, the friends toast,
--- channels, and the two voice toggles while voice is on. The voice toggles
--- keep their own art: it is their state.
+-- channels, the log (Medalluin's own: strips/chatlog.lua), and the two
+-- voice toggles while voice is on. The voice toggles keep their own art: it
+-- is their state.
 local HEAD = {
     { name = "ChatFrameMenuButton", glyph = "chat" },
     { name = "QuickJoinToastButton", glyph = "character", alert = true },
     { name = "ChatFrameChannelButton", glyph = "channels" },
+    { name = "MedalluinChatLogButton", glyph = "log" },
     { name = "ChatFrameToggleVoiceDeafenButton" },
     { name = "ChatFrameToggleVoiceMuteButton" },
 }
@@ -456,7 +458,12 @@ local function Tags(frame)
     local add = frame.AddMessage
     if not add or frame.medalluinAddMessage then return end
     frame.medalluinAddMessage = add
-    frame.AddMessage = function(self, text, ...) return add(self, Short(text), ...) end
+    -- what is shown is kept for the log too (strips/chatlog.lua)
+    frame.AddMessage = function(self, text, ...)
+        text = Short(text)
+        if ns.chatLog then ns.chatLog.Add(self, text) end
+        return add(self, text, ...)
+    end
 end
 
 local function Sweep()
@@ -530,7 +537,8 @@ local function Cog()
         Row()
     end)
     cog:SetScript("OnEnter", function(self)
-        ns.Tip(self, "ANCHOR_TOP", { title = "Chat buttons", { "body", "The chat menu, friends and channels." } })
+        ns.Tip(self, "ANCHOR_TOP", { title = "Chat buttons",
+            { "body", "The chat menu, friends, channels and the log." } })
     end)
     cog:SetScript("OnLeave", GameTooltip_Hide)
     tray = CreateFrame("Frame", "MedalluinChatDrawer", head)
@@ -544,7 +552,15 @@ local function Cog()
     divider:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
     divider:SetSize(1, BOX)
     divider:SetPoint("BOTTOMRIGHT", cog, "BOTTOMLEFT", -GAP, 0)
-    ns.chat.cog, ns.chat.drawer, ns.chat.divider = cog, tray, divider
+    -- the log's button, among Blizzard's (Head lays it out with them)
+    local log = CreateFrame("Button", "MedalluinChatLogButton", tray)
+    log:SetScript("OnClick", function() ns.ToggleChatLog() end)
+    log:SetScript("OnEnter", function(self)
+        ns.Tip(self, "ANCHOR_TOP", { title = "Log",
+            { "body", "The chat's history in a box of its own, to scroll and to copy from." } })
+    end)
+    log:SetScript("OnLeave", GameTooltip_Hide)
+    ns.chat.cog, ns.chat.drawer, ns.chat.divider, ns.chat.log = cog, tray, divider, log
 end
 
 -- The column's buttons come to the drawer (its art went with the window's,

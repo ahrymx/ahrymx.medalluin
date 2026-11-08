@@ -5047,7 +5047,7 @@ if stripsPass then
         screen("  drawer", chat.drawer, string.format("shown=%s strata=%s level=%s regions=%d", tostring(chat.drawer.shown),
             tostring(chat.drawer.strata), tostring(chat.drawer.level), select("#", chat.drawer:GetRegions())))
         for _, n in ipairs({ "ChatFrameMenuButton", "QuickJoinToastButton", "ChatFrameChannelButton",
-            "ChatFrameToggleVoiceDeafenButton", "ChatFrameToggleVoiceMuteButton" }) do
+            "MedalluinChatLogButton", "ChatFrameToggleVoiceDeafenButton", "ChatFrameToggleVoiceMuteButton" }) do
             local b = _G[n]
             local g, own = b.medalluinGlyph, {}
             for _, t in ipairs({ b:GetNormalTexture(), b:GetPushedTexture(), b.Icon, b.FriendsButton }) do
@@ -5221,6 +5221,92 @@ if stripsPass then
         chatState("chat drawer shut")
         chat.cog.scripts.OnEnter(chat.cog)
         print("chat cog tip", tipSpec())
+
+        -- the log: the drawer's button opens a detached box of the chosen
+        -- window's lines, as plain text in a read-only edit box
+        local logButton = chat.log
+        logButton.scripts.OnEnter(logButton)
+        print("chat log button", "tip=" .. tipSpec(), "in the drawer=" .. tostring(logButton.parent == chat.drawer))
+        local log = ns.chatLog
+        local lw, lbox = log.window, log.box
+        local scroll = lbox:GetParent():GetParent()
+        local function logState(tag)
+            local lines = {}
+            for l in ((lbox.text or "") .. "\n"):gmatch("(.-)\n") do table.insert(lines, l) end
+            -- the client grows a multi-line box to its text at the next
+            -- layout, and says so; the mock is told
+            if lbox.h ~= #lines * 14 then
+                lbox:SetHeight(#lines * 14)
+                lbox.scripts.OnSizeChanged(lbox)
+            end
+            local band = {}
+            for _, r in ipairs({ log.W.Current().band:GetRegions() }) do
+                if r.text then table.insert(band, r.text) end
+            end
+            print("chat log " .. tag, "shown=" .. tostring(lw:IsShown()), "lines=" .. #lines,
+                "last=" .. tostring(lines[#lines]), "band=" .. table.concat(band, " | "),
+                string.format("scroll=%.0f/%.0f", scroll:GetVerticalScroll(), scroll:GetVerticalScrollRange()))
+        end
+        logButton.scripts.OnClick(logButton, "LeftButton")
+        lw.scripts.OnUpdate(lw, 0.01)
+        local at, rel, rp, x, y = lw:GetPoint()
+        print("chat log place", string.format("%s %s %+.0f,%+.0f", at, rp, x, y), "view glyph=" .. tostring(lw.view),
+            "grip=" .. tostring(lw.grip and lw.grip.shown), "medallion=" .. tostring(lw.medal.shown),
+            "tab=" .. tostring(log.W.Current().tab and log.W.Current().tab.w))
+        logState("opened")
+        local text = lbox.text or ""
+        local i = 0
+        for l in (text .. "\n"):gmatch("(.-)\n") do
+            i = i + 1
+            print("chat log line " .. i, l)
+        end
+        -- plain text: a link's words, no icon, no colour
+        ChatFrame1:AddMessage("|cffff8000|Hitem:19019|h[Thunderfury]|h|r |TInterface\\Icons\\x:0|t sold |Kq7|k")
+        lw.scripts.OnUpdate(lw, 0.01)
+        logState("a link, an icon, a colour")
+        -- a key changes nothing
+        lbox.text = "typed over"
+        lbox.scripts.OnTextChanged(lbox, true)
+        logState("typed in")
+        -- selected (it has focus): new lines wait, and the band says so
+        lbox:SetFocus()
+        ChatFrame1:AddMessage("one while selecting")
+        ChatFrame1:AddMessage("two while selecting")
+        lw.scripts.OnUpdate(lw, 0.01)
+        logState("selecting, two new")
+        lbox:ClearFocus()
+        lw.scripts.OnUpdate(lw, 0.01)
+        logState("left")
+        -- another window's lines are not this one's; choosing it shows them
+        ChatFrame2:AddMessage("in the combat log")
+        lw.scripts.OnUpdate(lw, 0.01)
+        logState("another window's line")
+        local wasSelected = SELECTED_CHAT_FRAME
+        SELECTED_CHAT_FRAME = ChatFrame2
+        lw.scripts.OnUpdate(lw, 0.01)
+        logState("ChatFrame2 chosen")
+        SELECTED_CHAT_FRAME = wasSelected
+        lw.scripts.OnUpdate(lw, 0.01)
+        -- the last thousand kept
+        for n = 1, 1300 do ChatFrame1:AddMessage("line " .. n) end
+        lw.scripts.OnUpdate(lw, 0.01)
+        logState("1300 more")
+        print("chat log kept", #log.logs[ChatFrame1], "first=" .. tostring(log.logs[ChatFrame1][1]))
+        -- the list follows the cursor past its edges
+        lbox.scripts.OnCursorChanged(lbox, 0, -10, 0, 14)
+        print("chat log cursor at the top", string.format("scroll=%.0f", scroll:GetVerticalScroll()))
+        lbox.scripts.OnCursorChanged(lbox, 0, -2000, 0, 14)
+        print("chat log cursor 2000 down", string.format("scroll=%.0f", scroll:GetVerticalScroll()))
+        -- scrolled up, a new line leaves the list where the reader put it
+        lw.scripts.OnUpdate(lw, 0.01)
+        ChatFrame1:AddMessage("while scrolled up")
+        lw.scripts.OnUpdate(lw, 0.01)
+        logState("a line while scrolled up")
+        lw.close.scripts.OnClick(lw.close, "LeftButton")
+        logState("closed")
+        logButton.scripts.OnClick(logButton, "LeftButton")
+        logState("again")
+        logButton.scripts.OnClick(logButton, "LeftButton")
     end
 
     -- the timeless buffs above the medallion; a right click cancels one

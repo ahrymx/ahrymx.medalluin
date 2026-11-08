@@ -63,6 +63,7 @@ inventory\locks.lua
 inventory\slots.lua
 inventory\bags.lua
 window\shell.lua
+strips\chatlog.lua
 character\window.lua
 character\list.lua
 character\stats.lua

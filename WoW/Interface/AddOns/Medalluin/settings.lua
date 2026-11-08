@@ -90,6 +90,7 @@ local DEFAULTS = {
     bankView = "grid",      -- as bagsView, for the bank
     bankDetails = true,     -- the bank window's details: its bag slots and the purchase
     bankPlace = false,      -- detached: { detached, point, relative, x, y, w, h, scale } (not on the page)
+    chatLogPlace = false,   -- the chat log's box: { point, relative, x, y, w, h, scale } (not on the page)
     character = true,       -- Medalluin's character window instead of Blizzard's
     characterDetails = true, -- its pages' details open (the window's chevron sets it too)
     spellbook = true,       -- Medalluin's spellbook instead of Blizzard's (Forever)
