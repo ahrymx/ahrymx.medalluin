@@ -102,7 +102,7 @@ local DEFAULTS = {
     talents = true,         -- Medalluin's talents instead of Blizzard's (Forever)
     professions = true,     -- Medalluin's professions instead of Blizzard's (Forever)
     quests = true,          -- Medalluin's quest tracker on the left; its full view stands in the chat box
-    questsSort = "level",   -- "level", "zone" or "distance" (Questie's; the tracker's button sets it too)
+    questsSort = "level",   -- "level" or "zone" (the tracker's button sets it too)
     questsFolded = false,   -- the zone headings folded: { [zone] = true } (not on the page)
     questsMinimised = false, -- the tracker folded to its heading (not on the page: a click on its heading)
     questsView = "full",    -- "full": the screen's height at its left; "minimal": a box to move and size

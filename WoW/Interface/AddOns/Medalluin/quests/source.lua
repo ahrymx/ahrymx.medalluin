@@ -5,8 +5,8 @@
 -- The game's own quest log is the source. Questie, when it is loaded and
 -- ready, is asked too, so the two trackers agree: which quests are tracked
 -- (Questie keeps its own set), the items its database knows a quest needs,
--- how far each quest's nearest objective is, and its quest log, focus and
--- arrow. Questie's tracker itself is left alone; its own options show it.
+-- and its quest log, focus and arrow. Questie's tracker itself is left
+-- alone; its own options show it.
 --
 -- Questie is never needed. Its modules are its internals, not its API, so
 -- every call is made through pcall, and a call that fails answers as if
@@ -32,7 +32,7 @@ local function Questie()
     local function Import(name) return Try(QuestieLoader.ImportModule, QuestieLoader, name) end
     local tracker, utils, data = Import("QuestieTracker"), Import("TrackerUtils"), Import("TrackerData")
     if not (tracker and utils and data) then return end
-    modules = { tracker = tracker, utils = utils, data = data, distance = Import("DistanceUtils") }
+    modules = { tracker = tracker, utils = utils, data = data }
     return modules
 end
 Q.Questie = Questie
@@ -76,14 +76,6 @@ local function Item(index, id, state)
     end
 end
 
--- Questie can say how far each quest is: not when the last read that asked
--- measured none of them
-local unmeasured
-function Q.CanMeasure()
-    local m = Questie()
-    return not unmeasured and m and m.distance and m.distance.GetNearestSpawnForQuest and true or false
-end
-
 -- What sort of quest: "dungeon" (a dungeon's or a raid's), "group" (for a
 -- group, or elite), or nothing. The tag is the game's: C_QuestLog's where
 -- the client has it, the global's otherwise.
@@ -101,18 +93,11 @@ local function Kind(id, info)
     if tag == 1 or elite or (info.suggestedGroup or 0) > 1 then return "group" end
 end
 
-local function Distance(id)
-    local m, record = Questie(), Record(id)
-    if not (m and m.distance and record) then return end
-    local _, _, _, distance = Try(m.distance.GetNearestSpawnForQuest, record)
-    return type(distance) == "number" and distance or nil
-end
-
 -- The tracked quests, in the log's order: { id, index, title, level, zone,
--- state (1 complete, -1 failed, 0), objectives { text, done }, item, far,
+-- state (1 complete, -1 failed, 0), objectives { text, done }, item,
 -- daily (daily or weekly), kind (Kind's) }.
-function Q.Read(measure)
-    local out, zone, measured = {}, nil, false
+function Q.Read()
+    local out, zone = {}, nil
     for index = 1, C_QuestLog.GetNumQuestLogEntries() do
         local info = C_QuestLog.GetInfo(index)
         if info and info.isHeader then
@@ -126,11 +111,9 @@ function Q.Read(measure)
             end
             table.insert(out, { id = id, index = index, title = info.title, level = info.level or 0,
                 zone = zone or "Other", state = state, objectives = objectives, item = Item(index, id, state),
-                far = measure and Distance(id) or nil, daily = (info.frequency or 0) > 0, kind = Kind(id, info) })
-            measured = measured or out[#out].far ~= nil
+                daily = (info.frequency or 0) > 0, kind = Kind(id, info) })
         end
     end
-    if measure then unmeasured = #out > 0 and not measured end
     return out
 end
 
@@ -179,7 +162,7 @@ function Q.Listen(fn)
     local Q_ = _G.Questie
     if Q_ and Q_.API and Q_.API.RegisterOnReady then
         Try(Q_.API.RegisterOnReady, function()
-            modules, unmeasured = nil, nil
+            modules = nil
             Try(Q_.API.RegisterForQuestUpdates, function() fn() end)
             local m = Questie()
             if m then Try(hooksecurefunc, m.tracker, "Update", function() fn() end) end

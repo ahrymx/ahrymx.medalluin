@@ -101,8 +101,8 @@ local profRetail = profPass and args[3] == "retail"
 -- quest log of three zones: the anchor, the sorts, a fold, the minimise, the
 -- clicks, the item buttons, combat holding the rows still, and the character
 -- window standing over it. "quests questie" adds a stub of Questie that
--- becomes ready after login (its tracked set, its items, its distances, its
--- untrack); "quests broken" one whose every call raises.
+-- becomes ready after login (its tracked set, its items, its untrack);
+-- "quests broken" one whose every call raises.
 local questPass = args[2] == "quests"
 local questieStub = questPass and args[3] == "questie"
 local questieBroken = questPass and args[3] == "broken"
@@ -2490,7 +2490,7 @@ end
 -- "broken", tracks its own set. Only for the quests pass.
 local questWorld
 if questPass then
-    questWorld = { calls = {}, tickers = {} }
+    questWorld = { calls = {} }
     local W = questWorld
     local function called(s) table.insert(W.calls, s) end
     local function o(text, done) return { text = text, finished = done } end
@@ -2545,9 +2545,6 @@ if questPass then
     C_Item.GetItemIconByID = function(id) return "icon" .. id end
     C_Container = C_Container or {}
     C_Container.GetItemCooldown = function(id) if id == 5003 then return 100, 30, 1 end return 0, 0, 1 end
-    -- the ticker kept for the pass to run; nothing else is scheduled
-    C_Timer = C_Timer or { After = function() end }
-    C_Timer.NewTicker = function(_, fn) table.insert(W.tickers, fn) end
     function GameTooltip:SetItemByID(id) self.item = id end
     function Region:SetCooldown(start, duration) self.start, self.duration = start, duration end
     function ChatEdit_InsertLink(link) called("link " .. link) end
@@ -2557,7 +2554,7 @@ if questPass then
     -- Questie's stub: ready when the pass says, tracking its own set
     if questieStub or questieBroken then
         local Z = { ready = {}, updates = {}, broken = questieBroken, tracked = { [101] = true, [103] = true, [201] = true, [301] = true },
-            items = { [201] = 6001 }, far = { [101] = 300, [103] = 50, [201] = 1500, [301] = 10 } }
+            items = { [201] = 6001 } }
         W.questie = Z
         local function call(name, fn)
             return function(...)
@@ -2575,9 +2572,7 @@ if questPass then
             SetQuestTomTomTarget = call("SetQuestTomTomTarget", function(id) called("questie arrow " .. id) end),
         }
         local data = { GetQuest = call("GetQuest", function(id) return { id = id } end) }
-        local distance = { GetNearestSpawnForQuest = call("GetNearestSpawnForQuest",
-            function(q) return nil, nil, nil, Z.far[q.id] end) }
-        local modules = { QuestieTracker = tracker, TrackerUtils = utils, TrackerData = data, DistanceUtils = distance }
+        local modules = { QuestieTracker = tracker, TrackerUtils = utils, TrackerData = data }
         QuestieLoader = { ImportModule = function(_, name) return modules[name] end }
         Questie = { db = { profile = { trackerEnabled = true } }, API = { isReady = false,
             RegisterOnReady = function(fn) table.insert(Z.ready, fn) end,
@@ -12773,7 +12768,7 @@ if questPass then
     items("quests.items")
     harnessBeside("quests item tips", ns.quests.layer)
 
-    -- 2. Questie ready: its set, its items, its distances
+    -- 2. Questie ready: its set, its items
     if Z then
         Z.Ready()
         frame()
@@ -12782,8 +12777,8 @@ if questPass then
         items("quests.questie items")
     end
 
-    -- 3. the sorts: each click the next; distance only with Questie
-    for _ = 1, 3 do
+    -- 3. the sorts: each click the next
+    for _ = 1, 2 do
         T.sort.scripts.OnClick(T.sort, "LeftButton")
         frame()
         state("quests.sorted")
@@ -12899,9 +12894,7 @@ if questPass then
     list.body.h = 22 * 12
     T.Refresh()
 
-    -- 9. distance is measured again as you move: the ticker redraws only
-    -- in that sort
-    print("quests.tickers", #W.tickers)
+    -- 9. Questie redrawn, and its own tracker off
     W.watched[201], W.watched[203] = true, true
     if Z then
         Z.tracked[201], Z.tracked[103] = true, true
@@ -12925,19 +12918,10 @@ if questPass then
         fire("QUEST_WATCH_LIST_CHANGED")
         frame()
     end
-    if Z then Z.far[101] = 1 end
-    for _, fn in ipairs(W.tickers) do fn() end
-    frame()
-    rows("quests.moved, by level")
-    ns.db.questsSort = "distance"
-    for _, fn in ipairs(W.tickers) do fn() end
-    frame()
-    state("quests.moved")
-    rows("quests.moved")
-    -- a Questie that raised, mended: distance is asked for again
+    -- a Questie that raised, mended
     if Z and Z.broken then
         Z.broken = false
-        for _, fn in ipairs(W.tickers) do fn() end
+        fire("QUEST_LOG_UPDATE")
         frame()
         state("quests.mended")
         rows("quests.mended")

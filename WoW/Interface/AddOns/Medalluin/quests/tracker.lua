@@ -18,7 +18,7 @@
 --
 --   ------------ Quests ------------           <- a click folds it all
 --   - Westfall  3                              (your zone, brighter)
---     ! [12] Testing the Wells        [item]  140 yd
+--     ! [12] Testing the Wells               [item]
 --         • 0/1 Jansen Stead Water Sample
 --   + Elwynn Forest  2                         (folded)
 --   [cog][log]             [sort][fold][view]  <- the list's footer, no rule
@@ -33,11 +33,8 @@
 -- chevron folds or opens every zone, the last switches the view.
 --
 -- A zone heading folds (remembered), and counts its quests. The sort orders
--- the quests inside each zone, and the zones by their first quest: Level,
--- Zone (the one you are in first) or Distance (the nearest objective, from
--- Questie, offered only while Questie can measure it). With Questie, each
--- quest says how far its nearest objective is. A quest's colour is its
--- difficulty.
+-- the quests inside each zone, and the zones by their first quest: Level or
+-- Zone (the one you are in first). A quest's colour is its difficulty.
 --
 -- A quest's mark, before its level: ? once it can be handed in, else its
 -- kind's: a dungeon's, a group's (or elite), or the plain !. A daily's !
@@ -55,11 +52,11 @@
 -- A quest: a click opens it in the quest log, Shift links it, Alt focuses
 -- it with Questie's arrow, a right click stops tracking it.
 --
--- A quest's usable item is a secure button in a column short of the
--- distance, in a layer on the strip, and it works in combat. So in combat
--- the rows keep their places: counts and colours change where they stand, a
--- quest added or finished waits for combat's end, and a fold, a sort, a
--- scroll, the view, a drag, the grip and the scale do nothing.
+-- A quest's usable item is a secure button in a column on the right, in a
+-- layer on the strip, and it works in combat. So in combat the rows keep
+-- their places: counts and colours change where they stand, a quest added or
+-- finished waits for combat's end, and a fold, a sort, a scroll, the view, a
+-- drag, the grip and the scale do nothing.
 --
 -- The data is quests/source.lua's: the game's quest log, and Questie's
 -- when it is there. The tracker hides while the character window stands
@@ -77,13 +74,12 @@ local TOP = PAD + HEAD + 6              -- the list's top, under the heading
 local FOOT = 4 + CONTROL                -- the footer: a gap under the list, and its buttons
 local GRIP = 14                         -- the grip's size
 local ITEM = 20
-local VALUE = 60                        -- a row's value column, the distance (character/list.lua)
-local COLUMN = ITEM + 8                 -- the items' column, short of it
+local COLUMN = ITEM + 8                 -- the items' column on the right
 local SHADE, FADE = 0.6, 6              -- the shade's darkest, and how fast it comes and goes (per second)
 local RULE = 6                          -- the gap each side of a rule
 local HEIGHT, LEAST = 400, { 320, 160 } -- the minimal view's first height, and its least size
 local SCALES = { 0.6, 1.5, 0.05 }       -- its scale: least, most, a step of the wheel
-local SORTS = { level = "Level", zone = "Zone", distance = "Distance" }
+local SORTS = { level = "Level", zone = "Zone" }
 local BLUE, RED = { 0.35, 0.65, 1 }, { 1, 0.45, 0.25 }
 local GOSSIP = "Interface\\GossipFrame\\"
 local MARKS = {
@@ -127,12 +123,10 @@ local function Line() return wide - PAD - 6 - (6 + 12 + Size() + 4 + LEAD) - 24 
 
 local function Sort()
     local sort = ns.db.questsSort
-    if sort == "distance" and not Q.CanMeasure() then sort = "level" end
     return SORTS[sort] and sort or "level"
 end
 
-local function Key(q, sort)
-    if sort == "distance" then return q.far or math.huge end
+local function Key(q)
     return q.level
 end
 
@@ -149,11 +143,11 @@ local function Zones()
     end
     for _, z in ipairs(zones) do
         table.sort(z.quests, function(a, b)
-            local ka, kb = Key(a, sort), Key(b, sort)
+            local ka, kb = Key(a), Key(b)
             if ka ~= kb then return ka < kb end
             return a.title < b.title
         end)
-        z.key = Key(z.quests[1], sort)
+        z.key = Key(z.quests[1])
     end
     local here = GetRealZoneText and GetRealZoneText()
     table.sort(zones, function(a, b)
@@ -230,12 +224,6 @@ local function Wrap(text)
     return lines
 end
 
--- how far, in yards
-local function Yards(far)
-    if far >= 1000 then return format("%.1fk yd", far / 1000) end
-    return format("%d yd", far)
-end
-
 local Refresh
 
 -- a footer button: the windows' button, square, its glyph centred
@@ -308,8 +296,8 @@ local function Rows()
                 local state = q.state == -1 and " |cffe04040(Failed)|r" or ""
                 local click, enter = function(button) Click(q, button) end, function(row) Tip(row, q) end
                 table.insert(rows, { label = format("[%d] %s", q.level, q.title) .. state, depth = 1,
-                    color = Colour(q), quest = q, item = q.item, value = q.far and Yards(q.far) or "",
-                    inset = VALUE + COLUMN, font = title, badge = Mark(q), group = q.id,
+                    color = Colour(q), quest = q, item = q.item,
+                    inset = COLUMN, font = title, badge = Mark(q), group = q.id,
                     click = click, enter = enter })
                 local objectives = Objectives(q)
                 for i, o in ipairs(objectives) do
@@ -395,7 +383,7 @@ local function Place()
                 b:SetAttribute("item", "item:" .. b.item)
                 b.icon:SetTexture(C_Item.GetItemIconByID(b.item))
                 b:ClearAllPoints()
-                b:SetPoint("TOPRIGHT", layer, "TOPRIGHT", -(PAD + 6 + VALUE + (COLUMN - ITEM) / 2),
+                b:SetPoint("TOPRIGHT", layer, "TOPRIGHT", -(PAD + 6 + (COLUMN - ITEM) / 2),
                     -(TOP + (i - 1) * row + (row - ITEM) / 2))
                 b:Show()
                 Paint(b)
@@ -423,9 +411,7 @@ end
 function Refresh()
     dirty = false
     if not frame then return end
-    -- Questie asked how far every quest is, whenever it is there (asked
-    -- again, though it failed last time)
-    quests = Q.Read(Q.Questie() ~= nil)
+    quests = Q.Read()
     local rows = Rows()
     local shape = Shape(rows)
     if InCombatLockdown() and shape ~= drawn then
@@ -686,16 +672,13 @@ local function Build()
     foldAll:SetPoint("RIGHT", viewButton, "LEFT", -4, 0)
     sortButton = Control(function()
         if InCombatLockdown() then return end
-        local order = { "level", "zone", "distance" }
+        local order = { "level", "zone" }
         local at = 1
         for i, k in ipairs(order) do if k == Sort() then at = i end end
-        local after = order[at % #order + 1]
-        if after == "distance" and not Q.CanMeasure() then after = order[1] end
-        ns.db.questsSort = after
+        ns.db.questsSort = order[at % #order + 1]
         Refresh()
     end, function()
-        return "Sorted by " .. SORTS[Sort()]:lower() .. ". Click: by level, by zone (yours first)"
-            .. (Q.CanMeasure() and ", or by the nearest objective." or ". Questie adds by distance.")
+        return "Sorted by " .. SORTS[Sort()]:lower() .. ". Click: by level, by zone (yours first)."
     end)
     Glyph(sortButton, "sort")
     sortButton:SetPoint("RIGHT", foldAll, "LEFT", -4, 0)
@@ -786,9 +769,6 @@ local function Build()
         "questsMinimalCombat" }) do
         ns.OnSetting(key, Layout)
     end
-    -- how far each quest is changes as you move: measured again every few
-    -- seconds while Questie is there
-    C_Timer.NewTicker(5, function() if Q.Questie() then Dirty() end end)
 
     -- under the character window, and the NPC windows (npc/window.lua,
     -- built after us, cover it through ns.quests.Cover): hidden while any
