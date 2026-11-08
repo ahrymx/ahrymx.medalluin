@@ -476,11 +476,16 @@ function Region:GetStringWidth()
     local t = (self.text or ""):gsub("|T.-|t", "..")
     return #t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") * 7
 end
--- wrapped at its width, 6 a character, 14 a line
+-- wrapped at its width, 6 a character, 14 a line; each line of a text
+-- with line breaks wrapped on its own
 function Region:GetStringHeight()
     if self.wrap == false then return 14 end
     local w = self.w > 0 and self.w or 1e9
-    return math.max(1, math.ceil(#(self.text or "") * 6 / w)) * 14
+    local rows = 0
+    for l in ((self.text or "") .. "\n"):gmatch("(.-)\n") do
+        rows = rows + math.max(1, math.ceil(#l * 6 / w))
+    end
+    return rows * 14
 end
 -- a scroll frame: its child, scrolled by as much as the child is taller (a
 -- new child keeps the offset, as the game's does)
@@ -5233,19 +5238,15 @@ if stripsPass then
         local function logState(tag)
             local lines = {}
             for l in ((lbox.text or "") .. "\n"):gmatch("(.-)\n") do table.insert(lines, l) end
-            -- the client grows a multi-line box to its text at the next
-            -- layout, and says so; the mock is told
-            if lbox.h ~= #lines * 14 then
-                lbox:SetHeight(#lines * 14)
-                lbox.scripts.OnSizeChanged(lbox)
-            end
             local band = {}
             for _, r in ipairs({ log.W.Current().band:GetRegions() }) do
                 if r.text then table.insert(band, r.text) end
             end
             print("chat log " .. tag, "shown=" .. tostring(lw:IsShown()), "lines=" .. #lines,
                 "last=" .. tostring(lines[#lines]), "band=" .. table.concat(band, " | "),
-                string.format("scroll=%.0f/%.0f", scroll:GetVerticalScroll(), scroll:GetVerticalScrollRange()))
+                string.format("scroll=%.0f/%.0f", scroll:GetVerticalScroll(), scroll:GetVerticalScrollRange()),
+                string.format("text width=%.0f of %.0f", resolve(lbox)[3] - resolve(lbox)[1], lw.w),
+                string.format("box height=%.0f", lbox.h))
         end
         logButton.scripts.OnClick(logButton, "LeftButton")
         lw.scripts.OnUpdate(lw, 0.01)
@@ -5302,6 +5303,14 @@ if stripsPass then
         ChatFrame1:AddMessage("while scrolled up")
         lw.scripts.OnUpdate(lw, 0.01)
         logState("a line while scrolled up")
+        -- a line longer than the box is wide wraps, and the list is taller
+        ChatFrame1:AddMessage(string.rep("a long line ", 60))
+        lw.scripts.OnUpdate(lw, 0.01)
+        logState("a line that wraps")
+        -- sized by its grip: the text follows the window's width, the long
+        -- line in fewer rows
+        ns.SetOption("chatLogPlace", { point = "TOPLEFT", relative = "TOPLEFT", x = 40, y = -80, w = 600, h = 400 })
+        logState("sized 600 wide")
         lw.close.scripts.OnClick(lw.close, "LeftButton")
         logState("closed")
         logButton.scripts.OnClick(logButton, "LeftButton")

@@ -27,6 +27,7 @@ local GOLD = { 0.941, 0.831, 0.533 }
 local DIM = { 0.70, 0.66, 0.55 }
 local MAX = 1000                        -- lines kept for each window
 local GUTTER, STEP = 10, 14 * 3         -- the scroll bar's room, a wheel's step (three lines)
+local INSET = 2                         -- the text's room inside the box
 local SECRET = "(a line the game keeps hidden)"
 
 local logs = {}                         -- a chat frame -> its lines, oldest first
@@ -41,7 +42,7 @@ local function Plain(text)
     return (text:gsub("|n", " "))
 end
 
-local W, page, box, scroller, name, note
+local W, page, box, measure, scroller, name, note
 local shown, frame = "", nil            -- the text set, and whose it is
 local waiting = 0                       -- lines come while the text is selected
 local dirty = false
@@ -70,15 +71,22 @@ local function Band()
     end
 end
 
--- The box to the list's width, the list to the box's height (a multi-line
--- box grows to its text at the next layout: OnSizeChanged calls again), and
--- to the newest line, or kept where it was when the reader had scrolled up.
+-- The list as wide as the window's inside (the box hangs across it), as
+-- tall as its text, measured, and at the newest line, or kept where it was
+-- when the reader had scrolled up. Both sizes are set, never waited for: a
+-- box with no width, or one hung by its top edge alone (no height), is not
+-- drawn, and so never grows to its text (the first two builds did each).
+-- The width is the window's own, which the shell sets: the scroll frame's,
+-- read as it opens, can be 0.
 local function Fit()
     local child = scroller.child
-    local width = scroller.scroll:GetWidth() or 0
-    child:SetWidth(width)
-    box:SetWidth(width)
-    child:SetHeight(math.max(box:GetHeight() or 0, 1))
+    local width = math.max(1, W.window:GetWidth() - 2 * ns.window.pad - GUTTER)
+    measure:SetWidth(math.max(1, width - 2 * INSET))
+    measure:SetText(shown)
+    local tall = shown ~= "" and measure:GetStringHeight() + 2 * INSET or 0
+    local height = math.max(scroller.scroll:GetHeight() or 0, tall, 1)
+    child:SetSize(width, height)
+    box:SetHeight(height)
     if stick then
         scroller.To(scroller.scroll:GetVerticalScrollRange() or 0, true)
     else
@@ -137,10 +145,19 @@ local function Build(body, _, band)
     box = CreateFrame("EditBox", "MedalluinChatLogText", scroller.child)
     box:SetMultiLine(true)
     box:SetAutoFocus(false)
+    box:SetMaxLetters(0)
     box:SetFontObject(ChatFontNormal)
-    box:SetTextInsets(2, 2, 2, 2)
+    box:SetTextColor(1, 1, 1)
+    box:SetTextInsets(INSET, INSET, INSET, INSET)
     box:SetPoint("TOPLEFT")
-    box:SetScript("OnSizeChanged", Fit)
+    box:SetPoint("TOPRIGHT")
+    -- the text's height, from a hidden string of the same font and width
+    measure = scroller.child:CreateFontString(nil, "ARTWORK")
+    measure:SetFontObject(ChatFontNormal)
+    measure:SetJustifyH("LEFT")
+    measure:SetWordWrap(true)
+    measure:SetNonSpaceWrap(true)
+    measure:Hide()
     box:SetScript("OnEscapePressed", box.ClearFocus)
     -- read only: whatever a key changes is put back
     box:SetScript("OnTextChanged", function(self, user)
