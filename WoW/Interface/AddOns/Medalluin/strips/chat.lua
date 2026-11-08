@@ -42,9 +42,9 @@ local _, ns = ...
 
 local L = ns.stripLayout
 local PARTS = ns.media .. "strips\\"
-local PAD, RULE, TABS = 8, 6, 24    -- the box's edge, the gap over the margin's rule, the tabs' height
-local SHORTER = 3                   -- the margin, less than the windows' (the edit box's height)
-local BOX = TABS + PAD              -- the head's height: the tabs, the cog and its drawer, flush to the box's top
+local PAD, RULE, TABS = 8, 6, 28    -- the box's edge, the gap over the margin's rule, the tabs' height
+local SHORTER = 9                   -- the margin, 5px above the medallion (the edit box's and buffs' height)
+local BOX = TABS                    -- the head's height: the tabs, the cog and its drawer, flush to the box's top
 local GAP = 4                       -- either side of the divider between the tabs and the cog
 local GLYPH = 28                    -- a glyph in a box (its art is 20 of the 32)
 local TAB_PAD, TAB_MIN = 16, 36     -- a tab's width: its text plus padding
@@ -314,7 +314,7 @@ local function Lit(box)
     for _, t in ipairs(box.medalluin or {}) do t:SetShown(on) end
     local inset = 0
     local w = box.medalluinDressed and not on and ns.BuffRowWidth and ns.BuffRowWidth() or 0
-    if w > 0 and edit then inset = (PAD / 2 + w) * edit:GetEffectiveScale() / box:GetEffectiveScale() end
+    if w > 0 and edit then inset = w * edit:GetEffectiveScale() / box:GetEffectiveScale() end
     box:SetHitRectInsets(inset, 0, 0, 0)
 end
 
@@ -617,14 +617,17 @@ local function Build()
     chatBox:SetFrameStrata("BACKGROUND")
     chatBox:SetWidth(L.chatLeft + L.chatWidth)
     local dress = ns.window.Dress(chatBox, margin)
+    dress.rule:SetPoint("BOTTOMLEFT", 0, margin)
+    dress.rule:SetPoint("BOTTOMRIGHT", 0, margin)
     panel = CreateFrame("Frame", nil, chatBox)
     panel:SetPoint("BOTTOMLEFT", PAD, foot)
     panel:SetPoint("BOTTOMRIGHT", -PAD, foot)
     panel:SetHeight(L.chatHeight)
     area = CreateFrame("Frame", nil, panel)
     -- the edit box over the margin, beside the medallion
+    local breakAt = ns.stripWell.x + L.ringRadius + 5
     edit = CreateFrame("Frame", nil, chatBox)
-    edit:SetPoint("BOTTOMLEFT", L.chatLeft + PAD / 2, 2)
+    edit:SetPoint("BOTTOMLEFT", breakAt, 2)
     edit:SetPoint("TOPRIGHT", chatBox, "BOTTOMRIGHT", -PAD, margin - 2)
     -- the tab row, over the panel up to the box's top edge, edge to edge:
     -- the cog at its right end
@@ -641,7 +644,7 @@ local function Build()
     ns.chat = { box = chatBox, dress = dress, panel = panel, area = area, edit = edit, head = head, top = top }
 
     chatBox:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", 0, L.stripHeight)
-    chatBox:SetHeight(top + PAD)
+    chatBox:SetHeight(top)
     -- The box's reach up to the screen's top, the quest tracker's full view
     -- in it: a box of its own on the chat's, its foot the chat box's top
     -- edge, so the two read as one; and the tracker fading fades it alone,
@@ -692,7 +695,7 @@ local function Build()
             if frame.editBox then Lit(frame.editBox) end
         end
     end
-    ns.BuffRow({ x = L.chatLeft + PAD, y = ns.stripArt.height - L.stripHeight - margin / 2 })
+    ns.BuffRow({ x = breakAt, y = ns.stripArt.height - L.stripHeight - (margin + 1) / 2 })
 
     local function FitTabs()
         local prev

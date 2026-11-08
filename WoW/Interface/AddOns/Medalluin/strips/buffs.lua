@@ -22,7 +22,7 @@ local _, ns = ...
 
 local Auras = C_UnitAuras
 local L = ns.stripLayout
-local ICON, GAP = 26, 4
+local ICON, GAP = 29, 4
 
 local known = {}        -- auraInstanceID -> { icon, count } if timeless, false if timed
 local unsorted = false  -- a buff could not be sorted in combat: read them all after it
@@ -116,7 +116,7 @@ local function Layout()
         btn.icon:SetTexture(buff.icon)
         btn.count:SetText(buff.count)
         if row then
-            ns.OnStrip(btn, -1, row.x + ICON / 2 + (i - 1) * (ICON + GAP), row.y)
+            ns.OnStrip(btn, -1, row.x + ICON / 2 + (i - 1) * (ICON - 1), row.y)
         else
             ns.OnStrip(btn, -1, well.x, top - ICON / 2 - (i - 1) * (ICON + GAP))
         end
@@ -130,14 +130,14 @@ local function Layout()
     if ns.chat and ns.chat.BuffsChanged then ns.chat.BuffsChanged() end
 end
 
--- How far the row runs along the margin from its first icon's left edge,
--- the gap after the last included (the chat asks: it always has the row).
+-- How far the row runs along the margin from its first icon's left edge
+-- (the chat asks: it always has the row).
 function ns.BuffRowWidth()
     local n = 0
     for _, btn in ipairs(buttons) do
         if btn.id then n = n + 1 end
     end
-    return n * (ICON + GAP)
+    return n > 0 and (n * (ICON - 1) + 1) or 0
 end
 
 function ns.BuffRow(spec)

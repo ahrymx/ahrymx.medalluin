@@ -37,8 +37,8 @@ local COLUMN = L.chatPad + L.chatColumn / 2     -- the column's centre, from the
 local INNER = L.chatPad + L.chatColumn + 5      -- the body's outer edge, the same
 local PITCH = 30                                -- column buttons, top down
 local BUTTON, GLYPH = 24, 28                    -- a button's box, and its glyph's 32x32 art in it
-local PAD, RULE, TABS = 8, 6, 24                -- as the chat box's (chat.lua)
-local SHORTER = 3                               -- the margin, as the chat's
+local PAD, RULE, TABS = 8, 6, 28                -- as the chat box's (chat.lua)
+local SHORTER = 9                               -- the margin, as the chat's
 local GOLD_D = { 0.541, 0.439, 0.204 }
 
 local views = {}
@@ -226,7 +226,7 @@ local function Build()
     local width = L.chatLeft + L.chatWidth
     local margin = ns.window.band - SHORTER
     local foot = margin + RULE                  -- the body's foot, over the margin's rule
-    local tall = L.chatHeight + TABS            -- the chat's messages and tab row: the same box
+    local tall = L.chatHeight + TABS - PAD      -- the chat's messages and tab row: the same box
     panel = CreateFrame("Frame", "MedalluinSide", strip)
     panel:SetFrameStrata("BACKGROUND")
     panel:SetWidth(width)

@@ -5474,8 +5474,8 @@ if stripsPass then
             for _, b in ipairs(ns.buffs) do
                 if b.shown then
                     local r = resolve(b)
-                    table.insert(list, string.format("%s(%s)@%.0f,%.0f", tostring(b.icon.texture),
-                        tostring(b.count.text), (r[1] + r[3]) / 2 + 612, (r[2] + r[4]) / 2 + 916))
+                    table.insert(list, string.format("%s(%s)@%.0f-%.0f,%.0f-%.0f", tostring(b.icon.texture),
+                        tostring(b.count.text), r[1] + 612, r[3] + 612, r[2] + 916, r[4] + 916))
                 end
             end
             print(tag, #list > 0 and table.concat(list, " ") or "none")
