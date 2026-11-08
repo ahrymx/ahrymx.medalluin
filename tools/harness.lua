@@ -5237,10 +5237,24 @@ if stripsPass then
                 end
             end
             print(tag, #list > 0 and table.concat(list, " ") or "none")
+            -- the chat's edit box shares the row's margin: at rest it
+            -- takes the pointer only right of the row
+            local box = ChatFrame1 and ChatFrame1.editBox
+            if box then
+                local i, r = box.hitInsets or {}, resolve(box)
+                print("  edit box", string.format("left inset=%.1f at=%.0f..%.0f", i[1] or 0, r[1] + 612, r[3] + 612))
+            end
         end
         buffState("buffs")
-        local unit = events.UNIT_AURA[1]
-        local function aura(info) unit.scripts.OnEvent(unit, "UNIT_AURA", "player", info) end
+        local box = ChatFrame1 and ChatFrame1.editBox
+        if box then
+            box:SetFocus()
+            buffState("buffs, chat typed in")
+            box:ClearFocus()
+        end
+        local function aura(info)
+            for _, f in ipairs(events.UNIT_AURA) do f.scripts.OnEvent(f, "UNIT_AURA", "player", info) end
+        end
         -- in combat: a new buff cannot be sorted, one runs out, a stack drops
         inCombat = true
         table.insert(buffs, { id = 40, icon = "aura", timed = false })
@@ -5256,6 +5270,15 @@ if stripsPass then
         buffState("buffs after combat")
         ns.buffs[1].scripts.OnClick(ns.buffs[1], "RightButton")
         print("cancel", table.concat(cancelled, ","))
+        -- the edit box follows the row as it shortens, and the console's scale
+        local gone = ns.buffs[1].id
+        for i = #buffs, 1, -1 do if buffs[i].id == gone then table.remove(buffs, i) end end
+        aura({ removedAuraInstanceIDs = { gone } })
+        buffState("buffs, one cancelled")
+        local k = ns.console:GetScale()
+        ns.console:SetScale(1.25)
+        buffState("buffs, console at 125%")
+        ns.console:SetScale(k)
     end
     do return end
 end
@@ -7174,29 +7197,31 @@ function MinimapPass()
         set("minimapAutoSkyriding", true)
         ns.skyridingWatch.scripts.OnAttributeChanged(ns.skyridingWatch, "state-skyriding", "off")
 
-        -- the key: pinned in the other place, through every trigger, until pressed again
+        -- the key: back where the game loads it when it is not there (As it
+        -- moves: where rule 3 puts it, no pin); there, pinned in the other
+        -- place, through every trigger
         MedalluinToggleMinimap()
-        where("key (from the binding)")
+        where("key (from the binding), away from the load's place")
         hasTarget, inCombat = true, true
         fire("PLAYER_TARGET_CHANGED")
         fire("PLAYER_REGEN_DISABLED")
         where("pinned, combat and target")
         ns.ToggleMinimap()
-        where("key again")
-        ns.ToggleMinimap()
-        where("key: pinned in the console")
+        where("key again, at the load's place")
         inCombat, hasTarget = false, false
         fire("PLAYER_REGEN_ENABLED")
         fire("PLAYER_TARGET_CHANGED")
-        where("pinned in the console, out of combat")
+        where("pinned, out of combat")
         -- a party row wins over a pin: it needs the bay's foot
         local realRow = ns.PartyRowShown
         ns.PartyRowShown = function() return true end
         ns.UpdateMinimapLocation()
-        where("pinned in the console, party row")
+        where("pinned, party row")
         ns.PartyRowShown = realRow
         ns.ToggleMinimap()
-        where("released")
+        where("key, the row gone")
+        ns.ToggleMinimap()
+        where("key, back")
         -- the grid's buttons take the pointer only while it shows. Combat's
         -- own move comes at PLAYER_REGEN_DISABLED, before the lockdown, so
         -- it is made at once; one asked in combat waits for its end
@@ -7204,15 +7229,15 @@ function MinimapPass()
         inCombat = true
         where("grid, combat begins")
         ns.ToggleMinimap()
-        where("grid, pinned in the bay in combat")
+        where("grid, key in combat")
         inCombat = false
         fire("PLAYER_REGEN_ENABLED")
         where("grid, combat over, still pinned")
         ns.ToggleMinimap()
-        where("grid, released")
+        where("grid, key out of combat")
 
         -- size and place, in the corner; the console's scale leaves them be
-        ns.ToggleMinimap()
+        if not ns.MinimapInCorner() then ns.ToggleMinimap() end
         local function corner(tag)
             local _, _, rp, x, y = bezel:GetPoint()
             print("minimap corner " .. tag, string.format("%s %d,%d size=%d onScreen=%.3f map=%.1f mapOnScreen=%.1f",
@@ -7233,6 +7258,73 @@ function MinimapPass()
         EventRegistry:TriggerEvent("EditMode.Exit")
         ns.ResetConsolePlace("minimap")
         corner("reset")
+
+        -- the grip: a widget's tab on the corner's top edge, the area's name
+        -- on it, no wider than the corner; a drag moves the corner, as its
+        -- mover does
+        local grip = ns.minimapGrip
+        local function gripLine(tag)
+            local p, rel, rp, x, y = grip:GetPoint()
+            print("minimap grip " .. tag, "visible=" .. tostring(grip:IsVisible()), "alpha=" .. tostring(grip.alpha),
+                "text=" .. tostring(grip.label.text), string.format("w=%.0f of %.0f label=%.0f", grip.w, bezel.w,
+                    grip.label.w or 0), string.format("%s>%s of bezel=%s %+.0f,%+.0f", p, rp, tostring(rel == bezel),
+                    x, y))
+        end
+        gripLine("in the corner")
+        local wasZone = subzone
+        subzone = "The Sanctuary of Shadows and the Very Long Name of a Den"
+        fire("ZONE_CHANGED")
+        gripLine("long name")
+        subzone = "Dalaran"
+        fire("ZONE_CHANGED_NEW_AREA")
+        gripLine("short name")
+        local us = UIParent:GetEffectiveScale() / ((ns.layout.designHeight or 1080) / UIParent:GetHeight())
+        local cursorX, cursorY = 500, 500
+        local realCursor = GetCursorPosition
+        function GetCursorPosition() return cursorX, cursorY end
+        grip.scripts.OnMouseDown(grip, "LeftButton")
+        cursorX, cursorY = 500 + 2 * us, 500
+        grip.scripts.OnUpdate(grip, 0.01)
+        print("minimap grip nudged 2", "x=" .. tostring(ns.db.minimapX), "y=" .. tostring(ns.db.minimapY))
+        cursorX, cursorY = 500 - 60 * us, 500 - 30 * us
+        grip.scripts.OnUpdate(grip, 0.01)
+        set("minimapMoverHover", true)
+        mouseOver = false
+        ns.UpdateWidgetMovers()
+        gripLine("dragging, on mouseover, pointer away")
+        grip.scripts.OnMouseUp(grip, "LeftButton")
+        GetCursorPosition = realCursor
+        print("minimap grip dragged 60 left, 30 down", "x=" .. tostring(ns.db.minimapX),
+            "y=" .. tostring(ns.db.minimapY))
+        corner("grip dragged")
+        ns.UpdateWidgetMovers()
+        gripLine("on mouseover, pointer away")
+        mouseOver = bezel                   -- the map, in the corner's square
+        ns.UpdateWidgetMovers()
+        gripLine("on mouseover, pointer on the map")
+        mouseOver = grip
+        ns.UpdateWidgetMovers()
+        gripLine("on mouseover, pointer on it")
+        -- the console's hover label is the bay's: not over the corner
+        mouseOver = _G.MedalluinMinimapClip
+        Minimap.scripts.OnEnter(Minimap)
+        print("minimap grip, area in the corner", "shown=" .. tostring(_G.MedalluinMinimapArea.shown))
+        mouseOver = false
+        ns.UpdateWidgetMovers()
+        set("minimapMoverHover", false)
+        ns.ResetConsolePlace("minimap")
+        gripLine("mouseover off")
+        subzone = wasZone
+        ns.ToggleMinimap()
+        gripLine("in the bay")
+        -- the bay's label, showing when the key takes the map to the corner
+        mouseOver = _G.MedalluinMinimapClip
+        Minimap.scripts.OnEnter(Minimap)
+        local inBay = _G.MedalluinMinimapArea.shown
+        ns.ToggleMinimap()
+        print("minimap grip, the key takes the hovered map to the corner", "area in the bay=" .. tostring(inBay),
+            "then=" .. tostring(_G.MedalluinMinimapArea.shown))
+        mouseOver = false
         ns.ToggleMinimap()
 
         -- the page's key control binds the key, and unbinds it
@@ -7488,18 +7580,22 @@ if lightPass then
         fire("PLAYER_TARGET_CHANGED")
         print("minimap load place, target kept", "pin=" .. tostring(ns.MinimapPinned()),
             "corner=" .. tostring(Minimap.points.CENTER[1] == _G.MedalluinMinimapBezel))
-        -- the key takes over from the load: its pin is not let go when the
-        -- target, which the load's place was held against, clears
-        ns.ToggleMinimap()
+        -- the key, at the load's place, pins the other one: not let go when
+        -- the target, which the load's place was held against, clears.
+        -- Pressed again, it is back as the load left it, held until the
+        -- triggers change their answer
         ns.ToggleMinimap()
         local keyed = ns.MinimapPinned()
         hasTarget = false
         fire("PLAYER_TARGET_CHANGED")
-        print("minimap load place, key pressed twice then target gone", "pin " .. tostring(keyed) .. " -> "
+        print("minimap load place, key pressed then target gone", "pin " .. tostring(keyed) .. " -> "
             .. tostring(ns.MinimapPinned()))
-        if ns.MinimapPinned() then ns.ToggleMinimap() end
+        ns.ToggleMinimap()
+        print("minimap load place, key again", "pin=" .. tostring(ns.MinimapPinned()),
+            "corner=" .. tostring(Minimap.points.CENTER[1] == _G.MedalluinMinimapBezel))
         hasTarget = true
         fire("PLAYER_TARGET_CHANGED")
+        print("minimap load place, let go again with a target", "pin=" .. tostring(ns.MinimapPinned()))
     end
     print("bar7 buttons", ns.bar7Buttons[1]:GetName(), "parent=" .. tostring(ns.bar7Buttons[1].parent == ns.bar7Frame),
         "tainted=" .. tostring(ns.bar7Buttons[1].taintedBy), "key G=" .. tostring(bindings.G),
@@ -7592,7 +7688,8 @@ if lightPass then
     -- the minimap pinned to the bay in combat: the bay's glow is the minimap's
     ns.ToggleMinimap()
     aura("minimap pinned in the bay")
-    ns.ToggleMinimap()
+    -- back as the load left it (a load place's pin is let go at combat's end)
+    if not savedStart or ns.MinimapPinned() ~= savedStart then ns.ToggleMinimap() end
     -- The game's update pages Bar 7: cat form (Bar 8, slots 85..94), then
     -- stealth in combat (Bar 10, slots 109..118); Medalluin's code never does
     stateTick()

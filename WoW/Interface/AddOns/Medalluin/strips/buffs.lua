@@ -15,7 +15,9 @@
 -- its aura instance, which is never secret for the player's own auras.
 --
 -- The icons are plain buttons, not secure ones: a right click cancels the
--- buff out of combat, and does nothing in it.
+-- buff out of combat, and does nothing in it. The chat's edit box shares
+-- the row's margin, over the strips: it leaves the row the pointer
+-- (strips/chat.lua, Lit).
 local _, ns = ...
 
 local Auras = C_UnitAuras
@@ -125,6 +127,17 @@ local function Layout()
         buttons[i]:Hide()
     end
     ns.buffs = buttons
+    if ns.chat and ns.chat.BuffsChanged then ns.chat.BuffsChanged() end
+end
+
+-- How far the row runs along the margin from its first icon's left edge,
+-- the gap after the last included (the chat asks: it always has the row).
+function ns.BuffRowWidth()
+    local n = 0
+    for _, btn in ipairs(buttons) do
+        if btn.id then n = n + 1 end
+    end
+    return n * (ICON + GAP)
 end
 
 function ns.BuffRow(spec)

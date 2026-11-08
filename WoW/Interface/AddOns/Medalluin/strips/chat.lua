@@ -285,9 +285,16 @@ end
 
 -- The backing shows only while the box is typed in: at rest (the Classic
 -- chat style keeps the box) it was an empty bar over the messages' foot.
+-- At rest it takes the pointer only right of the timeless buffs, which
+-- share the margin (strips/buffs.lua): the box is over the strips, so it
+-- took their tooltips and right clicks. Typed in, it covers them.
 local function Lit(box)
     local on = box.medalluinDressed and box:HasFocus() and true or false
     for _, t in ipairs(box.medalluin or {}) do t:SetShown(on) end
+    local inset = 0
+    local w = box.medalluinDressed and not on and ns.BuffRowWidth and ns.BuffRowWidth() or 0
+    if w > 0 and edit then inset = (PAD / 2 + w) * edit:GetEffectiveScale() / box:GetEffectiveScale() end
+    box:SetHitRectInsets(inset, 0, 0, 0)
 end
 
 local function EditBox(frame)
@@ -641,7 +648,13 @@ local function Build()
     end
     ns.chat.reach = reach
     ns.chat.Reach(false)
-    -- the timeless buffs along the margin, beside the medallion
+    -- the timeless buffs along the margin, beside the medallion; the edit
+    -- boxes clear of them as they come and go
+    function ns.chat.BuffsChanged()
+        for frame in pairs(dressed) do
+            if frame.editBox then Lit(frame.editBox) end
+        end
+    end
     ns.BuffRow({ x = L.chatLeft + PAD, y = ns.stripArt.height - L.stripHeight - margin / 2 })
 
     Measure()
@@ -667,6 +680,7 @@ local function Build()
         end
         Measure()
         Place()
+        ns.chat.BuffsChanged()
     end
     hooksecurefunc(ns.console, "SetScale", Rescaled)
     hooksecurefunc(UIParent, "SetScale", Rescaled)

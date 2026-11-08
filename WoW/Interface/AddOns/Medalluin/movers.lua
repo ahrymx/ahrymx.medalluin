@@ -147,6 +147,48 @@ local function Select(c)
     Popup(c)
 end
 
+-- A console's place dragged by the pointer: Start on the press, Update each
+-- frame, Stop on the release. A press that moves the pointer a few units is
+-- a drag; it places the console as it goes and saves where it is let go.
+-- Stop answers whether it was one. The movers' and the corner minimap's
+-- grip (ns.ConsoleDragger(id)).
+local function Dragger(c)
+    local d = {}
+    function d.Start()
+        local x, y = Cursor()
+        d.from = { x, y, tonumber(ns.db[Key(c, "X")]) or 0, tonumber(ns.db[Key(c, "Y")]) or 0 }
+        d.dragged = false
+    end
+    function d.Update()
+        local from = d.from
+        if not from then return end
+        local x, y = Cursor()
+        local dx, dy = x - from[1], y - from[2]
+        if not d.dragged and math.abs(dx) + math.abs(dy) < 4 then return end
+        d.dragged = true
+        d.at = { Clamp(math.floor(from[3] + dx + 0.5), -REACH_X, REACH_X),
+            Clamp(math.floor(from[4] + dy + 0.5), c.minY, c.maxY) }
+        -- straight onto the saved table's layer, so the console's placement reads
+        -- it; ns.SetOption tells everyone else once, on release
+        ns.db[Key(c, "X")], ns.db[Key(c, "Y")] = d.at[1], d.at[2]
+        c.place()
+    end
+    function d.Stop()
+        if not d.from then return false end
+        local dragged, at = d.dragged, d.at
+        d.from, d.at, d.dragged = nil, nil, false
+        if dragged and at then
+            ns.SetOption(Key(c, "X"), at[1])
+            ns.SetOption(Key(c, "Y"), at[2])
+        end
+        return dragged
+    end
+    return d
+end
+function ns.ConsoleDragger(id)
+    for _, c in ipairs(CONSOLES) do if c.id == id then return Dragger(c) end end
+end
+
 local function Mover(c)
     local m = CreateFrame("Button", "MedalluinMover_" .. c.id, UIParent)
     m.console = c
@@ -169,37 +211,13 @@ local function Mover(c)
     m.label:SetText("Medalluin " .. c.name:lower())
     Paint(m)
 
-    -- A press that moves the pointer a few units is a drag; one that does
-    -- not is a click, and selects. A drag places the console as it goes and
-    -- saves where it is let go.
-    m:SetScript("OnMouseDown", function(self, button)
-        if button ~= "LeftButton" then return end
-        local x, y = Cursor()
-        self.from = { x, y, tonumber(ns.db[Key(c, "X")]) or 0, tonumber(ns.db[Key(c, "Y")]) or 0 }
-        self.dragged = false
-    end)
-    m:SetScript("OnUpdate", function(self)
-        local from = self.from
-        if not from then return end
-        local x, y = Cursor()
-        local dx, dy = x - from[1], y - from[2]
-        if not self.dragged and math.abs(dx) + math.abs(dy) < 4 then return end
-        self.dragged = true
-        self.at = { Clamp(math.floor(from[3] + dx + 0.5), -REACH_X, REACH_X),
-            Clamp(math.floor(from[4] + dy + 0.5), c.minY, c.maxY) }
-        -- straight onto the saved table's layer, so the console's placement reads
-        -- it; ns.SetOption tells everyone else once, on release
-        ns.db[Key(c, "X")], ns.db[Key(c, "Y")] = self.at[1], self.at[2]
-        c.place()
-    end)
-    m:SetScript("OnMouseUp", function(self, button)
-        if button ~= "LeftButton" or not self.from then return end
-        local dragged, at = self.dragged, self.at
-        self.from, self.at, self.dragged = nil, nil, false
-        if dragged and at then
-            ns.SetOption(Key(c, "X"), at[1])
-            ns.SetOption(Key(c, "Y"), at[2])
-        end
+    -- a drag places it (Dragger); a press that is not one selects it
+    local drag = Dragger(c)
+    m:SetScript("OnMouseDown", function(_, button) if button == "LeftButton" then drag.Start() end end)
+    m:SetScript("OnUpdate", drag.Update)
+    m:SetScript("OnMouseUp", function(_, button)
+        if button ~= "LeftButton" or not drag.from then return end
+        drag.Stop()
         Select(c)
     end)
     m:Hide()

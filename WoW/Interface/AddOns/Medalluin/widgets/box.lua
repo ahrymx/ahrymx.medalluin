@@ -56,11 +56,13 @@ local function Remember(box)
     ns.db[box.key] = { point, relative, math.floor(x + 0.5), math.floor(y + 0.5) }
 end
 
-local function Tab(box)
-    local tab = CreateFrame("Button", nil, box.skin)
-    -- behind the skin: the box's gold edge runs on across the tab's foot, so
-    -- the tab grows out of the box, and the cells over both
-    tab:SetFrameLevel(box:GetFrameLevel())
+-- A tab's art and its label, on parent at level: the widgets' grip, and the
+-- corner minimap's (console/minimap.lua). ns.WidgetTabWidth(tab) sizes it to
+-- its label; it stands on what it grips with its foot over the edge
+-- (ns.WIDGET_TAB_OVER).
+function ns.WidgetTab(parent, level)
+    local tab = CreateFrame("Button", nil, parent)
+    tab:SetFrameLevel(level)
     tab:SetHeight(TAB_H)
     local l, m, r = tab:CreateTexture(nil, "ARTWORK"), tab:CreateTexture(nil, "ARTWORK"),
         tab:CreateTexture(nil, "ARTWORK")
@@ -80,6 +82,26 @@ local function Tab(box)
     tab.label = ns.Text(tab, 12)
     tab.label:SetTextColor(0.878, 0.722, 0.290)
     tab.label:SetPoint("CENTER", 0, (TAB_OVER - 1) / 2)
+    tab.label:SetWordWrap(false)
+    return tab
+end
+ns.WIDGET_TAB_OVER = TAB_OVER
+
+-- As wide as its label, or most wide (the label ends in an ellipsis).
+function ns.WidgetTabWidth(tab, most)
+    tab.label:SetWidth(0)
+    local w = math.ceil(tab.label:GetStringWidth())
+    if most and w + 2 * TAB_END + 10 > most then
+        w = most - 2 * TAB_END - 10
+        tab.label:SetWidth(w)
+    end
+    tab:SetWidth(math.max(48, w + 2 * TAB_END + 10))
+end
+
+local function Tab(box)
+    -- behind the skin: the box's gold edge runs on across the tab's foot, so
+    -- the tab grows out of the box, and the cells over both
+    local tab = ns.WidgetTab(box.skin, box:GetFrameLevel())
 
     -- the grip: the holder moves only out of combat (it is protected)
     tab:RegisterForDrag("LeftButton")
@@ -163,7 +185,7 @@ function ns.WidgetSkin(box, titles, width, height)
         tab:SetShown(title and true or false)
         if title then
             tab.label:SetText(title)
-            tab:SetWidth(math.max(48, math.ceil(tab.label:GetStringWidth()) + 2 * TAB_END + 10))
+            ns.WidgetTabWidth(tab)
             tab:ClearAllPoints()
             tab:SetPoint("BOTTOM", box.skin, "TOPLEFT", ns.WidgetColumnX(i, width) + width / 2, -TAB_OVER)
         end
@@ -182,11 +204,18 @@ local function Hovered(box)
     return false
 end
 
+-- Another grip that shows as these do: { hover = its option, tabs = { tab },
+-- Hovered = function() -> whether the pointer is on what it moves }.
+function ns.WatchMover(grip)
+    table.insert(widgets, grip)
+    ns.OnSetting(grip.hover, function() ns.UpdateWidgetMovers() end)
+end
+
 function ns.UpdateWidgetMovers()
     for _, box in ipairs(widgets) do
         local key = box.hover
         if type(key) == "function" then key = key() end
-        local shown = not (key and ns.db[key]) or Hovered(box)
+        local shown = not (key and ns.db[key]) or (box.Hovered or Hovered)(box)
         for _, tab in ipairs(box.tabs) do tab:SetAlpha(shown and 1 or 0) end
     end
 end

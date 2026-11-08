@@ -165,6 +165,14 @@ local function Buffs(key)
     return Check(key, "Player buffs on health",
         "Show a compact row of your own buffs and HoTs on the outer corner of the health bar.")
 end
+-- The corner minimap's place and size, and its grip's showing.
+local function MinimapCorner()
+    local groups = Placed("minimap", "In the corner")
+    table.insert(groups[1].items, Check("minimapMoverHover", "Movers only on mouseover",
+        "Hide the corner minimap's tab, the grip with the area's name that moves it, until the pointer is over "
+        .. "the minimap."))
+    return groups
+end
 local function Movers(key, what)
     return Check(key, "Movers only on mouseover",
         "Hide the " .. what .. " widget's tab, the grip that moves it, until the pointer is over the widget.")
@@ -393,9 +401,9 @@ function ns.OptionPages()
                     groups = Concat({
                         Group("Switching",
                             { kind = "key", label = "Minimap key", command = "MEDALLUIN_MINIMAP",
-                                tip = "Moves the minimap to its other place and keeps it there. Press it again "
-                                    .. "and the automatic moves decide once more. Also under Options > "
-                                    .. "Keybindings > AddOns." },
+                                tip = "Puts the minimap back where the game loads it (When the game loads), "
+                                    .. "or, when it is there, in its other place, and keeps it there. Also under "
+                                    .. "Options > Keybindings > AddOns." },
                             Choice("minimapStart", "When the game loads", {
                                 { "auto", "As it moves", "Where Moving by itself puts it." },
                                 { "console", "In the console" },
@@ -418,12 +426,13 @@ function ns.OptionPages()
                                     needs = "minimapAuto" },
                             },
                         },
-                    }, Placed("minimap", "In the corner"), {
+                    }, MinimapCorner(), {
                         Group("Area name",
                             { kind = "slider", key = "minimapAreaTime", label = "Shown for", min = 0, max = 10,
                                 step = 0.5, always = true,
                                 tip = "The area's name shows at the top of the minimap while the pointer is over "
-                                    .. "it. After this long it fades out; Always keeps it until the pointer leaves.",
+                                    .. "it. After this long it fades out; Always keeps it until the pointer leaves. "
+                                    .. "In the corner the name is on the minimap's grip instead.",
                                 text = function(v)
                                     if v < 0.25 then return "Always" end
                                     return string.format("%gs", v)

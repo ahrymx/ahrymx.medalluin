@@ -18,10 +18,10 @@ local AREA_FADE_IN, AREA_FADE_OUT = 0.5, 1      -- seconds it takes to come and 
 --
 --   1. a party row under the console takes the bay's foot, so in a group
 --      the minimap is in the corner, always (party_row.lua)
---   2. a pin, from the minimap key, holds it where the key put it until the
---      key is pressed again (for this session). The place chosen for the
---      game's load (Console > Minimap: When the game loads) is a pin too,
---      held only until the automatic moves change their answer
+--   2. a pin, from the minimap key, holds it where the key put it (for
+--      this session). The place chosen for the game's load (Console >
+--      Minimap: When the game loads) is a pin too, held only until the
+--      automatic moves change their answer
 --   3. otherwise, with Move automatically on, it goes to the corner on each
 --      trigger ticked on Console > Minimap: combat, a target, skyriding
 local inCombat = UnitAffectingCombat and UnitAffectingCombat("player") or false
@@ -50,8 +50,10 @@ end
 
 function ns.MinimapPinned() return pin end
 
--- The key (Bindings.xml): the first press pins the minimap in the other
--- place, the next lets the rule decide again.
+-- The key (Bindings.xml): the minimap back where the game loads it, when it
+-- is not there; there, pinned in its other place. Where the game loads it is
+-- the place chosen for the load, held as the load holds it (until rule 3
+-- changes its answer), or, "As it moves", where rule 3 puts it (no pin).
 function ns.ToggleMinimap()
     if not ns.MinimapMoves() then
         if UIErrorsFrame then
@@ -59,11 +61,19 @@ function ns.ToggleMinimap()
         end
         return
     end
-    held = nil
-    if pin then
-        pin = nil
+    local here = ns.MinimapInCorner() and "corner" or "console"
+    local other = here == "corner" and "console" or "corner"
+    local start = ns.db.minimapStart
+    if start ~= "corner" and start ~= "console" then
+        start = nil
+    end
+    local home = start or (Auto() and "corner" or "console")
+    if here ~= home then
+        -- back as the load left it: the load's pin, or none
+        pin, held = start, nil
+        if start then held = Auto() end
     else
-        pin = ns.MinimapInCorner() and "console" or "corner"
+        pin, held = other, nil
     end
     if ns.UpdateMinimapLocation then ns.UpdateMinimapLocation() end
 end
@@ -132,6 +142,7 @@ ns.On("PLAYER_LOGIN", function()
         end
     end
 
+    local area                              -- the area's name over the hovered map, below
     if mmCfg and mmCfg.relocate then
         local bezel = CreateFrame("Frame", "MedalluinMinimapBezel", console)
         bezel:SetFrameLevel(ns.levels.art)
@@ -144,6 +155,36 @@ ns.On("PLAYER_LOGIN", function()
         -- in the corner they are not the console's body, and keep their own
         -- alpha while it fades (console/fade.lua)
         if bezel.SetIgnoreParentAlpha then bezel:SetIgnoreParentAlpha(true) end
+
+        -- The grip: a widget's tab on the corner's top edge, with the area's
+        -- name on it (the console's hover label stays in the bay). A drag
+        -- moves the corner, as its mover does (Console > Minimap: In the
+        -- corner); nothing in it is protected, so in combat too. It shows
+        -- with the corner, and with Movers only on mouseover only while the
+        -- pointer is over the minimap or it.
+        local grip = ns.WidgetTab(bezel, bezel:GetFrameLevel())
+        grip:SetPoint("BOTTOM", bezel, "TOP", 0, -ns.WIDGET_TAB_OVER)
+        local drag = ns.ConsoleDragger("minimap")
+        grip:SetScript("OnMouseDown", function(_, button) if button == "LeftButton" then drag.Start() end end)
+        grip:SetScript("OnUpdate", drag.Update)
+        grip:SetScript("OnMouseUp", function(_, button) if button == "LeftButton" then drag.Stop() end end)
+        grip:SetScript("OnEnter", function(self)
+            ns.Tip(self, "ANCHOR_TOP", { title = self.label:GetText(), color = ns.colors.white,
+                { "hint", "Drag to move." } })
+        end)
+        grip:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        ns.minimapGrip = grip
+        ns.WatchMover({ hover = "minimapMoverHover", tabs = { grip }, Hovered = function()
+            return drag.from ~= nil or bezel:IsMouseOver() or grip:IsMouseOver()
+        end })
+        -- the area's name, no wider than the corner
+        local function Name()
+            grip.label:SetText(GetMinimapZoneText())
+            ns.WidgetTabWidth(grip, bezel:GetWidth())
+        end
+        for _, e in ipairs({ "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA" }) do
+            ns.On(e, Name)
+        end
 
         -- The corner, at the player's size and place (Console > Minimap, or
         -- its Edit Mode mover): in design units, whatever the console's own
@@ -175,6 +216,8 @@ ns.On("PLAYER_LOGIN", function()
                 Minimap:SetPoint("CENTER", bezel, "CENTER", 0, 0)
                 Fit(inner, inner)
                 bezel:Show()
+                Name()
+                if area then area:Hide() end
             else
                 Minimap:SetPoint("CENTER", console, "TOP", 0, -(rTop + rBottom) / 2)
                 Fit(w, h)
@@ -222,11 +265,12 @@ ns.On("PLAYER_LOGIN", function()
     -- The area, at the top's middle of the shown map while the pointer is
     -- over it, fading out once it has shown for as long as Console > Minimap
     -- says (or never): the zone text the cluster had, gone with it below.
+    -- Not in the corner, whose grip wears the name.
     -- The minimap's child, so it keeps the map's alpha in the corner, but
     -- placed on the clip, whose top is the one shown. A pin is a frame of
     -- its own and takes the pointer from the map, so it hides when the
     -- pointer leaves the shown shape, not the map.
-    local area = CreateFrame("Frame", "MedalluinMinimapArea", Minimap)
+    area = CreateFrame("Frame", "MedalluinMinimapArea", Minimap)
     area:SetFrameLevel(ns.levels.text)
     area:SetPoint("TOP", clip, "TOP", 0, -AREA_INSET)
     area:Hide()
@@ -263,7 +307,7 @@ ns.On("PLAYER_LOGIN", function()
     -- is naught again whenever it has hidden.
     local shownFor = 0
     Minimap:HookScript("OnEnter", function()
-        if area:IsShown() then return end
+        if area:IsShown() or ns.MinimapInCorner() then return end
         ShowArea()
         area:SetAlpha(0)
         area:Show()
