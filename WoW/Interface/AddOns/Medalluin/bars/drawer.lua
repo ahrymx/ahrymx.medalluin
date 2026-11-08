@@ -115,7 +115,14 @@ function ns.BuildDrawer(tray)
         placing = false
     end
 
+    -- A taken button that is secure makes the line protected, and the line
+    -- is laid out by things that come in combat (an addon loading: the
+    -- first N loads the talents' frame): then it waits for the fight's end.
     local function Layout()
+        if InCombatLockdown() and panel:IsProtected() then
+            ns.OutOfCombat(ns.drawerLayout)
+            return
+        end
         local dir = Direction()
         if open then toggle:LockHighlight() else toggle:UnlockHighlight() end
         local shown = {}

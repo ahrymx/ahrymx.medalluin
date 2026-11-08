@@ -2577,6 +2577,13 @@ if spellPass or talentPass or profPass then
         for _, fn in ipairs(now) do fn() end
     end
     C_AddOns.IsAddOnLoaded = function(name) return name == "Blizzard_PlayerSpells" and bookWorld.loaded end
+    -- the client's load: the addon's files run, then its ADDON_LOADED
+    C_AddOns.LoadAddOn = function(name)
+        if name == "Blizzard_PlayerSpells" and not bookWorld.loaded then
+            print("book.load at", inCombat and "combat" or "rest")
+            bookWorld.Load()
+        end
+    end
     function ShowUIPanel(f) f:Show() end
     function HideUIPanel(f) f:Hide() end
     -- Blizzard_PlayerSpells, loaded when the book is first asked for: one
@@ -2591,6 +2598,9 @@ if spellPass or talentPass or profPass then
         f.TalentsFrame = new("Frame", f)
         f.TalentsFrame.shown = false
         f.tab = 3
+        -- it holds the book's secure buttons: protected, so in combat it
+        -- cannot be moved
+        function f:IsProtected() return true end
         function f:GetTab() return self.tab end
         function f:IsFrameTabActive(tab) return self.tab == tab end
         -- bookWorld.stale: a turn that shows the new page and leaves the
@@ -4011,6 +4021,20 @@ if barPass then
         toggle.scripts.OnClick(toggle)
         toggle.scripts.OnClick(toggle)
         drawerState("drawer rescanned")
+        -- a secure button taken makes the line protected: what comes in
+        -- combat (an addon loading, a button shown) waits for its end
+        drawer.IsProtected = function() return true end
+        inCombat = true
+        BagnonMinimapButton:Show()
+        BagnonMinimapButton.scripts.OnShow(BagnonMinimapButton)
+        ns.drawerScan()
+        print("drawer in combat", string.format("%.0fx%.0f", drawer.w, drawer.h))
+        inCombat = false
+        for _, f in ipairs(events.PLAYER_REGEN_ENABLED or {}) do f.scripts.OnEvent(f, "PLAYER_REGEN_ENABLED") end
+        print("drawer after combat", string.format("%.0fx%.0f", drawer.w, drawer.h))
+        drawer.IsProtected = nil
+        BagnonMinimapButton:Hide()
+        BagnonMinimapButton.scripts.OnHide(BagnonMinimapButton)
         -- the pointer on the open drawer, outside the tray, keeps a faded bar up
         page.settings.visibility:Set(3)
         mouseOver = drawer
@@ -11586,6 +11610,48 @@ if talentPass then
     w.close.scripts.OnClick(w.close)
     frame()
     state("talents.closed")
+
+    -- 8b. in combat the frame cannot be moved: left under UIParent (the
+    -- specialisations' tab, not ours), the talents asked for in combat
+    -- leave it unseen, and parked at the fight's end
+    local function spells(tag)
+        state(tag)
+        print(tag .. " frame", "parent=" .. (PlayerSpellsFrame.parent == ns.hidden and "hidden"
+            or PlayerSpellsFrame.parent == UIParent and "UIParent" or "?"),
+            "alpha=" .. PlayerSpellsFrame:GetAlpha())
+    end
+    ShowUIPanel(PlayerSpellsFrame)
+    PlayerSpellsFrame:TrySetTab(1)
+    frame()
+    HideUIPanel(PlayerSpellsFrame)
+    frame()
+    spells("talents.specs left")
+    inCombat = true
+    fire("PLAYER_REGEN_DISABLED")
+    bookWorld.Toggle("talents")
+    frame()
+    spells("talents.combat N")
+    -- turned to a tab not ours in combat, it is seen again; back, unseen
+    PlayerSpellsFrame:TrySetTab(1)
+    frame()
+    spells("talents.combat specs")
+    PlayerSpellsFrame:TrySetTab(2)
+    frame()
+    spells("talents.combat talents again")
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    frame()
+    spells("talents.combat N ended")
+    HideUIPanel(PlayerSpellsFrame)
+    frame()
+    -- entering the world in combat (a reload mid-fight) leaves the load to
+    -- the first N; the mock forgets it loaded, and is told again after
+    bookWorld.loaded = false
+    inCombat = true
+    fire("PLAYER_ENTERING_WORLD")
+    print("talents.world in combat", "loaded=" .. tostring(bookWorld.loaded))
+    inCombat = false
+    bookWorld.loaded = true
 
     -- 9. Forever's own N with another panel open (the parked character
     -- frame): Blizzard minimises the frame onto the book; ours turns it back

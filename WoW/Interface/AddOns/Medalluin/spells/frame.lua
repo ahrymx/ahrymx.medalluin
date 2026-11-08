@@ -29,16 +29,25 @@ local function Tab()
 end
 
 -- reparented at once unless the frame is protected and it is combat; then
--- at combat's end, to wherever the tab up says by then
+-- at combat's end, to wherever the tab up says by then. Meanwhile a frame
+-- left under UIParent on one of our tabs (first loaded in combat, or last
+-- left on the specialisations') is made unseen: alpha is the one thing a
+-- protected frame lets an addon change in combat. Its buttons still take a
+-- click where it stands, until the fight ends.
 local function Hold()
     local f = PlayerSpellsFrame
     local parent = Tab() and ns.hidden or UIParent
-    if f:GetParent() == parent then return end
-    if f:IsProtected() then
-        ns.OutOfCombat(function() f:SetParent(Tab() and ns.hidden or UIParent) end)
-    else
-        f:SetParent(parent)
+    if f:GetParent() ~= parent then
+        if f:IsProtected() and InCombatLockdown() then
+            ns.OutOfCombat(Hold)
+        else
+            f:SetParent(parent)
+        end
     end
+    -- unseen while it is not where it should be (under the hidden parent
+    -- it is unseen anyway)
+    local unseen = f:GetParent() ~= parent
+    if (f:GetAlpha() < 1) ~= unseen then f:SetAlpha(unseen and 0 or 1) end
 end
 
 -- One window on the right strip: ours opening closes the professions'
@@ -119,3 +128,11 @@ function ns.PlayerSpellsTab(key, w)
 end
 
 ns.On("ADDON_LOADED", function(_, name) if name == "Blizzard_PlayerSpells" then Adopt() end end)
+
+-- Loaded as the world is entered, out of combat, so the frame is there and
+-- parked before any fight: a first N in combat would load it where it
+-- cannot be moved (Hold makes it unseen, but it still takes clicks).
+ns.On("PLAYER_ENTERING_WORLD", function()
+    if InCombatLockdown() or not (C_AddOns and C_AddOns.LoadAddOn) then return end
+    if not C_AddOns.IsAddOnLoaded("Blizzard_PlayerSpells") then C_AddOns.LoadAddOn("Blizzard_PlayerSpells") end
+end)
