@@ -386,12 +386,17 @@ local function Controls(f)
             undo:HookScript("OnEnter", function(self)
                 local words = d.words
                 if type(words) ~= "string" or words == "" then words = "Revert changes" end
-                ns.Tip(self, "ANCHOR_TOP", { title = words, color = GOLD,
+                ns.Tip(self, ns.window.Outside, { title = words, color = GOLD,
                     { "body", self:IsEnabled() and "Back to this layout as it was last saved."
                         or "Nothing to revert: no changes since this layout was saved." } })
             end)
             undo:HookScript("OnLeave", function() GameTooltip:Hide() end)
             Lit(undo)
+            -- the game fits it to its words whenever it sets them (hover, leave,
+            -- enabled, disabled): back to the cell, square
+            hooksecurefunc(undo, "SetWidth", function(self, w)
+                if w ~= ROW then self:SetWidth(ROW) end
+            end)
         end
         if fs and fs:GetAlpha() ~= 0 then fs:SetAlpha(0) end
         undo:ClearAllPoints()
@@ -1161,6 +1166,9 @@ local function Adopt()
         if ns.chat then ns.chat.Hold(false, "cdm") end
     end)
     if ns.quests and ns.quests.Cover then ns.quests.Cover(f) end
+    -- its tooltips beside it, as the LFG window's: the spells' own (the game's
+    -- SetOwner, placed again by the shell) and ours
+    if ns.window.Mark then ns.window.Mark(f, -1) end
     -- the LFG window and an NPC window opening close it: the last opened wins
     local function CloseOurs()
         if f:IsShown() then

@@ -511,19 +511,22 @@ end
 -- an owner inside one, beside the nearest such frame up its parents, on the
 -- side towards the screen's middle; outside any, SetOwner by fallback
 -- ("ANCHOR_RIGHT" when not given). An anchor ns.Tip takes, as is.
-function ns.window.Mark(frame, side, at) frame.beside, frame.besideAt = side, at end
+-- The marks are kept here, not on the frame: Blizzard's may be marked too
+-- (the Cooldown Manager's window), and nothing is written onto those.
+local marks = setmetatable({}, { __mode = "k" })    -- frame: { side, at }
+function ns.window.Mark(frame, side, at) marks[frame] = { side = side, at = at } end
 
 local function Facing(frame)
     local l, r, w = frame:GetLeft(), frame:GetRight(), UIParent:GetWidth()
-    if not (l and r and w and w > 0) then return frame.beside end
+    if not (l and r and w and w > 0) then return marks[frame] and marks[frame].side or 1 end
     return (l + r) / 2 * frame:GetEffectiveScale() > w * UIParent:GetEffectiveScale() / 2 and 1 or -1
 end
 
 -- the marked frame owner is inside (or the one it marks), or nil
 local function Marked(owner)
     local f = owner
-    while f and not f.beside do f = f.GetParent and f:GetParent() end
-    return f and (f.besideAt or f)
+    while f and not marks[f] do f = f.GetParent and f:GetParent() end
+    return f and (marks[f].at or f)
 end
 
 function ns.window.Outside(owner, fallback)

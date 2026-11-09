@@ -4035,6 +4035,11 @@ if cdmPass then (function()
     undo.Left = undo:CreateTexture()
     undo.text = undo:CreateFontString()
     function undo:GetFontString() return self.text end
+    -- UIButtonMixin: its words set again on hover, leave, enable and disable,
+    -- and the button fitted to them
+    function undo:RunCustomTextFormatter() self:SetWidth(150) end
+    undo:SetScript("OnEnter", function(self) self:RunCustomTextFormatter() end)
+    undo:SetScript("OnLeave", function(self) self:RunCustomTextFormatter() end)
     undo:Disable()
     f.UndoButton = undo
     f.categoryPool = Pool()
@@ -16626,6 +16631,19 @@ if cdmPass then (function()
     local lit = rim(item)
     item.scripts.OnLeave(item)
     print("cdm hover", "rim " .. before .. " -> " .. lit .. " -> " .. rim(item))
+    -- the spell's own tooltip (the game's SetOwner, at its right): beside the
+    -- window instead, level with the spell
+    GameTooltip.points = {}
+    GameTooltip:SetOwner(item, "ANCHOR_RIGHT")
+    do
+        local at = GameTooltip.points.TOPLEFT or GameTooltip.points.TOPRIGHT
+        local top, edge = item:GetTop(), f:GetTop()
+        print("cdm tip beside", at and string.format("%s>%s %s %d", GameTooltip.points.TOPLEFT and "TOPLEFT"
+            or "TOPRIGHT", at[1] == f and "window" or "?", at[2], at[3]) or "unplaced",
+            "level=" .. tostring(at and top and edge and math.abs(at[4] - (top - edge) * f:GetEffectiveScale()
+                / GameTooltip:GetEffectiveScale()) < 0.01))
+    end
+    GameTooltip:Hide()
     -- the Buffs tab: bars
     f.TabButtons[2].scripts.OnClick(f.TabButtons[2])
     tabs("cdm tabs buffs")
@@ -16768,17 +16786,23 @@ if cdmPass then (function()
     -- Revert under the mouse: its tooltip; the gear's rule
     local said = {}
     local tip = { SetOwner = function() end, Hide = function() end, Show = function() end,
+        ClearAllPoints = function() end, SetPoint = function(self, ...) self.at = { ... } end,
+        GetEffectiveScale = function() return 1 end,
         SetText = function(_, t) table.insert(said, t) end, AddLine = function(_, t) table.insert(said, t) end }
     local realTip = GameTooltip
     GameTooltip = tip
     f.UndoButton.scripts.OnEnter(f.UndoButton)
+    local hoverW = f.UndoButton:GetWidth()
     f.UndoButton.scripts.OnLeave(f.UndoButton)
+    print("cdm revert square", "hover w=" .. tostring(hoverW), "after w=" .. tostring(f.UndoButton:GetWidth()))
     GameTooltip = realTip
     local undoGlyph
     for _, r in ipairs({ f.UndoButton:GetRegions() }) do
         if r.texture and r.texture:match("side%-reset") then undoGlyph = r end
     end
-    print("cdm revert", "tip=" .. table.concat(said, " / "), "glyph mirrored=" ..
+    print("cdm revert", "tip=" .. table.concat(said, " / "), "beside=" ..
+        tostring(tip.at and tip.at[1] .. ">" .. (tip.at[2] == f and "window" or "?") .. " " .. tip.at[3]),
+        "glyph mirrored=" ..
         tostring(undoGlyph and undoGlyph.coords and undoGlyph.coords[1] == 1),
         "words alpha=" .. tostring(f.UndoButton.text.alpha))
     print("cdm controls", "search=" .. rect(f.SearchBox), "gear=" .. rect(f.SettingsDropdown),
