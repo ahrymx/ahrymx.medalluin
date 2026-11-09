@@ -131,6 +131,12 @@ gamemenuPass = args[2] == "gamemenu"
 -- place, the viewers' spells as medallions over the console. The LFG
 -- window's stubs come with it. "cdm off" plays both options off.
 cdmPass = args[2] == "cdm"
+-- "cc" (with "modern") plays Click Casting (spells/clickcast.lua): the
+-- game's ClickBindingFrame stubbed with its rows, its list of bindings and
+-- its foot; dressed in the LFG window's place, sharing it with the LFG
+-- window and the Cooldown Manager (their stubs come with it). "cc off"
+-- plays the option off.
+ccPass = args[2] == "cc"
 lfgRetail = lfgPass and args[3] == "retail"
 local questieStub = questPass and args[3] == "questie"
 local questieBroken = questPass and args[3] == "broken"
@@ -2783,6 +2789,48 @@ if spellPass or talentPass or profPass then
         PickupSpellBookItem = function(slot, bank) table.insert(bookWorld.calls, "pickup " .. slot .. "/" .. bank) end,
     }
     function GetPetIcon() return 132599 end
+    -- click casting: its profile (empty until the pass binds), Click
+    -- Casting's window loaded on demand (bookWorld.LoadCC)
+    if spellPass then
+        Enum.ClickBindingType = { None = 0, Spell = 1, Macro = 2, Interaction = 3, PetAction = 4 }
+        local byID = {}
+        for _, it in pairs(items) do byID[it.actionID] = it end
+        for _, it in ipairs(pets) do byID[it.actionID] = it end
+        bookWorld.cc = { profile = {} }
+        C_ClickBindings = {
+            GetProfileInfo = function() return bookWorld.cc.profile end,
+            GetStringFromModifiers = function(m) return ({ [1] = "SHIFT", [2] = "CTRL" })[m] or "" end,
+            CanSpellBeClickBound = function(id) return byID[id] ~= nil and not byID[id].isPassive end,
+            SetProfileByInfo = function(prof) bookWorld.cc.profile = prof end,
+            ResetCurrentProfile = function() bookWorld.cc.profile = {} end,
+        }
+        C_Spell.GetSpellName = C_Spell.GetSpellName or function(id) return byID[id] and byID[id].name end
+        function InClickBindingMode() return ClickBindingFrame ~= nil and ClickBindingFrame:IsShown() end
+        function bookWorld.LoadCC()
+            local f = CreateFrame("Frame", "ClickBindingFrame", UIParent)
+            f:Hide()
+            -- its list: Healing Wave (rank 1's id) bound, the slot waiting
+            local data = { { elementType = 4, bindingInfo = { type = 1, actionID = 401, button = "MiddleButton",
+                modifiers = 1 } }, { elementType = 5, unbound = true } }
+            bookWorld.ccData = data
+            f.dataProvider = { ForEach = function(_, fn) for _, e in ipairs(data) do fn(e) end end }
+            function f:GetLastElement() return data[#data] end
+            function f:HasNewSlot() return data[#data].elementType == 5 end
+            function f:FillNewSlot(t, id) data[#data].bindingInfo = { type = t, actionID = id } end
+            function f:AddNewAction(t, id)
+                table.insert(bookWorld.calls, "bind " .. t .. " " .. id)
+                if self:HasNewSlot() then self:FillNewSlot(t, id) end
+            end
+            f.AddBindingButton = CreateFrame("Button", nil, f)
+            f.AddBindingButton:SetScript("OnClick", function()
+                table.insert(bookWorld.calls, "add")
+                table.insert(data, { elementType = 5, unbound = true })
+            end)
+            for _, h in ipairs(events.ADDON_LOADED or {}) do
+                h.scripts.OnEvent(h, "ADDON_LOADED", "Blizzard_ClickBindingUI")
+            end
+        end
+    end
     -- the next frame's timers, run by the pass's frame()
     bookWorld.timers = {}
     C_Timer = { After = function(_, fn) table.insert(bookWorld.timers, fn) end }
@@ -3587,7 +3635,7 @@ if mailPass then
 end
 
 -- ------------------------------------------------------------ the group finder
-if lfgPass or cdmPass then (function()
+if lfgPass or cdmPass or ccPass then (function()
     -- Forever's group finder, shaped on Blizzard_GroupFinder_VanillaStyle's calls
     lfgWorld = { calls = {}, cvars = {} }
     local W = lfgWorld
@@ -3887,8 +3935,8 @@ if gamemenuPass then (function()
     C_AddOns.IsAddOnLoaded = function(i) return i ~= 2 end
 end)() end
 
-if cdmPass then (function()
-    if args[3] == "off" then
+if cdmPass or ccPass then (function()
+    if cdmPass and args[3] == "off" then
         MedalluinDB = MedalluinDB or {}
         MedalluinDB.cdmWindow, MedalluinDB.cdmDisplay = false, false
     end
@@ -4245,6 +4293,245 @@ if cdmPass then (function()
         for _ = 1, n do vf:Add() end
         W.viewers[name] = vf
     end
+end)() end
+
+-- --------------------------------------------------------- click casting
+-- Blizzard_ClickBindingUI's ClickBindingFrame (a PortraitFrameTemplate): its
+-- mouseover row, its two portraits, its list of bindings (a ScrollBox of
+-- headings and lines, each line filled by its Init as the game's), its foot.
+if ccPass then (function()
+    if args[3] == "off" then
+        MedalluinDB = MedalluinDB or {}
+        MedalluinDB.ccWindow = false
+    end
+    Enum = Enum or {}
+    Enum.ClickBindingType = { None = 0, Spell = 1, Macro = 2, Interaction = 3, PetAction = 4 }
+    local MODS = { [1] = "SHIFT", [2] = "CTRL", [3] = "CTRL-SHIFT", [4] = "ALT", [5] = "ALT-SHIFT" }
+    local NAMES = { [401] = "Healing Wave", [302] = "Rockbiter Weapon", [101] = "Attack", [403] = "Chain Heal" }
+    C_Spell.GetSpellName = C_Spell.GetSpellName or function(id) return NAMES[id] end
+    C_Spell.GetSpellTexture = C_Spell.GetSpellTexture or function(id) return 1000 + id end
+    C_Spell.GetSpellSubtext = C_Spell.GetSpellSubtext or function(id) return id == 101 and "" or "Rank " .. (id % 10) end
+    local W = { calls = {} }
+    ccWorld = W
+    C_ClickBindings = {
+        GetStringFromModifiers = function(m) return MODS[m] or "" end,
+        GetProfileInfo = function() return {} end,
+        CanSpellBeClickBound = function() return true end,
+    }
+    function InClickBindingMode() return ClickBindingFrame and ClickBindingFrame:IsShown() end
+    local acquired = {}
+    ScrollUtil = ScrollUtil or {}
+    function ScrollUtil.AddAcquiredFrameCallback(box, cb, owner, existing)
+        table.insert(acquired, { cb, owner })
+        if existing then box:ForEachFrame(function(fr) cb(owner, fr) end) end
+    end
+    local f = CreateFrame("Frame", "ClickBindingFrame", UIParent)
+    f:SetPoint("TOPLEFT", 100, -84)
+    f:SetSize(440, 620)
+    for _, k in ipairs({ "NineSlice", "PortraitContainer", "TitleContainer" }) do
+        f[k] = CreateFrame("Frame", nil, f)
+        f[k]:Show()
+    end
+    for _, k in ipairs({ "Bg", "TopTileStreaks" }) do f[k] = f:CreateTexture(nil, "BACKGROUND") end
+    f.CloseButton = CreateFrame("Button", nil, f)
+    f.CloseButton.art = f.CloseButton:CreateTexture()
+    f.ScrollBoxBackground = CreateFrame("Frame", nil, f)
+    f.ScrollBox = CreateFrame("Frame", nil, f)
+    f.ScrollBar = CreateFrame("Frame", nil, f)
+    local function Button(text, w)
+        local b = CreateFrame("Button", nil, f)
+        b:SetSize(w, 23)
+        for _, k in ipairs({ "Left", "Right", "Middle" }) do b[k] = b:CreateTexture() end
+        b.label = b:CreateFontString()
+        b.label:SetText(text)
+        function b:GetFontString() return self.label end
+        function b:SetText(t) self.label:SetText(t) end
+        return b
+    end
+    f.SaveButton, f.AddBindingButton, f.ResetButton = Button("Save", 90), Button("Add Binding", 130),
+        Button("Reset To Default", 165)
+    local check = CreateFrame("CheckButton", nil, f)
+    check.Label = check:CreateFontString()
+    check.Label:SetText("Mouseover Cast")
+    f.EnableMouseoverCastCheckbox = check
+    local key = CreateFrame("Button", nil, f)
+    for _, k in ipairs({ "Background", "Arrow" }) do key[k] = key:CreateTexture() end
+    key.Text, key.Label = key:CreateFontString(), key:CreateFontString()
+    key.Text:SetText("Shift")
+    function key:OnMenuOpened(m) self.menu = m end
+    function key:OnMenuClosed() self.menu = nil end
+    f.MouseoverCastKeyDropdown = key
+    f.FramePortraits = {}
+    for _, k in ipairs({ "PlayerSpellsPortrait", "MacrosPortrait" }) do
+        local pt = CreateFrame("Button", nil, f)
+        for _, r in ipairs({ "Portrait", "Frame", "UnselectedFrame", "Highlight" }) do pt[r] = pt:CreateTexture() end
+        function pt:SetSelectedState(on) self.Frame:SetDesaturated(not on) end
+        f[k] = pt
+        table.insert(f.FramePortraits, pt)
+    end
+    f.TutorialButton = CreateFrame("Button", nil, f)
+    f.UnboundText = f:CreateFontString()
+    -- the list: two defaults, three custom (one unbound), the slot waiting
+    W.data = {
+        { elementType = 1, name = "Default Mouse Bindings" },
+        { elementType = 2, name = "Target Unit Frame (Default)", icon = 132212,
+            bindingInfo = { type = 3, actionID = 1, button = "LeftButton", modifiers = 0 } },
+        { elementType = 2, name = "Open Context Menu (Default)", icon = 134331,
+            bindingInfo = { type = 3, actionID = 2, button = "RightButton", modifiers = 0 } },
+        { elementType = 3, name = "Custom Mouse Bindings" },
+        { elementType = 4, name = "Healing Wave", icon = 1401,
+            bindingInfo = { type = 1, actionID = 401, button = "MiddleButton", modifiers = 1 } },
+        { elementType = 4, name = "Rockbiter Weapon", icon = 1302,
+            bindingInfo = { type = 1, actionID = 302, button = "Button4", modifiers = 3 } },
+        { elementType = 4, name = "Attack", icon = 1101, unbound = true, bindingInfo = { type = 1, actionID = 101 } },
+        { elementType = 5, unbound = true },
+    }
+    local frames = {}
+    local function Line()
+        local l = CreateFrame("Button", nil, f.ScrollBox)
+        l:SetSize(450, 46)
+        l.Background = l:CreateTexture(nil, "BACKGROUND")
+        l.Icon = l:CreateTexture(nil, "ARTWORK")
+        l.Icon:SetPoint("LEFT")
+        l.Icon:SetSize(35, 35)
+        function l.Icon:IsDesaturated() return self.desaturated end
+        l.Name, l.BindingText = l:CreateFontString(), l:CreateFontString()
+        for _, k in ipairs({ "NewOutline", "IconHighlight", "FrameHighlight", "EmptySlotIconHighlight" }) do
+            l[k] = l:CreateTexture()
+        end
+        l.DeleteButton = CreateFrame("Button", nil, l)
+        l.DeleteButton.Icon = l.DeleteButton:CreateTexture()
+        -- ClickBindingLineMixin:Init, as the game's
+        function l:Init(e)
+            self.data = e
+            local b = e.bindingInfo
+            if e.elementType == 5 then
+                self.BindingText:SetText(b and "|cff19ff19Click a mouse button|r" or "|cff19ff19Click on a spell "
+                    .. "or macro to get started|r")
+            elseif not b or not b.button then
+                self.BindingText:SetText("|cffff2020Unbound|r")
+            else
+                self.BindingText:SetText(b.button)
+            end
+            self.Name:SetText(e.elementType == 5 and not b and "Empty" or e.name)
+            if e.elementType == 5 and not b then
+                self.Icon:SetAtlas("clickcast-icon-add")
+                self.Icon.texture = nil
+            else
+                self.Icon.atlas = nil
+                self.Icon:SetTexture(e.icon)
+            end
+            self.Icon:SetDesaturated(e.unbound and e.elementType ~= 5 or false)
+        end
+        function l:GetElementData() return self.data end
+        return l
+    end
+    local function Header()
+        local h = CreateFrame("Frame", nil, f.ScrollBox)
+        h:SetSize(450, 20)
+        h.Name = h:CreateFontString()
+        function h:Init(e) self.data = e; self.Name:SetText(e.name) end
+        function h:GetElementData() return self.data end
+        return h
+    end
+    -- the view: each element a frame, top to bottom, Init then the callbacks
+    function W.Render()
+        local y = 0
+        for i, e in ipairs(W.data) do
+            local fr = frames[i]
+            local fresh = false
+            local header = e.elementType == 1 or e.elementType == 3
+            if not fr or (fr.BindingText ~= nil) == header then
+                fr = header and Header() or Line()
+                frames[i] = fr
+                fresh = true
+            end
+            fr:Init(e)
+            -- LineInitializer's click, as the game's: the button and the keys
+            -- held set on the binding, the slot a binding now
+            if not header then
+                fr:SetScript("OnClick", function(btn, button)
+                    if not e.bindingInfo then return end
+                    local m = (IsShiftKeyDown() and 1 or 0) + (IsControlKeyDown() and 2 or 0)
+                        + (IsAltKeyDown() and 4 or 0)
+                    if e.bindingInfo.button == button and e.bindingInfo.modifiers == m then return end
+                    e.bindingInfo.button, e.bindingInfo.modifiers, e.unbound = button, m, false
+                    if e.elementType == 5 then
+                        e.elementType = 4
+                        f:SetHasNewSlot(false)
+                    end
+                    btn:Init(e)
+                    f:ClearUnboundText()
+                    f:CleanDataProvider()
+                    f.pendingChanges = true
+                end)
+            end
+            fr:ClearAllPoints()
+            fr:SetPoint("TOPLEFT", f.ScrollBox, "TOPLEFT", 0, -y)
+            fr:Show()
+            y = y + fr:GetHeight() + 4
+            if fresh then for _, a in ipairs(acquired) do a[1](a[2], fr) end end
+        end
+    end
+    function f.ScrollBox:ForEachFrame(fn) for _, fr in ipairs(frames) do fn(fr) end end
+    function f.ScrollBox:FindFrame(e)
+        for _, fr in ipairs(frames) do if fr.data == e then return fr end end
+    end
+    function f.ScrollBox:ScrollToElementData(e) W.scrolled = e end
+    f.dataProvider = {
+        ForEach = function(_, fn) for _, e in ipairs(W.data) do fn(e) end end,
+        Find = function(_, i) return W.data[i] end,
+        GetSize = function() return #W.data end,
+    }
+    function f:GetLastElement() return W.data[#W.data] end
+    f.AddBindingButton:SetScript("OnClick", function()
+        if f:HasNewSlot() then return end
+        table.insert(W.data, { elementType = 5, unbound = true })
+        W.Render()
+        f:SetHasNewSlot(true)
+        f:ClearUnboundText()
+    end)
+    W.frames = frames
+    function f:HasNewSlot() return W.data[#W.data].elementType == 5 end
+    function f:HasEmptySlot() return self:HasNewSlot() and not W.data[#W.data].bindingInfo end
+    function f:CleanDataProvider() end
+    function f:ClearUnboundText() self.UnboundText:SetText("") end
+    function f:SetUnboundText(e) self.UnboundText:SetText(e.name .. " is now unbound") end
+    function f:SetHasNewSlot(on) self.AddBindingButton:SetEnabled(not on) end
+    function f:FillNewSlot(t, id)
+        W.data[#W.data].bindingInfo = { type = t, actionID = id }
+        W.data[#W.data].name, W.data[#W.data].icon = NAMES[id], 1000 + id
+        frames[#W.data]:Init(W.data[#W.data])
+        self:ClearUnboundText()
+        self.pendingChanges = true
+    end
+    function f:AddNewAction(t, id)
+        table.insert(W.calls, "add " .. t .. " " .. id)
+        if self:HasNewSlot() then self:FillNewSlot(t, id) end
+        self:CleanDataProvider()
+        self:ClearUnboundText()
+        self.pendingChanges = true
+    end
+    function f:Refresh()
+        self.pendingChanges = false
+        W.Render()
+        self:SetHasNewSlot(true)
+        self:ClearUnboundText()
+    end
+    function f:ResetToDefaultProfile() self.pendingChanges = false end
+    function f:UpdateMouseoverCastUI()
+        self:SetSize(self.w or 440, (self.h or 620) + 25)
+    end
+    f:SetScript("OnShow", function(self)
+        self:Refresh()
+        self.FramePortraits[1]:SetSelectedState(true)
+        self.FramePortraits[2]:SetSelectedState(false)
+        self:UpdateMouseoverCastUI()
+    end)
+    f.CloseButton:SetScript("OnClick", function() HideUIPanel(f) end)
+    f:Hide()
+    W.Render()
+    function ToggleClickBindingFrame() if f:IsShown() then HideUIPanel(f) else f:Show() end end
 end)() end
 
 -- ------------------------------------------------------------ load + fire
@@ -12111,6 +12398,105 @@ if spellPass then
     local class = 0
     for _ in pairs(MedalluinCharDB.trainer.class) do class = class + 1 end
     print("book.trade trainer", table.concat(trade, " "), "class=" .. class)
+    -- 10. click casting (spells/clickcast.lua): a bound spell wears the
+    -- mouse and its click after its rank (a binding on a lower rank marks
+    -- the highest); Click Casting open, the book binds: its buttons cast
+    -- nothing, what it can bind glows while a slot waits, the rest grey
+    local was = B.Current()
+    local function page(line)
+        for _, p in ipairs(B.pages) do
+            if p.line == line then
+                B.Select(p)
+                frame()
+                return p
+            end
+        end
+    end
+    local function marks(tag)
+        local p = B.Current()
+        local out = {}
+        for i, c in ipairs(p.cells) do
+            if c.shown and c.item then
+                local b = layer.buttons[i]
+                table.insert(out, string.format("%s(%s)%s%s%s[%s]", c.name.text, c.sub.text,
+                    c.badge.shown and " mouse" or "", c.halo.shown and " halo" or "",
+                    c.icon.desaturated and " grey" or "", b and b.shown and b.item == c.item
+                    and (tostring(b.attrs.type) .. ":" .. tostring(b.attrs.spell)) or "-"))
+            end
+        end
+        print(tag, table.concat(out, " "))
+    end
+    bookWorld.LoadCC()
+    C_ClickBindings.SetProfileByInfo({ { type = 1, actionID = 401, button = "MiddleButton", modifiers = 1 },
+        { type = 1, actionID = 301, button = "LeftButton", modifiers = 2 } })
+    page(4)
+    marks("book.cc restoration")
+    do
+        local said, add = {}, GameTooltip.AddLine
+        GameTooltip.AddLine = function(_, t) table.insert(said, tostring(t)) end
+        local c = B.Current().cells[1]
+        c.scripts.OnEnter(c)
+        c.scripts.OnLeave(c)
+        GameTooltip.AddLine = add
+        print("book.cc tooltip", table.concat(said, " / "))
+    end
+    page(3)
+    marks("book.cc enhancement")
+    -- Click Casting opens: the book binds
+    page(2)
+    bookWorld.calls = {}
+    ClickBindingFrame:Show()
+    frame()
+    marks("book.cc bind mode")
+    local function tip(c)
+        local said, add = {}, GameTooltip.AddLine
+        GameTooltip.AddLine = function(_, t) table.insert(said, tostring(t)) end
+        c.scripts.OnEnter(c)
+        c.scripts.OnLeave(c)
+        GameTooltip.AddLine = add
+        return said[#said]
+    end
+    print("book.cc bind tip", tip(layer.buttons[1]))
+    local b1 = layer.buttons[1]
+    -- the press passes by; the release binds
+    b1.scripts.PostClick(b1, "LeftButton", true)
+    b1.scripts.PostClick(b1, "LeftButton", false)
+    for _, c in ipairs(B.Current().cells) do
+        if c.shown and c.item and c.item.info.isPassive then c.scripts.OnClick(c) end
+    end
+    local function held()
+        local t = ns.clickcast.target
+        return "binder=" .. tostring(t and t.bindingInfo.actionID) .. " step=" .. tostring(ns.clickcast.Step())
+    end
+    print("book.cc binds", table.concat(bookWorld.calls, " "), "chosen=" .. tostring(B.Current().chosen), held())
+    -- the slot filled, in the binder: no halo
+    EventRegistry:TriggerEvent("ClickBindingFrame.UpdateFrames")
+    marks("book.cc slot filled")
+    -- a spell bound already (a higher rank shown): into the binder, nothing added
+    bookWorld.calls = {}
+    page(4)
+    print("book.cc bound tip", tip(layer.buttons[1]))
+    layer.buttons[1].scripts.PostClick(layer.buttons[1], "LeftButton", false)
+    print("book.cc bound click", "calls=" .. table.concat(bookWorld.calls, " "), held())
+    -- no slot waiting (it became a binding): Add binding, then the spell
+    local d = bookWorld.ccData
+    d[#d].elementType = 4
+    d[#d].bindingInfo.button = "LeftButton"
+    page(2)
+    layer.buttons[2].scripts.PostClick(layer.buttons[2], "LeftButton", false)
+    print("book.cc no slot", "calls=" .. table.concat(bookWorld.calls, " "), held(), "rows=" .. #d)
+    ClickBindingFrame:Hide()
+    frame()
+    marks("book.cc bind mode off")
+    ns.SetOption("spellbookClickCast", false)
+    page(4)
+    marks("book.cc option off")
+    ns.SetOption("spellbookClickCast", true)
+    C_ClickBindings.ResetCurrentProfile()
+    marks("book.cc reset")
+    B.Select(was)
+    frame()
+
     -- 9. the close button
     w.close.scripts.OnClick(w.close)
     harnessBeside("book tips", MedalluinSpellbook)
@@ -16845,4 +17231,159 @@ if cdmPass then (function()
     inCombat = false
     for _, fr in ipairs(events.PLAYER_REGEN_ENABLED or {}) do fr.scripts.OnEvent(fr, "PLAYER_REGEN_ENABLED") end
     viewers("cdm after combat")
+end)() end
+
+-- --------------------------------------------------------- click casting
+if ccPass then (function()
+    local W = ccWorld
+    local f = ClickBindingFrame
+    local C = ns.clickcast
+    local deco = ns.reskin.deco
+    local function rect(f2)
+        local ok, q = pcall(resolve, f2)
+        return ok and q and q[4] and string.format("%.0f,%.0f-%.0f,%.0f", q[1], q[2], q[3], q[4]) or "unresolved"
+    end
+    print("clickcast", "window=" .. tostring(ns.db.ccWindow), "adopted=" .. tostring(C.frame ~= nil))
+    -- the keys, as words
+    local function keys(info)
+        local list, text = C.Keys(info)
+        return list and (table.concat(list, "|") .. " = " .. text) or "none"
+    end
+    print("clickcast keys", keys({ button = "MiddleButton", modifiers = 1 }), keys({ button = "Button4", modifiers = 3 }),
+        keys({ button = "LeftButton", modifiers = 0 }), keys({ type = 1 }))
+    ToggleClickBindingFrame()
+    print("clickcast open", "shown=" .. tostring(f.shown), "rect=" .. rect(f), "lfg box=" .. rect(ns.lfg.box))
+    print("clickcast art", "nineslice=" .. tostring(f.NineSlice.shown), "portrait=" .. tostring(f.PortraitContainer.shown),
+        "bg alpha=" .. tostring(f.Bg.alpha), "close art=" .. tostring(f.CloseButton.art.alpha),
+        "title=" .. tostring(C.skin and C.skin.title.text))
+    if not C.frame then
+        print("clickcast untouched", "save at=" .. rect(f.SaveButton))
+        return
+    end
+    local cell = deco[f] and deco[f].cell
+    print("clickcast top", "cell=" .. rect(cell), "tick=" .. rect(f.EnableMouseoverCastCheckbox),
+        "key=" .. rect(f.MouseoverCastKeyDropdown), "book=" .. rect(f.PlayerSpellsPortrait),
+        "macros=" .. rect(f.MacrosPortrait), "rule=" .. rect(deco[f].portraitRule))
+    local function marked(pt) return tostring(deco[pt].mark.shown) end
+    print("clickcast portraits", "book marked=" .. marked(f.PlayerSpellsPortrait), "macros marked=" .. marked(f.MacrosPortrait),
+        "tutorial alpha=" .. tostring(f.TutorialButton.alpha))
+    print("clickcast list", "box=" .. rect(f.ScrollBox), "bar=" .. rect(f.ScrollBar),
+        "background alpha=" .. tostring(f.ScrollBoxBackground.alpha), "unbound text=" .. rect(f.UnboundText))
+    local function lines(tag)
+        for i, fr in ipairs(W.frames) do
+            local d = deco[fr]
+            if fr.BindingText then
+                local caps = {}
+                for _, k in ipairs(d.caps) do
+                    if k.shown then
+                        table.insert(caps, k.word.text .. (deco[k].edges[1].color and
+                            string.format("@%.2f", deco[k].edges[1].color[1]) or ""))
+                    end
+                end
+                print(tag .. " " .. i, "name=" .. tostring(fr.Name.text), "caps=" .. table.concat(caps, "+"),
+                    "words alpha=" .. tostring(fr.BindingText.alpha), "icon=" .. tostring(d.icon.shown)
+                    .. "/" .. tostring(d.icon.texture), "masked=" .. tostring(d.mask ~= nil), "plus="
+                    .. tostring(d.plus.shown), "slot=" .. tostring(d.slot.shown), "row=" .. tostring(d.row.shown),
+                    "theirs alpha=" .. tostring(fr.Icon.alpha), "grey=" .. tostring(d.icon.desaturated))
+            else
+                print(tag .. " " .. i, "heading=" .. tostring(fr.Name.text), "rule=" .. tostring(d and d.rule ~= nil))
+            end
+        end
+    end
+    lines("clickcast line")
+    -- the binder over the foot: what it shows, by step
+    local function binder(tag)
+        local b = C.binder
+        local words = {}
+        for _, fs in ipairs(b.help) do if fs.shown then table.insert(words, fs.text) end end
+        local steps = {}
+        for i, st in ipairs(b.steps) do
+            if st.num.shown then
+                local c = st.word.textColor
+                table.insert(steps, i .. (c[1] == ns.reskin.GOLD[1] and c[2] == ns.reskin.GOLD[2] and "*" or ""))
+            end
+        end
+        local caps = {}
+        for _, k in ipairs(deco[b.pad].caps) do if k.shown then table.insert(caps, k.word.text) end end
+        local held = {}
+        for i, fr in ipairs(W.frames) do if deco[fr] and deco[fr].row and deco[fr].row.shown then table.insert(held, i) end end
+        print(tag, "step=" .. tostring(C.Step()), "steps=" .. table.concat(steps, ","),
+            "help=" .. (#words > 0 and words[1] .. " (" .. #words .. ")" or "-"),
+            "spell=" .. tostring(b.spell.shown and b.name.text .. "/" .. b.sub.text .. "/" .. tostring(b.icon.texture
+                or b.icon.atlas)),
+            "pad=" .. tostring(b.pad.shown) .. "/" .. tostring(b.pad.mouse) .. " " .. tostring(b.line1.text)
+                .. (#caps > 0 and " [" .. table.concat(caps, "+") .. "]" or ""),
+            "hint=" .. tostring(b.hint.text), "lit lines=" .. table.concat(held, ","),
+            "save=" .. tostring(deco[f.SaveButton].mark.shown))
+    end
+    binder("clickcast binder idle")
+    print("clickcast binder at", "panel=" .. rect(C.binder), "pad=" .. rect(C.binder.pad), "rule=" .. rect(C.binder.rule))
+    -- under the mouse: its row, its caps lit
+    local hl = W.frames[5]
+    hl.scripts.OnEnter(hl)
+    lines("clickcast hover")
+    hl.scripts.OnLeave(hl)
+    print("clickcast delete", "glyph=" .. tostring(deco[hl.DeleteButton].glyph.texture), "at=" .. rect(hl.DeleteButton))
+    print("clickcast foot", "reset=" .. rect(f.ResetButton), "add=" .. rect(f.AddBindingButton),
+        "save=" .. rect(f.SaveButton), "words=" .. tostring(deco[f.SaveButton].words.text) .. "/"
+        .. tostring(deco[f.AddBindingButton].words.text), "rules=" .. rect(deco[f].resetRule) .. " "
+        .. rect(deco[f].saveRule))
+    print("clickcast save", "marked=" .. tostring(deco[f.SaveButton].mark.shown), "theirs=["
+        .. tostring(f.SaveButton.label.text) .. "|" .. tostring(f.AddBindingButton.label.text) .. "]")
+    -- a spell put in the waiting slot: there is something to save
+    f:AddNewAction(1, 403)
+    print("clickcast save after add", "marked=" .. tostring(deco[f.SaveButton].mark.shown), table.concat(W.calls, " "))
+    lines("clickcast filled")
+    f.ResetButton:SetWidth(165)
+    print("clickcast reset square", "w=" .. tostring(f.ResetButton:GetWidth()))
+    -- the slot filled: into the binder; the pad's Alt+Left is its line's
+    binder("clickcast binder filled")
+    modsDown.ALT = true
+    C.binder.pad.scripts.OnClick(C.binder.pad, "LeftButton")
+    modsDown.ALT = nil
+    binder("clickcast binder pad")
+    print("clickcast binder bound", "slot type=" .. tostring(W.data[#W.data].elementType),
+        "keys=" .. keys(W.data[#W.data].bindingInfo), "scrolled=" .. tostring(W.scrolled == W.data[#W.data]))
+    -- put down: idle, the list keeps it
+    C.binder.cancel.scripts.OnClick(C.binder.cancel)
+    binder("clickcast binder cancel")
+    -- the edit glyph: Rockbiter into the binder, its click changed
+    local rock = W.frames[6]
+    rock.scripts.OnEnter(rock)
+    print("clickcast binder edit glyph", "shown=" .. tostring(deco[rock].edit.shown), "at=" .. rect(deco[rock].edit),
+        "glyph=" .. tostring(deco[deco[rock].edit].glyph.texture), "on slot=" .. tostring(deco[W.frames[8]].edit.shown))
+    deco[rock].edit.scripts.OnClick(deco[rock].edit)
+    rock.scripts.OnLeave(rock)
+    binder("clickcast binder edit")
+    modsDown.SHIFT = true
+    C.binder.pad.scripts.OnClick(C.binder.pad, "RightButton")
+    modsDown.SHIFT = nil
+    binder("clickcast binder rebound")
+    print("clickcast binder rock", "keys=" .. keys(W.data[6].bindingInfo))
+    -- saved (the list read afresh): idle
+    f:Refresh()
+    binder("clickcast binder refresh")
+    -- with no slot: Add binding the game's way, then a spell into it
+    W.data[#W.data] = nil
+    W.Render()
+    f.AddBindingButton.scripts.OnClick(f.AddBindingButton)
+    f:AddNewAction(1, 401)
+    binder("clickcast binder added")
+    -- its tooltips beside it: a line's (the game's SetOwner)
+    GameTooltip.points = {}
+    GameTooltip:SetOwner(W.frames[5], "ANCHOR_RIGHT")
+    local at = GameTooltip.points.TOPLEFT or GameTooltip.points.TOPRIGHT
+    print("clickcast tip", at and ((GameTooltip.points.TOPLEFT and "TOPLEFT" or "TOPRIGHT") .. ">"
+        .. (at[1] == f and "window" or "?") .. " " .. at[2]) or "unplaced")
+    GameTooltip:Hide()
+    -- the spot: the LFG window, the Cooldown Manager and it close each other
+    ns.lfg.Open()
+    print("clickcast lfg opens", "cc=" .. tostring(f.shown), "lfg=" .. tostring(ns.lfg.IsShown()))
+    ToggleClickBindingFrame()
+    print("clickcast opens over lfg", "cc=" .. tostring(f.shown), "lfg=" .. tostring(ns.lfg.IsShown()))
+    SlashCmdList.COOLDOWNVIEWERSETTINGS("")
+    print("clickcast cdm opens", "cc=" .. tostring(f.shown), "cdm=" .. tostring(CooldownViewerSettings.shown))
+    ToggleClickBindingFrame()
+    print("clickcast opens over cdm", "cc=" .. tostring(f.shown), "cdm=" .. tostring(CooldownViewerSettings.shown))
+    print("clickcast placed", rect(f))
 end)() end

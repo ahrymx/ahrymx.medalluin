@@ -246,6 +246,76 @@ local function Sub(item)
     return info.subName ~= "" and info.subName or nil
 end
 
+-- ---------------------------------------------------------- click casting
+-- Its bindings (spells/clickcast.lua): a bound spell's click after its rank
+-- and a mouse on its icon's corner. A binding set on a lower rank marks the
+-- rank shown; a pet's, only the pet's spells.
+local GOLD_HEX = "|cfff0d488"
+
+local function Clicks(item, bound)
+    local info = item.info
+    if not bound or item.trainer or not info then return nil end
+    local ids, names = bound[1], bound[2]
+    local pet = item.bank == BANK.Pet
+    local out, seen = {}, {}
+    local function Take(list)
+        for _, b in ipairs(list or {}) do
+            if b.pet == pet and not seen[b.text] then
+                seen[b.text] = true
+                table.insert(out, b.text)
+            end
+        end
+    end
+    Take(ids[info.actionID])
+    if info.spellID then Take(ids[info.spellID]) end
+    for _, low in ipairs(item.lower or {}) do Take(ids[low.info.spellID or low.info.actionID]) end
+    if info.itemType == TYPE.Spell or info.itemType == TYPE.PetAction then Take(names[info.name]) end
+    return #out > 0 and table.concat(out, ", ") or nil
+end
+
+-- The game's bind mode (Click Casting open): a click on a spell it can bind
+-- fills its waiting slot, as the game's own book does, and casts nothing.
+local function Binding()
+    return ns.db.spellbookClickCast and ns.clickcast ~= nil and ns.clickcast.Binding()
+end
+
+local function Bindable(item)
+    local info = item and item.info
+    if not info or item.trainer or info.itemType == TYPE.FutureSpell or info.isPassive or not info.actionID then
+        return false
+    end
+    local can = C_ClickBindings and C_ClickBindings.CanSpellBeClickBound
+    if not can then return false end
+    local ok, yes = pcall(can, info.actionID)
+    return ok and yes and true or false
+end
+
+-- A spell bound already (any of its ranks): into the binder to change its
+-- click. Else a new binding: the game's slot added if there is none (its own
+-- Add binding), then filled, which loads it into the binder.
+local function Bind(item)
+    local f = _G.ClickBindingFrame
+    local cc = ns.clickcast
+    if not (f and f.AddNewAction and Bindable(item)) then return end
+    local info = item.info
+    local ids = { [info.actionID] = true }
+    if info.spellID then ids[info.spellID] = true end
+    for _, low in ipairs(item.lower or {}) do ids[low.info.spellID or low.info.actionID or 0] = true end
+    local had = cc and cc.Find and cc.Find(ids, info.name)
+    if had then
+        cc.Load(had)
+        return
+    end
+    if f.HasNewSlot and not f:HasNewSlot() then
+        local add = f.AddBindingButton
+        local click = type(add) == "table" and add.GetScript and add:GetScript("OnClick")
+        if click then click(add, "LeftButton") end
+        if not f:HasNewSlot() then return end
+    end
+    local T = Enum and Enum.ClickBindingType or { Spell = 1, PetAction = 4 }
+    f:AddNewAction(item.bank == BANK.Pet and T.PetAction or T.Spell, info.actionID)
+end
+
 -- ----------------------------------------------------------------- cells
 local function Tooltip(owner, item)
     if item.trainer then
@@ -258,6 +328,15 @@ local function Tooltip(owner, item)
     end
     ns.window.Outside(owner)
     GameTooltip:SetSpellBookItem(item.slot, item.bank)
+    if Binding() and not Bindable(item) then
+        GameTooltip:AddLine(_G.CLICK_BINDING_NOT_AVAILABLE or "Click casting cannot bind this.",
+            MISSING[1], MISSING[2], MISSING[3])
+    elseif Binding() then
+        GameTooltip:AddLine(item.clicks and format("Bound to %s: click to change it.", item.clicks)
+            or "Click to bind it.", GOLD[1], GOLD[2], GOLD[3])
+    elseif item.clicks then
+        GameTooltip:AddLine("Click casting: " .. item.clicks, GOLD[1], GOLD[2], GOLD[3])
+    end
     if item.missing then
         GameTooltip:AddLine(item.lowerOn and format("%s is on your bars.", item.lowerOn) or "Not on your action bars.",
             MISSING[1], MISSING[2], MISSING[3])
@@ -266,6 +345,11 @@ local function Tooltip(owner, item)
 end
 
 local function Choose(p, item)
+    -- Click Casting open: the spell bound, not chosen
+    if Binding() then
+        Bind(item)
+        return
+    end
     p.chosen = item and item.info.actionID
     W.Refresh()
 end
@@ -332,6 +416,31 @@ local function Cell(p, i)
     c.miss:SetAllPoints()
     c.miss:SetColorTexture(MISSING[1], MISSING[2], MISSING[3], 0.12)
     c.miss:Hide()
+    -- a click-cast binding: a small mouse in a gold ring on the icon's corner
+    c.badge = CreateFrame("Frame", nil, c)
+    c.badge:SetSize(14, 14)
+    c.badge:SetPoint("CENTER", c.icon, "BOTTOMRIGHT", -2, 2)
+    local ring = c.badge:CreateTexture(nil, "ARTWORK", nil, 1)
+    ring:SetAllPoints()
+    ring:SetTexture(ns.media .. "strips\\round")
+    ring:SetVertexColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    local disc = c.badge:CreateTexture(nil, "ARTWORK", nil, 2)
+    disc:SetPoint("TOPLEFT", 1, -1)
+    disc:SetPoint("BOTTOMRIGHT", -1, 1)
+    disc:SetTexture(ns.media .. "strips\\round")
+    disc:SetVertexColor(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 1)
+    c.badge.glyph = c.badge:CreateTexture(nil, "ARTWORK", nil, 3)
+    c.badge.glyph:SetSize(10, 10)
+    c.badge.glyph:SetPoint("CENTER")
+    c.badge.glyph:SetTexture(ns.media .. "strips\\mouse")
+    c.badge.glyph:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+    c.badge:Hide()
+    -- while Click Casting is open, round a spell it can bind: a gold halo
+    c.halo = c:CreateTexture(nil, "BACKGROUND", nil, -1)
+    c.halo:SetPoint("TOPLEFT", c.icon, -4, 4)
+    c.halo:SetPoint("BOTTOMRIGHT", c.icon, 4, -4)
+    c.halo:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.3)
+    c.halo:Hide()
     c.name = ns.Text(c, 12)
     c.name:SetPoint("TOPLEFT", c.icon, "TOPRIGHT", 7, -3)
     c.name:SetPoint("RIGHT", -2, 0)
@@ -391,7 +500,11 @@ local function Secure(i)
             SB.PickupSpellBookItem(self.item.slot, self.item.bank)
         end
     end)
-    b:SetScript("PostClick", function(self) Choose(self.page, self.item) end)
+    b:SetScript("PostClick", function(self, _, down)
+        -- binding: once a click, on its release (the press comes here too)
+        if down and Binding() then return end
+        Choose(self.page, self.item)
+    end)
     b:SetScript("OnEnter", function(self) if self.item then Tooltip(self, self.item) end end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     local glow = b:CreateTexture(nil, "HIGHLIGHT")
@@ -431,7 +544,8 @@ local function Follow()
         if c and c:IsShown() and c.item then
             local b = Secure(i)
             b.item, b.page = c.item, p
-            Arm(b, c.item)
+            -- Click Casting open: nothing cast, the click binds (Choose)
+            Arm(b, not Binding() and c.item or nil)
             b:SetShown(W.Over(b, c))
         elseif layer.buttons[i] then
             local b = layer.buttons[i]
@@ -480,6 +594,11 @@ local function Refresh(p)
     local first = (p.at - 1) * per
     local chosen
     local macros = Macros()
+    local bound = ns.db.spellbookClickCast and ns.clickcast and { ns.clickcast.Bound() }
+    local binding = Binding()
+    local cbf = _G.ClickBindingFrame
+    -- the halo while nothing is in the binder: pick one
+    local ready = binding and cbf and ns.clickcast.Step and ns.clickcast.Step() == 1
     for i, c in ipairs(p.cells) do
         local item = i <= per and items[first + i]
         if item and item.filler then item = nil end
@@ -503,6 +622,8 @@ local function Refresh(p)
             c.title:SetPoint("CENTER", 0, item.now > 0 and 7 or 0)
             c.mark:Hide()
             c.miss:Hide()
+            c.badge:Hide()
+            c.halo:Hide()
             item = nil
         else
             c.item = item or nil
@@ -518,8 +639,20 @@ local function Refresh(p)
             c.name:SetText(info.name)
             c.name:SetTextColor(unpack(learned and (info.isPassive and ns.colors.dim or GOLD) or ns.colors.dim))
             c.sub:SetText(Sub(item) or "")
+            -- its click-cast binding: after its rank, and the mouse on its icon
+            item.clicks = Clicks(item, bound)
+            if item.clicks then
+                local sub = Sub(item)
+                c.sub:SetText((sub and sub .. " · " or "") .. GOLD_HEX .. item.clicks .. "|r")
+            end
+            c.badge:SetShown(item.clicks ~= nil and not binding)
             c.mark:SetShown(info.actionID == p.chosen)
-            item.missing, item.lowerOn = Missing(item, macros)
+            -- (in bind mode the bars are not the question: no red edge)
+            if binding then
+                item.missing, item.lowerOn = false, nil
+            else
+                item.missing, item.lowerOn = Missing(item, macros)
+            end
             -- on no bar: a ring two pixels wide in red, and the wash
             local edge, ring = item.missing and MISSING or GOLD_D, item.missing and 2 or 1
             c.edge:SetColorTexture(edge[1], edge[2], edge[3], 1)
@@ -527,6 +660,19 @@ local function Refresh(p)
             c.edge:SetPoint("TOPLEFT", c.icon, -ring, ring)
             c.edge:SetPoint("BOTTOMRIGHT", c.icon, ring, -ring)
             c.miss:SetShown(item.missing and true or false)
+            -- Click Casting open: what it can bind lit (a halo while a slot
+            -- waits), the rest grey
+            local can = binding and Bindable(item)
+            c.halo:SetShown(can and ready or false)
+            if binding then
+                if can then
+                    c.edge:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+                else
+                    c.icon:SetDesaturated(true)
+                    c.icon:SetAlpha(0.5)
+                    c.name:SetTextColor(unpack(ns.colors.dim))
+                end
+            end
         end
     end
     for _, item in ipairs(items) do
@@ -710,7 +856,7 @@ local function Start()
     -- a rank learned rises on the bars; a trainer read brings its button
     for _, e in ipairs({ "LEARNED_SPELL_IN_SKILL_LINE", "SPELLS_CHANGED" }) do ns.On(e, UpRank) end
     ns.OnSetting("spellbookUpRankAll", function(on) if on then UpRank() end end)
-    for _, key in ipairs({ "spellbookAllRanks", "spellbookMissing", "spellbookUpRankAll" }) do
+    for _, key in ipairs({ "spellbookAllRanks", "spellbookMissing", "spellbookUpRankAll", "spellbookClickCast" }) do
         ns.OnSetting(key, function() W.Refresh() end)
     end
     for _, e in ipairs({ "TRAINER_SHOW", "TRAINER_UPDATE" }) do
@@ -719,6 +865,28 @@ local function Start()
             W.Refresh()
         end)
     end
+    -- click casting: its bindings saved or reset, its window open or shut,
+    -- a slot waiting or filled
+    local function Again() W.Refresh() end
+    if C_ClickBindings then
+        for _, fn in ipairs({ "SetProfileByInfo", "ResetCurrentProfile" }) do
+            if C_ClickBindings[fn] then hooksecurefunc(C_ClickBindings, fn, Again) end
+        end
+    end
+    if EventRegistry and EventRegistry.RegisterCallback then
+        EventRegistry:RegisterCallback("ClickBindingFrame.UpdateFrames", Again, W)
+    end
+    if ns.clickcast then ns.clickcast.Stepped = Again end
+    local watched
+    local function Watch()
+        local f = _G.ClickBindingFrame
+        if watched or not f then return end
+        watched = true
+        f:HookScript("OnShow", Again)
+        f:HookScript("OnHide", Again)
+    end
+    Watch()
+    ns.On("ADDON_LOADED", function(_, name) if name == "Blizzard_ClickBindingUI" then Watch() end end)
     ns.PlayerSpellsTab("SpellBook", W)
 end
 

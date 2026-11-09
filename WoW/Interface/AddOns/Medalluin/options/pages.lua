@@ -685,7 +685,11 @@ function ns.OptionPages()
                         .. "tooltip says so, or names the lower rank that is."),
                     Check("spellbookUpRankAll", "Keep every spell on its highest rank",
                         "As you learn a rank, a lower rank of it on your action bars is swapped for it, out of "
-                        .. "combat. Unticked, only the spells whose details have it ticked.")),
+                        .. "combat. Unticked, only the spells whose details have it ticked."),
+                    Check("spellbookClickCast", "Mark click-cast bindings",
+                        "A spell bound in Click Casting (/cc) wears a small mouse on its icon, and its click "
+                        .. "follows its rank (Racial · Shift+Middle). While Click Casting is open, the spells it "
+                        .. "can bind glow, the rest grey out, and a click binds a spell instead of casting it.")),
             },
         },
         {
@@ -786,6 +790,16 @@ function ns.OptionPages()
                     .. "Edit Mode moving them is undone out of combat. The tracked bars stay in the Auras tab. "
                     .. "Untick it for the game's icons in their Edit Mode places.", true)),
             },
+        },
+        {
+            id = "cc", name = "Click Casting", intro = "Shared by every profile.",
+            master = Check("ccWindow", "Click Casting window",
+                "The game's Click Casting (/cc) in Medalluin's dress, standing on the chat box where the LFG "
+                .. "window stands, the spellbook open beside it: each binding a round icon with its click as "
+                .. "keycaps under its name. Everything in it is still the game's own: binding a spell or a "
+                .. "macro, mouseover cast and its key, reset and save. It, the Cooldown Manager and the LFG "
+                .. "window close each other. Untick it to keep the game's look.", true),
+            groups = {},
         },
         {
             id = "npc", name = "Gossip and vendors", intro = "Shared by every profile.",

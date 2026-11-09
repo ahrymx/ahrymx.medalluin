@@ -47,167 +47,27 @@ local TAB_WORDS = { spells = "Cooldowns", auras = "Buffs", groupBuffs = "Group b
 local cdm = {}
 ns.cooldownWindow = cdm
 
-local deco = {}         -- our dress, by the game's frame
+local R = ns.reskin
+local deco = R.deco     -- our dress, by the game's frame (shared: window/reskin.lua)
 local skin              -- our dress under its content
 
 local function Frame() return _G.CooldownViewerSettings end
 
 -- ---------------------------------------------------------------- pieces
-local function Fade(t, c, a)
-    if t.SetGradient and CreateColor then
-        t:SetColorTexture(1, 1, 1, 1)
-        t:SetGradient("HORIZONTAL", CreateColor(c[1], c[2], c[3], a), CreateColor(c[1], c[2], c[3], 0))
-    else
-        t:SetColorTexture(c[1], c[2], c[3], a * 0.5)
-    end
-end
-
--- Every texture of a frame put away (its art), fonts kept: once, as first
--- met, so ours drawn on it after stay
-local function Bare(f)
-    if not f or not f.GetRegions then return end
-    local d = deco[f] or {}
-    deco[f] = d
-    if d.bare then return end
-    d.bare = true
-    for _, r in ipairs({ f:GetRegions() }) do
-        if r.GetObjectType and r:GetObjectType() == "Texture" then r:SetAlpha(0) end
-    end
-end
-
--- A box in the windows' face: an ink well, a gold edge, drawn on the frame
--- under its own (hidden) art
--- (its edge four lines, so a see-through well shows the world, not gold);
--- fill: the well's opacity, 0.92 unless given
-local function Edge(d, c)
-    for _, t in ipairs(d.edges) do t:SetColorTexture(c[1], c[2], c[3], 1) end
-end
-
-local function Box(f, fill)
-    local d = deco[f] or {}
-    deco[f] = d
-    if d.box then return d end
-    d.box = true
-    d.edges = {}
-    for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" },
-        { "TOPLEFT", "BOTTOMLEFT" }, { "TOPRIGHT", "BOTTOMRIGHT" } }) do
-        local t = f:CreateTexture(nil, "BACKGROUND", nil, -8)
-        t:SetPoint(side[1])
-        t:SetPoint(side[2])
-        if side[1]:sub(1, 3) == side[2]:sub(1, 3) then t:SetHeight(1) else t:SetWidth(1) end
-        table.insert(d.edges, t)
-    end
-    Edge(d, GOLD_D)
-    local well = f:CreateTexture(nil, "BACKGROUND", nil, -7)
-    well:SetPoint("TOPLEFT", 1, -1)
-    well:SetPoint("BOTTOMRIGHT", -1, 1)
-    local ink = ns.colors.ink
-    well:SetColorTexture(ink[1], ink[2], ink[3], fill or 0.92)
-    d.well = well
-    return d
-end
-
-local function Glyph(f, name, size)
-    local d = deco[f] or {}
-    deco[f] = d
-    if not d.glyph then
-        d.glyph = f:CreateTexture(nil, "OVERLAY")
-        d.glyph:SetPoint("CENTER")
-    end
-    d.glyph:SetTexture(GLYPHS .. name)
-    d.glyph:SetSize(size, size)
-    d.glyph:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
-    return d.glyph
-end
-
-local function Font(fs, size, color)
-    if not fs then return end
-    fs:SetFont(ns.font, size, "")
-    fs:SetShadowOffset(1, -1)
-    fs:SetShadowColor(0, 0, 0, 1)
-    if color then fs:SetTextColor(color[1], color[2], color[3]) end
-end
+-- the shared ones (window/reskin.lua)
+local Fade, Bare, Box, Glyph, Font = R.Fade, R.Bare, R.Box, R.Glyph, R.Font
+local Lit, Plain = R.Lit, R.Plain
 
 -- --------------------------------------------------------------- the place
--- Where the LFG window stands: its box (built or not shown) when there is
--- one, else the chat box's top to the screen's
-local placing = false
-local function Place()
-    local f = Frame()
-    if not f or placing then return end
-    placing = true
-    f:ClearAllPoints()
-    local box = ns.lfg and ns.lfg.box
-    if box then
-        f:SetPoint("TOPLEFT", box, "TOPLEFT")
-        f:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT")
-    else
-        f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
-        if ns.chat and ns.chat.box then
-            f:SetPoint("BOTTOMLEFT", ns.chat.box, "TOPLEFT", 0, -1)
-        else
-            f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 260)
-        end
-        f:SetWidth(WIDTH)
-    end
-    placing = false
-end
+-- Where the LFG window stands (window/reskin.lua)
+local function Place() R.Place(Frame()) end
 cdm.Place = Place
 
 -- ---------------------------------------------------------------- the frame
 local function Chrome(f)
-    -- the game's frame art: gone
-    for _, key in ipairs({ "NineSlice", "PortraitContainer", "TitleContainer" }) do
-        if f[key] then f[key]:Hide() end
-    end
-    for _, key in ipairs({ "Background", "Bg", "TopTileStreaks" }) do
-        if f[key] then f[key]:SetAlpha(0) end
-    end
-    if f.Inset then
-        f.Inset:SetAlpha(0)
-        f.Inset:EnableMouse(false)
-    end
-    -- ours under its content
-    skin = CreateFrame("Frame", nil, f)
-    skin:SetAllPoints()
-    skin:SetFrameLevel(f:GetFrameLevel())       -- under its content, over its own art
-    local dress = ns.window.Dress(skin, 0)
-    if dress.rule then dress.rule:Hide() end
-    skin.title = ns.Text(skin, 16)
-    skin.title:SetPoint("TOPLEFT", PAD + 2, -12)
-    skin.title:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-    skin.title:SetText("Cooldown Manager")
-    -- under the tabs, a hair and a fainter one, as the LFG window's
-    local hair = ns.window.Hair(skin)
-    hair:SetPoint("TOPLEFT", PAD, -(HEAD + TABS + 4))
-    hair:SetPoint("TOPRIGHT", -PAD, -(HEAD + TABS + 4))
-    local faint = ns.window.Hair(skin, false, 0.5)
-    faint:SetPoint("TOPLEFT", PAD + 30, -(HEAD + TABS + 7))
-    faint:SetPoint("TOPRIGHT", -PAD - 30, -(HEAD + TABS + 7))
-    -- the search row's and the foot row's lines, edge to edge along their
-    -- cells (the chat's tab row's hairline)
-    for _, at in ipairs({ { "TOP", TOP }, { "BOTTOM", ROW } }) do
-        local rule = skin:CreateTexture(nil, "ARTWORK")
-        rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
-        rule:SetHeight(1)
-        rule:SetPoint(at[1] .. "LEFT", 1, at[2])
-        rule:SetPoint(at[1] .. "RIGHT", -1, at[2])
-    end
-    -- the close button: its click the game's, our glyph
-    local close = f.CloseButton
-    if close then
-        Bare(close)
-        for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetDisabledTexture" }) do
-            local t = close[get] and close[get](close)
-            if t then t:SetAlpha(0) end
-        end
-        close:ClearAllPoints()
-        close:SetPoint("TOPRIGHT", -PAD, -6)
-        close:SetSize(26, 26)
-        local g = Glyph(close, "close", 16)
-        close:HookScript("OnEnter", function() g:SetVertexColor(1, 1, 1) end)
-        close:HookScript("OnLeave", function() g:SetVertexColor(GOLD[1], GOLD[2], GOLD[3]) end)
-    end
+    -- the game's art gone, ours under it: the title, the hairs under the
+    -- tabs, the search row's and the foot row's lines, our close glyph
+    skin = R.Chrome(f, "Cooldown Manager", { { "TOP", TOP }, { "BOTTOM", ROW } }, HEAD + TABS + 4)
 end
 
 -- ----------------------------------------------------------------- the tabs
@@ -269,46 +129,8 @@ function cdm.Tabs()
 end
 
 -- ------------------------------------------------------- search and choices
--- Its controls' box faces: the edge lit under the mouse
-local function Lit(f)
-    local d = deco[f]
-    if not d or d.lit then return end
-    d.lit = true
-    f:HookScript("OnEnter", function()
-        Edge(d, GOLD)
-        if d.glyph then d.glyph:SetVertexColor(1, 1, 1) end
-    end)
-    f:HookScript("OnLeave", function()
-        Edge(d, GOLD_D)
-        if d.glyph then
-            local on = not f.IsEnabled or f:IsEnabled()
-            local c = on and GOLD or DIM
-            d.glyph:SetVertexColor(c[1], c[2], c[3], on and 1 or 0.6)
-        end
-    end)
-end
-
--- a button's own states' art (normal, pushed, lit, disabled): put away
-local function Plain(b)
-    Bare(b)
-    for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetDisabledTexture" }) do
-        local t = b[get] and b[get](b)
-        if t then t:SetAlpha(0) end
-    end
-end
-
--- A divider between two cells: gold, the row's height (the chat's, before
--- its cog)
-local function Divider(f, key, point, x, y)
-    local fd = deco[f] or {}
-    deco[f] = fd
-    if not fd[key] and skin then
-        fd[key] = skin:CreateTexture(nil, "ARTWORK")
-        fd[key]:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
-        fd[key]:SetSize(1, ROW)
-        fd[key]:SetPoint(point, f, point, x, y)
-    end
-end
+-- A divider between two cells, on our skin (window/reskin.lua)
+local function Divider(f, key, point, x, y) R.Divider(skin, f, key, point, x, y) end
 
 -- The search row and the foot as the chat's tab row: cells edge to edge,
 -- flush to the window's sides, a gold divider between them. Up top the
@@ -575,30 +397,9 @@ local function Spell(item)
     if not icon then return end
     local d = deco[item]
     if not d then
-        d = {}
-        deco[item] = d
-        -- the icon's own square border cut off, so the round mask shows its
-        -- face (once, before the mask: the game refuses tex coords after)
-        if icon.SetTexCoord then icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
-        if item.CreateMaskTexture and icon.AddMaskTexture then
-            d.mask = item:CreateMaskTexture()
-            d.mask:SetTexture(ROUND, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-            d.mask:SetPoint("TOPLEFT", icon, "TOPLEFT", 3, -3)
-            d.mask:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -3, 3)
-            icon:AddMaskTexture(d.mask)
-        end
-        -- a thin gold ring round an ink well, the icon set in it: a slot with
-        -- no icon reads as an empty socket
-        d.rim = item:CreateTexture(nil, "BACKGROUND", nil, -6)
-        d.rim:SetTexture(ROUND)
-        d.rim:SetPoint("TOPLEFT", icon, "TOPLEFT", 0, 0)
-        d.rim:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 0, 0)
-        d.well = item:CreateTexture(nil, "BACKGROUND", nil, -5)
-        d.well:SetTexture(ROUND)
-        d.well:SetPoint("TOPLEFT", icon, "TOPLEFT", 1.5, -1.5)
-        d.well:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -1.5, 1.5)
-        local ink = ns.colors.ink
-        d.well:SetVertexColor(ink[1], ink[2], ink[3], 1)
+        -- round in a thin gold ring round an ink well: a slot with no icon
+        -- reads as an empty socket
+        d = R.Medal(item, icon, 3)
         -- the search's verdict on it, after the game's
         if item.ApplyFilter then
             hooksecurefunc(item, "ApplyFilter", function() cdm.Filter(item) end)
@@ -978,111 +779,9 @@ local function Marker(f)
 end
 
 -- ------------------------------------------------------------------ menus
--- The layout and gear menus (the game's shared menus, Blizzard_Menu): an
--- ink panel with a gold edge over their art, their radio and check marks,
--- dividers and hover glow in gold, while ours is open. Their frames and
--- parts are the game's, pooled and lent to every other menu after: each
--- change is noted and undone as ours closes, ours hidden. Fonts and text
--- colours are left (the game sizes each line to its words as it opens; a
--- class colour or a green New Layout is the game's meaning).
-local worn = {}                 -- the changes on the open menu, to undo
-local panels = {}               -- ours, by the game's menu frame
-
-local function Wear(r, how)
-    if how == "hide" then
-        table.insert(worn, { r, "alpha", r:GetAlpha() })
-        r:SetAlpha(0)
-    else
-        local vr, vg, vb, va = r:GetVertexColor()
-        table.insert(worn, { r, "tint", vr, vg, vb, va, r.IsDesaturated and r:IsDesaturated() })
-        if r.SetDesaturated then r:SetDesaturated(true) end
-        r:SetVertexColor(how[1], how[2], how[3], how[4] or 1)
-    end
-end
-
-local function Undo()
-    for i = #worn, 1, -1 do
-        local w = worn[i]
-        local r = w[1]
-        if w[2] == "alpha" then
-            r:SetAlpha(w[3] or 1)
-        else
-            r:SetVertexColor(w[3] or 1, w[4] or 1, w[5] or 1, w[6] or 1)
-            if r.SetDesaturated then r:SetDesaturated(w[7] and true or false) end
-        end
-    end
-    wipe(worn)
-    for _, p in pairs(panels) do p:Hide() end
-end
-
--- a part's look by its art: the marks gold, the glow faint gold, the rule
--- dark gold; anything else (an icon of the game's meaning) left
-local function Part(r)
-    if not (r.GetObjectType and r:GetObjectType() == "Texture") then return end
-    local atlas = r.GetAtlas and r:GetAtlas()
-    local file = r.GetTexture and r:GetTexture()
-    atlas = type(atlas) == "string" and atlas:lower() or ""
-    file = type(file) == "string" and file:lower() or ""
-    if atlas:find("tick") or atlas:find("radial") or atlas:find("checkmark") then
-        Wear(r, GOLD)
-    elseif atlas:find("highlight") or file:find("highlight") then
-        Wear(r, { GOLD[1], GOLD[2], GOLD[3], 0.35 })
-    elseif file:find("divider") then
-        Wear(r, GOLD_D)
-    end
-end
-
-local function Menu(menu)
-    if not menu or not menu.GetRegions then return end
-    Undo()
-    -- its background (the style's art on the menu itself): under our panel
-    for _, r in ipairs({ menu:GetRegions() }) do
-        if r.GetObjectType and r:GetObjectType() == "Texture" then Wear(r, "hide") end
-    end
-    local p = panels[menu]
-    if not p then
-        p = CreateFrame("Frame", nil, menu)
-        p:SetPoint("TOPLEFT", -2, 2)
-        p:SetPoint("BOTTOMRIGHT", 2, 5)
-        p:SetFrameLevel(menu:GetFrameLevel())
-        local edge = p:CreateTexture(nil, "BACKGROUND", nil, -8)
-        edge:SetAllPoints()
-        edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
-        local well = p:CreateTexture(nil, "BACKGROUND", nil, -7)
-        well:SetPoint("TOPLEFT", 1, -1)
-        well:SetPoint("BOTTOMRIGHT", -1, 1)
-        local ink = ns.colors.ink
-        well:SetColorTexture(ink[1], ink[2], ink[3], 0.97)
-        panels[menu] = p
-    end
-    p:Show()
-    -- its lines: their marks, rules and glow
-    local function Walk(f, depth)
-        for _, r in ipairs({ f:GetRegions() }) do Part(r) end
-        if f.GetHighlightTexture then
-            local h = f:GetHighlightTexture()
-            if h then Part(h) end
-        end
-        if depth < 4 then
-            for _, c in ipairs({ f:GetChildren() }) do
-                if c ~= p then Walk(c, depth + 1) end
-            end
-        end
-    end
-    for _, c in ipairs({ menu:GetChildren() }) do
-        if c ~= p then Walk(c, 1) end
-    end
-end
-cdm.Menu = Menu
-
-local function Dropdown(button)
-    if not button or deco[button] and deco[button].menu then return end
-    local d = deco[button] or {}
-    deco[button] = d
-    d.menu = true
-    if button.OnMenuOpened then hooksecurefunc(button, "OnMenuOpened", function(_, menu) Menu(menu) end) end
-    if button.OnMenuClosed then hooksecurefunc(button, "OnMenuClosed", Undo) end
-end
+-- The layout and gear menus: dressed while open (window/reskin.lua)
+cdm.Menu = R.Menu
+local Dropdown = R.Dropdown
 
 -- ------------------------------------------------------------- the dressing
 -- After the game lays its categories out (as it shows, a tab changes, a
@@ -1149,35 +848,15 @@ local function Adopt()
     end
     Place()
     -- its own place, whenever the panel manager or the game moves it: ours
-    hooksecurefunc(f, "SetPoint", function()
-        if not placing then ns.OutOfCombat(Place) end
-    end)
+    R.Hold(f, Place)
     for _, method in ipairs({ "RefreshLayout", "SetDisplayMode", "UpdateSaveButtonStates" }) do
         if f[method] then hooksecurefunc(f, method, Dress) end
     end
-    f:HookScript("OnShow", function()
+    -- the LFG window's spot and its rules, placed and dressed as it shows
+    R.Stand(f, "cdm", function()
         Place()
         Dress()
-        if ns.chat then ns.chat.Hold(true, "cdm") end
-        -- the LFG window shares the place: closed
-        if ns.lfg and ns.lfg.IsShown and ns.lfg.IsShown() then ns.lfg.Close() end
     end)
-    f:HookScript("OnHide", function()
-        if ns.chat then ns.chat.Hold(false, "cdm") end
-    end)
-    if ns.quests and ns.quests.Cover then ns.quests.Cover(f) end
-    -- its tooltips beside it, as the LFG window's: the spells' own (the game's
-    -- SetOwner, placed again by the shell) and ours
-    if ns.window.Mark then ns.window.Mark(f, -1) end
-    -- the LFG window and an NPC window opening close it: the last opened wins
-    local function CloseOurs()
-        if f:IsShown() then
-            if HideUIPanel then HideUIPanel(f) else f:Hide() end
-        end
-    end
-    if ns.lfg and ns.lfg.box then ns.lfg.box:HookScript("OnShow", CloseOurs) end
-    if ns.npc and ns.npc.box then ns.npc.box:HookScript("OnShow", CloseOurs) end
-    if ns.character and ns.character.window then ns.character.window:HookScript("OnShow", CloseOurs) end
     if f:IsShown() then
         Place()
         Dress()
