@@ -19,7 +19,7 @@
 local _, ns = ...
 
 local W = ns.Window{
-    name = "MedalluinCharacter", side = -1, detailsKey = "characterDetails",
+    name = "MedalluinCharacter", side = -1,
     closeTip = "Close the character window.",
     Close = function() HideUIPanel(CharacterFrame) end,
     Open = function(page)

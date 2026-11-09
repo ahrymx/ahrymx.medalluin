@@ -72,8 +72,8 @@ local savedNoBags = args[3] == "nobags"
 local bankPass = args[2] == "bank"
 -- "character" (with "modern": Forever's six pages; "modern retail": retail's
 -- three) plays the character window (character/): Blizzard's window kept
--- under ns.hidden and followed, its page switches, the tabs, the details'
--- chevron, and each page over stubbed data. "character nochar" plays a
+-- under ns.hidden and followed, its page switches, the tabs and the cross
+-- in their row, and each page over stubbed data. "character nochar" plays a
 -- saved Character window option that is off.
 local characterPass = args[2] == "character"
 local characterRetail = characterPass and args[3] == "retail"
@@ -10666,14 +10666,6 @@ if bankPass then
     frame()
     buy("bank.purchase another")
 
-    -- 7. the details fold
-    click(w.chevron)
-    frame()
-    print("bank.details folded", "details=" .. tostring(ns.db.bankDetails), "foot=" .. tostring(p.foot.shown))
-    buy("bank.purchase folded")
-    click(w.chevron)
-    frame()
-
     -- 8. the character window stands over it; the tracker and the NPC box under it
     CharacterFrame:Show()
     state("bank.character")
@@ -10897,12 +10889,9 @@ if characterPass then
     end
     local function state(tag)
         local p = current()
-        local icon = w.chevron.icon.texture or ""
         print(tag, "shown=" .. tostring(w.shown), "blizzard=" .. tostring(CharacterFrame.shown),
             "page=" .. (p and p.key or "none"), string.format("size=%dx%d", w.w, w.h),
-            "details=" .. tostring(p and p.foot.shown), "chevron=" .. (icon:match("chevron%-(%a+)$") or "?")
-                .. (w.chevron.shown and "" or " hidden"),
-            "heard=" .. heard())
+            "details=" .. tostring(p and p.foot.shown), "heard=" .. heard())
     end
     local function tabs(tag)
         local list = {}
@@ -10986,12 +10975,21 @@ if characterPass then
     state("char.open")
     character("char")
 
-    -- 3. the chevron folds the details away, and opens them again
-    w.chevron.scripts.OnClick(w.chevron)
-    state("char.folded")
-    print("char.folded saved", tostring(ns.db.characterDetails))
-    w.chevron.scripts.OnClick(w.chevron)
-    state("char.unfolded")
+    -- 3. the row: the tabs flush in the corner, the cross in the top right
+    -- behind a divider
+    do
+        local function at(f)
+            local ok, q = pcall(resolve, f)
+            local ok2, o = pcall(resolve, w)
+            if not (f and ok and q and q[4] and ok2 and o) then return "unresolved" end
+            return string.format("%.0f,%.0f-%.0f,%.0f", q[1] - o[1], q[2] - o[2], q[3] - o[1], q[4] - o[2])
+        end
+        local first, last
+        for _, p in ipairs(C.pages) do
+            if p.tab and p.tab.shown then first = first or p.tab; last = p.tab end
+        end
+        print("char.row", "first tab=" .. at(first), "last tab=" .. at(last), "cross=" .. at(w.close), "chevron=" .. tostring(w.chevron))
+    end
 
     -- 3b. the window is the screen's height, and the page spreads out over
     -- it; folded details give the page their room
@@ -11006,9 +11004,6 @@ if characterPass then
             tostring(f.divider)), string.format("size=%dx%d", w.w, w.h))
     end
     fit("char.fit")
-    w.chevron.scripts.OnClick(w.chevron)
-    fit("char.fit folded")
-    w.chevron.scripts.OnClick(w.chevron)
     -- the medallion over the window's margin: the portrait lifted to the
     -- window's strata, the medallion's art copied over it
     local function medallion(tag)
@@ -11309,7 +11304,7 @@ if characterPass then
     -- a short screen: the list gives up height and scrolls by the wheel
     local realHeight = UIParent.GetHeight
     function UIParent:GetHeight() return 240 end
-    ns.SetOption("characterDetails", true)
+    fire("UI_SCALE_CHANGED")
     frame()
     rows("rep.short", "reputation")
     local list = page("reputation").list
@@ -11318,7 +11313,7 @@ if characterPass then
     list.scripts.OnMouseWheel(list, -5)
     rows("rep.scrolled to the end", "reputation")
     UIParent.GetHeight = realHeight
-    ns.SetOption("characterDetails", true)
+    fire("UI_SCALE_CHANGED")
     frame()
     state("rep.tall again")
 
@@ -11443,12 +11438,12 @@ if characterPass then
         -- the tallest, and the emblem its least
         local realHeight = UIParent.GetHeight
         function UIParent:GetHeight() return 240 end
-        ns.SetOption("characterDetails", true)
+        fire("UI_SCALE_CHANGED")
         frame()
         state("pvp.short")
         print("pvp.short fit", "emblem=" .. pv.emblemSize, "season " .. where(pv.season))
         UIParent.GetHeight = realHeight
-        ns.SetOption("characterDetails", true)
+        fire("UI_SCALE_CHANGED")
         frame()
 
         page("statistics").tab.scripts.OnClick(page("statistics").tab)
@@ -17263,7 +17258,7 @@ if ccPass then (function()
     local cell = deco[f] and deco[f].cell
     print("clickcast top", "cell=" .. rect(cell), "tick=" .. rect(f.EnableMouseoverCastCheckbox),
         "key=" .. rect(f.MouseoverCastKeyDropdown), "book=" .. rect(f.PlayerSpellsPortrait),
-        "macros=" .. rect(f.MacrosPortrait), "rule=" .. rect(deco[f].portraitRule))
+        "macros=" .. rect(f.MacrosPortrait))
     local function marked(pt) return tostring(deco[pt].mark.shown) end
     print("clickcast portraits", "book marked=" .. marked(f.PlayerSpellsPortrait), "macros marked=" .. marked(f.MacrosPortrait),
         "tutorial alpha=" .. tostring(f.TutorialButton.alpha))
@@ -17326,8 +17321,7 @@ if ccPass then (function()
     print("clickcast delete", "glyph=" .. tostring(deco[hl.DeleteButton].glyph.texture), "at=" .. rect(hl.DeleteButton))
     print("clickcast foot", "reset=" .. rect(f.ResetButton), "add=" .. rect(f.AddBindingButton),
         "save=" .. rect(f.SaveButton), "words=" .. tostring(deco[f.SaveButton].words.text) .. "/"
-        .. tostring(deco[f.AddBindingButton].words.text), "rules=" .. rect(deco[f].resetRule) .. " "
-        .. rect(deco[f].saveRule))
+        .. tostring(deco[f.AddBindingButton].words.text))
     print("clickcast save", "marked=" .. tostring(deco[f.SaveButton].mark.shown), "theirs=["
         .. tostring(f.SaveButton.label.text) .. "|" .. tostring(f.AddBindingButton.label.text) .. "]")
     -- a spell put in the waiting slot: there is something to save

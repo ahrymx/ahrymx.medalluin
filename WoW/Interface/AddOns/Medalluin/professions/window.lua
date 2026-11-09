@@ -59,7 +59,7 @@ local CARDS = 5                         -- two primaries and three secondaries
 local NONE = "Interface\\Icons\\INV_Scroll_04"
 
 local W = ns.Window{
-    name = "MedalluinProfessions", side = 1, tabs = "open",
+    name = "MedalluinProfessions", side = 1,
     closeTip = "Close the professions.",
     Close = function() HideUIPanel(ProfessionsFrame) end,
     Open = function(page) if page.Open then page.Open() end end,

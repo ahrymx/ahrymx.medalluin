@@ -51,7 +51,7 @@ local BANK = Enum and Enum.SpellBookSpellBank or { Player = 0, Pet = 1 }
 local TYPE = Enum and Enum.SpellBookItemType or { None = 0, Spell = 1, FutureSpell = 2, PetAction = 3, Flyout = 4 }
 
 local W = ns.Window{
-    name = "MedalluinSpellbook", side = 1, detailsKey = "spellbookDetails",
+    name = "MedalluinSpellbook", side = 1,
     closeTip = "Close the spellbook.",
     Close = function() HideUIPanel(PlayerSpellsFrame) end,
     Lifted = function() return { MainMenuBarBackpackButton } end,

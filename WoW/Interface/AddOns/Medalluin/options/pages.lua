@@ -647,10 +647,7 @@ function ns.OptionPages()
                         { "grid", "Grid", "Every slot, bag by bag." },
                         { "groups", "Groups", "The items in groups: new, equipment, consumables, quest items, trade "
                             .. "goods, other and junk, with one slot for the free ones." },
-                    }, "The window's Bags, Grid and Groups buttons switch this too. Kept across reloads."),
-                    Check("bankDetails", "Details",
-                        "The bank's bag slots and the next one's price, under the slots. The window's arrow folds "
-                        .. "them too.")),
+                    }, "The window's Bags, Grid and Groups buttons switch this too. Kept across reloads.")),
             },
         },
         {
@@ -659,12 +656,7 @@ function ns.OptionPages()
                 "Your character, reputations and currencies (and on Forever your skills, PvP rank and statistics) in "
                 .. "one window standing on the chat panel, with the gear down both sides of your model and the stats "
                 .. "under it. Untick it to keep the game's window.", true),
-            groups = {
-                Group("Window",
-                    Check("characterDetails", "Details",
-                        "The lower part of each page: the stats, a reputation's or currency's details, and the rest. "
-                        .. "The window's arrow folds it too.")),
-            },
+            groups = {},
         },
         {
             id = "spellbook", name = "Spellbook", intro = "Forever only. Shared by every profile.",
@@ -673,9 +665,6 @@ function ns.OptionPages()
                 .. "on the side panel. Cast and drag them out of combat; in combat it reads. Untick it to keep the "
                 .. "game's spellbook.", true),
             groups = {
-                Group("Window",
-                    Check("spellbookDetails", "Details",
-                        "The chosen spell's rank and description, under the spells. The window's arrow folds it too.")),
                 Group("Spells",
                     Check("spellbookAllRanks", "Every rank",
                         "List each rank of a spell. Unticked, a spell is listed once, at its highest rank learned, "

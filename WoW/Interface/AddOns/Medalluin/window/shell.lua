@@ -3,11 +3,11 @@
 -- In the console's ink and gold, standing on its strip over the side
 -- panel's place, from the screen's edge to its top.
 --
---   [  @  ][  @  ][  @  ][  @  ][  @  ][  @  ]               [v] [x]
+--   [  @  ][  @  ][  @  ][  @  ][  @  ][  @  ] [x]
 --   ---------------------------------------------------------------
 --   the page
 --   ---------------------------------------------------------------
---   the page's details                     <- the chevron folds these
+--   the page's details
 --   ---------------------------------------------------------------
 --   (medallion)  the page's band           <- the margin
 --
@@ -23,24 +23,21 @@
 -- over the margin's rule (a row of joined buttons, ns.window.Segments,
 -- meets both lines).
 --
--- The tabs are icons spread across the row, with the page's name in a
--- tooltip (tip, or the label): the glyph art/strips draws for the page
--- (named by its key, or glyph), or the game's own icon (icon). The chevron
--- and the cross are glyphs of the same set. A window whose pages come and
+-- The tabs are icons spread across the row, flush in the window's top
+-- corner, with the page's name in a tooltip (tip, or the label): the glyph
+-- art/strips draws for the page (named by its key, or glyph), or the game's
+-- own icon (icon). The cross, a glyph of the same set, is flush in the top
+-- right corner, a gap between it and the tabs (two edges, no line). A window whose pages come and
 -- go (a pet's spells, a profession learned) asks for Retab, and the row is
 -- shared out again. A page with row = 2 has its tab on a second row under
 -- the first, shared out across the whole width; while there is one, the
 -- rule and the page stand a row lower.
 --
 --   local w = ns.Window{ name, side (-1 left, 1 right),
---                        detailsKey (the setting the chevron folds the
---                        details by; none: they stay open, no chevron),
 --                        closeTip, Close(), Open(page) (ask Blizzard),
 --                        Lifted() -> the medallion's buttons,
 --                        place (a setting: the window detaches, below),
 --                        detachedOnly (with a place: never docked, no view glyph),
---                        tabs ("open": tabs with no box, a gold underline
---                        on the one in use, rows on fading hairs),
 --                        opaque (its ink solid, not the windows' 94%),
 --                        exclusive (docked, it closes the other docked
 --                        windows on its strip as it opens, and they close
@@ -57,7 +54,7 @@
 --   w.Detached()
 --
 -- A window with a place has two views, as the quest tracker has, switched
--- by a glyph left of the chevron: docked, on its strip as every window
+-- by a glyph left of the cross: docked, on its strip as every window
 -- stands; detached, a box of its own (the bank's), dragged by its ink,
 -- sized by the grip in its corner, scaled with Ctrl and the wheel over it.
 -- Detached it has no medallion, its band runs edge to edge, and it is as
@@ -83,8 +80,9 @@ local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local WIDTH = L.chatLeft + L.chatWidth          -- from the screen's edge to the chat panel's far edge
 local PAD, TAB, RULE = 8, 28, 6                 -- the edge, the tab row, the gap round a rule
-local GLYPH, CONTROL = 20, 16                   -- a tab's glyph, the chevron's and the cross's
-local TOP = PAD + TAB + RULE                    -- the page's top
+local GLYPH, CONTROL = 20, 16                   -- a tab's glyph, the cross's
+local GAP = 4                                   -- between the tabs and the cross
+local TOP = TAB + RULE / 2                      -- the page's top, under the tabs' row
 local MEDALLION = L.chatLeft                    -- the medallion's width: the strip's art left of the chat
 local OVER = ART.height - L.stripHeight         -- how far the medallion stands above the strip
 local BAND = OVER + 4                           -- the margin, up to its rule
@@ -192,7 +190,7 @@ local function Ring(parent, size)
 end
 ns.window.Ring = Ring
 
--- A tab with no box (spec.tabs = "open"): its mark a gold underline and a
+-- A tab with no box (Segments' soft = "open"): its mark a gold underline and a
 -- glow rising from it, under the face (b.top), where the glyph is drawn.
 local function Bare(b)
     b.mark = CreateFrame("Frame", nil, b)
@@ -653,8 +651,7 @@ function ns.Window(spec)
     local w = { pages = pages, width = WIDTH - 2 * PAD, side = side,
         band = { left = side < 0 and MEDALLION + PAD or PAD, right = side < 0 and PAD or MEDALLION + PAD,
             height = BAND } }
-    local window, chevron, close, rule, footRule, medal, view, grip
-    local hairs                         -- open tabs: the hairs under the rows
+    local window, close, rule, footRule, medal, view, grip
     local pageTop = TOP                 -- the page's top: a row lower with a second row of tabs
     local current, dirty
     local tabs = {}
@@ -667,10 +664,6 @@ function ns.Window(spec)
     function w.Page(page)
         table.insert(pages, page)
     end
-
-    -- the details open: always, for a window with no key to fold them
-    -- (nor a chevron)
-    local function Details() return not spec.detailsKey or ns.db[spec.detailsKey] and true or false end
 
     -- the detached view's place (none for a window that stays docked)
     local function At() return spec.place and type(ns.db[spec.place]) == "table" and ns.db[spec.place] or {} end
@@ -738,9 +731,9 @@ function ns.Window(spec)
         return UIParent:GetHeight() / scale - L.stripHeight
     end
 
-    -- What a page's details take, rule and all, with them open.
-    local function Foot(page, details)
-        if not (details and page.footHeight and page.footHeight > 0) then return 0 end
+    -- What a page's details take, rule and all.
+    local function Foot(page)
+        if not (page.footHeight and page.footHeight > 0) then return 0 end
         return page.footHeight + 2 * RULE + 1
     end
 
@@ -750,12 +743,11 @@ function ns.Window(spec)
     -- runs off the top, and a list gives up height to fit.
     local function Layout()
         if not current then return end
-        local details = Details()
         local least = 0
         for _, p in ipairs(pages) do
-            if p.available and not p.flex then least = math.max(least, p.height + Foot(p, details)) end
+            if p.available and not p.flex then least = math.max(least, p.height + Foot(p)) end
         end
-        local foot = Foot(current, details)
+        local foot = Foot(current)
         local room = Room()
         local total = math.max(pageTop + least + BOTTOM, room)
         if current.flex then total = math.max(pageTop + 80 + foot + BOTTOM, math.min(total, room)) end
@@ -772,9 +764,6 @@ function ns.Window(spec)
             current.foot:SetHeight(current.footHeight)
         end
         window:SetHeight(total)
-        if chevron then
-            chevron.icon:SetTexture(ns.media .. "strips\\" .. (details and "chevron-down" or "chevron-up"))
-        end
         dirty = true            -- a list's rows follow its height
     end
 
@@ -930,77 +919,70 @@ function ns.Window(spec)
         end
     end
 
-    -- the row less the chevron and the cross, shared out among the pages
-    -- that are there, and the second row, if any, across the whole width;
-    -- the tabs overlap a pixel, sharing their edges, row on row too
+    -- the row less the cross (and the view glyph) and the gap before
+    -- them, shared out among the pages that are there, and the second row,
+    -- if any, across the whole width; flush in the window's corner, the
+    -- tabs overlap a pixel, sharing their edges (the window's border too),
+    -- row on row as well
     function Tabs()
-        local shown, first, second = {}, {}, {}
+        local first, second = {}, {}
         for _, p in ipairs(pages) do
             if p.available and not p.tabless then
                 table.insert(p.row == 2 and second or first, p)
             end
             p.tab = nil
         end
-        for _, p in ipairs(first) do table.insert(shown, p) end
-        for _, p in ipairs(second) do table.insert(shown, p) end
-        local controls = 1 + (spec.detailsKey and 1 or 0) + (spec.place and not spec.detachedOnly and 1 or 0)
-        local full = (window:GetWidth() or WIDTH) - 2 * PAD
-        local room = full - controls * (TAB + 4)
-        local width
-        local prev
-        for i, p in ipairs(shown) do
-            local row2 = i > #first
-            if i == 1 or i == #first + 1 then
-                local n = row2 and #second or #first
-                width = math.floor(((row2 and full or room) + n - 1) / n)
-                prev = nil
+        local controls = 1 + (view and 1 or 0)
+        local full = window:GetWidth() or WIDTH
+        local edge = controls * TAB - (controls - 1)    -- the cross and the view glyph, joined
+        local room = full - edge - GAP
+        local n = 0
+        for r, list in ipairs({ first, second }) do
+            local span = r == 1 and room or full
+            local width = #list > 0 and math.floor((span + #list - 1) / #list) or 0
+            local prev
+            for k, p in ipairs(list) do
+                n = n + 1
+                local b = tabs[n]
+                if not b then
+                    local i = n
+                    b = Button(window, width, function(self) Open(self.page) end,
+                        function() return tabs[i].page.tip or tabs[i].page.label end)
+                    b.icon = b:CreateTexture(nil, "ARTWORK")
+                    b.icon:SetSize(GLYPH, GLYPH)
+                    b.icon:SetPoint("CENTER")
+                    tabs[n] = b
+                end
+                b.page = p
+                -- the last to the row's end, exactly
+                b:SetWidth(k < #list and width or span - (#list - 1) * (width - 1))
+                if p.icon then
+                    b.icon:SetTexture(p.icon)
+                    b.icon:SetTexCoord(GAME_ICON, 1 - GAME_ICON, GAME_ICON, 1 - GAME_ICON)
+                else
+                    b.icon:SetTexture(ns.media .. "strips\\" .. (p.glyph or p.key))
+                    b.icon:SetTexCoord(0, 1, 0, 1)
+                end
+                b:ClearAllPoints()
+                if prev then
+                    b:SetPoint("LEFT", prev, "RIGHT", -1, 0)
+                else
+                    b:SetPoint("TOPLEFT", 0, -(r - 1) * (TAB - 1))
+                end
+                b.mark:SetShown(p == current)
+                b.icon:SetAlpha(p == current and 1 or 0.6)
+                b:Show()
+                p.tab, prev = b, b
             end
-            local b = tabs[i]
-            if not b then
-                b = Button(window, width, function(self) Open(self.page) end,
-                    function() return tabs[i].page.tip or tabs[i].page.label end, nil, spec.tabs)
-                b.icon = (b.top or b):CreateTexture(nil, "ARTWORK")
-                b.icon:SetSize(GLYPH, GLYPH)
-                b.icon:SetPoint("CENTER")
-                tabs[i] = b
-            end
-            b.page = p
-            b:SetWidth(width)
-            if p.icon then
-                b.icon:SetTexture(p.icon)
-                b.icon:SetTexCoord(GAME_ICON, 1 - GAME_ICON, GAME_ICON, 1 - GAME_ICON)
-            else
-                b.icon:SetTexture(ns.media .. "strips\\" .. (p.glyph or p.key))
-                b.icon:SetTexCoord(0, 1, 0, 1)
-            end
-            b:ClearAllPoints()
-            if prev then
-                b:SetPoint("LEFT", prev, "RIGHT", -1, 0)
-            else
-                b:SetPoint("TOPLEFT", PAD, -(PAD + (row2 and TAB - 1 or 0)))
-            end
-            b.mark:SetShown(p == current)
-            b.icon:SetAlpha(p == current and 1 or 0.6)
-            b:Show()
-            p.tab, prev = b, b
         end
-        for i = #shown + 1, #tabs do tabs[i]:Hide() end
-        -- the rule and the pages under the last row; open tabs stand on
-        -- fading hairs instead, one under each row
-        pageTop = TOP + (#second > 0 and TAB - 1 or 0)
+        for i = n + 1, #tabs do tabs[i]:Hide() end
+        -- the rule along the last row's foot, the window's width, and the
+        -- pages under it
+        local rows = #second > 0 and 2 or 1
+        pageTop = TOP + (rows - 1) * (TAB - 1)
         rule:ClearAllPoints()
-        rule:SetPoint("TOPLEFT", PAD, -(pageTop - RULE / 2))
-        rule:SetPoint("TOPRIGHT", -PAD, -(pageTop - RULE / 2))
-        if hairs then
-            rule:Hide()
-            hairs[1]:ClearAllPoints()
-            hairs[1]:SetPoint("TOPLEFT", rule, "TOPLEFT")
-            hairs[1]:SetPoint("TOPRIGHT", rule, "TOPRIGHT")
-            hairs[2]:SetShown(#second > 0)
-            hairs[2]:ClearAllPoints()
-            hairs[2]:SetPoint("TOPLEFT", PAD, -(PAD + TAB - 1))
-            hairs[2]:SetPoint("TOPRIGHT", -PAD, -(PAD + TAB - 1))
-        end
+        rule:SetPoint("TOPLEFT", 0, -(rows * (TAB - 1)))
+        rule:SetPoint("TOPRIGHT", 0, -(rows * (TAB - 1)))
         for _, p in ipairs(pages) do
             if p.body then
                 p.body:ClearAllPoints()
@@ -1057,13 +1039,9 @@ function ns.Window(spec)
         bg:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], spec.opaque and 1 or 0.94)
         rule = window:CreateTexture(nil, "ARTWORK")
         rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
-        rule:SetPoint("TOPLEFT", PAD, -(PAD + TAB + RULE / 2))
-        rule:SetPoint("TOPRIGHT", -PAD, -(PAD + TAB + RULE / 2))
+        rule:SetPoint("TOPLEFT", 0, -(TAB - 1))
+        rule:SetPoint("TOPRIGHT", 0, -(TAB - 1))
         rule:SetHeight(1)
-        if spec.tabs == "open" then
-            hairs = { Hair(window), Hair(window) }
-            window.hairs = hairs
-        end
         footRule = window:CreateTexture(nil, "ARTWORK")
         footRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
         footRule:SetHeight(1)
@@ -1076,16 +1054,11 @@ function ns.Window(spec)
         window.bandRule = bandRule
         Medal()
 
-        close = Button(window, TAB, function() spec.Close() end, function() return spec.closeTip end, nil, spec.tabs)
+        -- the cross flush in the top right corner
+        close = Button(window, TAB, function() spec.Close() end, function() return spec.closeTip end)
         Glyph(close, "close")
-        close:SetPoint("TOPRIGHT", -PAD, -PAD)
-        if spec.detailsKey then
-            chevron = Button(window, TAB, function() ns.SetOption(spec.detailsKey, not ns.db[spec.detailsKey]) end,
-                function() return ns.db[spec.detailsKey] and "Hide the details." or "Show the details." end)
-            Glyph(chevron)
-            chevron:SetPoint("RIGHT", close, "LEFT", -4, 0)
-        end
-        window.close, window.chevron = close, chevron
+        close:SetPoint("TOPRIGHT", 0, 0)
+        window.close = close
         if spec.place and not spec.detachedOnly then
             view = Button(window, TAB, function()
                 if InCombatLockdown() then return end
@@ -1107,7 +1080,7 @@ function ns.Window(spec)
                     or "Detached: a box of its own, to move and size."
             end)
             Glyph(view)
-            view:SetPoint("RIGHT", chevron or close, "LEFT", -4, 0)
+            view:SetPoint("RIGHT", close, "LEFT", 1, 0)
             window.view = view
         end
         if spec.place then
@@ -1185,7 +1158,6 @@ function ns.Window(spec)
                 current.Refresh()
             end
         end)
-        if spec.detailsKey then ns.OnSetting(spec.detailsKey, Layout) end
         if spec.place then Place() end
         -- the screen's height is the window's
         for _, e in ipairs({ "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED" }) do

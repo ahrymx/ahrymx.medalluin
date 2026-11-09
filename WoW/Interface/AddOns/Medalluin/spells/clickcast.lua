@@ -170,7 +170,7 @@ end
 
 local function Top(f)
     -- the windows it opens beside it: the macros on the edge, the book in
-    -- from it (sharing an edge), a divider before them
+    -- from it (sharing an edge), a gap before them
     local left = -EDGE                  -- the cells' left edge, from the window's right
     if f.MacrosPortrait then
         Portrait(f.MacrosPortrait, "log", left)
@@ -181,8 +181,7 @@ local function Top(f)
         left = left - ROW + 1
     end
     left = left - 1
-    R.Divider(skin, f, "portraitRule", "TOPRIGHT", left - GAP, TOP)
-    -- the cell: the tick and its key, up to the divider
+    -- the cell: the tick and its key, up to the gap
     local d = deco[f] or {}
     deco[f] = d
     if not d.cell then
@@ -191,7 +190,7 @@ local function Top(f)
     end
     d.cell:ClearAllPoints()
     d.cell:SetPoint("TOPLEFT", f, "TOPLEFT", 1, TOP)
-    d.cell:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", left - GAP - 1 - GAP, TOP - ROW)
+    d.cell:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", left - GAP, TOP - ROW)
     local check = f.EnableMouseoverCastCheckbox
     if type(check) == "table" then
         R.Plain(check)
@@ -262,8 +261,8 @@ local function Top(f)
     end
 end
 
--- The foot as the Cooldown Manager's: Reset (a rounded arrow back), a
--- divider, Add binding; at the edge, after a divider, Save, marked while
+-- The foot as the Cooldown Manager's: Reset (a rounded arrow back), a gap,
+-- Add binding; at the edge Save, marked while
 -- there are changes to save.
 local function Cell(b, width)
     R.Plain(b)
@@ -317,7 +316,6 @@ local function Foot(f)
         end
         reset:ClearAllPoints()
         reset:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1, 1)
-        R.Divider(skin, f, "resetRule", "BOTTOMLEFT", 1 + ROW + GAP, 1)
     end
     local add = f.AddBindingButton
     if type(add) == "table" then
@@ -325,7 +323,7 @@ local function Foot(f)
         Words(add, "+  Add binding")
         Shade(add)
         add:ClearAllPoints()
-        add:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1 + ROW + GAP + 1 + GAP, 1)
+        add:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1 + ROW + GAP, 1)
     end
     local save = f.SaveButton
     if save then
@@ -340,7 +338,6 @@ local function Foot(f)
         end
         save:ClearAllPoints()
         save:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -EDGE, 1)
-        R.Divider(skin, f, "saveRule", "BOTTOMRIGHT", -(EDGE + 90 + GAP), 1)
         cc.Pending()
     end
     -- what a binding taken from another left unbound: over the foot

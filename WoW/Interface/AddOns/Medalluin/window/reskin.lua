@@ -12,7 +12,6 @@
 --   R.Font(fs, size, color)  our font, shadowed
 --   R.Lit(f)                 its box's edge (and glyph) lit under the mouse
 --   R.Plain(b)               a button's own states' art put away
---   R.Divider(skin, f, key, point, x, y)  a gold divider the cells' height
 --   R.Medal(owner, icon, inset)           an icon round in a gold rim
 --   R.Chrome(f, title, rules, hairAt)     the frame's art gone, ours under it
 --   R.Place(f)               where the LFG window stands, and kept there
@@ -140,19 +139,6 @@ function R.Plain(b)
     for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetDisabledTexture" }) do
         local t = b[get] and b[get](b)
         if t then t:SetAlpha(0) end
-    end
-end
-
--- A divider between two cells: gold, the row's height (the chat's, before
--- its cog), drawn on our skin beside f
-function R.Divider(skin, f, key, point, x, y)
-    local fd = deco[f] or {}
-    deco[f] = fd
-    if not fd[key] and skin then
-        fd[key] = skin:CreateTexture(nil, "ARTWORK")
-        fd[key]:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
-        fd[key]:SetSize(1, ROW)
-        fd[key]:SetPoint(point, f, point, x, y)
     end
 end
 

@@ -88,14 +88,11 @@ local DEFAULTS = {
     bagsPoint = false,      -- where the window was dragged to: { point, relativePoint, x, y } (not on the page)
     bank = true,            -- Medalluin's bank window instead of Blizzard's (Forever)
     bankView = "grid",      -- as bagsView, for the bank
-    bankDetails = true,     -- the bank window's details: its bag slots and the purchase
     bankPlace = false,      -- detached: { detached, point, relative, x, y, w, h, scale } (not on the page)
     altPlace = false,       -- an alt's window (professions/alts.lua): { point, relative, x, y, w, h, scale }
     chatLogPlace = false,   -- the chat log's box: { point, relative, x, y, w, h, scale } (not on the page)
     character = true,       -- Medalluin's character window instead of Blizzard's
-    characterDetails = true, -- its pages' details open (the window's chevron sets it too)
     spellbook = true,       -- Medalluin's spellbook instead of Blizzard's (Forever)
-    spellbookDetails = true, -- its pages' details open (the window's chevron sets it too)
     spellbookAllRanks = false, -- every rank of a spell listed, not only its highest learned
     spellbookMissing = true, -- a red edge on a spell on no action bar (nor in a macro on one)
     spellbookUpRankAll = false, -- every spell kept on its highest rank on the bars (else only those ticked)
@@ -386,6 +383,13 @@ local function Migrate()
     for _, store in ipairs(stores) do
         if store.topBoss == false and store.bossFrames == nil then store.bossFrames = "vertical" end
         store.topBoss = nil
+    end
+    -- the windows' details are always open now: their folds forgotten
+    for _, store in ipairs(stores) do
+        for _, key in ipairs({ "bankDetails", "characterDetails", "spellbookDetails" }) do store[key] = nil end
+    end
+    if db.global then
+        for _, key in ipairs({ "bankDetails", "characterDetails", "spellbookDetails" }) do db.global[key] = nil end
     end
     for key in pairs(DEFAULTS) do
         local v = db[key]

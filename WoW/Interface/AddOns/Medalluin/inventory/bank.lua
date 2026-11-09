@@ -47,7 +47,7 @@ local cover                             -- shown while the bank stands docked on
 local layer, buy                        -- the secure Purchase, on the strip (w.Layer)
 
 local W = ns.Window{
-    name = "MedalluinBank", side = -1, detailsKey = "bankDetails", place = "bankPlace",
+    name = "MedalluinBank", side = -1, place = "bankPlace",
     closeTip = "Close the bank.",
     Close = function() if C_Bank and C_Bank.CloseBankFrame then C_Bank.CloseBankFrame() end end,
     -- the portrait, and the queue's eye when it sits in its place

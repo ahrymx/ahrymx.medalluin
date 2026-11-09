@@ -49,7 +49,6 @@ ns.cooldownWindow = cdm
 
 local R = ns.reskin
 local deco = R.deco     -- our dress, by the game's frame (shared: window/reskin.lua)
-local skin              -- our dress under its content
 
 local function Frame() return _G.CooldownViewerSettings end
 
@@ -67,7 +66,7 @@ cdm.Place = Place
 local function Chrome(f)
     -- the game's art gone, ours under it: the title, the hairs under the
     -- tabs, the search row's and the foot row's lines, our close glyph
-    skin = R.Chrome(f, "Cooldown Manager", { { "TOP", TOP }, { "BOTTOM", ROW } }, HEAD + TABS + 4)
+    R.Chrome(f, "Cooldown Manager", { { "TOP", TOP }, { "BOTTOM", ROW } }, HEAD + TABS + 4)
 end
 
 -- ----------------------------------------------------------------- the tabs
@@ -129,11 +128,8 @@ function cdm.Tabs()
 end
 
 -- ------------------------------------------------------- search and choices
--- A divider between two cells, on our skin (window/reskin.lua)
-local function Divider(f, key, point, x, y) R.Divider(skin, f, key, point, x, y) end
-
 -- The search row and the foot as the chat's tab row: cells edge to edge,
--- flush to the window's sides, a gold divider between them. Up top the
+-- flush to the window's sides, a gap between them (two edges, no line). Up top the
 -- search, then the gear on the edge; at the foot Revert (a rounded arrow
 -- back), then the layouts (their menu opening upward, the game's own way),
 -- the rest of the row free.
@@ -149,9 +145,8 @@ local function Controls(f)
         gear:ClearAllPoints()
         gear:SetPoint("TOPRIGHT", f, "TOPRIGHT", -EDGE, TOP)
         gear:SetSize(ROW, ROW)
-        Divider(f, "gearRule", "TOPRIGHT", -(EDGE + ROW + GAP), TOP)
     end
-    -- the search, the row's width up to the divider; its glass in off the edge
+    -- the search, the row's width up to the gap; its glass in off the edge
     local search = f.SearchBox
     if search then
         for _, key in ipairs({ "Left", "Right", "Middle", "Mid" }) do
@@ -161,7 +156,7 @@ local function Controls(f)
         Lit(search)
         search:ClearAllPoints()
         search:SetPoint("TOPLEFT", f, "TOPLEFT", 1, TOP)
-        search:SetPoint("TOPRIGHT", f, "TOPRIGHT", -(EDGE + ROW + GAP + 1 + GAP), TOP)
+        search:SetPoint("TOPRIGHT", f, "TOPRIGHT", -(EDGE + ROW + GAP), TOP)
         search:SetHeight(ROW)
         if search.SetFont then search:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 13, "") end
         if search.SetTextInsets then search:SetTextInsets(28, 24, 0, 0) end
@@ -227,9 +222,8 @@ local function Controls(f)
         local on = undo:IsEnabled()
         local c = on and GOLD or DIM
         d.glyph:SetVertexColor(c[1], c[2], c[3], on and 1 or 0.6)
-        Divider(f, "footRule", "BOTTOMLEFT", 1 + ROW + GAP, 1)
     end
-    -- the layouts: past the divider, their menu opening upward
+    -- the layouts: past the gap, their menu opening upward
     local layout = f.LayoutDropdown
     if layout then
         Bare(layout)
@@ -251,7 +245,7 @@ local function Controls(f)
             if layout.Text.SetJustifyH then layout.Text:SetJustifyH("LEFT") end
         end
         layout:ClearAllPoints()
-        layout:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1 + ROW + GAP + 1 + GAP, 1)
+        layout:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1 + ROW + GAP, 1)
         layout:SetSize(210, ROW)
     end
 end
