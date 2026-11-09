@@ -123,7 +123,7 @@ questLogClassic = questLogPass and args[3] == "classic"
 lfgPass = args[2] == "lfg"
 -- "gamemenu" (with "modern") plays the game menu (window/gamemenu.lua):
 -- Blizzard's GameMenuFrame stubbed with its pool of buttons, taken docked
--- and as a ribbon. "gamemenu game" leaves the game's.
+-- and as the Medallion ring. "gamemenu game" leaves the game's.
 gamemenuPass = args[2] == "gamemenu"
 lfgRetail = lfgPass and args[3] == "retail"
 local questieStub = questPass and args[3] == "questie"
@@ -15936,7 +15936,7 @@ if gamemenuPass then (function()
         local out = {}
         for _, b in ipairs(f.buttons or {}) do
             local kind = M.Kind(b, f.closeButton)
-            local inOurs = b.parent == M.docked and "docked" or b.parent == M.ribbon and "ribbon"
+            local inOurs = b.parent == M.docked and "docked" or b.parent == M.ring and "ring"
                 or b.parent == f and "theirs" or "?"
             table.insert(out, kind .. "@" .. inOurs .. "[" .. rect(b) .. "]")
         end
@@ -15962,7 +15962,7 @@ if gamemenuPass then (function()
     state("gamemenu open")
     ui("gamemenu ui open")
     if not M.holder then return end
-    print("gamemenu who", M.docked and "docked=" .. tostring(M.docked.shown), "ribbon=" .. tostring(M.ribbon.shown))
+    print("gamemenu who", M.docked and "docked=" .. tostring(M.docked.shown), "ring=" .. tostring(M.ring.shown))
     -- the dress: Blizzard's words hidden, ours drawn
     local opts = f.buttons[1]
     for _, r in ipairs({ opts:GetRegions() }) do
@@ -15981,27 +15981,44 @@ if gamemenuPass then (function()
     f:Show()
     state("gamemenu again")
     f:Hide()
-    -- the ribbon
+    -- the Medallion ring, from its old name
     ns.db.gameMenu = "ribbon"
     f:Show()
-    state("gamemenu ribbon")
-    print("gamemenu who", "docked=" .. tostring(M.docked.shown), "ribbon=" .. tostring(M.ribbon.shown))
-    -- under the mouse a medallion lights itself: its rim, its well
-    local edit = f.buttons[4]
-    local function lit(tag)
-        local rim, well = nil, nil
-        for _, r in ipairs({ edit:GetRegions() }) do
-            if r.kind == "Texture" and r.texture and r.texture:find("round") then
-                if r.w == 48 then rim = r elseif r.w == 44 then well = r end
+    print("gamemenu medallion", "style=" .. M.Style(), "ring=" .. tostring(M.ring.shown),
+        "docked=" .. tostring(M.docked.shown))
+    -- each medallion's centre: its angle and distance from the ring's centre
+    local R = 0.30 * UIParent:GetHeight()
+    local function centre(b)
+        local p = b.points.TOP
+        local size = b.h - 24
+        return p[3], p[4] - size / 2
+    end
+    local out = {}
+    for _, b in ipairs(f.buttons) do
+        local x, y = centre(b)
+        local deg = math.deg(math.atan2(y, x)) % 360
+        table.insert(out, string.format("%s@%d/%s", M.Kind(b, f.closeButton), math.floor(deg + 0.5),
+            math.abs(math.sqrt(x * x + y * y) - R) < 0.5 and "R" or string.format("%.0f", math.sqrt(x * x + y * y))))
+    end
+    print("gamemenu medallion places", table.concat(out, " "))
+    -- the chains: a bar from each centre to the next, its length and its turn
+    local shown = {}
+    for _, t in ipairs(M.bars) do
+        if t.shown then
+            local p = t.points.CENTER
+            table.insert(shown, string.format("%.0f@%.0f(%.0f,%.0f)", t.w, math.deg(t.rotation or 0), p[3], p[4]))
+        end
+    end
+    print("gamemenu medallion bars", #shown, table.concat(shown, " "))
+    local d = {}
+    for _, b in ipairs(f.buttons) do
+        local kind = M.Kind(b, f.closeButton)
+        for _, r in ipairs({ b:GetRegions() }) do
+            if r.kind == "FontString" and r.text == b:GetText() then
+                table.insert(d, kind .. "=" .. string.format("%.2f", r.textColor[1]))
             end
         end
-        print(tag, "rim=" .. string.format("%.2f", rim.vertex and rim.vertex[1] or -1),
-            "well=" .. string.format("%.2f", well.vertex and well.vertex[1] or -1))
     end
-    lit("gamemenu medal")
-    edit.scripts.OnEnter(edit)
-    lit("gamemenu medal hot")
-    edit.scripts.OnLeave(edit)
-    lit("gamemenu medal left")
+    print("gamemenu medallion words", table.concat(d, " "))
     f:Hide()
 end)() end

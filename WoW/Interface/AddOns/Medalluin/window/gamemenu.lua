@@ -20,12 +20,17 @@
 --   | [      Return to Game        ] |
 --   +--------------------------------+
 --
---   ribbon: a band across the middle of the screen, fading out at both ends
---     ------------------ Game Menu ------------------
---       (o)     (o)     (o)     (o)     (o)     (o)     medallions, their words under
---     Options   Shop  AddOns  Edit Mode Support Macros
---     -----------------------------------------------
---     [ Log Out ]   [ Return to Game ]   [ Exit Game ]
+--   medallion: a ring of medallions around your character, at the screen's
+--   centre: the menu's buttons an arch over it, two chains of dumbbells
+--                 (o)====(o)
+--          (o)====/          \====(o)          the arch: 160 to 20 degrees,
+--       (o)/                        \(o)       a metal bar from each to the next
+--                    (you)
+--          (v)\                    /(x)        Log Out, Return to Game, Exit
+--              \=====( ^ )=====/               Game: 225, 270, 315 degrees
+--
+--   The world is not dimmed but a little; no band, no title. "ribbon", its
+--   old name, is read as it.
 --
 -- While it is open the rest of the interface is gone: UIParent's alpha is
 -- nothing, and the frames that keep their own alpha (the strips, the minimap
@@ -47,9 +52,13 @@ local RED = { 0.86, 0.27, 0.22 }
 local BLUE = { 0.47, 0.75, 1 }
 local DOCK_W, PAD = 360, 18
 local ROW, LEAVE, BACK = 34, 32, 38
-local MEDAL, STEP = 48, 84                 -- the ribbon's medallions: their size, their pitch
-local BAND_H = 132
+local MEDAL, BACK_MEDAL = 48, 58           -- a medallion's size; Return to Game's
+local REACH = 0.30                          -- the ring's radius, of the screen's height
+local ARCH_FROM, ARCH_TO = 160, 20          -- the arch's ends, in degrees
+local LEAVE_AT = { logout = 225, exit = 315 }
+local BAR_W = 5                             -- a chain bar's thickness
 local ROUND = ns.media .. "strips\\round"
+local BAR = ns.media .. "gamemenu-bar"
 
 local menu = {}
 ns.gameMenu = menu
@@ -76,12 +85,17 @@ local function Kind(b, close)
 end
 menu.Kind = Kind
 
-local holder, docked, ribbon, shade
+local holder, docked, ring, shade
+local bars = {}                 -- the chains' bars, pooled
 local deco = {}                 -- a button's dress, by button (no field of ours on Blizzard's)
 local heads = {}                -- the docked panel's headings, pooled
 local who = {}                  -- the docked panel's portrait and lines
 
-local function Style() return ns.db.gameMenu or "docked" end
+local function Style()
+    local style = ns.db.gameMenu or "docked"
+    if style == "ribbon" then return "medallion" end
+    return style
+end
 menu.Style = Style
 
 -- ------------------------------------------------------------- the dress
@@ -145,6 +159,9 @@ local function Dress(b)
     d.inner:SetSize(MEDAL - 4, MEDAL - 4)
     d.inner:SetTexture(ROUND)
     d.inner:SetVertexColor(0.063, 0.059, 0.055, 1)
+    d.core = b:CreateTexture(nil, "BACKGROUND", nil, 6)   -- the leading medallion's gold fill
+    d.core:SetTexture(ROUND)
+    d.core:SetVertexColor(0.306, 0.251, 0.125, 1)
     -- the glyph, the words, a hint at the end
     d.glyph = b:CreateTexture(nil, "ARTWORK")
     d.label = ns.Text(b, 14)
@@ -152,11 +169,11 @@ local function Dress(b)
     local function Hot(hot)
         if d.look ~= "medal" then return end
         local lit = hot and b:IsEnabled()
-        local rim = lit and GOLD or GOLD_D
+        local rim = (lit or d.primary) and GOLD or GOLD_D
         d.rim:SetVertexColor(rim[1], rim[2], rim[3], 1)
         local lift = lit and 0.1 or 0
         d.inner:SetVertexColor(0.063 + lift, 0.059 + lift, 0.055 + lift * 0.6, 1)
-        d.glyph:SetAlpha(lit and 1 or b:IsEnabled() and 0.9 or 0.35)
+        d.glyph:SetAlpha((lit or d.primary) and 1 or b:IsEnabled() and 0.9 or 0.35)
         d.label:SetAlpha(lit and 1 or 0.85)
     end
     d.hot = Hot
@@ -180,9 +197,12 @@ local function Hint(kind)
     end
 end
 
--- One button drawn as a look: "row", "button", "primary" or "medal"
-local function Look(b, look, kind, glyph)
+-- One button drawn as a look: "row", "button", "primary" or "medal" (size,
+-- and primary: the leading one, gold)
+local function Look(b, look, kind, glyph, size, primary)
     local d = Dress(b)
+    size = size or MEDAL
+    d.primary = look == "medal" and primary or false
     local on = b:IsEnabled()
     local boxed = look == "button" or look == "primary"
     d.edge:SetShown(boxed)
@@ -194,6 +214,7 @@ local function Look(b, look, kind, glyph)
     local medal = look == "medal"
     d.rim:SetShown(medal)
     d.inner:SetShown(medal)
+    d.core:SetShown(medal and d.primary)
     d.glyph:SetShown(glyph ~= nil)
     if glyph then d.glyph:SetTexture(ns.media .. "strips\\" .. glyph) end
     d.glyph:SetAlpha(on and 0.9 or 0.35)
@@ -202,8 +223,11 @@ local function Look(b, look, kind, glyph)
     d.hint:ClearAllPoints()
     d.hint:Hide()
     d.label:SetText(b:GetText() or "")
-    local c = not on and DIM or look == "primary" and GOLD or kind == "exit" and RED or ns.colors.text
+    local c = not on and DIM or (look == "primary" or d.primary) and GOLD or kind == "exit" and RED
+        or ns.colors.text
     d.label:SetTextColor(c[1], c[2], c[3])
+    local gc = medal and kind == "exit" and RED or ns.colors.white
+    d.glyph:SetVertexColor(gc[1], gc[2], gc[3])
     if look == "row" then
         d.glyph:SetSize(20, 20)
         d.glyph:SetPoint("LEFT", 14, 0)
@@ -217,17 +241,22 @@ local function Look(b, look, kind, glyph)
         end
     elseif medal then
         d.rim:ClearAllPoints()
-        d.rim:SetPoint("CENTER", b, "TOP", 0, -MEDAL / 2)
+        d.rim:SetSize(size, size)
+        d.rim:SetPoint("CENTER", b, "TOP", 0, -size / 2)
         d.inner:ClearAllPoints()
+        d.inner:SetSize(size - 4, size - 4)
         d.inner:SetPoint("CENTER", d.rim)
-        d.glyph:SetSize(24, 24)
+        d.core:ClearAllPoints()
+        d.core:SetSize(size - 4, size - 4)
+        d.core:SetPoint("CENTER", d.rim)
+        d.glyph:SetSize(size / 2, size / 2)
         d.glyph:SetPoint("CENTER", d.rim)
-        d.label:SetPoint("BOTTOM", 0, 2)
+        d.label:SetPoint("TOP", d.rim, "BOTTOM", 0, -5)
         local hint = Hint(kind)
         if hint == "new" then
             d.hint:SetText("new")
             d.hint:SetTextColor(BLUE[1], BLUE[2], BLUE[3])
-            d.hint:SetPoint("TOPRIGHT", 0, 0)
+            d.hint:SetPoint("LEFT", d.rim, "TOPRIGHT", -4, -2)
             d.hint:Show()
         end
     else
@@ -305,37 +334,12 @@ local function Build()
     local foot = Hair(docked)
     foot:SetPoint("BOTTOMLEFT", PAD, PAD + BACK + 12)
     foot:SetPoint("BOTTOMRIGHT", -PAD, PAD + BACK + 12)
-    -- ribbon: a band across the middle, fading out at both ends
-    ribbon = CreateFrame("Frame", nil, holder)
-    ribbon:SetHeight(BAND_H)
-    ribbon:SetPoint("LEFT", UIParent, "LEFT", 0, 40)
-    ribbon:SetPoint("RIGHT", UIParent, "RIGHT", 0, 40)
-    ribbon:EnableMouse(true)
-    local ink = ns.colors.ink
-    for i = 1, 2 do
-        local t = ribbon:CreateTexture(nil, "BACKGROUND")
-        t:SetPoint("TOP")
-        t:SetPoint("BOTTOM")
-        t:SetPoint(i == 1 and "LEFT" or "RIGHT")
-        t:SetPoint(i == 1 and "RIGHT" or "LEFT", ribbon, "CENTER")
-        if t.SetGradient and CreateColor then
-            t:SetColorTexture(1, 1, 1, 1)
-            local solid, clear = CreateColor(ink[1], ink[2], ink[3], 0.95), CreateColor(ink[1], ink[2], ink[3], 0)
-            t:SetGradient("HORIZONTAL", i == 1 and clear or solid, i == 1 and solid or clear)
-        else
-            t:SetColorTexture(ink[1], ink[2], ink[3], 0.6)
-        end
-    end
-    for _, at in ipairs({ "TOP", "BOTTOM" }) do
-        local h = Hair(ribbon)
-        h:SetPoint(at .. "LEFT", 40, 0)
-        h:SetPoint(at .. "RIGHT", -40, 0)
-    end
-    ribbon.title = ns.Text(ribbon, 15)
-    ribbon.title:SetPoint("TOP", 0, -12)
-    ribbon.title:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-    ribbon.title:SetText(MAINMENU_BUTTON or "Game Menu")
-    menu.holder, menu.docked, menu.ribbon = holder, docked, ribbon
+    -- medallion: a point at the screen's centre the ring stands around; the
+    -- chains' bars are its, the medallions over them
+    ring = CreateFrame("Frame", nil, holder)
+    ring:SetSize(1, 1)
+    ring:SetPoint("CENTER", UIParent, "CENTER")
+    menu.holder, menu.docked, menu.ring, menu.bars = holder, docked, ring, bars
 end
 
 -- who you are, at the docked panel's top
@@ -454,37 +458,83 @@ local function Docked(sections, leave, back)
     Fade(shade, { 0, 0, 0 }, 0.5)
 end
 
-local function Ribbon(sections, leave, back)
+-- a chain's bar from one medallion's centre to the next's: stretched to the
+-- distance, turned to the angle between them
+local function Bar(n, x1, y1, x2, y2)
+    local t = bars[n]
+    if not t then
+        t = ring:CreateTexture(nil, "BACKGROUND")
+        t:SetTexture(BAR)
+        bars[n] = t
+    end
+    local dx, dy = x2 - x1, y2 - y1
+    t:SetSize(math.sqrt(dx * dx + dy * dy), BAR_W * 2)      -- the art's bar is its middle half
+    t:ClearAllPoints()
+    t:SetPoint("CENTER", ring, "CENTER", (x1 + x2) / 2, (y1 + y2) / 2)
+    if t.SetRotation then t:SetRotation(math.atan2(dy, dx)) end
+    t:Show()
+    return t
+end
+
+-- a medallion's centre on the ring, at a angle (degrees, counter-clockwise from the right)
+local function At(r, deg)
+    local a = math.rad(deg)
+    return r * math.cos(a), r * math.sin(a)
+end
+
+local function Place(b, x, y, size)
+    b:SetSize(math.max(size + 40, 96), size + 24)
+    b:SetPoint("TOP", ring, "CENTER", x, y + size / 2)
+end
+
+local function Medallion(sections, leave, back)
+    local r = REACH * (UIParent:GetHeight() or 768)
     local items = {}
     for _, section in ipairs(sections) do
         for _, it in ipairs(section) do table.insert(items, it) end
     end
-    local first = -(#items - 1) * STEP / 2
+    local n, used = #items, 0
+    -- the arch, evenly from end to end; a chain bar from each to the next
+    local px, py
     for i, it in ipairs(items) do
-        Take(it.b, ribbon)
-        it.b:SetSize(STEP - 4, MEDAL + 26)
-        it.b:SetPoint("TOP", ribbon, "TOP", first + (i - 1) * STEP, -34)
+        local deg = n > 1 and ARCH_FROM + (ARCH_TO - ARCH_FROM) * (i - 1) / (n - 1) or 90
+        local x, y = At(r, deg)
+        Take(it.b, ring)
+        Place(it.b, x, y, MEDAL)
         Look(it.b, "medal", it.kind, it.glyph)
-    end
-    if back then
-        Take(back, ribbon)
-        back:SetSize(220, BACK)
-        back:SetPoint("TOP", ribbon, "BOTTOM", 0, -22)
-        Look(back, "primary", "return")
-    end
-    for i, it in ipairs(leave) do
-        Take(it.b, ribbon)
-        it.b:SetSize(130, LEAVE)
-        if back then
-            it.b:SetPoint(i == 1 and "RIGHT" or "LEFT", back, i == 1 and "LEFT" or "RIGHT", i == 1 and -12 or 12, 0)
-        else
-            it.b:SetPoint("TOP", ribbon, "BOTTOM", (i - 1.5) * 150, -22)
+        if px then
+            used = used + 1
+            Bar(used, px, py, x, y)
         end
-        Look(it.b, "button", it.kind, it.glyph)
+        px, py = x, y
     end
+    -- below: Log Out, Return to Game, Exit Game, chained the same
+    local low = {}
+    for _, it in ipairs(leave) do
+        if it.kind == "logout" then table.insert(low, 1, it) end
+    end
+    if back then table.insert(low, { b = back, kind = "return", glyph = "chevron-up", primary = true }) end
+    for _, it in ipairs(leave) do
+        if it.kind ~= "logout" then table.insert(low, it) end
+    end
+    px, py = nil, nil
+    for _, it in ipairs(low) do
+        local deg = it.primary and 270 or LEAVE_AT[it.kind] or 270
+        local x, y = At(r, deg)
+        local size = it.primary and BACK_MEDAL or MEDAL
+        Take(it.b, ring)
+        Place(it.b, x, y, size)
+        Look(it.b, "medal", it.kind, it.glyph, size, it.primary)
+        if px then
+            used = used + 1
+            Bar(used, px, py, x, y)
+        end
+        px, py = x, y
+    end
+    for i = used + 1, #bars do bars[i]:Hide() end
     shade:ClearAllPoints()
     shade:SetAllPoints(UIParent)
-    shade:SetColorTexture(0, 0, 0, 0.35)
+    shade:SetColorTexture(0, 0, 0, 0.2)
 end
 
 -- Taken in: after each InitButtons (as it shows, as the store's state
@@ -494,8 +544,8 @@ local function Arrange()
     local sections, leave, back = Read()
     local style = Style()
     docked:SetShown(style == "docked")
-    ribbon:SetShown(style == "ribbon")
-    if style == "ribbon" then Ribbon(sections, leave, back) else Docked(sections, leave, back) end
+    ring:SetShown(style == "medallion")
+    if style == "medallion" then Medallion(sections, leave, back) else Docked(sections, leave, back) end
 end
 menu.Arrange = Arrange
 
@@ -571,7 +621,7 @@ menu.Adopt = Adopt
 
 local function Start()
     local style = Style()
-    if style ~= "docked" and style ~= "ribbon" then return end
+    if style ~= "docked" and style ~= "medallion" then return end
     Adopt()
     if not adopted then
         ns.On("ADDON_LOADED", function(_, name) if name == "Blizzard_GameMenu" then Adopt() end end)

@@ -231,8 +231,9 @@ function ns.OptionPages()
                     Choice("gameMenu", "Game menu", {
                         { "docked", "Docked", "A panel down the left edge: who you are at its top, the game's "
                             .. "buttons in sections under it, Log Out and Exit Game, and Return to Game at its foot." },
-                        { "ribbon", "Ribbon", "A band across the middle of the screen, a medallion for each of the "
-                            .. "game's buttons, with Log Out, Return to Game and Exit Game under it." },
+                        { "medallion", "Medallion", "A ring of medallions around your character: the game's "
+                            .. "buttons an arch over it, Log Out, Return to Game and Exit Game below, each "
+                            .. "chained to the next." },
                         { "game", "The game's", "The game's own menu, as it stands." },
                     }, "How the menu Escape opens looks. Its buttons stay the game's own.", true)),
                 Group("Dead and offline",
