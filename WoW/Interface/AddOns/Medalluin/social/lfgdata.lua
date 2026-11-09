@@ -13,7 +13,13 @@
 --             assigned (UnitSetRole). Only a solo player or the group's
 --             leader lists.
 --   search    Search(category, 0, 0, nil, false, nil, activityIDs), one at a
---             time; a result of one is a player, of more a group.
+--             time; a result of one is a player, of more a group. It is
+--             restricted: the game runs it only straight from a click or
+--             a key, and refuses it otherwise (ADDON_ACTION_BLOCKED, the
+--             call quietly dropped); a pick in a dropdown does not count.
+--             Picks changed, refused, or asked for while one was out, the
+--             list is stale (D.stale) and waits for a click (Browse's
+--             Search).
 --   who       SendWho(text, origin, { classIDs, raceIDs, uiMapIDs }),
 --             SortWho(mode, ascending); the server answers 50 at most.
 --
@@ -21,7 +27,7 @@
 -- calls) and stays the game's: D.Has() is false there, and only Who is
 -- ours. Every call is asked for before it is made. /mdlui lfgdump prints
 -- what this client has, and one result as it comes.
-local _, ns = ...
+local ADDON, ns = ...
 
 local D = { results = {}, searching = false, who = { list = {}, total = 0, pending = false, query = "" } }
 ns.lfgData = D
@@ -169,11 +175,21 @@ end
 
 -- ---------------------------------------------------------------- search
 D.category = nil
-local queued                    -- asked for while a search was out: the latest, sent as it answers
+D.stale = false                 -- the list is not of what is asked for: a search waits for a click
+local askedAt                   -- when we last called Search (a refusal comes straight after)
+-- the picks changed (from a dropdown, whose click the game does not count):
+-- the list waits for Browse's Search
+function D.Stale()
+    D.stale = true
+    Changed()
+end
 function D.Search(cat, ids)
     if not D.Has() or not cat then return end
     if D.searching then
-        queued = { cat, ids }
+        -- its answer will be of something else: sent by the next click, not
+        -- from the answer's event (the game would refuse it there)
+        D.stale = true
+        Changed()
         return
     end
     D.category = cat
@@ -181,8 +197,9 @@ function D.Search(cat, ids)
         ids = {}
         for _, a in ipairs(D.Activities(cat)) do table.insert(ids, a.id) end
     end
-    D.searching = true
-    if not pcall(L().Search, cat, 0, 0, nil, false, nil, ids) then D.searching = false end
+    D.searching, D.stale = true, false
+    askedAt = GetTime()
+    if not pcall(L().Search, cat, 0, 0, nil, false, nil, ids) then D.searching, D.stale = false, true end
     Changed()
 end
 
@@ -240,17 +257,8 @@ local function Read(id)
 end
 D.Read = Read
 
-local function Queued()
-    if not queued then return false end
-    local q = queued
-    queued = nil
-    D.Search(q[1], q[2])
-    return true
-end
-
 local function Results()
     D.searching = false
-    if Queued() then return end
     local first, ids = L().GetSearchResults()
     if type(first) == "table" then ids = first end
     local out = {}
@@ -545,9 +553,16 @@ ns.On("LFG_LIST_SEARCH_RESULT_UPDATED", function()
     if not D.Has() or D.searching then return end
     Results()
 end)
+-- our search refused (it was not straight from a click): no answer will
+-- come, so not searching; the list waits for Browse's Search
+ns.On("ADDON_ACTION_BLOCKED", function(_, addon)
+    if addon == ADDON and D.searching and askedAt == GetTime() then
+        D.searching, D.stale = false, true
+        Changed()
+    end
+end)
 ns.On("LFG_LIST_SEARCH_FAILED", function()
     D.searching = false
-    if Queued() then return end
     Changed()
 end)
 D.expired = nil

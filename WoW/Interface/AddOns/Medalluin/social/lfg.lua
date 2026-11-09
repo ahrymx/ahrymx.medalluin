@@ -466,7 +466,8 @@ function browse.Lines()
     local words = browse.search:GetText() or ""
     words = words:match("%S") and words:lower() or nil
     local groups, players = {}, {}
-    for _, r in ipairs(D.results) do
+    -- a stale list (another category asked for) is not shown: Search waits
+    for _, r in ipairs(D.stale and {} or D.results) do
         if Words(r, words) and Wants(r) then table.insert(r.solo and players or groups, r) end
     end
     local out = {}
@@ -712,7 +713,7 @@ function browse.Build(page)
             ns.db.lfgCategory = v
             browseSel = nil
             browse.list.first = 0
-            Search()
+            D.Stale()                   -- a dropdown's pick may not search: Search does
         end,
         tip = function() return "What the groups and players are listed for." end,
     })
@@ -735,7 +736,7 @@ function browse.Build(page)
             local f = Filtered(Category())
             f[v] = not f[v] or nil
             browseSel = nil
-            Search()
+            D.Stale()
         end,
         tip = function() return "Only these activities: none picked, every one that suits your level." end,
     })
@@ -799,7 +800,11 @@ function browse.Refresh()
     local lines, words, n = browse.Lines()
     browse.list:Set(lines)
     browse.list.empty:SetShown(#lines == 0)
+    local cat, cats = Category()
+    local catName = ""
+    for _, c in ipairs(cats) do if c.id == cat then catName = c.name end end
     browse.list.empty:SetText(D.searching and "Searching\226\128\166"
+        or D.stale and ("Press Search for " .. catName .. ".")
         or #D.results == 0 and "Nobody is listed here. Refresh, or list yourself (List me)."
         or n == 0 and (words and "Nobody listed has those words." or "Nobody listed needs those roles.") or "")
 end
@@ -808,8 +813,12 @@ function browse.Band()
     local sel = Selected()
     local player = sel and sel.solo and not sel.self
     return {
-        { key = "refresh", label = D.searching and "Searching\226\128\166" or "Refresh", group = "a",
-            enabled = not D.searching, click = Search, tip = function() return "Ask for the listings again." end },
+        { key = "refresh", label = D.searching and "Searching\226\128\166" or D.stale and "Search" or "Refresh",
+            group = "a", color = D.stale and not D.searching and GOLD or nil, enabled = not D.searching, click = Search,
+            tip = function()
+                return D.stale and "Search for what is picked: the game asks for a click."
+                    or "Ask for the listings again."
+            end },
         { key = "message", label = "Send message", group = "b", enabled = sel ~= nil and not sel.self,
             click = function()
                 local s = Selected()

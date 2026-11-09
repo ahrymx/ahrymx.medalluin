@@ -176,6 +176,17 @@ local function Stray()
     if rewards and not info.questLog then rewards:SetParent(ns.hidden) end
 end
 
+-- And it draws those rewards with the layout QuestInfo_Display leaves
+-- behind (ACTIVE_TEMPLATE): with Blizzard's quest log ours, nothing may
+-- have drawn one yet, and it errors. So its detail and reward panels stay
+-- hidden while QuestFrame is parked: they are never seen there, their
+-- OnShow never ran, and hidden, QUEST_ITEM_UPDATE leaves them be. Our page
+-- reads the game itself, not those panels.
+local function Unshown(panel)
+    local frame = _G.QuestFrame
+    if panel and panel:IsShown() and frame and frame:GetParent() == ns.hidden then panel:Hide() end
+end
+
 local function To(which)
     return function()
         page, choice = which, nil
@@ -197,5 +208,9 @@ ns.npc.Page{
         ns.On("QUEST_FINISHED", ns.npc.Sync)
         ns.On("QUEST_ITEM_UPDATE", function() ns.npc.Update("quest") end)
         if QuestInfo_ShowRewards then hooksecurefunc("QuestInfo_ShowRewards", Stray) end
+        for _, name in ipairs({ "QuestFrameDetailPanel", "QuestFrameRewardPanel" }) do
+            local panel = _G[name]
+            if panel then hooksecurefunc(panel, "Show", Unshown) end
+        end
     end,
 }

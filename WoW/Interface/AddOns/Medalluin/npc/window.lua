@@ -898,8 +898,10 @@ function ns.npc.Refresh()
     local npc = UnitName("npc") or ""
     local title = current.Title and current.Title()
     name:SetText(title or npc)
-    -- under a title, the NPC's name, unless it is the title (the mailbox's)
-    under:SetText(title and (npc ~= title and npc or "") or Trade() or "")
+    -- under a title, the NPC's name, unless it is the title (the mailbox's);
+    -- a secret name (in an instance) is shown, never compared
+    local same = not ns.IsSecret(npc) and npc == title
+    under:SetText(title and (same and "" or npc) or Trade() or "")
     if portrait and current.icon then
         portrait:SetTexture(current.icon)
     elseif portrait and SetPortraitTexture then

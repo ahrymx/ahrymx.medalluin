@@ -3177,6 +3177,11 @@ if npcPass or bankPass then
     QuestInfoFrame = new("Frame", nil, "QuestInfoFrame")
     QuestInfoFrame.rewardsFrame = QuestInfoRewardsFrame
     function QuestInfo_ShowRewards() QuestInfoFrame.rewardsFrame:Show() end
+    -- its panels, shown by its own handlers (QUEST_DETAIL, QUEST_COMPLETE)
+    for _, n in ipairs({ "QuestFrameDetailPanel", "QuestFrameRewardPanel" }) do
+        _G[n] = new("Frame", _G.QuestFrame, n)
+        _G[n].shown = false
+    end
     W.gossip = { text = "Who is this shaman who goes before the Court?",
         active = { { title = "WANTED: Gath'Ilzogg", questID = 201, isComplete = true } },
         available = { { title = "Messenger to Westfall", questID = 202, frequency = 1 } },
@@ -14324,6 +14329,14 @@ if npcPass then
     end
     QuestInfo_ShowRewards()
     rewardsAt("npc detail item update")
+    -- Blizzard's own handler shows its detail panel, parked: kept hidden, so
+    -- QUEST_ITEM_UPDATE does not draw rewards with a layout never set
+    QuestFrameDetailPanel:Hide()
+    QuestFrameDetailPanel:Show()
+    QuestFrameRewardPanel:Show()
+    print("npc parked panels", "detail=" .. tostring(QuestFrameDetailPanel.shown),
+        "reward=" .. tostring(QuestFrameRewardPanel.shown), "quest frame parked="
+        .. tostring(QuestFrame.parent == ns.hidden))
     -- the quest log's own rewards are left where the log put them
     local logChild = new("Frame", UIParent, "QuestLogDetailScrollChildFrame")
     QuestInfoRewardsFrame:SetParent(logChild)
@@ -15566,18 +15579,35 @@ if lfgPass then (function()
     calls("lfg player calls")
     -- 7. the activity filter, then another category
     choose(G.browse.acts, "The Deadmines", "lfg activities list")
-    calls("lfg filtered")
-    print("lfg pickers filtered", picker(G.browse.acts))
+    -- a dropdown's pick does not search (the game refuses it there): the list waits for Search
+    calls("lfg filtered: nothing sent")
+    print("lfg pickers filtered", picker(G.browse.acts), G.browse.list.empty.text, "band=" .. seg(G.band))
+    press(G.band, "refresh")
+    calls("lfg filtered, searched")
     choose(G.browse.acts, "The Deadmines")
     choose(G.browse.cat, "Quests", "lfg categories list")
     calls("lfg category, while one is out")
     fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
-    calls("lfg category, sent as it answers")
+    -- the answer is of the old picks: not shown; the search waits for a click
+    calls("lfg category, answered: nothing sent from the event")
+    print("lfg stale", G.browse.list.empty.text, "band=" .. seg(G.band))
     print("lfg pickers again", picker(G.browse.cat), picker(G.browse.acts), "saved=" .. tostring(ns.db.lfgCategory))
+    press(G.band, "refresh")
+    calls("lfg search clicked")
     state("lfg searching")
     fire("LFG_LIST_SEARCH_FAILED")
+    -- the game refuses a search not straight from a click: not stuck searching
+    local search = C_LFGList.Search
+    C_LFGList.Search = function() fire("ADDON_ACTION_BLOCKED", "Medalluin", "UNKNOWN()") end
     choose(G.browse.cat, "Dungeons")
+    press(G.band, "refresh")
+    print("lfg refused", "searching=" .. tostring(ns.lfgData.searching), G.browse.list.empty.text,
+        "band=" .. seg(G.band))
+    C_LFGList.Search = search
+    press(G.band, "refresh")
+    calls("lfg refused, then clicked")
     fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
+    results("lfg results again")
     W.calls = {}
     -- 8. List me: Blizzard's note box moved in; nothing posts until a playstyle
     press(G.tabs, "list")
