@@ -227,6 +227,14 @@ function ns.OptionPages()
                     end, "Closes this window. Point at an action button and press a key to bind it; Esc "
                         .. "over a button removes its keys. Also /mdlui kb. The action bars' keys are kept "
                         .. "per profile.")),
+                Group("Game menu",
+                    Choice("gameMenu", "Game menu", {
+                        { "docked", "Docked", "A panel down the left edge: who you are at its top, the game's "
+                            .. "buttons in sections under it, Log Out and Exit Game, and Return to Game at its foot." },
+                        { "ribbon", "Ribbon", "A band across the middle of the screen, a medallion for each of the "
+                            .. "game's buttons, with Log Out, Return to Game and Exit Game under it." },
+                        { "game", "The game's", "The game's own menu, as it stands." },
+                    }, "How the menu Escape opens looks. Its buttons stay the game's own.", true)),
                 Group("Dead and offline",
                     Color("deadColor", "Dead frame colour",
                         "A dead or offline friend's frame: the player's, the party's (console or widget) "

@@ -121,6 +121,10 @@ questLogClassic = questLogPass and args[3] == "classic"
 -- Friends window's Who tab taken, the covers and Escape. "lfg retail" has
 -- retail's Group Finder: Who alone.
 lfgPass = args[2] == "lfg"
+-- "gamemenu" (with "modern") plays the game menu (window/gamemenu.lua):
+-- Blizzard's GameMenuFrame stubbed with its pool of buttons, taken docked
+-- and as a ribbon. "gamemenu game" leaves the game's.
+gamemenuPass = args[2] == "gamemenu"
 lfgRetail = lfgPass and args[3] == "retail"
 local questieStub = questPass and args[3] == "questie"
 local questieBroken = questPass and args[3] == "broken"
@@ -3776,6 +3780,80 @@ if lfgPass then (function()
     C_PartyInfo.InviteUnit = function(n) called("invite " .. n) end
     function GetZoneText() return "Westfall" end
     function GetGuildInfo() return "Silver Hand" end
+end)() end
+if gamemenuPass then (function()
+    GAMEMENU_OPTIONS, BLIZZARD_STORE, ADDONS, HUD_EDIT_MODE_MENU = "Options", "Shop", "AddOns", "Edit Mode"
+    GAMEMENU_SUPPORT, MACROS, LOG_OUT, EXIT_GAME, RETURN_TO_GAME = "Support", "Macros", "Log Out", "Exit Game",
+        "Return to Game"
+    MAINMENU_BUTTON = "Game Menu"
+    if args[3] == "game" then MedalluinDB = MedalluinDB or {}; MedalluinDB.gameMenu = "game" end
+    function Region:GetObjectType() return self.kind end
+    function Region:IsIgnoringParentAlpha() return self.ignoreParentAlpha end
+    -- every frame under UIParent, in turn, as the game's EnumerateFrames
+    function EnumerateFrames(after)
+        local list = {}
+        local function walk(f)
+            for _, c in ipairs(f.all_ or {}) do
+                if c.kind ~= "Texture" and c.kind ~= "FontString" and c.kind ~= "MaskTexture" then
+                    table.insert(list, c)
+                    walk(c)
+                end
+            end
+        end
+        walk(UIParent)
+        if not after then return list[1] end
+        for i, f in ipairs(list) do if f == after then return list[i + 1] end end
+    end
+    gmWorld = { clicked = {}, inits = 0 }
+    local W = gmWorld
+    local f = CreateFrame("Frame", "GameMenuFrame", UIParent)
+    f.Border = CreateFrame("Frame", nil, f)
+    f.Header = CreateFrame("Frame", nil, f)
+    f.NewOptionsFrame = CreateFrame("Frame", nil, f)
+    f.NewOptionsFrame:Show()
+    f.pool = {}
+    -- Blizzard's: a pool of buttons, given out again in order each time
+    function f:InitButtons()
+        W.inits = W.inits + 1
+        self.buttons, self.used = {}, 0
+        local pad
+        local function Add(text, disabled)
+            self.used = self.used + 1
+            local b = self.pool[self.used]
+            if not b then
+                b = CreateFrame("Button", nil, self)
+                b.slices = b:CreateTexture(nil, "BACKGROUND")
+                self.pool[self.used] = b
+            end
+            b:SetParent(self)
+            b:SetText(text)
+            b.layoutIndex, b.topPadding, pad = self.used, pad, nil
+            if disabled then b:Disable() else b:Enable() end
+            b:SetScript("OnClick", function() table.insert(W.clicked, text); self:Hide() end)
+            b:Show()
+            table.insert(self.buttons, b)
+            return b
+        end
+        pad = nil
+        Add(GAMEMENU_OPTIONS)
+        Add(BLIZZARD_STORE, W.noStore)
+        pad = 20
+        Add(ADDONS)
+        Add(HUD_EDIT_MODE_MENU)
+        Add(GAMEMENU_SUPPORT)
+        Add(MACROS)
+        pad = 20
+        Add(LOG_OUT)
+        Add(EXIT_GAME)
+        pad = 10
+        self.closeButton = Add(RETURN_TO_GAME)
+    end
+    f:SetScript("OnShow", function(self) self:InitButtons() end)
+    f:Hide()
+    function UnitRace() return "Gnome" end
+    C_AddOns = C_AddOns or {}
+    C_AddOns.GetNumAddOns = function() return 3 end
+    C_AddOns.IsAddOnLoaded = function(i) return i ~= 2 end
 end)() end
 
 -- ------------------------------------------------------------ load + fire
@@ -15834,4 +15912,70 @@ if lfgPass then (function()
     end
     print("lfg dump")
     ns.lfgData.Dump()
+end)() end
+
+if gamemenuPass then (function()
+    local W = gmWorld
+    local M = ns.gameMenu
+    local f = GameMenuFrame
+    print("gamemenu", "style=" .. M.Style(), "holder=" .. tostring(M.holder ~= nil))
+    local function rect(f2)
+        local ok, q = pcall(resolve, f2)
+        return ok and q and q[4] and string.format("%.0f,%.0f-%.0f,%.0f", q[1], q[2], q[3], q[4]) or "unresolved"
+    end
+    local function state(tag)
+        local out = {}
+        for _, b in ipairs(f.buttons or {}) do
+            local kind = M.Kind(b, f.closeButton)
+            local inOurs = b.parent == M.docked and "docked" or b.parent == M.ribbon and "ribbon"
+                or b.parent == f and "theirs" or "?"
+            table.insert(out, kind .. "@" .. inOurs .. "[" .. rect(b) .. "]")
+        end
+        print(tag, "shown=" .. tostring(f.shown) .. "/" .. tostring(M.holder and M.holder.shown),
+            "alpha=" .. tostring(f.alpha), "inits=" .. W.inits)
+        print(tag .. " buttons", table.concat(out, " "))
+    end
+    f:Show()
+    local strip = ns.strips[-1]
+    -- another addon's frame whose answers are secret: left as it is
+    local aura = CreateFrame("Frame", "ShadowflareAuraContainer", UIParent)
+    aura.ignoreParentAlpha = true
+    function aura:IsIgnoringParentAlpha() return secret() end
+    local veiled = CreateFrame("Frame", nil, UIParent)
+    veiled.ignoreParentAlpha = true
+    function veiled:IsForbidden() return secret() end
+    local function ui(tag)
+        print(tag, "ui=" .. tostring(UIParent.alpha), "strip ignores=" .. tostring(strip.ignoreParentAlpha),
+            "ours ignores=" .. tostring(M.holder and M.holder.ignoreParentAlpha),
+            "secret ones ignore=" .. tostring(aura.ignoreParentAlpha) .. "," .. tostring(veiled.ignoreParentAlpha),
+            "minimap=" .. tostring(Minimap.shown))
+    end
+    state("gamemenu open")
+    ui("gamemenu ui open")
+    if not M.holder then return end
+    print("gamemenu who", M.docked and "docked=" .. tostring(M.docked.shown), "ribbon=" .. tostring(M.ribbon.shown))
+    -- the dress: Blizzard's words hidden, ours drawn
+    local opts = f.buttons[1]
+    for _, r in ipairs({ opts:GetRegions() }) do
+        if r.kind == "FontString" and r.text then
+            print("gamemenu text", r.text, "alpha=" .. tostring(r.alpha), "shown=" .. tostring(r.shown))
+        end
+    end
+    print("gamemenu slices", "alpha=" .. tostring(opts.slices.alpha))
+    -- a click is still the game's
+    f.buttons[#f.buttons - 2].scripts.OnClick(f.buttons[#f.buttons - 2])
+    print("gamemenu clicked", table.concat(W.clicked, ","), "shown=" .. tostring(f.shown) .. "/"
+        .. tostring(M.holder.shown))
+    ui("gamemenu ui closed")
+    -- opened again: the pool given out again, taken again
+    W.noStore = true
+    f:Show()
+    state("gamemenu again")
+    f:Hide()
+    -- the ribbon
+    ns.db.gameMenu = "ribbon"
+    f:Show()
+    state("gamemenu ribbon")
+    print("gamemenu who", "docked=" .. tostring(M.docked.shown), "ribbon=" .. tostring(M.ribbon.shown))
+    f:Hide()
 end)() end
