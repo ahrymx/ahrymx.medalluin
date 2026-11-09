@@ -4,4 +4,9 @@
 	<Binding name="MEDALLUIN_MINIMAP" header="MEDALLUIN" category="ADDONS">
 		MedalluinToggleMinimap()
 	</Binding>
+	<!-- quests/log.lua: the quest log key's own keys are bound to it while the
+	     Quest log option is on -->
+	<Binding name="MEDALLUIN_QUESTLOG" category="ADDONS">
+		MedalluinToggleQuestLog()
+	</Binding>
 </Bindings>

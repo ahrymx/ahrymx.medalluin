@@ -29,7 +29,8 @@
 --   (medallion)  [buff][buff]
 --
 -- The footer's buttons are glyphs: the cog opens the Quests settings, the
--- book the quest log (Blizzard's, on its own key); the sort cycles, the
+-- book the quest log (Medalluin's, quests/log.lua, while its option is on;
+-- else Blizzard's), on its own key; the sort cycles, the
 -- chevron folds or opens every zone, the last switches the view.
 --
 -- A zone heading folds (remembered), and counts its quests. The sort orders
@@ -49,7 +50,8 @@
 -- font and size (questsTitleFont, questsTitleSize, and the objectives');
 -- every row is as tall as the larger needs.
 --
--- A quest: a click opens it in the quest log, Shift links it, Alt focuses
+-- A quest: a click opens its page (quests/page.lua; Blizzard's quest log
+-- while Medalluin's is off), Shift links it, Alt focuses
 -- it with Questie's arrow, a right click stops tracking it.
 --
 -- A quest's usable item is a secure button in a column on the right, in a
@@ -174,6 +176,7 @@ local function Colour(q)
     end
     return ns.colors.text
 end
+ns.QuestColour = Colour         -- the quest log's rows (quests/log.lua)
 
 local function Tip(row, q)
     ns.window.Outside(row)
@@ -645,7 +648,7 @@ local function Build()
         function() return "Medalluin's quest settings." end)
     Glyph(gear, "menu")
     gear:SetPoint("LEFT")
-    local book = Control(function() if ToggleQuestLog then ToggleQuestLog() end end, function()
+    local book = Control(function() MedalluinToggleQuestLog() end, function()
         local key = GetBindingKey and GetBindingKey("TOGGLEQUESTLOG")
         return "The quest log" .. (key and (" (" .. key .. ")") or "") .. "."
     end)

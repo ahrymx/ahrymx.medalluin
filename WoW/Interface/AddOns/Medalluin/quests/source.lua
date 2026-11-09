@@ -93,16 +93,16 @@ local function Kind(id, info)
     if tag == 1 or elite or (info.suggestedGroup or 0) > 1 then return "group" end
 end
 
--- The tracked quests, in the log's order: { id, index, title, level, zone,
--- state (1 complete, -1 failed, 0), objectives { text, done }, item,
--- daily (daily or weekly), kind (Kind's) }.
-function Q.Read()
+-- The quests that keep(id) takes, in the log's order: { id, index, title,
+-- level, zone, state (1 complete, -1 failed, 0), objectives { text, done },
+-- item, daily (daily or weekly), kind (Kind's) }.
+local function Walk(keep)
     local out, zone = {}, nil
     for index = 1, C_QuestLog.GetNumQuestLogEntries() do
         local info = C_QuestLog.GetInfo(index)
         if info and info.isHeader then
             zone = info.title
-        elseif info and info.questID and not info.isHidden and Tracked(info.questID) then
+        elseif info and info.questID and not info.isHidden and keep(info.questID) then
             local id = info.questID
             local state = C_QuestLog.IsFailed(id) and -1 or C_QuestLog.IsComplete(id) and 1 or 0
             local objectives = {}
@@ -117,10 +117,104 @@ function Q.Read()
     return out
 end
 
+-- The tracked quests (the tracker's).
+function Q.Read() return Walk(Tracked) end
+
+-- ---------------------------------------------------------- the whole log
+-- The quest log's reward calls read the quest it has selected (Classic's
+-- take no quest at all; retail's take the id too): so the quest is selected
+-- for them, and the selection put back after.
+local function Selected()
+    if C_QuestLog.GetSelectedQuest then return C_QuestLog.GetSelectedQuest() end
+    return GetQuestLogSelection and GetQuestLogSelection()
+end
+
+local function Select(q)
+    if C_QuestLog.SetSelectedQuest then C_QuestLog.SetSelectedQuest(q.id) end
+    if SelectQuestLogEntry then SelectQuestLogEntry(q.index) end
+end
+
+local function Restore(was)
+    if not was then return end
+    if C_QuestLog.SetSelectedQuest then C_QuestLog.SetSelectedQuest(was) end
+    if SelectQuestLogEntry and not C_QuestLog.GetSelectedQuest then SelectQuestLogEntry(was) end
+end
+
+local function Call(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
+
+-- What a quest gives: xp, money (copper), items (any to have or to choose).
+-- They do not change while the quest is in the log, but for the xp as the
+-- player levels, so they are kept until then.
+local rewards = {}
+local function Rewards(q)
+    local r = rewards[q.id]
+    if r then return r end
+    local was = Selected()
+    Select(q)
+    local given = Call(GetNumQuestLogRewards, q.id) or 0
+    local chosen = Call(GetNumQuestLogChoices, q.id) or 0
+    r = { xp = Call(GetQuestLogRewardXP, q.id) or 0, money = Call(GetQuestLogRewardMoney, q.id) or 0,
+        items = given + chosen > 0 }
+    Restore(was)
+    rewards[q.id] = r
+    return r
+end
+ns.On("PLAYER_LEVEL_UP", function() wipe(rewards) end)
+local details
+
+-- Every quest in the log, each as Read's, with tracked and rewards.
+function Q.All()
+    local out = Walk(function() return true end)
+    for _, q in ipairs(out) do
+        q.tracked = Tracked(q.id)
+        q.rewards = Rewards(q)
+    end
+    return out
+end
+
+-- A quest's page: { text, goal (the objectives' summary), given, chosen },
+-- each reward item { name, icon, count, quality, link, index, type }. Kept
+-- as the rewards are: selecting a quest may tell the log it changed, and
+-- the page drawn again must not select it again.
+details = {}
+function Q.Details(q)
+    if details[q.id] then return details[q.id] end
+    local was = Selected()
+    Select(q)
+    local d = { given = {}, chosen = {} }
+    if GetQuestLogQuestText then d.text, d.goal = GetQuestLogQuestText(q.index) end
+    local kinds = { { "given", GetNumQuestLogRewards, "reward" }, { "chosen", GetNumQuestLogChoices, "choice" } }
+    for _, kind in ipairs(kinds) do
+        for i = 1, Call(kind[2], q.id) or 0 do
+            local name, icon, count, quality
+            if kind[3] == "reward" then
+                name, icon, count, quality = Call(GetQuestLogRewardInfo, i, q.id)
+            else
+                name, icon, count, quality = Call(GetQuestLogChoiceInfo, i, q.id)
+            end
+            if name then
+                table.insert(d[kind[1]], { name = name, icon = icon, count = count or 1, quality = quality,
+                    link = Call(GetQuestLogItemLink, kind[3], i, q.id), index = i, type = kind[3] })
+            end
+        end
+    end
+    Restore(was)
+    details[q.id] = d
+    return d
+end
+
 -- -------------------------------------------------------------- actions
--- The quest in the quest log: Questie's way when it is there (it knows the
+-- The quest's page: Medalluin's own (quests/page.lua) while its quest log
+-- is on; else the quest log, Questie's way when it is there (it knows the
 -- log addons), the game's otherwise; not in combat.
 function Q.Show(quest)
+    if ns.questPage and ns.questLog and ns.questLog.On() then
+        ns.questPage.Open(quest.id)
+        return
+    end
     local m, record = Questie(), Record(quest.id)
     if m and record and pcall(m.utils.ShowQuestLog, m.utils, record) then return end
     if InCombatLockdown() then return end
@@ -138,6 +232,90 @@ function Q.Focus(quest)
     if not (m and pcall(m.utils.FocusQuest, m.utils, quest.id)) then return false end
     Try(m.utils.SetQuestTomTomTarget, quest.id)
     return true
+end
+
+-- How many quests the game lets be watched at once (none known: no limit).
+function Q.WatchLimit()
+    if C_QuestLog.GetMaxNumQuestsCanWatch then return C_QuestLog.GetMaxNumQuestsCanWatch() end
+    return MAX_WATCHABLE_QUESTS
+end
+
+-- How many the game watches now.
+local function Watched()
+    if C_QuestLog.GetNumQuestWatches then return C_QuestLog.GetNumQuestWatches() end
+    if GetNumQuestWatches then return GetNumQuestWatches() end
+    local n = 0
+    for index = 1, C_QuestLog.GetNumQuestLogEntries() do
+        local info = C_QuestLog.GetInfo(index)
+        if info and info.questID and C_QuestLog.GetQuestWatchType(info.questID) ~= nil then n = n + 1 end
+    end
+    return n
+end
+
+-- Tracked by the game's watch, which Questie hears too while it keeps its
+-- own set (its watch hooks); false when the game's limit is reached.
+function Q.Track(quest)
+    if Tracked(quest.id) then return true end
+    local limit = Q.WatchLimit()
+    if limit and Watched() >= limit then return false end
+    if C_QuestLog.AddQuestWatch then
+        C_QuestLog.AddQuestWatch(quest.id)
+    elseif AddQuestWatch then
+        AddQuestWatch(quest.index)
+    end
+    return true
+end
+
+Q.Tracked = Tracked
+
+-- The quests abandoned, one by one: each selected, marked and dropped. The
+-- log's indices move as quests go, so each is found again by its id.
+local function Index(id)
+    for index = 1, C_QuestLog.GetNumQuestLogEntries() do
+        local info = C_QuestLog.GetInfo(index)
+        if info and info.questID == id then return index end
+    end
+end
+
+function Q.Abandon(ids)
+    for _, id in ipairs(ids) do
+        local index = Index(id)
+        if index then
+            if C_QuestLog.SetAbandonQuest and C_QuestLog.AbandonQuest then
+                C_QuestLog.SetSelectedQuest(id)
+                C_QuestLog.SetAbandonQuest()
+                C_QuestLog.AbandonQuest()
+            elseif SetAbandonQuest and AbandonQuest then
+                if SelectQuestLogEntry then SelectQuestLogEntry(index) end
+                if C_QuestLog.SetSelectedQuest then C_QuestLog.SetSelectedQuest(id) end
+                SetAbandonQuest()
+                AbandonQuest()
+            end
+            rewards[id] = nil
+            details[id] = nil
+        end
+    end
+end
+
+-- Whether a quest can be shared now, and its sharing.
+function Q.CanShare(quest)
+    if not (IsInGroup and IsInGroup()) then return false end
+    if C_QuestLog.IsPushableQuest then return C_QuestLog.IsPushableQuest(quest.id) and true or false end
+    if GetQuestLogPushable then
+        local was = Selected()
+        Select(quest)
+        local can = GetQuestLogPushable()
+        Restore(was)
+        return can and true or false
+    end
+    return false
+end
+
+function Q.Share(quest)
+    local was = Selected()
+    Select(quest)
+    if QuestLogPushQuest then QuestLogPushQuest() end
+    Restore(was)
 end
 
 -- No longer tracked: Questie's untrack when Questie keeps the set and tracks

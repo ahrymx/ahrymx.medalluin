@@ -40,7 +40,11 @@
 --                        place (a setting: the window detaches, below),
 --                        detachedOnly (with a place: never docked, no view glyph),
 --                        tabs ("open": tabs with no box, a gold underline
---                        on the one in use, rows on fading hairs) }
+--                        on the one in use, rows on fading hairs),
+--                        opaque (its ink solid, not the windows' 94%),
+--                        exclusive (docked, it closes the other docked
+--                        windows on its strip as it opens, and they close
+--                        it as they open: Close() each) }
 --   Its tooltips stand outside it (ns.window.Outside; w.Beside for an owner
 --   not inside it).
 --   w.Page{ key, label, tip, glyph, icon, frame (Blizzard's page), order, row,
@@ -649,6 +653,9 @@ end
 -- medallion is at the window's left, on the right at its right
 local function Outer(side, point) return side < 0 and point .. "LEFT" or point .. "RIGHT" end
 
+-- the windows on each strip, for the exclusive ones (spec.exclusive)
+local docked = { [-1] = {}, [1] = {} }
+
 -- ---------------------------------------------------------------- a window
 function ns.Window(spec)
     local side = spec.side
@@ -664,6 +671,9 @@ function ns.Window(spec)
     local tabs = {}
     local listener = CreateFrame("Frame")
     w.listener = listener
+    w.exclusive = spec.exclusive and true or false
+    function w.Close() spec.Close() end
+    table.insert(docked[side], w)
 
     function w.Page(page)
         table.insert(pages, page)
@@ -1069,7 +1079,7 @@ function ns.Window(spec)
         local bg = window:CreateTexture(nil, "BACKGROUND", nil, 2)
         bg:SetPoint("TOPLEFT", 1, -1)
         bg:SetPoint("BOTTOMRIGHT", -1, 1)
-        bg:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 0.94)
+        bg:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], spec.opaque and 1 or 0.94)
         rule = window:CreateTexture(nil, "ARTWORK")
         rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
         rule:SetPoint("TOPLEFT", PAD, -(PAD + TAB + RULE / 2))
@@ -1172,6 +1182,15 @@ function ns.Window(spec)
         Tabs()
 
         window:SetScript("OnShow", function()
+            -- docked beside an exclusive window (or as one): the other goes
+            if not w.Detached() then
+                for _, o in ipairs(docked[side]) do
+                    if o ~= w and (w.exclusive or o.exclusive) and o.window and o.window:IsShown()
+                        and not o.Detached() then
+                        o.Close()
+                    end
+                end
+            end
             Lift(true)
             Layout()
             Listen()

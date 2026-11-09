@@ -110,6 +110,10 @@ local DEFAULTS = {
     questsFullMouseover = false, questsFullCombat = false,       -- each view hidden until the pointer is
     questsMinimalMouseover = false, questsMinimalCombat = false, -- over it, and in combat
     questsTree = false,     -- objectives on a tree's branches, the finished risen to the top; bulleted otherwise
+    questLog = true,        -- Medalluin's quest log, a window on the right strip, instead of Blizzard's
+    questLogFolded = false, -- its zones folded: { [zone] = true } (not on the page)
+    questDropPlace = false, -- the Drop window's place, size and scale (quests/drop.lua)
+    questPagePlace = false, -- a quest's page's, the same (quests/page.lua)
     npcWindows = true,      -- gossip, the quest pages and the vendor in a box on the chat box (npc/window.lua)
     npcSpace = true,        -- Space presses a quest page's Accept, Continue or Complete Quest
     trainerFilter = false,  -- the trainer's type shown: "available", "unavailable" or "used"; Available if unset
@@ -500,6 +504,7 @@ local PAGES = {
     talents = "talents", talent = "talents",
     professions = "professions", profession = "professions", prof = "professions", craft = "professions",
     quests = "quests", quest = "quests", tracker = "quests",
+    questlog = "questlog", log = "questlog",
     npc = "npc", gossip = "npc", vendor = "npc", merchant = "npc",
     tooltip = "tooltips", tooltips = "tooltips",
 }

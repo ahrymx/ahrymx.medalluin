@@ -19,6 +19,7 @@ references are not mirrored (portrait outer, backpack inner), so two mirrored re
     python3 art/strips/gen_strips.py layer3   -> assets/layer3.png, assets/strips/*.png
     python3 art/strips/gen_strips.py glyphs   -> assets/strips/<glyph>.png alone
     python3 art/strips/gen_strips.py mailbox  -> assets/strips/mailbox.png, media/strips/mailbox.tga
+    python3 art/strips/gen_strips.py stripes  -> assets/strips/stripes.png (a tile of diagonal stripes)
 
 The user chose B. assets/layer3.png is B's two strips in the console's
 asset format (a 1920x1080 screen, the medallion wells cut out), and
@@ -201,6 +202,15 @@ def glyph(kind, x, y):
         return (f'<g transform="translate({x},{y}) scale({s})" {f}>{bars}'
                 f'<path d="M14.3,2.7 C14.3,1.1 16.7,1.1 16.7,2.7 L16.7,12.5 L19.2,12.5 L15.5,18.5 '
                 f'L11.8,12.5 L14.3,12.5 Z"/></g>')
+    # the quest log (quests/log.lua): a zone's quests tracked, or not
+    if kind == "track":         # an open eye
+        return P("M0.8,10 C4.5,3.5 15.5,3.5 19.2,10 C15.5,16.5 4.5,16.5 0.8,10 Z "
+                 "M3.6,10 C6.8,14.2 13.2,14.2 16.4,10 C13.2,5.8 6.8,5.8 3.6,10 Z "
+                 "M7,10 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 Z", "evenodd")
+    if kind == "track-off":     # the eye, struck through
+        return P("M0.8,10 C4.5,3.5 15.5,3.5 19.2,10 C15.5,16.5 4.5,16.5 0.8,10 Z "
+                 "M3.6,10 C6.8,14.2 13.2,14.2 16.4,10 C13.2,5.8 6.8,5.8 3.6,10 Z "
+                 "M2.4,16.2 L16.2,2.4 L17.6,3.8 L3.8,17.6 Z", "evenodd")
     # the window's own controls: fold the details, unfold them, close
     if kind == "chevron-down":
         return P("M2,5 L10,13 L18,5 L18,9.5 L10,17.5 L2,9.5 Z")
@@ -427,7 +437,7 @@ GLYPHS = ["spellbook", "talents", "quests", "social", "guild", "lfg", "map", "me
 # the character window's tabs, its controls, the quest tracker's footer, the chat box's head and the side panel's tabs
 TABS = ["character", "reputation", "currency", "skills", "pvp", "statistics",
         "chevron-down", "chevron-up", "chevron-double", "close", "questlog", "sort", "view-minimal", "view-full",
-        "view-bags", "view-grid", "view-groups",
+        "view-bags", "view-grid", "view-groups", "track", "track-off",
         "chat-tools", "chat", "channels", "log", "side-auras", "side-meter", "side-loot"]
 
 
@@ -478,6 +488,22 @@ def gate_part():
     out = os.path.join(OUT, "gate.png")
     sheet.save(out)
     print(out)
+
+
+def stripes():
+    """assets/strips/stripes.png: a 16x16 tile of white diagonal stripes,
+    2 pixels in every 8, seamless when repeated: the quest log's untracked
+    rows (quests/log.lua) wear it, tinted and faint."""
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    for y in range(16):
+        for x in range(16):
+            if (x + y) % 8 < 2:
+                img.putpixel((x, y), (255, 255, 255, 255))
+    parts = os.path.join(ROOT, "assets", "strips")
+    os.makedirs(parts, exist_ok=True)
+    path = os.path.join(parts, "stripes.png")
+    img.save(path)
+    print(path)
 
 
 def glyphs():
@@ -685,6 +711,8 @@ if __name__ == "__main__":
         glyphs()
     elif sys.argv[1:2] == ["gate"]:
         gate_part()
+    elif sys.argv[1:2] == ["stripes"]:
+        stripes()
     elif sys.argv[1:2] == ["mailbox"]:
         mailbox_part()
     else:

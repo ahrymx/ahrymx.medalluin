@@ -739,6 +739,16 @@ function ns.OptionPages()
             },
         },
         {
+            id = "questlog", name = "Quest log", intro = "Shared by every profile.",
+            master = Check("questLog", "Quest log",
+                "Every quest in your log in a window on the right strip, as the spellbook's: by zone, each with its "
+                .. "level, experience, coin and whether it gives an item; a zone's eye tracks or stops "
+                .. "tracking all its quests, Drop abandons the quests you tick, and a quest opens its own page. "
+                .. "It opens on the quest log key and the Quests button, and the map no longer shows the "
+                .. "game's quest log. Untick it to keep the game's.", true),
+            groups = {},
+        },
+        {
             id = "npc", name = "Gossip and vendors", intro = "Shared by every profile.",
             master = Needs("chat", Check("npcWindows", "Gossip, quest, vendor, trainer, flight and mailbox windows",
                 "What an NPC says, its quest pages, its wares and what it teaches in one box standing on the chat "

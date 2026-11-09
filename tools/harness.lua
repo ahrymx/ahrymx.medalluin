@@ -103,7 +103,16 @@ local profRetail = profPass and args[3] == "retail"
 -- window standing over it. "quests questie" adds a stub of Questie that
 -- becomes ready after login (its tracked set, its items, its untrack);
 -- "quests broken" one whose every call raises.
-local questPass = args[2] == "quests"
+local questPass = args[2] == "quests" or args[2] == "questlog"
+-- "questlog" (with "modern") plays the quest log (quests/log.lua, drop.lua,
+-- page.lua) over the same quest log, with rewards: the window on the right
+-- strip (solid, its margin's row, exclusive with another docked there), its
+-- rows, folds, zone eyes, search and margin, the watch limit, the
+-- Drop window's picks, confirm and abandon, a quest's page, and the game's
+-- log taken over (the key, retail's map and ToggleQuestLog). "questlog
+-- classic" plays Classic's QuestLogFrame and its global abandon calls.
+questLogPass = args[2] == "questlog"           -- globals: the main chunk is at its local limit
+questLogClassic = questLogPass and args[3] == "classic"
 local questieStub = questPass and args[3] == "questie"
 local questieBroken = questPass and args[3] == "broken"
 -- "npc" (with "modern") plays the NPC box (npc/): gossip, the four quest
@@ -2537,6 +2546,103 @@ if questPass then
     end
     function GetQuestLink(id) return "[quest " .. id .. "]" end
     function QuestMapFrame_OpenToQuestDetails(id) called("map " .. id) end
+    if questLogPass then
+        -- what each quest gives: xp, copper, items given and to choose from
+        W.rewards = {
+            [101] = { xp = 850, money = 1500, given = { { "Linen Belt", 2 } }, chosen = {} },
+            [102] = { xp = 1250, money = 3500, given = {}, chosen = { { "Murkeye's Fins", 2 }, { "Shore Boots", 3 } } },
+            [103] = { xp = 0, money = 0, given = {}, chosen = {} },
+            [201] = { xp = 1450, money = 4500, given = {}, chosen = { { "Defias Blade", 3 } } },
+            [202] = { xp = 900, money = 0, given = {}, chosen = {} },
+            [203] = { xp = 1550, money = 11025, given = {}, chosen = {} },
+            [301] = { xp = 12650, money = 0, given = { { "Ashtongue Signet", 4 } }, chosen = {} },
+        }
+        W.selected, W.limit, W.group = nil, 25, false
+        local function sel() return W.selected and W.rewards[W.selected] end
+        C_QuestLog.GetSelectedQuest = function() return W.selected end
+        C_QuestLog.SetSelectedQuest = function(id) W.selected = id end
+        C_QuestLog.AddQuestWatch = function(id) W.watched[id] = true; called("watch " .. id) end
+        C_QuestLog.GetMaxNumQuestsCanWatch = function() return W.limit end
+        C_QuestLog.GetMaxNumQuestsCanAccept = function() return 25 end
+        C_QuestLog.GetNumQuestWatches = function()
+            local n = 0
+            for _, e in ipairs(W.log) do if e.questID and W.watched[e.questID] then n = n + 1 end end
+            return n
+        end
+        C_QuestLog.IsPushableQuest = function(id) return id ~= 301 end
+        local function abandon()
+            local id = W.abandoning
+            for i, e in ipairs(W.log) do
+                if e.questID == id then table.remove(W.log, i) break end
+            end
+            W.watched[id] = nil
+            called("abandon " .. tostring(id))
+        end
+        if questLogClassic then
+            -- Classic's: the selection by index, the globals
+            C_QuestLog.SetSelectedQuest, C_QuestLog.GetSelectedQuest = nil, nil
+            function GetQuestLogSelection() return W.selectedIndex or 0 end
+            function SelectQuestLogEntry(i)
+                W.selectedIndex = i
+                W.selected = W.log[i] and W.log[i].questID
+            end
+            function SetAbandonQuest() W.abandoning = W.selected end
+            function AbandonQuest() abandon() end
+        else
+            C_QuestLog.SetAbandonQuest = function() W.abandoning = W.selected end
+            C_QuestLog.AbandonQuest = abandon
+        end
+        function GetQuestLogRewardXP() local r = sel() return r and r.xp or 0 end
+        function GetQuestLogRewardMoney() local r = sel() return r and r.money or 0 end
+        function GetNumQuestLogRewards() local r = sel() return r and #r.given or 0 end
+        function GetNumQuestLogChoices() local r = sel() return r and #r.chosen or 0 end
+        function GetQuestLogRewardInfo(i) local r = sel(); local it = r and r.given[i]
+            if it then return it[1], "icon-" .. it[1], 1, it[2] end end
+        function GetQuestLogChoiceInfo(i) local r = sel(); local it = r and r.chosen[i]
+            if it then return it[1], "icon-" .. it[1], 1, it[2] end end
+        function GetQuestLogItemLink(kind, i) return "[" .. kind .. " " .. i .. "]" end
+        function GetQuestLogQuestText()
+            return "About quest " .. tostring(W.selected) .. ".", "Do the thing."
+        end
+        function IsInGroup() return W.group end
+        function QuestLogPushQuest() called("share " .. tostring(W.selected)) end
+        function UnitLevel() return 20 end
+        function GetQuestGreenRange() return 8 end
+        ITEM_QUALITY_COLORS = ITEM_QUALITY_COLORS or { [2] = { r = 0.12, g = 1, b = 0 }, [3] = { r = 0, g = 0.44, b = 0.87 },
+            [4] = { r = 0.64, g = 0.21, b = 0.93 } }
+        bindings.L = "TOGGLEQUESTLOG"
+        function SetOverrideBinding(owner, prio, key, command)
+            if inCombat then error("SetOverrideBinding in combat") end
+            overrideSets = overrideSets + 1
+            overrides[key] = command
+            W.bound[key] = command      -- kept: the harness's clear wipes every owner's
+        end
+        W.bound = {}
+        W.timers = {}
+        C_Timer = C_Timer or {}
+        C_Timer.After = function(_, fn) table.insert(W.timers, fn) end
+        if questLogClassic then
+            QuestLogFrame = new("Frame", UIParent, "QuestLogFrame")
+            QuestLogFrame.shown = false
+            function ToggleQuestLog()
+                if QuestLogFrame:IsShown() then HideUIPanel(QuestLogFrame) else ShowUIPanel(QuestLogFrame) end
+            end
+        else
+            -- retail's: the log is the map's side panel, and its toggle
+            WorldMapFrame = new("Frame", UIParent, "WorldMapFrame")
+            WorldMapFrame.shown = false
+            QuestMapFrame = new("Frame", WorldMapFrame, "QuestMapFrame")
+            WorldMapFrame.SidePanelToggle = new("Button", WorldMapFrame)
+            function QuestMapFrame_Hide() QuestMapFrame:Hide(); called("map panel folded") end
+            W.cvars = {}
+            function SetCVar(k, v) W.cvars[k] = v end
+            function ToggleQuestLog()
+                called("ToggleQuestLog")
+                ShowUIPanel(WorldMapFrame)
+                QuestMapFrame:Show()
+            end
+        end
+    end
     function GetQuestDifficultyColor(level)
         return level >= 70 and { r = 1, g = 0.1, b = 0.1 } or level >= 15 and { r = 1, g = 1, b = 0 }
             or { r = 0.25, g = 0.75, b = 0.25 }
@@ -12715,7 +12821,7 @@ if profPass then
 end
 
 -- ------------------------------------------------------- the quest tracker
-if questPass then
+if questPass and not questLogPass then
     local function fire(e, ...)
         for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
     end
@@ -13038,7 +13144,15 @@ if questPass then
     ToggleQuestLog = function() toggled = toggled + 1 end
     T.book.scripts.OnClick(T.book, "LeftButton")
     ToggleQuestLog = nil
-    print("quests.footer book toggles", toggled)
+    -- Medalluin's own log, while its option is on; Blizzard's when it is off
+    print("quests.footer book toggles", toggled, "ours=" .. tostring(_G.MedalluinQuestLog and _G.MedalluinQuestLog.shown))
+    _G.MedalluinQuestLog:Hide()
+    ns.db.questLog = false
+    ToggleQuestLog = function() toggled = toggled + 1 end
+    T.book.scripts.OnClick(T.book, "LeftButton")
+    ToggleQuestLog = nil
+    ns.db.questLog = true
+    print("quests.footer book toggles (log off)", toggled)
     -- the Defias Brotherhood's report, as the lines it wraps to
     local function wrapped(tag)
         local out, on = {}, false
@@ -13381,6 +13495,309 @@ if questPass then
     harnessBeside("quests tips", MedalluinQuests)
     type_("quests.type font gone")
 end
+
+-- ------------------------------------------------------------ the quest log
+-- (in a function of its own: the main chunk's locals are near Lua's limit)
+if questLogPass then (function()
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    local W = questWorld
+    local QL, QD, QP = ns.questLog, ns.questDrop, ns.questPage
+    local f = _G.MedalluinQuestLog
+    print("questlog", "box=" .. tostring(f ~= nil), "setting=" .. tostring(ns.db.questLog),
+        "shown=" .. tostring(f and f.shown))
+    if not f then return end
+    local function calls(tag)
+        print(tag, #W.calls > 0 and table.concat(W.calls, ", ") or "none")
+        W.calls = {}
+    end
+    local function box(tag, r)
+        local ok, q = pcall(resolve, r)
+        print(tag, ok and q and string.format("%.0f,%.0f-%.0f,%.0f", q[1], q[2], q[3], q[4]) or "unresolved")
+    end
+    local function c3(c) return c and string.format("%.2f,%.2f,%.2f", c[1], c[2], c[3]) or "-" end
+    local function tipOf(b)
+        local lines, add = {}, GameTooltip.AddLine
+        GameTooltip.AddLine = function(_, t) table.insert(lines, t) end
+        b.scripts.OnEnter(b)
+        GameTooltip.AddLine = add
+        local t = tostring(GameTooltip.text) .. (#lines > 0 and (" / " .. table.concat(lines, " / ")) or "")
+        if b.scripts.OnLeave then b.scripts.OnLeave(b) end
+        return t
+    end
+    local function rows(tag)
+        local out = {}
+        for _, r in ipairs(QL.rows) do
+            if r.shown then
+                local d = r.data
+                if d.zone then
+                    table.insert(out, r.sign.text .. r.zone.text .. " " .. r.count.text .. " [" .. r.eye.glyph
+                        .. string.format("@%.2f", r.eye.icon.alpha or 1) .. "]")
+                else
+                    table.insert(out, string.format("%s%s%s %s(%s) xp=%s item=%s coin=%s%s%s", tostring(r.lvl.text),
+                        r.stripes.shown and "/" or " ", r.title.text, r.badge.shown and "{mark}" or "",
+                        c3(r.title.textColor), r.xp.text, r.item.text == "\226\156\148" and "yes" or "no",
+                        r.coin.text, r.zebra.shown and " z" or "", r.mark.shown and " OPEN" or ""))
+                end
+            end
+        end
+        print(tag, "count=" .. tostring(QL.count.text), #out > 0 and table.concat(out, " | ") or "none")
+    end
+    local function row(label)
+        for _, r in ipairs(QL.rows) do
+            local d = r.shown and r.data
+            if d and (d.zone and d.zone.name == label or d.quest and d.quest.title == label) then return r end
+        end
+    end
+    local function watched()
+        local ids = {}
+        for id in pairs(W.watched) do table.insert(ids, id) end
+        table.sort(ids)
+        return table.concat(ids, ",")
+    end
+    local function seg(row_, key) return row_.byKey[key] end
+    local function segState(row_)
+        local out = {}
+        for _, b in ipairs(row_.buttons) do
+            if b.shown then
+                table.insert(out, b.label.text .. (b.enabled and "" or "/off") .. (b.selected and "*" or ""))
+            end
+        end
+        return table.concat(out, " | ")
+    end
+
+    -- 1. at login: built, hidden; the key bound to ours, the map's panel gone
+    print("questlog keys", "L=" .. tostring(W.bound.L), "map cvar=" .. tostring(W.cvars and W.cvars.questLogOpen),
+        "panel toggle=" .. tostring(WorldMapFrame and WorldMapFrame.SidePanelToggle.shown),
+        "escape=" .. tostring(UISpecialFrames and table.concat(UISpecialFrames, ","):find("MedalluinQuestLog") ~= nil))
+    -- 2. the key opens it, over the side panel
+    MedalluinToggleQuestLog()
+    QL.body.h = 20 * 14
+    QL.Refresh()
+    print("questlog open", "shown=" .. tostring(f.shown))
+    box("questlog window", f)
+    do
+        local bg
+        for _, t in ipairs(f.all_ or {}) do
+            if t.kind == "Texture" and t.color and t.color[4] and t.color[1] == ns.colors.ink[1] then bg = t end
+        end
+        print("questlog ink", bg and string.format("%.2f", bg.color[4]) or "none")
+        local out = {}
+        for _, b in ipairs(QL.foot.buttons) do
+            if b.shown then table.insert(out, b.label.text .. "@" .. b.points.TOPLEFT[3] .. "+" .. tostring(b.w)) end
+        end
+        print("questlog margin", "h=" .. tostring(QL.foot.h), table.concat(out, " "))
+    end
+    rows("questlog rows")
+    print("questlog foot", segState(QL.foot))
+    print("questlog tips", "eye=" .. tipOf(row("Elwynn Forest").eye), "row=" .. tipOf(row("The Defias Brotherhood")))
+    -- 3. a fold, and every zone folded and opened
+    row("Westfall").scripts.OnClick(row("Westfall"), "LeftButton")
+    rows("questlog folded westfall")
+    print("questlog fold all tip", tipOf(QL.foldAll))
+    QL.foldAll.scripts.OnClick(QL.foldAll)
+    rows("questlog all folded")
+    QL.foldAll.scripts.OnClick(QL.foldAll)
+    rows("questlog all open")
+    -- 4. a zone's eye: some tracked, so a click tracks the rest; all tracked,
+    -- so a click stops tracking them all (the eye struck)
+    W.calls = {}
+    local eye = row("Elwynn Forest").eye
+    eye.scripts.OnClick(eye)
+    calls("questlog eye some: track the rest")
+    rows("questlog elwynn all tracked")
+    eye = row("Elwynn Forest").eye
+    eye.scripts.OnClick(eye)
+    calls("questlog eye all: untrack")
+    rows("questlog elwynn none tracked")
+    -- 5. the foot: untrack all, then track all up to a limit of 4
+    QL.foot.byKey.untrack.scripts.OnClick(QL.foot.byKey.untrack)
+    calls("questlog untrack all")
+    W.limit = 4
+    print("questlog track tip", tipOf(QL.foot.byKey.track))
+    QL.foot.byKey.track.scripts.OnClick(QL.foot.byKey.track)
+    calls("questlog track all (limit 4)")
+    print("questlog watched", watched())
+    W.limit = 25
+    -- 6. a right click tracks, and stops tracking
+    local r = row("Seek Out the Ashtongue")
+    r.scripts.OnClick(r, "RightButton")
+    calls("questlog right click")
+    r = row("Seek Out the Ashtongue")
+    r.scripts.OnClick(r, "RightButton")
+    calls("questlog right click again")
+    -- 7. the search: the words in any order, folded zones too
+    QL.foldAll.scripts.OnClick(QL.foldAll)
+    QL.search:SetText("bandanas red")
+    QL.search.scripts.OnTextChanged(QL.search)
+    rows("questlog search")
+    QL.search:SetText("nothing like it")
+    QL.search.scripts.OnTextChanged(QL.search)
+    rows("questlog search none")
+    QL.search:SetText("")
+    QL.search.scripts.OnTextChanged(QL.search)
+    QL.foldAll.scripts.OnClick(QL.foldAll)
+
+    -- 8. a quest's page: its words, rewards and buttons
+    r = row("Princess Must Die!")
+    r.scripts.OnClick(r, "LeftButton")
+    local page = _G.MedalluinQuestPage
+    QP.child.w = 400
+    QP.Refresh()
+    local function pageText(tag)
+        local out = {}
+        for _, c in ipairs(QP.child.all_ or {}) do
+            if c.shown and c.kind == "FontString" and c.text and c.text ~= "" then table.insert(out, c.text) end
+            if c.shown and c.kind == "Button" and c.name then table.insert(out, "[" .. c.name.text .. "]") end
+        end
+        print(tag, "shown=" .. tostring(page and page.shown), "current=" .. tostring(QP.Current()), table.concat(out, " ~ "))
+        print(tag .. " band", segState(QP.band))
+    end
+    pageText("questlog page")
+    rows("questlog page open")
+    -- its reward's tooltip, and Share in a group
+    W.group = true
+    QP.Refresh()
+    print("questlog page share", segState(QP.band), tipOf(QP.band.byKey.share))
+    QP.band.byKey.share.scripts.OnClick(QP.band.byKey.share)
+    calls("questlog shared")
+    -- Track: it stops tracking it, and again
+    QP.band.byKey.track.scripts.OnClick(QP.band.byKey.track)
+    calls("questlog page untrack")
+    pageText("questlog page untracked")
+    QP.band.byKey.track.scripts.OnClick(QP.band.byKey.track)
+    calls("questlog page track")
+    -- the same quest again closes it; another opens on it
+    r = row("Princess Must Die!")
+    r.scripts.OnClick(r, "LeftButton")
+    print("questlog page toggled", "shown=" .. tostring(page.shown), "current=" .. tostring(QP.Current()))
+    r = row("Westfall Stew")
+    r.scripts.OnClick(r, "LeftButton")
+    pageText("questlog page failed quest")
+    -- Abandon asks once more; the confirm lapses; then twice abandons
+    QP.band.byKey.abandon.scripts.OnClick(QP.band.byKey.abandon)
+    print("questlog page confirm", segState(QP.band))
+    for _, fn in ipairs(W.timers) do fn() end
+    W.timers = {}
+    print("questlog page lapsed", segState(QP.band))
+    calls("questlog page nothing yet")
+    QP.band.byKey.abandon.scripts.OnClick(QP.band.byKey.abandon)
+    QP.band.byKey.abandon.scripts.OnClick(QP.band.byKey.abandon)
+    calls("questlog page abandoned")
+    print("questlog page after", "shown=" .. tostring(page.shown))
+    rows("questlog after page abandon")
+
+    -- 9. Drop: the picks, a zone's tick, the confirm, and the abandon
+    QL.foot.byKey.drop.scripts.OnClick(QL.foot.byKey.drop)
+    local dropFrame = _G.MedalluinQuestDrop
+    QD.list.h = 20 * 14
+    QD.Refresh()
+    local function picked()
+        local ids = {}
+        for id in pairs(QD.picked) do table.insert(ids, id) end
+        table.sort(ids)
+        return #ids > 0 and table.concat(ids, ",") or "none"
+    end
+    local function drows(tag)
+        local out = {}
+        for _, rr in ipairs(QD.rows) do
+            if rr.shown then
+                local d = rr.data
+                table.insert(out, (d.zone and (rr.zone.text .. " " .. rr.count.text) or rr.label.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+                    .. "<" .. rr.tick.state .. ">" .. (rr.wash.shown and "red" or ""))
+            end
+        end
+        print(tag, "shown=" .. tostring(dropFrame and dropFrame.shown), "picked=" .. picked(), table.concat(out, " | "))
+        print(tag .. " band", segState(QD.band))
+    end
+    drows("questdrop open")
+    QD.picks.byKey.grey.scripts.OnClick(QD.picks.byKey.grey)
+    drows("questdrop grey")
+    local function drow(label)
+        for _, rr in ipairs(QD.rows) do
+            local d = rr.shown and rr.data
+            if d and (d.zone and d.zone.name == label or d.quest and d.quest.title == label) then return rr end
+        end
+    end
+    local wz = drow("Westfall")
+    wz.scripts.OnClick(wz)
+    drows("questdrop westfall picked")
+    wz = drow("Westfall")
+    wz.scripts.OnClick(wz)
+    drows("questdrop westfall unpicked")
+    QD.picks.byKey.failed.scripts.OnClick(QD.picks.byKey.failed)
+    drows("questdrop failed")
+    QD.picks.byKey.all.scripts.OnClick(QD.picks.byKey.all)
+    drows("questdrop all")
+    QD.picks.byKey.none.scripts.OnClick(QD.picks.byKey.none)
+    local one = drow("The Fargodeep Mine")
+    one.scripts.OnClick(one)
+    one = drow("Red Leather Bandanas")
+    one.scripts.OnClick(one)
+    drows("questdrop two")
+    QD.band.byKey.abandon.scripts.OnClick(QD.band.byKey.abandon)
+    print("questdrop confirm", segState(QD.band), tipOf(QD.band.byKey.abandon))
+    -- a pick changed: the confirm goes
+    one = drow("A Threat Within")
+    one.scripts.OnClick(one)
+    print("questdrop disarmed", segState(QD.band))
+    QD.band.byKey.abandon.scripts.OnClick(QD.band.byKey.abandon)
+    QD.band.byKey.abandon.scripts.OnClick(QD.band.byKey.abandon)
+    calls("questdrop abandoned")
+    print("questdrop after", "shown=" .. tostring(dropFrame.shown), "picked=" .. picked())
+    rows("questlog after drop")
+    -- Cancel closes, abandoning nothing
+    QD.Open()
+    QD.picks.byKey.all.scripts.OnClick(QD.picks.byKey.all)
+    QD.band.byKey.cancel.scripts.OnClick(QD.band.byKey.cancel)
+    calls("questdrop cancelled")
+    print("questdrop cancel", "shown=" .. tostring(dropFrame.shown))
+
+    -- 10. the game's ways in: ToggleQuestLog (the button), its frame or map
+    print("questlog before toggle", "shown=" .. tostring(f.shown))
+    ToggleQuestLog()
+    print("questlog toggled by the game", "ours=" .. tostring(f.shown),
+        "map=" .. tostring(WorldMapFrame and WorldMapFrame.shown), "classic=" .. tostring(QuestLogFrame and QuestLogFrame.shown))
+    ToggleQuestLog()
+    print("questlog toggled again", "ours=" .. tostring(f.shown),
+        "map=" .. tostring(WorldMapFrame and WorldMapFrame.shown), "classic=" .. tostring(QuestLogFrame and QuestLogFrame.shown))
+    calls("questlog game calls")
+    if WorldMapFrame then
+        -- the map opened on its own: its quest panel folds away
+        ShowUIPanel(WorldMapFrame)
+        QuestMapFrame:Show()
+        print("questlog map", "map=" .. tostring(WorldMapFrame.shown), "panel=" .. tostring(QuestMapFrame.shown),
+            "toggle=" .. tostring(WorldMapFrame.SidePanelToggle.shown))
+        WorldMapFrame.SidePanelToggle:Show()
+        print("questlog map toggle shown again", tostring(WorldMapFrame.SidePanelToggle.shown))
+        HideUIPanel(WorldMapFrame)
+        calls("questlog map calls")
+    end
+    -- 11. exclusive: another window docked on the right closes it as it
+    -- opens, and it closes the other as it opens
+    QL.Open()
+    local other = ns.Window{ name = "HarnessRightWindow", side = 1, closeTip = "x",
+        Close = function() called_close = (called_close or 0) + 1; _G.HarnessRightWindow:Hide() end,
+        Lifted = function() return {} end }
+    other.Page({ key = "x", label = "X", glyph = "misc", order = 1, height = 50, Available = function() return true end,
+        Build = function() end, Refresh = function() end })
+    other.Build()
+    other.SetShown(true)
+    print("questlog exclusive: other opened", "ours=" .. tostring(f.shown), "other=" .. tostring(_G.HarnessRightWindow.shown))
+    QL.Open()
+    print("questlog exclusive: ours opened", "ours=" .. tostring(f.shown), "other=" .. tostring(_G.HarnessRightWindow.shown),
+        "closes=" .. tostring(called_close))
+    -- 12. the bindings change: bound again only if the keys did
+    local sets = overrideSets
+    fire("UPDATE_BINDINGS")
+    print("questlog rebind same keys", overrideSets - sets)
+    bindings.K = "TOGGLEQUESTLOG"
+    fire("UPDATE_BINDINGS")
+    print("questlog rebind new key", overrideSets - sets, "K=" .. tostring(W.bound.K))
+    -- Escape's list, and tooltips standing outside
+    harnessBeside("questlog tips", f)
+end)() end
 
 -- ------------------------------------------------------------ the NPC box
 if npcPass then
