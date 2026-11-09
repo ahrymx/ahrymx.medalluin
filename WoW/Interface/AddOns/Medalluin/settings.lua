@@ -93,7 +93,6 @@ local DEFAULTS = {
     chatLogPlace = false,   -- the chat log's box: { point, relative, x, y, w, h, scale } (not on the page)
     character = true,       -- Medalluin's character window instead of Blizzard's
     spellbook = true,       -- Medalluin's spellbook instead of Blizzard's (Forever)
-    spellbookAllRanks = false, -- every rank of a spell listed, not only its highest learned
     spellbookMissing = true, -- a red edge on a spell on no action bar (nor in a macro on one)
     spellbookUpRankAll = false, -- every spell kept on its highest rank on the bars (else only those ticked)
     spellbookClickCast = true, -- click-cast bindings marked on their spells, and the book binding while /cc is open
@@ -384,12 +383,14 @@ local function Migrate()
         if store.topBoss == false and store.bossFrames == nil then store.bossFrames = "vertical" end
         store.topBoss = nil
     end
-    -- the windows' details are always open now: their folds forgotten
+    -- the windows' details are always open now: their folds forgotten; and
+    -- the spellbook lists a spell's ranks under it, folded, not all at once
+    local gone = { "bankDetails", "characterDetails", "spellbookDetails", "spellbookAllRanks" }
     for _, store in ipairs(stores) do
-        for _, key in ipairs({ "bankDetails", "characterDetails", "spellbookDetails" }) do store[key] = nil end
+        for _, key in ipairs(gone) do store[key] = nil end
     end
     if db.global then
-        for _, key in ipairs({ "bankDetails", "characterDetails", "spellbookDetails" }) do db.global[key] = nil end
+        for _, key in ipairs(gone) do db.global[key] = nil end
     end
     for key in pairs(DEFAULTS) do
         local v = db[key]

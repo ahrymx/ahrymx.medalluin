@@ -2756,8 +2756,16 @@ if spellPass or talentPass or profPass then
         -- a spell's two ranks, the book's order: low to high
         { name = "Enhancement", iconID = 103, spells = { { "Rockbiter Weapon", S, "Rank 2" },
             { "Rockbiter Weapon", S, "Rank 3" }, { "Lightning Shield", S } } },
-        { name = "Restoration", iconID = 104, spells = { { "Healing Wave", S, "Rank 5" } } },
+        -- five ranks, folded under the highest
+        { name = "Restoration", iconID = 104, spells = { { "Healing Wave", S, "Rank 1" }, { "Healing Wave", S, "Rank 2" },
+            { "Healing Wave", S, "Rank 3" }, { "Healing Wave", S, "Rank 4" }, { "Healing Wave", S, "Rank 5" } } },
     }
+    -- a strip's colour fades along it
+    if not Region.SetGradient then function Region:SetGradient(o, a, b) self.gradient = { o, a, b } end end
+    if not CreateColor then function CreateColor(r, g, b, a) return { r, g, b, a } end end
+    -- Restoration's role from the game (by its specID); the others by name
+    lines[4].specID = 264
+    function GetSpecializationRoleByID(id) return id == 264 and "HEALER" or nil end
     local items, offset = {}, 0
     for i, l in ipairs(lines) do
         l.itemIndexOffset, l.numSpellBookItems, l.shouldHide = offset, #l.spells, false
@@ -2805,6 +2813,30 @@ if spellPass or talentPass or profPass then
             ResetCurrentProfile = function() bookWorld.cc.profile = {} end,
         }
         C_Spell.GetSpellName = C_Spell.GetSpellName or function(id) return byID[id] and byID[id].name end
+        -- cast times (ms) and costs: Healing Wave's by rank, Lightning
+        -- Shield's a share of base mana, Attack and Hearthstone free
+        local casts = { ["Lightning Bolt"] = 2500, ["Healing Wave"] = { 1500, 2000, 2500, 3000, 3000 },
+            ["Hearthstone"] = 10000 }
+        local mana = { ["Lightning Bolt"] = 100, ["Earth Shock"] = 120, ["Searing Totem"] = 25,
+            ["Rockbiter Weapon"] = { 50, 65 }, ["Healing Wave"] = { 25, 45, 105, 155, 200 }, Bite = 35, Growl = 15 }
+        local function byRank(t, it)
+            if type(t) ~= "table" then return t end
+            local n = tonumber((it.subName or ""):match("%d+")) or 1
+            return t[n] or t[#t]
+        end
+        C_Spell.GetSpellInfo = function(id)
+            local it = byID[id]
+            if not it then return nil end
+            return { name = it.name, spellID = id, castTime = byRank(casts[it.name], it) or 0 }
+        end
+        C_Spell.GetSpellPowerCost = function(id)
+            local it = byID[id]
+            if not it then return nil end
+            if it.name == "Lightning Shield" then return { { type = 0, name = "MANA", cost = 0, costPercent = 5 } } end
+            local m = byRank(mana[it.name], it)
+            if it.name == "Bite" or it.name == "Growl" then return { { type = 2, name = "FOCUS", cost = m } } end
+            return m and { { type = 0, name = "MANA", cost = m } } or {}
+        end
         function InClickBindingMode() return ClickBindingFrame ~= nil and ClickBindingFrame:IsShown() end
         function bookWorld.LoadCC()
             local f = CreateFrame("Frame", "ClickBindingFrame", UIParent)
@@ -11949,48 +11981,60 @@ if spellPass then
         end
         print(tag, table.concat(list, " "))
     end
-    local function cells(tag)
+    -- the list: each row shown, top to bottom. A strip #Title{role
+    -- count}<r,g,b>card=top+height~icon; a spell its stack (= a frame
+    -- behind, * gold: open), name, sub, cast|cost, alpha, and the
+    -- secure button over it (type2:spell, +left: if the left casts, or -
+    -- for none); a rank " |Rank n(cast|cost)[button]"
+    local function over(c)
+        for _, b in ipairs(layer.buttons) do
+            if b.shown and b.item == c.item then
+                local o = harnessOver(b, c.hit)
+                return (b.attrs.type2 or "none") .. ":" .. tostring(b.attrs.spell)
+                    .. (b.attrs.type and "+left:" .. b.attrs.type or "") .. (o == "over" and "" or "!" .. o)
+            end
+        end
+        return "-"
+    end
+    local function rows(tag, from, to)
         local p = B.Current()
         local list = {}
-        for i, c in ipairs(p.cells) do
-            if c.shown then
-                local b = layer.buttons[i]
-                local arm = b and b.shown and b.item == c.item
-                    and ((b.attrs.type or "none") .. ":" .. tostring(b.attrs.spell)
-                        .. (harnessOver(b, c) == "over" and "" or "!" .. harnessOver(b, c))) or "unarmed"
-                if c.head.shown then
-                    -- a heading: its title and count, and the tile under them
-                    -- the tiles: how many show, where the first and last
-                    -- sit, how wide, and the last one's crop
-                    local at, n = select(2, next(c.title.points)) or {}, 0
-                    for _, t in ipairs(c.tiles) do if t.shown then n = n + 1 end end
-                    local t1, tn = c.tiles[1], c.tiles[n]
-                    local function tile(t)
-                        local q = t.points.TOPLEFT or {}
-                        return string.format("%s@%d+%d[%.3f-%.3f,%.2f-%.2f]", tostring(t.texture), q[3] or -1,
-                            t.w or 0, t.coords[1], t.coords[2], t.coords[3], t.coords[4])
-                    end
-                    table.insert(list, string.format("#%s(%s)[%s]cell=%d,w=%d,mouse=%s,shown=%s,title=%s %d,"
-                        .. "tiles=%d/%d %s..%s %s@%s:%s", c.title.text, c.count.text, arm, i, c.w or 0,
-                        tostring(c.mouse), table.concat({ tostring(c.icon.shown), tostring(c.name.shown),
-                            tostring(c.sub.shown), tostring(c.edge.shown) }, ","), tostring(at[2] or at[1]), at[4] or 0,
-                        n, #c.tiles, tile(t1), tile(tn), tostring(t1.desaturated), tostring(t1.alpha),
-                        table.concat(t1.vertex or {}, ",")))
+        for i, c in ipairs(p.rows) do
+            if c.shown and i >= (from or 1) and i <= (to or #p.rows) then
+                if c.kind == "heading" then
+                    local card
+                    for _, k in ipairs(p.cards) do if k.shown and k.y == c.y then card = k end end
+                    local g = c.band.gradient
+                    table.insert(list, string.format("#%s{%s%s}<%s>card=%s%s", c.title.text,
+                        c.role.shown and (tostring(c.role.texture):match("role%-%a+") .. " ") or "", c.count.text,
+                        g and string.format("%.2f,%.2f,%.2f@%.2f-%.2f", g[2][1], g[2][2], g[2][3], g[2][4], g[3][4])
+                            or "flat",
+                        card and (card.y .. "+" .. card.h) or "none",
+                        card and card.mark and "~watermark" or ""))
+                elseif c.kind == "rank" then
+                    table.insert(list, string.format(" |%s(%s|%s%s)[%s]", c.rank.text, c.rcast.text, c.rcost.text,
+                        "", over(c)))
                 else
-                    table.insert(list, string.format("%s(%s,%.1f%s)[%s]", c.name.text, c.sub.text, c.icon.alpha or 1,
-                        c.mark.shown and ",chosen" or "", arm))
+                    local stack = ""
+                    for _, st in ipairs(c.stack) do
+                        if st.rim.shown then stack = stack .. (st.rim.color and st.rim.color[1] > 0.9 and "*" or "=") end
+                    end
+                    table.insert(list, string.format("%s%s(%s|%s|%s,%.1f%s)[%s]", stack ~= "" and stack .. " " or "",
+                        c.name.text, c.sub.text, c.cast.text, c.cost.text, c.icon.alpha or 1,
+                        "", over(c)))
                 end
             end
         end
         local function button(b)
             return b.shown == false and "-" or (b.mark.shown and "on" or "off")
-                .. (b.enabled == false and "/off " .. table.concat(b.label.textColor or {}, ",") or "")
         end
-        print(tag, "page=" .. p.at .. "/" .. p.pages, "band=ranks:" .. button(p.allRanks)
-            .. ",trainer:" .. button(p.trainerButton), table.concat(list, " "))
+        print(tag, "band=trainer:" .. button(p.trainerButton), "list=" .. tostring(p.scroller.child.h),
+            table.concat(list, " "))
     end
+    -- the foot: none on any page now (shown, and how tall the shell makes it)
     local function details(tag)
         local p = B.Current()
+        print(tag .. " foot", "shown=" .. tostring(p.foot.shown), "height=" .. tostring(p.footHeight))
         local texts = {}
         for _, r in ipairs(p.foot.all_ or {}) do
             if r.kind == "FontString" and r.shown ~= false and r.text and r.text ~= "" then
@@ -12002,6 +12046,34 @@ if spellPass then
     local function pageOf(key)
         for _, p in ipairs(B.pages) do
             if p.key == key then return p end
+        end
+    end
+    -- a row by its spell's name (and rank, for a rank's row), and its button
+    local function row(name, rank)
+        for _, c in ipairs(B.Current().rows) do
+            if c.shown and c.item and c.item.info.name == name
+                and (rank == nil and c.kind == "spell" or rank and c.kind == "rank" and c.item.info.subName == rank) then
+                return c
+            end
+        end
+    end
+    local function button(name, rank)
+        local c = row(name, rank)
+        for _, b in ipairs(layer.buttons) do
+            if c and b.shown and b.item == c.item then return b end
+        end
+    end
+    -- the scroll's height, as the anchors would give it (the mock's
+    -- GetHeight does not resolve them)
+    local function tall(p, h)
+        p.body.h = h
+        p.scroller.scroll.h = h
+        p.Refresh()
+    end
+    local function ease(p)
+        for _ = 1, 80 do
+            local up = p.scroller.scroll.scripts.OnUpdate
+            if up then up(p.scroller.scroll, 0.05) end
         end
     end
 
@@ -12025,16 +12097,21 @@ if spellPass then
     harnessBeside("book casts tips", MedalluinSpellbook, nil, MedalluinSpellbookCasts)
     print("book.backpack", tostring(MainMenuBarBackpackButton.strata) .. "/" .. tostring(MainMenuBarBackpackButton.level))
     tabs("book.tabs")
-    cells("book.general")
+    -- one list: General, each specialisation; Healing Wave's five ranks
+    -- folded under Rank 5
+    local book = pageOf("book")
+    tall(book, 900)
+    rows("book.list")
 
     -- 3. a click casts through the layer and chooses the spell; with
     -- ActionButtonUseKeyDown on or off, the press casts nothing (a press is
     -- where a drag to a bar starts), the release casts (Forever's
     -- SecureActionButton_OnClick: the useOnKeyDown attribute, else the CVar)
     local b = layer.buttons[1]
-    local function hears(down)
-        for _, c in ipairs(b.clicks or {}) do
-            if c == (down and "AnyDown" or "AnyUp") or c == (down and "LeftButtonDown" or "LeftButtonUp") then
+    -- the right button casts; the left only drags
+    local function hears(bb, button, down)
+        for _, c in ipairs(bb.clicks or {}) do
+            if c == (down and "AnyDown" or "AnyUp") or c == button .. (down and "Down" or "Up") then
                 return true
             end
         end
@@ -12043,80 +12120,160 @@ if spellPass then
     for _, cvar in ipairs({ true, false }) do
         local use = b.attrs.useOnKeyDown
         if use == nil then use = cvar end
-        print("book.press", "keydown=" .. tostring(cvar), "press casts=" .. tostring(hears(true) and use),
-            "release casts=" .. tostring(hears(false) and not use))
+        for k, button in ipairs({ "LeftButton", "RightButton" }) do
+            -- SecureButton_GetModifiedAttribute: type<n>, else type
+            local acts = (b.attrs["type" .. k] or b.attrs.type) ~= nil
+            print("book.press", "keydown=" .. tostring(cvar), button, "press casts=" .. tostring(hears(b, button, true)
+                and use and acts), "release casts=" .. tostring(hears(b, button, false) and not use and acts),
+                "heard=" .. tostring(hears(b, button, false)))
+        end
     end
-    b.scripts.PostClick(b, "LeftButton")
-    cells("book.chosen")
+    print("book.drag button", table.concat(b.drag or {}, ","))
+    -- the rows themselves: a heading's left click, a spell's left and right
+    do
+        local bp = pageOf("book")
+        local out = {}
+        for _, c in ipairs({ bp.rows[1], bp.rows[2] }) do
+            table.insert(out, c.kind .. "=" .. table.concat(c.clicks or {}, ","))
+        end
+        print("book.row clicks", table.concat(out, " "))
+    end
+    -- the left button on a spell without ranks: nothing; the right chooses
+    local bolt = button("Lightning Bolt")
+    bolt.scripts.PostClick(bolt, "LeftButton", false)
+    print("book.left on bolt", "rows=" .. #book.rows)
+    bolt.scripts.PostClick(bolt, "RightButton", false)
+    rows("book.right on bolt", 5, 7)
     details("book.details")
 
-    -- 4. the next tab
-    local elem = pageOf("line2")
-    elem.tab.scripts.OnClick(elem.tab)
-    frame()
-    state("book.elemental")
-    cells("book.elemental")
-    details("book.elemental details")
+    -- 3b. a heading's left click collapses its section, and opens it again;
+    -- remembered
+    local function heading(name)
+        for _, c in ipairs(book.rows) do
+            if c.shown and c.kind == "heading" and c.title.text == name then return c end
+        end
+    end
+    local elemH = heading("Elemental")
+    elemH.scripts.OnClick(elemH, "LeftButton")
+    rows("book.collapsed", 4, 8)
+    print("book.collapsed kept", tostring(MedalluinCharDB.bookShut and MedalluinCharDB.bookShut.Elemental),
+        "buttons=" .. (function()
+            local n = 0
+            for _, bb in ipairs(layer.buttons) do if bb.shown then n = n + 1 end end
+            return n
+        end)())
+    book.Refresh()
+    rows("book.collapsed again", 4, 6)
+    heading("Elemental").scripts.OnClick(heading("Elemental"), "LeftButton")
+    rows("book.expanded", 4, 7)
 
-    -- 5. a short screen: fewer rows, the pager turns
-    local height = UIParent.GetHeight
-    UIParent.GetHeight = function() return 240 end
-    w:SetHeight(240)
-    elem.body.h = 2 * 40 + 4
-    elem.Refresh()
-    cells("book.short")
-    elem.body.scripts.OnMouseWheel(elem.body, -1)
-    cells("book.short next")
-    elem.body.scripts.OnMouseWheel(elem.body, -1)
-    cells("book.short past end")
-    elem.body.scripts.OnMouseWheel(elem.body, 1)
-    cells("book.short back")
-    elem.body.scripts.OnMouseWheel(elem.body, -1)
-    UIParent.GetHeight = height
-    -- on page 2 when the window grows back: one page, and it is the first
-    elem.body.h = 10 * 40
-    elem.Refresh()
-    cells("book.tall again")
+    -- 4. Healing Wave unfolds: its ranks, highest first, each its own cast
+    -- and cost, each casting its own rank; remembered, and folds shut again
+    local function lines(c)
+        local said, add = {}, GameTooltip.AddLine
+        GameTooltip.AddLine = function(_, t) table.insert(said, tostring(t)) end
+        c.scripts.OnEnter(c)
+        c.scripts.OnLeave(c)
+        GameTooltip.AddLine = add
+        return table.concat(said, " / ")
+    end
+    local wb = button("Healing Wave")
+    print("book.ranks tip", lines(wb))
+    -- its left click (the secure button's): the ranks
+    wb.scripts.PostClick(wb, "LeftButton", false)
+    rows("book.unfolded", 14)
+    print("book.ranks tip open", lines(button("Healing Wave")))
+    print("book.unfolded kept", tostring(MedalluinCharDB.bookOpen and MedalluinCharDB.bookOpen["Healing Wave"]))
+    book.Refresh()
+    rows("book.unfolded again", 14)
+    -- a rank's left click: nothing; its right chooses it
+    local r3 = button("Healing Wave", "Rank 3")
+    r3.scripts.PostClick(r3, "LeftButton", false)
+    print("book.left on a rank", "rows=" .. #(function()
+        local t = {}
+        for _, c in ipairs(book.rows) do if c.shown then table.insert(t, c) end end
+        return t
+    end)())
+    r3.scripts.PostClick(r3, "RightButton", false)
+    rows("book.rank right", 14)
+    -- the row's own left click (as in combat) folds it shut
+    row("Healing Wave").scripts.OnClick(row("Healing Wave"), "LeftButton")
+    rows("book.folded", 14)
+    print("book.folded kept", tostring(MedalluinCharDB.bookOpen["Healing Wave"]))
 
-    -- 6. a pet comes: a fifth tab, the row shared out again
+    -- 5. a short screen: only the rows wholly in view get a button; the
+    -- wheel scrolls, and the buttons follow
+    tall(book, 3 * 36)
+    rows("book.short", 1, 6)
+    book.body.scripts.OnMouseWheel(book.body, -1)
+    print("book.short wheel", "target=" .. book.scroller.target, "at=" .. book.scroller.offset)
+    ease(book)
+    rows("book.short scrolled", 1, 6)
+    for _ = 1, 20 do book.body.scripts.OnMouseWheel(book.body, -1) end
+    ease(book)
+    print("book.short bottom", "at=" .. book.scroller.offset .. "/" .. book.scroller.scroll:GetVerticalScrollRange())
+    rows("book.short bottom", 10)
+    tall(book, 900)
+    print("book.tall again", "at=" .. book.scroller.offset)
+
+    -- 6. a pet comes: its section last, Bite and Growl and their focus
     bookWorld.pet = 2
     fire("UNIT_PET", "player")
-    tabs("book.pet tabs")
-    local pet = pageOf("pet")
-    pet.tab.scripts.OnClick(pet.tab)
     frame()
-    cells("book.pet")
-    -- and goes, while its page is open: back to the first
+    tabs("book.pet tabs")
+    rows("book.pet", 13)
+    -- and goes
     bookWorld.pet = 0
     fire("UNIT_PET", "player")
     frame()
-    tabs("book.pet gone")
-    state("book.pet gone")
+    rows("book.pet gone", 13)
 
-    -- 7. combat: the layer goes, the page still turns but nothing is re-armed
+    -- 7. combat: the layer goes, the list still scrolls and chooses, nothing
+    -- is re-armed
     local function combat(on)
         harnessHolds.combat = on or nil
         inCombat = on
         stateTick()
         if not on then fire("PLAYER_REGEN_ENABLED") end
     end
-    elem.tab.scripts.OnClick(elem.tab)
-    frame()
     combat(true)
     state("book.combat")
-    local gen = pageOf("line1")
-    gen.tab.scripts.OnClick(gen.tab)
-    frame()
-    cells("book.combat general")
-    gen.cells[2].scripts.OnClick(gen.cells[2])
-    cells("book.combat chosen")
+    tall(book, 3 * 36)
+    local placed = {}
+    for _, bb in ipairs(layer.buttons) do placed[bb] = bb.shown and bb.item and bb.item.info.name end
+    book.body.scripts.OnMouseWheel(book.body, -1)
+    ease(book)
+    local moved = 0
+    for _, bb in ipairs(layer.buttons) do
+        if (bb.shown and bb.item and bb.item.info.name) ~= placed[bb] then moved = moved + 1 end
+    end
+    print("book.combat scrolled", "at=" .. book.scroller.offset, "buttons changed=" .. moved)
+    local hs = row("Hearthstone")
+    hs.scripts.OnClick(hs, "LeftButton")
+    print("book.combat left", "rows=" .. #book.rows)
+    hs.scripts.OnClick(hs, "RightButton")
+    rows("book.combat clicked", 1, 4)
     layer.buttons[1].scripts.OnDragStart(layer.buttons[1])
     print("book.combat drag", table.concat(bookWorld.calls, ","))
     combat(false)
     state("book.after combat")
-    cells("book.after combat")
+    rows("book.after combat", 1, 6)
     layer.buttons[1].scripts.OnDragStart(layer.buttons[1])
     print("book.drag", table.concat(bookWorld.calls, ","))
+    tall(book, 900)
+
+    -- the Macros tab: a page to come, no buttons
+    local macros = pageOf("macros")
+    macros.tab.scripts.OnClick(macros.tab)
+    frame()
+    local shown = 0
+    for _, bb in ipairs(layer.buttons) do if bb.shown then shown = shown + 1 end end
+    print("book.macros", "current=" .. B.Current().key, "note=" .. tostring(macros.note.text),
+        "buttons=" .. shown, "foot=" .. tostring(macros.foot.shown))
+    tabs("book.macros tabs")
+    book.tab.scripts.OnClick(book.tab)
+    frame()
+    state("book.back to spells")
 
     -- 8. the talents' tab: Blizzard's frame comes back under UIParent and
     -- our book closes; N with the book open, then N from closed with the
@@ -12200,8 +12357,8 @@ if spellPass then
         local p = B.Current()
         local out = {}
         local add = GameTooltip.AddLine
-        for _, c in ipairs(p.cells) do
-            if c.shown then
+        for _, c in ipairs(p.rows) do
+            if c.shown and c.kind == "spell" then
                 local red = c.edge.color and c.edge.color[1] > 0.8
                 local said
                 GameTooltip.AddLine = function(_, t) said = t end
@@ -12213,45 +12370,19 @@ if spellPass then
         GameTooltip.AddLine = add
         print(tag, table.concat(out, " "))
     end
-    elem.tab.scripts.OnClick(elem.tab)
-    frame()
-    cells("book.ranks elemental")
-    edges("book.bars elemental")
-    local enh = pageOf("line3")
-    enh.tab.scripts.OnClick(enh.tab)
-    frame()
-    cells("book.ranks enhancement")
-    edges("book.bars enhancement")
-    -- every rank: both Rockbiters, and the future Earth Shock; the margin's
-    -- All ranks is the same option, both ways
-    enh.allRanks.scripts.OnClick(enh.allRanks)
-    print("book.band all ranks", "option=" .. tostring(ns.db.spellbookAllRanks))
-    cells("book.all ranks")
-    edges("book.all ranks bars")
-    elem.tab.scripts.OnClick(elem.tab)
-    frame()
-    cells("book.all ranks elemental")
-    elem.allRanks.scripts.OnClick(elem.allRanks)
-    print("book.band all ranks off", "option=" .. tostring(ns.db.spellbookAllRanks))
+    book.Refresh()
+    rows("book.ranks", 4)
+    edges("book.bars")
     -- no marks when asked for none
     ns.SetOption("spellbookMissing", false)
     edges("book.no marks")
     ns.SetOption("spellbookMissing", true)
-    -- the chosen Rockbiter: its other rank named, its tick
-    enh.tab.scripts.OnClick(enh.tab)
-    frame()
-    layer.buttons[1].scripts.PostClick(layer.buttons[1], "LeftButton")
-    details("book.rockbiter")
-    local tick = enh.details.ticks[1]
-    print("book.tick", "shown=" .. tostring(tick.shown), "on=" .. tostring(tick.on), "enabled=" .. tostring(tick.enabled))
-    -- Lightning Shield, one rank: no tick
-    layer.buttons[2].scripts.PostClick(layer.buttons[2], "LeftButton")
-    print("book.tick one rank", "shown=" .. tostring(tick.shown))
-    layer.buttons[1].scripts.PostClick(layer.buttons[1], "LeftButton")
-    -- ticked: the lower rank on the bar rises at once
-    tick.scripts.OnClick(tick)
-    bars("book.uprank ticked")
-    print("book.uprank kept", tostring(MedalluinCharDB.upRank and MedalluinCharDB.upRank["Rockbiter Weapon"]))
+    -- a spell kept on its highest rank (saved before the details' tick went):
+    -- the lower rank on the bar rises
+    MedalluinCharDB.upRank = { ["Rockbiter Weapon"] = true }
+    B.UpRank()
+    bars("book.uprank kept")
+    print("book.uprank saved", tostring(MedalluinCharDB.upRank and MedalluinCharDB.upRank["Rockbiter Weapon"]))
     -- a busy cursor waits; combat waits for its end
     actionSlots[3] = { "spell", 301 }
     cursor = { "item", 6948 }
@@ -12263,14 +12394,13 @@ if spellPass then
     bars("book.uprank combat")
     combat(false)
     bars("book.uprank after combat")
-    -- unticked, nothing moves; every spell asked, it does
-    tick.scripts.OnClick(tick)
+    -- not kept, nothing moves; every spell asked, it does
+    MedalluinCharDB.upRank = nil
     actionSlots[3] = { "spell", 301 }
     fire("LEARNED_SPELL_IN_SKILL_LINE")
     bars("book.uprank unticked")
     ns.SetOption("spellbookUpRankAll", true)
     bars("book.uprank all")
-    print("book.tick all", "on=" .. tostring(tick.on), "enabled=" .. tostring(tick.enabled))
     ns.SetOption("spellbookUpRankAll", false)
     -- the trainer: no tab until one is read; then what is left to learn,
     -- now first, the filter put back as the box's tab had it
@@ -12311,43 +12441,45 @@ if spellPass then
     local tr = pageOf("trainer")
     print("book.trainer tab", tostring(tr.tab ~= nil))
     local from = B.Current()
-    cells("book.band before trainer")
     from.trainerButton.scripts.OnClick(from.trainerButton)
     frame()
     print("book.band trainer", "current=" .. B.Current().key)
     tr.trainerButton.scripts.OnClick(tr.trainerButton)
     print("book.band back", "current=" .. B.Current().key, "same=" .. tostring(B.Current() == from))
-    cells("book.band after trainer")
     from.trainerButton.scripts.OnClick(from.trainerButton)
     frame()
-    cells("book.trainer")
+    rows("book.trainer")
     details("book.trainer summary")
-    -- the first cell a heading: the first spell is the third
-    -- All ranks on: still unmarked here, where it means nothing
-    ns.SetOption("spellbookAllRanks", true)
-    cells("book.trainer all ranks on")
-    ns.SetOption("spellbookAllRanks", false)
-    -- no secure buttons over a list that scrolls: the cells answer
+    for _, c in ipairs(tr.rows) do
+        if c.shown and c.kind == "heading" and c.title.text == "Elemental" then c.scripts.OnClick(c, "LeftButton") break end
+    end
+    rows("book.trainer collapsed")
+    print("book.trainer collapsed kept", tostring(MedalluinCharDB.bookShut["trainer:Elemental"]),
+        "book's=" .. tostring(MedalluinCharDB.bookShut.Elemental))
+    for _, c in ipairs(tr.rows) do
+        if c.shown and c.kind == "heading" and c.title.text == "Elemental" then c.scripts.OnClick(c, "LeftButton") break end
+    end
+    -- no secure buttons over the trainer's rows: they answer themselves
     local armed = 0
-    for _, b in ipairs(layer.buttons) do if b.shown then armed = armed + 1 end end
+    for _, bb in ipairs(layer.buttons) do if bb.shown then armed = armed + 1 end end
     print("book.trainer secure buttons", armed)
-    tr.cells[3].scripts.OnEnter(tr.cells[3])
+    local first = row("Flame Shock")
+    first.scripts.OnEnter(first)
     print("book.trainer tooltip", tostring(GameTooltip.shown))
-    tr.cells[3].scripts.OnClick(tr.cells[3])
-    details("book.trainer chosen")
+    first.scripts.OnClick(first, "RightButton")
     -- a short body: the list scrolls, the bar at the left
     local function scrolled(tag)
         local bar, th = tr.scroller.bar, tr.scroller.bar.thumb
-        print(tag, string.format("range=%d at=%.1f target=%.1f easing=%s bar=%s thumb=%.1f@%.1f", 
+        print(tag, string.format("range=%d at=%.1f target=%.1f easing=%s bar=%s thumb=%.1f@%.1f",
             tr.scroller.scroll:GetVerticalScrollRange(), tr.scroller.scroll:GetVerticalScroll(), tr.scroller.target or 0,
             tostring(tr.scroller.scroll.scripts.OnUpdate ~= nil), tostring(bar.shown), th.h or 0,
             th.points.TOP and th.points.TOP[4] or 0), "bar@" .. tostring(bar.points.TOPLEFT and bar.points.TOPLEFT[3]),
-            "list@" .. tostring(tr.scroller.scroll.points.TOPLEFT[3]), "cells in list=" .. tostring(tr.cells[1].parent == tr.scroller.child))
+            "list@" .. tostring(tr.scroller.scroll.points.TOPLEFT[3]), "rows in list=" .. tostring(tr.rows[1].parent == tr.scroller.child))
     end
     scrolled("book.trainer tall")
     local trH = tr.body.h
     tr.body.h = 3 * 40
-    tr.scroller.scroll.h = 3 * 40         -- the mock's GetHeight does not resolve anchors
+    tr.scroller.scroll.h = 3 * 40
     tr.Refresh()
     scrolled("book.trainer short")
     tr.body.scripts.OnMouseWheel(tr.body, -1)
@@ -12371,13 +12503,13 @@ if spellPass then
     tr.scroller.bar.scripts.OnMouseUp(tr.scroller.bar)
     print("book.trainer bar let go", tostring(tr.scroller.bar.scripts.OnUpdate ~= nil))
     GetCursorPosition = cursorAt
-    tr.body.h, tr.scroller.scroll.h = trH, 0
+    tr.body.h, tr.scroller.scroll.h = trH, trH
     tr.Refresh()
     scrolled("book.trainer tall again")
     -- a level later: Frost Shock's time comes
     function UnitLevel() return 20 end
     tr.Refresh()
-    cells("book.trainer level 20")
+    rows("book.trainer level 20")
     details("book.trainer level 20 summary")
     -- a profession's trainer: its services kept by skill line, not the class's
     services = { { "Journeyman Mining", "available", 4, 10, "", 500 }, { "Smelt Tin", "available", 3, 0, "", 50 } }
@@ -12397,26 +12529,17 @@ if spellPass then
     -- mouse and its click after its rank (a binding on a lower rank marks
     -- the highest); Click Casting open, the book binds: its buttons cast
     -- nothing, what it can bind glows while a slot waits, the rest grey
-    local was = B.Current()
-    local function page(line)
-        for _, p in ipairs(B.pages) do
-            if p.line == line then
-                B.Select(p)
-                frame()
-                return p
-            end
-        end
-    end
+    B.Select(book)
+    frame()
     local function marks(tag)
         local p = B.Current()
         local out = {}
-        for i, c in ipairs(p.cells) do
-            if c.shown and c.item then
-                local b = layer.buttons[i]
+        for _, c in ipairs(p.rows) do
+            if c.shown and c.kind == "spell" then
                 table.insert(out, string.format("%s(%s)%s%s%s[%s]", c.name.text, c.sub.text,
-                    c.badge.shown and " mouse" or "", c.halo.shown and " halo" or "",
-                    c.icon.desaturated and " grey" or "", b and b.shown and b.item == c.item
-                    and (tostring(b.attrs.type) .. ":" .. tostring(b.attrs.spell)) or "-"))
+                    c.badge.shown and string.format(" mouse%dx%d/%d", c.badge.w, c.badge.h, c.badge.glyph.w) or "",
+                    c.halo.shown and " halo" or "",
+                    c.icon.desaturated and " grey" or "", over(c)))
             end
         end
         print(tag, table.concat(out, " "))
@@ -12424,21 +12547,18 @@ if spellPass then
     bookWorld.LoadCC()
     C_ClickBindings.SetProfileByInfo({ { type = 1, actionID = 401, button = "MiddleButton", modifiers = 1 },
         { type = 1, actionID = 301, button = "LeftButton", modifiers = 2 } })
-    page(4)
-    marks("book.cc restoration")
+    book.Refresh()
+    marks("book.cc")
     do
         local said, add = {}, GameTooltip.AddLine
         GameTooltip.AddLine = function(_, t) table.insert(said, tostring(t)) end
-        local c = B.Current().cells[1]
+        local c = row("Healing Wave")
         c.scripts.OnEnter(c)
         c.scripts.OnLeave(c)
         GameTooltip.AddLine = add
         print("book.cc tooltip", table.concat(said, " / "))
     end
-    page(3)
-    marks("book.cc enhancement")
     -- Click Casting opens: the book binds
-    page(2)
     bookWorld.calls = {}
     ClickBindingFrame:Show()
     frame()
@@ -12451,46 +12571,45 @@ if spellPass then
         GameTooltip.AddLine = add
         return said[#said]
     end
-    print("book.cc bind tip", tip(layer.buttons[1]))
-    local b1 = layer.buttons[1]
+    local b1 = button("Lightning Bolt")
+    print("book.cc bind tip", tip(b1), "clicks=" .. table.concat(b1.clicks, ","),
+        "row=" .. table.concat(row("Lightning Bolt").clicks, ","))
     -- the press passes by; the release binds
     b1.scripts.PostClick(b1, "LeftButton", true)
     b1.scripts.PostClick(b1, "LeftButton", false)
-    for _, c in ipairs(B.Current().cells) do
-        if c.shown and c.item and c.item.info.isPassive then c.scripts.OnClick(c) end
-    end
-    local function held()
+    local focus = row("Elemental Focus")
+    focus.scripts.OnClick(focus)
+    local function holds()
         local t = ns.clickcast.target
         return "binder=" .. tostring(t and t.bindingInfo.actionID) .. " step=" .. tostring(ns.clickcast.Step())
     end
-    print("book.cc binds", table.concat(bookWorld.calls, " "), "chosen=" .. tostring(B.Current().chosen), held())
+    print("book.cc binds", table.concat(bookWorld.calls, " "), holds())
     -- the slot filled, in the binder: no halo
     EventRegistry:TriggerEvent("ClickBindingFrame.UpdateFrames")
     marks("book.cc slot filled")
     -- a spell bound already (a higher rank shown): into the binder, nothing added
     bookWorld.calls = {}
-    page(4)
-    print("book.cc bound tip", tip(layer.buttons[1]))
-    layer.buttons[1].scripts.PostClick(layer.buttons[1], "LeftButton", false)
-    print("book.cc bound click", "calls=" .. table.concat(bookWorld.calls, " "), held())
+    local hw = button("Healing Wave")
+    print("book.cc bound tip", tip(hw))
+    hw.scripts.PostClick(hw, "LeftButton", false)
+    print("book.cc bound click", "calls=" .. table.concat(bookWorld.calls, " "), holds())
     -- no slot waiting (it became a binding): Add binding, then the spell
     local d = bookWorld.ccData
     d[#d].elementType = 4
     d[#d].bindingInfo.button = "LeftButton"
-    page(2)
-    layer.buttons[2].scripts.PostClick(layer.buttons[2], "LeftButton", false)
-    print("book.cc no slot", "calls=" .. table.concat(bookWorld.calls, " "), held(), "rows=" .. #d)
+    local shock = button("Earth Shock")
+    shock.scripts.PostClick(shock, "LeftButton", false)
+    print("book.cc no slot", "calls=" .. table.concat(bookWorld.calls, " "), holds(), "rows=" .. #d)
     ClickBindingFrame:Hide()
     frame()
     marks("book.cc bind mode off")
+    print("book.cc bind mode off clicks", table.concat(button("Lightning Bolt").clicks, ","),
+        "row=" .. table.concat(row("Lightning Bolt").clicks, ","))
     ns.SetOption("spellbookClickCast", false)
-    page(4)
     marks("book.cc option off")
     ns.SetOption("spellbookClickCast", true)
     C_ClickBindings.ResetCurrentProfile()
     marks("book.cc reset")
-    B.Select(was)
-    frame()
 
     -- 9. the close button
     w.close.scripts.OnClick(w.close)

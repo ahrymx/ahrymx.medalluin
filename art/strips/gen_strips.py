@@ -232,6 +232,19 @@ def glyph(kind, x, y):
                   "M7.6,15.6 L12.4,15.6 L10,19.6 Z")
         return (f'<g transform="translate({x},{y}) scale({s})" {f}>'
                 f'<path d="{pencil}" transform="rotate(45 10 10.3)"/></g>')
+    # the spellbook's sections, by their specialisation's role
+    if kind == "role-tank":     # a shield: flat top, coming to a point
+        return P("M2.5,2 L17.5,2 L17.5,9 C17.5,13.8 14.2,16.8 10,18.8 C5.8,16.8 2.5,13.8 2.5,9 Z"
+                 "M5,4.4 L15,4.4 L15,9 C15,12.4 12.8,14.6 10,16.1 C7.2,14.6 5,12.4 5,9 Z"
+                 "M8.8,4.4 L11.2,4.4 L11.2,16 L8.8,16 Z", "evenodd")
+    if kind == "role-healer":   # a cross
+        return P("M7.4,1.5 L12.6,1.5 L12.6,7.4 L18.5,7.4 L18.5,12.6 L12.6,12.6 L12.6,18.5 L7.4,18.5 L7.4,12.6"
+                 " L1.5,12.6 L1.5,7.4 L7.4,7.4 Z")
+    if kind == "role-damage":   # a sword, its point up to the right: blade, guard, grip
+        sword = ("M10,0.4 L12,3 L12,12.2 L8,12.2 L8,3 Z M4.4,12.2 L15.6,12.2 L15.6,14.8 L4.4,14.8 Z "
+                 "M8.8,14.8 L11.2,14.8 L11.2,17.8 L8.8,17.8 Z M7.8,17.8 L12.2,17.8 L12.2,19.8 L7.8,19.8 Z")
+        return (f'<g transform="translate({x},{y}) scale({s})" {f}>'
+                f'<path d="{sword}" transform="rotate(45 10 10.3)"/></g>')
     if kind == "misc":          # a lozenge, for a button this list does not know
         return P("M10,1.5 L18.5,10 L10,18.5 L1.5,10 Z M10,5.5 L14.5,10 L10,14.5 L5.5,10 Z", "evenodd")
     raise ValueError(kind)
@@ -449,7 +462,8 @@ GLYPHS = ["spellbook", "talents", "quests", "social", "guild", "lfg", "map", "me
 TABS = ["character", "reputation", "currency", "skills", "pvp", "statistics",
         "chevron-down", "chevron-up", "chevron-double", "close", "questlog", "sort", "view-minimal", "view-full",
         "view-bags", "view-grid", "view-groups", "track", "track-off",
-        "chat-tools", "chat", "channels", "log", "side-auras", "side-meter", "side-loot", "mouse", "edit"]
+        "chat-tools", "chat", "channels", "log", "side-auras", "side-meter", "side-loot", "mouse", "edit",
+        "role-tank", "role-healer", "role-damage"]
 
 
 def part(name, inner, size=32):

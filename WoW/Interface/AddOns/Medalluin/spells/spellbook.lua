@@ -3,37 +3,48 @@
 -- backpack's medallion. Forever only: retail's spellbook is one of its
 -- player-spells frame's pages, and keeps Blizzard's.
 --
---   [General][spec][spec][spec][pet]                       [v] [x]
+--   [Spellbook][Macros]                                          [x]
 --   ---------------------------------------------------------------
---   [icon] Lightning Bolt          [icon] Earth Shock
---          Rank 4                         Rank 2
+--   +-------------------------------------------------------------+
+--   | General                                                   5 |
+--   |   [icon] Attack                                     Instant |
+--   +-------------------------------------------------------------+
+--   | Restoration                                 Healer  ·  6  + |
+--   |   [ic]]] Healing Wave                                 3 sec |
+--   |          Rank 5 · Shift+Middle                     200 Mana |
+--   |      |   Rank 5                       3 sec        200 Mana |
+--   |      |   Rank 4                       3 sec        155 Mana |
 --   ...
 --   ---------------------------------------------------------------
---   the chosen spell's name, rank and description
---   ---------------------------------------------------------------
---   [All ranks] [Trainer]                                (backpack)
+--   [Trainer]                                            (backpack)
 --
--- A tab per skill line the book shows (General, then each specialisation),
--- the game's own icons, and Pet only while the pet has spells. A page holds
--- as many rows as the window's height gives it; the wheel turns the pages.
--- The margin holds All ranks (spellbookAllRanks) and, once a class trainer
--- has been visited (spells/trainers.lua), Trainer: a page without a tab,
--- of what is still to learn, now or at a later level, a section for each
--- skill line its spells belong to (Other for the rest); Trainer again goes
--- back.
+-- One list, scrolled: a card for each skill line the book shows (General,
+-- then each specialisation) and Pet last while the pet has spells. A
+-- card's strip wears its specialisation's role (damage red, healer green,
+-- tank blue; General and the pet the theme's brown), its icon faint behind
+-- its rows; a left click on the strip collapses the card
+-- (MedalluinCharDB.bookShut). A spell is a row the window's width, at its
+-- highest rank learned, with its cast time over its cost at the right.
+-- One with ranks has its icon stacked; a left click on it lists each rank
+-- under it (MedalluinCharDB.bookOpen, by name), highest first, each a row
+-- that casts that rank. The right button casts; the left only drags (and
+-- shows ranks). Macros is a page still to come. The margin
+-- holds, once a class trainer has been visited (spells/trainers.lua),
+-- Trainer: a page without a tab, in the same cards, of what is still to
+-- learn, now or at a later level, a card for each skill line its spells
+-- belong to (Other for the rest); Trainer again goes back.
 --
--- A spell is listed once, at its highest rank learned, unless every rank
--- is asked for (spellbookAllRanks). One not on any action bar, nor in a
--- macro on one, wears a red edge (spellbookMissing). Asked to (its tick in
--- the details, or spellbookUpRankAll), a lower rank on a bar is swapped for
--- the highest as it is learned: out of combat, the cursor empty.
+-- A spell on no action bar, nor in a macro on one, wears a red edge
+-- (spellbookMissing). Asked to (spellbookUpRankAll, or a spell's own
+-- MedalluinCharDB.upRank), a lower rank on a bar is swapped for the highest as
+-- it is learned: out of combat, the cursor empty.
 --
--- Casting is the client's: over each cell lies a secure button (type spell,
--- or flyout) in a layer parented to the strip, not the window, because a
+-- Casting is the client's: over each row wholly in view lies a secure
+-- button (type2 spell, or flyout: the right button) in a layer parented to the strip, not the window, because a
 -- frame that holds secure buttons cannot be shown or hidden in combat and
 -- the window must open in combat. The layer follows the window out of
 -- combat and a state driver hides it in combat: in combat the book reads,
--- pages and shows its tooltips, but casts and drags only out of it.
+-- scrolls and shows its tooltips, but casts and drags only out of it.
 --
 -- Blizzard's book is a tab of PlayerSpellsFrame, which the talents share:
 -- this window shows while the frame is open on it (spells/frame.lua).
@@ -42,11 +53,21 @@ local _, ns = ...
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local MISSING = { 0.85, 0.3, 0.2 }      -- the edge of a spell on no bar
+local BLUE = { 0.43, 0.63, 0.92 }       -- a cost
 local SLOTS = 180                       -- the action slots looked through
-local LINES = 4                         -- the specialisations' and General's tabs
-local ROW, ICON, GAP = 40, 34, 8        -- a cell, its icon, the gap between the columns
-local GUTTER = 10                       -- the trainer's scroll bar, left of its list
-local STEP = ROW * 1.5                  -- a turn of the wheel there
+local HEAD, SPELL, RANK = 28, 36, 24    -- a section's strip, a spell's row, a rank's
+local SPACE, PAD = 10, 4                -- between the cards; under a card's last row
+local ICON, SMALL, INDENT = 30, 26, 20  -- a spell's icon, one with ranks (stacked), the icon's left
+local RIGHT = 80                        -- the cast time and cost's column
+local EDGE = 12                         -- the cast time and cost, in from the card's edge
+local PALE = { 1, 0.94, 0.8 }           -- a strip's title
+-- a section's colour, by its specialisation's role (General, the pet's
+-- and the trainer's Other: the theme's brown)
+local ROLE = { TANK = { 0.35, 0.55, 0.9 }, HEALER = { 0.35, 0.78, 0.45 }, DAMAGER = { 0.84, 0.35, 0.29 } }
+local ROLE_WORD = { TANK = "Tank", HEALER = "Healer", DAMAGER = "Damage" }
+local ROLE_GLYPH = { TANK = "role-tank", HEALER = "role-healer", DAMAGER = "role-damage" }
+local GUTTER = 10                       -- the scroll bar, left of the list
+local STEP = SPELL * 1.5                -- a turn of the wheel
 local BANK = Enum and Enum.SpellBookSpellBank or { Player = 0, Pet = 1 }
 local TYPE = Enum and Enum.SpellBookItemType or { None = 0, Spell = 1, FutureSpell = 2, PetAction = 3, Flyout = 4 }
 
@@ -63,17 +84,79 @@ local open                              -- the window open on one of its pages
 local SB = C_SpellBook
 
 -- ------------------------------------------------------------- the items
--- The trainer's services still to learn, as items: no slot, nothing to cast.
--- A section for each skill line, in the book's order: the line a spell's
--- name is in (a rank learned, or one the book lists as to come), and Other
--- last. A section's heading takes a whole row (a filler after it, and
--- before it when the row is half full).
+-- The list, as entries to draw top to bottom: a heading for each section,
+-- its spells (each at its highest rank learned), and under a spell
+-- unfolded its ranks, highest first. The book's sections are its skill
+-- lines (General, then each specialisation) and the pet's last; the
+-- trainer's are the skill lines a spell's name is in, Other last.
+local function Open(name)
+    local t = MedalluinCharDB and MedalluinCharDB.bookOpen
+    return type(t) == "table" and t[name] == true
+end
+
+local function Fold(name)
+    MedalluinCharDB = MedalluinCharDB or {}
+    MedalluinCharDB.bookOpen = type(MedalluinCharDB.bookOpen) == "table" and MedalluinCharDB.bookOpen or {}
+    MedalluinCharDB.bookOpen[name] = not Open(name) or nil
+end
+
+-- A section collapsed to its heading (MedalluinCharDB.bookShut, by its
+-- name; the trainer's apart from the book's)
+local function Shut(key)
+    local t = MedalluinCharDB and MedalluinCharDB.bookShut
+    return type(t) == "table" and t[key] == true
+end
+
+local function Collapse(key)
+    MedalluinCharDB = MedalluinCharDB or {}
+    MedalluinCharDB.bookShut = type(MedalluinCharDB.bookShut) == "table" and MedalluinCharDB.bookShut or {}
+    MedalluinCharDB.bookShut[key] = not Shut(key) or nil
+end
+
+-- A skill line's role: the game's, by its specialisation, where it has
+-- one; else by the tree's (English) name, damage for the rest. General
+-- (the first line) has none.
+local ROLE_BY_NAME = { Restoration = "HEALER", Holy = "HEALER", Discipline = "HEALER", Protection = "TANK",
+    ["Feral Combat"] = "TANK" }
+local function Role(line, l)
+    if l == 1 or not line then return nil end
+    if line.specID and GetSpecializationRoleByID then
+        local ok, r = pcall(GetSpecializationRoleByID, line.specID)
+        if ok and ROLE[r] then return r end
+    end
+    return ROLE_BY_NAME[line.name] or "DAMAGER"
+end
+
+-- a rank row: the rank's own slot (it casts that rank), under its spell
+local function Rank(src, top)
+    return { rank = true, of = top, slot = src.slot, bank = src.bank, info = src.info,
+        key = "r" .. tostring(src.info.actionID) }
+end
+
+local function Section(out, name, list, now, trainer, role, icon)
+    if #list == 0 then return end
+    local key = (trainer and "trainer:" or "") .. name
+    local shut = Shut(key)
+    table.insert(out, { heading = name, shut = key, closed = shut, count = #list, now = now, role = role,
+        icon = icon })
+    if shut then return end
+    for _, item in ipairs(list) do
+        item.key = item.key or tostring(item.info.actionID)
+        table.insert(out, item)
+        if item.lower and #item.lower > 0 and Open(item.info.name) then
+            table.insert(out, Rank(item, item))
+            for i = #item.lower, 1, -1 do table.insert(out, Rank(item.lower[i], item)) end
+        end
+    end
+end
+
+-- The trainer's services still to learn: no slot, nothing to cast.
 local function Trained()
     local lines, of = {}, {}
     for l = 1, SB.GetNumSpellBookSkillLines() do
         local line = SB.GetSpellBookSkillLineInfo(l)
         if line and not line.shouldHide then
-            lines[l] = { name = line.name, icon = line.iconID, items = {} }
+            lines[l] = { name = line.name, items = {}, role = Role(line, l), icon = line.iconID }
             for slot = line.itemIndexOffset + 1, line.itemIndexOffset + line.numSpellBookItems do
                 local info = SB.GetSpellBookItemInfo(slot, BANK.Player)
                 if info and not of[info.name] then of[info.name] = l end
@@ -87,40 +170,25 @@ local function Trained()
         table.insert(section.items, { trainer = e, now = t.now, info = { name = e.name, subName = e.rank or "",
             iconID = e.icon, actionID = e.name .. "|" .. (e.rank or "") } })
     end
-    local out, order = {}, {}
+    local out = {}
+    local order = {}
     for l = 1, SB.GetNumSpellBookSkillLines() do
         if lines[l] then table.insert(order, lines[l]) end
     end
     table.insert(order, other)
     for _, section in ipairs(order) do
-        if #section.items > 0 then
-            if #out % 2 == 1 then table.insert(out, { filler = true }) end
-            local now = 0
-            for _, item in ipairs(section.items) do if item.now then now = now + 1 end end
-            table.insert(out, { heading = section, now = now })
-            table.insert(out, { filler = true })
-            for _, item in ipairs(section.items) do table.insert(out, item) end
-        end
+        local now = 0
+        for _, item in ipairs(section.items) do if item.now then now = now + 1 end end
+        Section(out, section.name, section.items, now, true, section.role, section.icon)
     end
     return out
 end
 
--- A page's items: { slot, bank, info } from its skill line, or the pet's,
--- or the trainer's. A spell's ranks are its highest learned (highest; its
--- lower ranks in lower), the others left out unless every rank is asked for.
-local function Items(p)
-    local out = {}
-    if p.trainer then return Trained() end
-    if p.pet then
-        for slot = 1, SB.HasPetSpells() or 0 do
-            local info = SB.GetSpellBookItemInfo(slot, BANK.Pet)
-            if info then table.insert(out, { slot = slot, bank = BANK.Pet, info = info }) end
-        end
-        return out
-    end
-    local line = SB.GetSpellBookSkillLineInfo(p.line)
-    if not line then return out end
-    local all, ranks = {}, {}
+-- A skill line's spells: { slot, bank, info }, each at its highest rank
+-- learned (highest; its lower ranks in lower). A rank not learned yet of a
+-- spell you have is left out.
+local function Line(line)
+    local all, ranks, out = {}, {}, {}
     for slot = line.itemIndexOffset + 1, line.itemIndexOffset + line.numSpellBookItems do
         local info = SB.GetSpellBookItemInfo(slot, BANK.Player)
         if info then
@@ -138,14 +206,30 @@ local function Items(p)
         top.highest, top.lower = true, {}
         for i = 1, #list - 1 do table.insert(top.lower, list[i]) end
     end
-    if ns.db.spellbookAllRanks then return all end
     for _, item in ipairs(all) do
         local info = item.info
-        -- a rank not learned yet of a spell you have, too, is left out
         local kept = info.itemType == TYPE.Spell and item.highest
             or info.itemType ~= TYPE.Spell and not (info.itemType == TYPE.FutureSpell and ranks[info.name])
         if kept then table.insert(out, item) end
     end
+    return out
+end
+
+local function Items(p)
+    if p.trainer then return Trained() end
+    local out = {}
+    for l = 1, SB.GetNumSpellBookSkillLines() do
+        local line = SB.GetSpellBookSkillLineInfo(l)
+        if line and not line.shouldHide then
+            Section(out, line.name, Line(line), nil, false, Role(line, l), line.iconID)
+        end
+    end
+    local pet = {}
+    for slot = 1, SB.HasPetSpells and SB.HasPetSpells() or 0 do
+        local info = SB.GetSpellBookItemInfo(slot, BANK.Pet)
+        if info then table.insert(pet, { slot = slot, bank = BANK.Pet, info = info }) end
+    end
+    Section(out, "Pet", pet, nil, false, nil, GetPetIcon and GetPetIcon() or nil)
     return out
 end
 
@@ -316,7 +400,45 @@ local function Bind(item)
     f:AddNewAction(item.bank == BANK.Pet and T.PetAction or T.Spell, info.actionID)
 end
 
--- ----------------------------------------------------------------- cells
+local Refresh                           -- below: a page drawn again
+
+-- ------------------------------------------------------------------ rows
+-- What a row's right side says: a spell's cast time over its cost, or the
+-- trainer's level over its price. Nothing for a passive, a flyout, or one
+-- not learned yet; a field the game will not tell is left blank.
+local function Word(s) return (tostring(s or ""):lower():gsub("^%l", string.upper)) end
+
+local function Costs(item)
+    if item.trainer then
+        local e = item.trainer
+        return item.now and "Now" or format("Level %d", e.level or 0), (e.cost or 0) > 0 and Money(e.cost) or nil
+    end
+    local info = item.info
+    if info.isPassive or (info.itemType ~= TYPE.Spell and info.itemType ~= TYPE.PetAction) then return nil, nil end
+    local id = info.spellID or info.actionID
+    if type(id) ~= "number" or not C_Spell then return nil, nil end
+    local cast, cost
+    if C_Spell.GetSpellInfo then
+        local ok, s = pcall(C_Spell.GetSpellInfo, id)
+        local ms = ok and type(s) == "table" and s.castTime
+        if type(ms) == "number" then cast = ms <= 0 and "Instant" or format("%g sec", ms / 1000) end
+    end
+    if C_Spell.GetSpellPowerCost then
+        local ok, list = pcall(C_Spell.GetSpellPowerCost, id)
+        for _, c in ipairs(ok and type(list) == "table" and list or {}) do
+            local word = Word(c.name and (_G[c.name] or c.name) or "")
+            if (c.cost or 0) > 0 then
+                cost = format("%d %s", c.cost, word)
+                break
+            elseif (c.costPercent or 0) > 0 then
+                cost = format("%d%% of base %s", c.costPercent, word:lower())
+                break
+            end
+        end
+    end
+    return cast, cost
+end
+
 local function Tooltip(owner, item)
     if item.trainer then
         local e = item.trainer
@@ -337,6 +459,11 @@ local function Tooltip(owner, item)
     elseif item.clicks then
         GameTooltip:AddLine("Click casting: " .. item.clicks, GOLD[1], GOLD[2], GOLD[3])
     end
+    if not Binding() and not item.rank and item.lower and #item.lower > 0 then
+        local dim = ns.colors.dim
+        GameTooltip:AddLine(Open(item.info.name) and "Left-click to hide its ranks." or "Left-click to show its ranks.",
+            dim[1], dim[2], dim[3])
+    end
     if item.missing then
         GameTooltip:AddLine(item.lowerOn and format("%s is on your bars.", item.lowerOn) or "Not on your action bars.",
             MISSING[1], MISSING[2], MISSING[3])
@@ -344,82 +471,114 @@ local function Tooltip(owner, item)
     GameTooltip:Show()
 end
 
-local function Choose(p, item)
-    -- Click Casting open: the spell bound, not chosen
+-- A spell with ranks to show (a rank's own row has none)
+local function Ranked(item)
+    return item and not item.rank and not item.trainer and item.lower ~= nil and #item.lower > 0
+end
+
+-- A click on a spell or a rank: Click Casting open, either button binds
+-- it; else the left shows or hides a spell's ranks (and does nothing on
+-- the rest). The right casts: the secure button's, the client's.
+local function Press(p, item, button)
     if Binding() then
         Bind(item)
-        return
-    end
-    p.chosen = item and item.info.actionID
-    W.Refresh()
-end
-
--- A heading's icon, a square at a time along its row, the last cut short.
--- Textures, not one repeating: Forever's icons share sheets, and a repeat
--- runs on into the neighbours.
-local CROP = 0.08
-local function Tiles(c, icon, width)
-    local n = icon and math.ceil(width / ROW) or 0
-    for k = 1, math.max(n, #c.tiles) do
-        local t = c.tiles[k]
-        if k <= n then
-            if not t then
-                t = c:CreateTexture(nil, "BACKGROUND", nil, -2)
-                t:SetDesaturated(true)
-                t:SetVertexColor(GOLD_D[1], GOLD_D[2], GOLD_D[3])
-                t:SetAlpha(0.5)
-                c.tiles[k] = t
-            end
-            local w = math.min(ROW, width - (k - 1) * ROW)
-            t:SetTexture(icon)
-            t:SetTexCoord(CROP, CROP + (1 - 2 * CROP) * w / ROW, CROP, 1 - CROP)
-            t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", (k - 1) * ROW, 0)
-            t:SetSize(w, ROW)
-            t:Show()
-        elseif t then
-            t:Hide()
-        end
+    elseif button == "LeftButton" and Ranked(item) then
+        Fold(item.info.name)
+        Refresh(p)
     end
 end
 
-local function Cell(p, i)
-    local c = CreateFrame("Button", nil, p.scroller and p.scroller.child or p.body)
-    c:SetHeight(ROW)
+-- A section's card, pooled, under its rows: a dark box with a brown edge,
+-- its specialisation's icon faint at its top right under the strip.
+local function Card(p, n)
+    local k = CreateFrame("Frame", nil, p.scroller.child)
+    k:SetFrameLevel(p.scroller.child:GetFrameLevel() + 1)
+    local ink = ns.colors.ink
+    k.fill = k:CreateTexture(nil, "BACKGROUND", nil, -8)
+    k.fill:SetAllPoints()
+    k.fill:SetColorTexture(ink[1], ink[2], ink[3], 0.9)
+    k.edges = {}
+    for i, side in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" }, { "TOPLEFT", "BOTTOMLEFT" },
+        { "TOPRIGHT", "BOTTOMRIGHT" } }) do
+        local t = k:CreateTexture(nil, "BORDER")
+        t:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+        t:SetPoint(side[1])
+        t:SetPoint(side[2])
+        if i <= 2 then t:SetHeight(1) else t:SetWidth(1) end
+        k.edges[i] = t
+    end
+    p.cards[n] = k
+    return k
+end
+
+-- a card from its strip's top to bottom; the icon square, as big as the
+-- rows under the strip leave room for (none on a card that is only strip)
+local function Finish(k, width, bottom)
+    local h = bottom - k.y
+    k:ClearAllPoints()
+    k:SetPoint("TOPLEFT", 0, -k.y)
+    k:SetSize(width, h)
+    k:Show()
+end
+
+-- A row, pooled: one frame for each kind, its parts shown for the kind.
+--   strip   Restoration                              Healer · 6 (+)
+--   spell   [icon] Lightning Bolt                    2.5 sec
+--                  Rank 4                            100 Mana
+--   ranked  [ic]]] Healing Wave                      3 sec      (a stack)
+--                  Rank 5 · 5 ranks                  200 Mana
+--   rank       |   Rank 4                  3 sec     155 Mana
+local function Row(p, i)
+    local c = CreateFrame("Button", nil, p.scroller.child)
+    -- over the cards
+    c:SetFrameLevel(p.scroller.child:GetFrameLevel() + 3)
+    -- a section's strip: its role's colour fading right, a line of it
+    -- under, the title, and its role and count at the right
+    c.band = c:CreateTexture(nil, "BACKGROUND", nil, -6)
+    c.band:SetPoint("TOPLEFT", 1, -1)
+    c.band:SetPoint("BOTTOMRIGHT", -1, 1)
+    c.line = c:CreateTexture(nil, "ARTWORK")
+    c.line:SetHeight(1)
+    c.line:SetPoint("BOTTOMLEFT", 1, 0)
+    c.line:SetPoint("BOTTOMRIGHT", -1, 0)
+    c.title = ns.Text(c, 14)
+    c.title:SetPoint("LEFT", 12, 0)
+    c.title:SetTextColor(unpack(PALE))
+    c.role = c:CreateTexture(nil, "ARTWORK")
+    c.role:SetSize(12, 12)
+    c.role:SetPoint("RIGHT", -10, 0)
+    c.role:SetVertexColor(PALE[1], PALE[2], PALE[3])
+    c.count = ns.Text(c, 11)
+    c.count:SetJustifyH("RIGHT")
+    c.count:SetTextColor(PALE[1] * 0.92, PALE[2] * 0.92, PALE[3] * 0.92)
+    -- a spell: its icon (stacked when it has ranks to show), its words
     c.icon = c:CreateTexture(nil, "ARTWORK")
-    c.icon:SetSize(ICON, ICON)
-    c.icon:SetPoint("LEFT", 2, 0)
     c.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    c.edge = c:CreateTexture(nil, "BACKGROUND")
+    c.edge = c:CreateTexture(nil, "BACKGROUND", nil, 5)
     c.edge:SetPoint("TOPLEFT", c.icon, -1, 1)
     c.edge:SetPoint("BOTTOMRIGHT", c.icon, 1, -1)
-    c.edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
-    c.mark = c:CreateTexture(nil, "BACKGROUND", nil, -1)
-    c.mark:SetAllPoints()
-    c.mark:SetColorTexture(0.541, 0.439, 0.204, 0.3)
-    c.mark:Hide()
-    -- a section's heading: a band across the row, the line's icon repeated
-    -- along it in the theme's brown, and its name centred over them
-    c.head = c:CreateTexture(nil, "BACKGROUND", nil, -3)
-    c.head:SetAllPoints()
-    c.head:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.18)
-    c.head:Hide()
-    c.tiles = {}
-    c.title = ns.Text(c, 13)
-    c.title:SetJustifyH("CENTER")
-    c.title:SetTextColor(unpack(GOLD))
-    c.count = ns.Text(c, 11)
-    c.count:SetPoint("TOP", c.title, "BOTTOM", 0, -2)
-    c.count:SetTextColor(unpack(ns.colors.dim))
-    -- a spell on no bar: a wash under the cell (with the icon's red ring)
+    -- the stack: a frame or two peeking out behind the icon, up and right
+    c.stack = {}
+    for k = 1, 2 do
+        local rim = c:CreateTexture(nil, "BACKGROUND", nil, 4 - 2 * k)
+        rim:SetPoint("TOPLEFT", c.icon, 3 * k - 1, 3 * k + 1)
+        rim:SetPoint("BOTTOMRIGHT", c.icon, 3 * k + 1, 3 * k - 1)
+        local fill = c:CreateTexture(nil, "BACKGROUND", nil, 5 - 2 * k)
+        fill:SetPoint("TOPLEFT", rim, 1, -1)
+        fill:SetPoint("BOTTOMRIGHT", rim, -1, 1)
+        fill:SetColorTexture(0.12, 0.1, 0.08, 1)
+        c.stack[k] = { rim = rim, fill = fill }
+    end
+    -- a spell on no bar: a wash under the row (with the icon's red ring)
     c.miss = c:CreateTexture(nil, "BACKGROUND", nil, -2)
-    c.miss:SetAllPoints()
+    c.miss:SetPoint("TOPLEFT", 1, 0)
+    c.miss:SetPoint("BOTTOMRIGHT", -1, 0)
     c.miss:SetColorTexture(MISSING[1], MISSING[2], MISSING[3], 0.12)
     c.miss:Hide()
     -- a click-cast binding: a small mouse in a gold ring on the icon's corner
     c.badge = CreateFrame("Frame", nil, c)
-    c.badge:SetSize(14, 14)
-    c.badge:SetPoint("CENTER", c.icon, "BOTTOMRIGHT", -2, 2)
+    c.badge:SetSize(20, 20)
+    c.badge:SetPoint("CENTER", c.icon, "BOTTOMRIGHT", -3, 3)
     local ring = c.badge:CreateTexture(nil, "ARTWORK", nil, 1)
     ring:SetAllPoints()
     ring:SetTexture(ns.media .. "strips\\round")
@@ -430,7 +589,7 @@ local function Cell(p, i)
     disc:SetTexture(ns.media .. "strips\\round")
     disc:SetVertexColor(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 1)
     c.badge.glyph = c.badge:CreateTexture(nil, "ARTWORK", nil, 3)
-    c.badge.glyph:SetSize(10, 10)
+    c.badge.glyph:SetSize(15, 15)
     c.badge.glyph:SetPoint("CENTER")
     c.badge.glyph:SetTexture(ns.media .. "strips\\mouse")
     c.badge.glyph:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
@@ -442,55 +601,138 @@ local function Cell(p, i)
     c.halo:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.3)
     c.halo:Hide()
     c.name = ns.Text(c, 12)
-    c.name:SetPoint("TOPLEFT", c.icon, "TOPRIGHT", 7, -3)
-    c.name:SetPoint("RIGHT", -2, 0)
+    c.name:SetPoint("TOPLEFT", INDENT + ICON + 8, -5)
+    c.name:SetPoint("RIGHT", -RIGHT, 0)
     c.name:SetJustifyH("LEFT")
     c.name:SetWordWrap(false)
-    c.sub = ns.Text(c, 11)
-    c.sub:SetPoint("BOTTOMLEFT", c.icon, "BOTTOMRIGHT", 7, 3)
+    c.sub = ns.Text(c, 10)
+    c.sub:SetPoint("BOTTOMLEFT", INDENT + ICON + 8, 5)
+    c.sub:SetPoint("RIGHT", -RIGHT, 0)
+    c.sub:SetJustifyH("LEFT")
+    c.sub:SetWordWrap(false)
     c.sub:SetTextColor(unpack(ns.colors.dim))
-    local glow = c:CreateTexture(nil, "HIGHLIGHT")
-    glow:SetAllPoints()
-    glow:SetColorTexture(1, 1, 1, 0.08)
-    -- in combat, with the secure layer away, the cell answers the mouse
-    c:SetScript("OnClick", function(self) Choose(p, self.item) end)
+    c.cast = ns.Text(c, 11)
+    c.cast:SetPoint("TOPRIGHT", -EDGE, -5)
+    c.cast:SetJustifyH("RIGHT")
+    c.cost = ns.Text(c, 10)
+    c.cost:SetPoint("BOTTOMRIGHT", -EDGE, 5)
+    c.cost:SetJustifyH("RIGHT")
+    c.cost:SetTextColor(unpack(BLUE))
+    -- a rank: a gold line down from its spell's (stacked) icon, its rank,
+    -- its numbers, on a faint band
+    c.rband = c:CreateTexture(nil, "BACKGROUND", nil, -3)
+    c.rband:SetPoint("TOPLEFT", 1, 0)
+    c.rband:SetPoint("BOTTOMRIGHT", -1, 0)
+    c.rband:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.1)
+    c.stem = c:CreateTexture(nil, "ARTWORK")
+    c.stem:SetWidth(1)
+    c.stem:SetPoint("TOPLEFT", INDENT + SMALL / 2, 0)
+    c.stem:SetPoint("BOTTOMLEFT", INDENT + SMALL / 2, 0)
+    c.stem:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    c.rank = ns.Text(c, 11)
+    c.rank:SetPoint("LEFT", INDENT + ICON + 8, 0)
+    c.rcast = ns.Text(c, 10)
+    c.rcast:SetPoint("RIGHT", -(EDGE + 96), 0)
+    c.rcast:SetJustifyH("RIGHT")
+    c.rcast:SetTextColor(unpack(ns.colors.dim))
+    c.rcost = ns.Text(c, 10)
+    c.rcost:SetPoint("RIGHT", -EDGE, 0)
+    c.rcost:SetJustifyH("RIGHT")
+    c.rcost:SetTextColor(unpack(BLUE))
+    -- what the secure button covers: the row within the card's edges
+    c.hit = CreateFrame("Frame", nil, c)
+    c.hit:SetPoint("TOPLEFT", 1, 0)
+    c.hit:SetPoint("BOTTOMRIGHT", -1, 0)
+    c.glow = c:CreateTexture(nil, "HIGHLIGHT")
+    c.glow:SetAllPoints(c.hit)
+    c.glow:SetColorTexture(1, 1, 1, 0.08)
+    -- A strip: a left click collapses its section, or opens it again. A
+    -- spell, in combat (the secure layer away) or cut by the scroll's
+    -- edge: the left button shows or hides its ranks, the right casts
+    -- nothing; Click Casting open, either binds
+    c:SetScript("OnClick", function(self, button)
+        if self.shut then
+            Collapse(self.shut)
+            Refresh(p)
+        elseif self.item then
+            Press(p, self.item, button)
+        end
+    end)
     c:SetScript("OnEnter", function(self) if self.item then Tooltip(self, self.item) end end)
     c:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    p.cells[i] = c
+    p.rows[i] = c
     return c
 end
 
--- the cells' places: two columns, as many rows as the page's height holds
-local function Rows(p)
-    return math.max(1, math.floor((p.body:GetHeight() or 0) / ROW))
+local PARTS = {
+    heading = { "band", "line", "title", "role", "count" },
+    spell = { "icon", "edge", "name", "sub", "cast", "cost" },
+    rank = { "rband", "stem", "rank", "rcast", "rcost" },
+}
+local function Kind(c, kind)
+    for k, list in pairs(PARTS) do
+        for _, part in ipairs(list) do c[part]:SetShown(k == kind) end
+    end
+    for _, part in ipairs({ "miss", "badge", "halo" }) do c[part]:Hide() end
+    for _, s in ipairs(c.stack) do
+        s.rim:Hide()
+        s.fill:Hide()
+    end
+    c.shut = nil
+    if kind == "heading" then
+        c:RegisterForClicks("LeftButtonUp")
+    else
+        c:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    end
+    c.kind = kind
 end
 
--- the cells' width across: the body's, less the trainer's scroll bar
-local function Width(p) return p.scroller and W.width - GUTTER or W.width end
-
--- count: every item at once (the trainer's, which scroll), or a page's
--- worth of rows (the rest, which turn)
-local function Place(p, count)
-    local rows = count and math.max(1, math.ceil(count / 2)) or Rows(p)
-    local width = (Width(p) - GAP) / 2
-    if p.scroller then p.scroller.child:SetSize(Width(p), rows * ROW) end
-    for i = 1, rows * 2 do
-        local c = p.cells[i] or Cell(p, i)
-        local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
-        c:ClearAllPoints()
-        c:SetPoint("TOPLEFT", col * (width + GAP), -row * ROW)
-        c:SetWidth(width)
+-- The entries laid out top to bottom in the scroll's child, a card under
+-- each section (its strip and rows, a little room under the last), a gap
+-- between the cards; the rows and cards left over hidden.
+local function Place(p, items)
+    local width = W.width - GUTTER
+    local y, n, card = 0, 0, nil
+    local function Close()
+        if not card then return end
+        if not card.shut then y = y + PAD end
+        Finish(card, width, y)
     end
-    return rows * 2
+    for i, item in ipairs(items) do
+        local c = p.rows[i] or Row(p, i)
+        if item.heading then
+            Close()
+            if card then y = y + SPACE end
+            n = n + 1
+            card = p.cards[n] or Card(p, n)
+            card.y, card.shut, card.icon = y, item.closed, item.icon
+        end
+        local h = item.heading and HEAD or item.rank and RANK or SPELL
+        c:ClearAllPoints()
+        c:SetPoint("TOPLEFT", 0, -y)
+        c:SetSize(width, h)
+        c.y, c.h = y, h
+        c:Show()
+        y = y + h
+    end
+    Close()
+    for i = #items + 1, #p.rows do
+        p.rows[i].item = nil
+        p.rows[i]:Hide()
+    end
+    for i = n + 1, #p.cards do p.cards[i]:Hide() end
+    p.scroller.child:SetSize(width, math.max(1, y))
 end
 
 -- -------------------------------------------------------- the secure layer
--- One secure button per cell, over it: the cast is the client's.
+-- One secure button per row in view, over it: the cast is the client's.
 local function Secure(i)
     local b = layer.buttons[i]
     if b then return b end
     b = CreateFrame("Button", nil, layer, "SecureActionButtonTemplate")
-    b:RegisterForClicks("AnyUp", "AnyDown")
+    -- the right button casts; the left shows a spell's ranks, and drags
+    -- (Follow: in bind mode either binds)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp", "RightButtonDown")
     -- cast on the release, whatever ActionButtonUseKeyDown says: a press
     -- held to drag the spell to a bar casts nothing
     b:SetAttribute("useOnKeyDown", false)
@@ -500,10 +742,10 @@ local function Secure(i)
             SB.PickupSpellBookItem(self.item.slot, self.item.bank)
         end
     end)
-    b:SetScript("PostClick", function(self, _, down)
+    b:SetScript("PostClick", function(self, button, down)
         -- binding: once a click, on its release (the press comes here too)
         if down and Binding() then return end
-        Choose(self.page, self.item)
+        if self.item then Press(self.page, self.item, button) end
     end)
     b:SetScript("OnEnter", function(self) if self.item then Tooltip(self, self.item) end end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -514,8 +756,9 @@ local function Secure(i)
     return b
 end
 
--- What a cell's button casts: a spell or a flyout, or nothing (a passive,
--- one not learned yet).
+-- What a row's button casts on the right button: a spell or a flyout, or
+-- nothing (a passive, one not learned yet). type2, not type: the left
+-- button (type1, else type) finds nothing, and casts nothing.
 local function Arm(b, item)
     local info = item and item.info
     local kind, what
@@ -526,33 +769,45 @@ local function Arm(b, item)
             kind, what = "flyout", info.actionID
         end
     end
-    b:SetAttribute("type", kind)
+    b:SetAttribute("type", nil)
+    b:SetAttribute("type2", kind)
     b:SetAttribute("spell", what)
 end
 
--- Out of combat only: the buttons over the page's cells, armed; the rest
--- away. The layer is shown while the window is open (a driver hides it in
--- combat), and hidden when it closes.
+-- Out of combat only: a button over each spell or rank row wholly in view,
+-- armed; the rest away. A row the scroll's edge cuts has none (it casts
+-- nothing) until it scrolls into view. The layer is shown while
+-- the window is open (a driver hides it in combat), and hidden when it
+-- closes.
 local function Follow()
     if not layer or InCombatLockdown() then return end
     local p = W.Current()
-    -- the trainer's cells cast nothing, and they scroll: no secure buttons,
-    -- the cells answer the mouse themselves
-    local cells = open and p and not p.scroller and p.cells or {}
-    for i = 1, math.max(#cells, #layer.buttons) do
-        local c = cells[i]
-        if c and c:IsShown() and c.item then
-            local b = Secure(i)
-            b.item, b.page = c.item, p
-            -- Click Casting open: nothing cast, the click binds (Choose)
-            Arm(b, not Binding() and c.item or nil)
-            b:SetShown(W.Over(b, c))
-        elseif layer.buttons[i] then
-            local b = layer.buttons[i]
-            b.item = nil
-            Arm(b, nil)
-            b:Hide()
+    local rows = open and p and p.casts and p.rows or {}
+    local s = p and p.scroller
+    local top = s and s.offset or 0
+    local bottom = top + (s and s.scroll:GetHeight() or 0)
+    local n = 0
+    for _, c in ipairs(rows) do
+        local item = c:IsShown() and c.item
+        if item and c.y >= top - 0.5 and c.y + c.h <= bottom + 0.5 then
+            n = n + 1
+            local b = Secure(n)
+            b.item, b.page = item, p
+            -- Click Casting open: nothing cast, the click binds (Press)
+            Arm(b, not Binding() and item or nil)
+            if Binding() then
+                b:RegisterForClicks("AnyUp", "AnyDown")
+            else
+                b:RegisterForClicks("LeftButtonUp", "RightButtonUp", "RightButtonDown")
+            end
+            b:SetShown(W.Over(b, c.hit))
         end
+    end
+    for i = n + 1, #layer.buttons do
+        local b = layer.buttons[i]
+        b.item = nil
+        Arm(b, nil)
+        b:Hide()
     end
     if open then
         RegisterStateDriver(layer, "visibility", "[combat] hide; show")
@@ -563,169 +818,135 @@ local function Follow()
 end
 
 -- ------------------------------------------------------------------ pages
--- The trainer's details: the one chosen, or what training now comes to.
-local function Summary(p, items, chosen)
-    if chosen then
-        local e = chosen.trainer
-        p.details:Set({ title = e.name, sub = Sub(chosen),
-            text = (chosen.now and "You can train it now" or format("You can train it at level %d", e.level))
-                .. ", at your class trainer." })
-        return
-    end
-    local n, cost, soonest = 0, 0, nil
-    for _, item in ipairs(items) do
-        if item.trainer then
-            if item.now then n, cost = n + 1, cost + (item.trainer.cost or 0) end
-            if not soonest or item.trainer.level < soonest then soonest = item.trainer.level end
-        end
-    end
-    p.details.nothing:SetText(not soonest and "Nothing left to train."
-        or n == 0 and "Nothing to train yet: the next at level " .. soonest .. "."
-        or format("Train now: %d |4spell:spells;, %s in all.", n, Money(cost)))
-    p.details:Set(nil)
-end
-
 local Band
-local function Refresh(p)
+function Refresh(p)
+    if not p.scroller then return end
     local items = Items(p)
-    local per = Place(p, p.scroller and #items)
-    local pages = math.max(1, math.ceil(#items / per))
-    p.at = math.min(math.max(1, p.at or 1), pages)
-    local first = (p.at - 1) * per
-    local chosen
+    Place(p, items)
     local macros = Macros()
     local bound = ns.db.spellbookClickCast and ns.clickcast and { ns.clickcast.Bound() }
     local binding = Binding()
     local cbf = _G.ClickBindingFrame
     -- the halo while nothing is in the binder: pick one
     local ready = binding and cbf and ns.clickcast.Step and ns.clickcast.Step() == 1
-    for i, c in ipairs(p.cells) do
-        local item = i <= per and items[first + i]
-        if item and item.filler then item = nil end
-        local heading = item and item.heading and true or false
-        for _, r in ipairs({ c.head, c.title, c.count }) do r:SetShown(heading) end
-        if not heading then Tiles(c, nil, 0) end
-        for _, r in ipairs({ c.icon, c.edge, c.name, c.sub }) do r:SetShown(not heading) end
-        -- a heading answers no click: it would only drop the spell chosen
-        c:EnableMouse(not (item and item.heading))
-        if item and item.heading then
-            -- a trainer's section: the line's name centred on its icon,
-            -- repeated a square at a time along the row
-            local s = item.heading
-            c.item = nil
-            c:Show()
-            c:SetWidth(Width(p))
-            Tiles(c, s.icon or 136243, Width(p))
-            c.title:SetText(s.name)
-            c.count:SetText(item.now > 0 and format("%d to train now", item.now) or "")
-            c.title:ClearAllPoints()
-            c.title:SetPoint("CENTER", 0, item.now > 0 and 7 or 0)
-            c.mark:Hide()
-            c.miss:Hide()
-            c.badge:Hide()
-            c.halo:Hide()
-            item = nil
-        else
-            c.item = item or nil
-            c:SetShown(item and true or false)
-        end
-        if item then
-            local info = item.info
-            c.icon:SetTexture(info.iconID)
-            local learned = info.itemType ~= TYPE.FutureSpell
-            if item.trainer then learned = item.now end
-            c.icon:SetDesaturated(not learned)
-            c.icon:SetAlpha((learned and not info.isPassive) and 1 or 0.6)
-            c.name:SetText(info.name)
-            c.name:SetTextColor(unpack(learned and (info.isPassive and ns.colors.dim or GOLD) or ns.colors.dim))
-            c.sub:SetText(Sub(item) or "")
-            -- its click-cast binding: after its rank, and the mouse on its icon
-            item.clicks = Clicks(item, bound)
-            if item.clicks then
-                local sub = Sub(item)
-                c.sub:SetText((sub and sub .. " · " or "") .. GOLD_HEX .. item.clicks .. "|r")
-            end
-            c.badge:SetShown(item.clicks ~= nil and not binding)
-            c.mark:SetShown(info.actionID == p.chosen)
-            -- (in bind mode the bars are not the question: no red edge)
-            if binding then
-                item.missing, item.lowerOn = false, nil
+    for i, item in ipairs(items) do
+        local c = p.rows[i]
+        if item.heading then
+            Kind(c, "heading")
+            c.item, c.shut = nil, item.shut
+            -- its role's colour fading right, a line of it under
+            local col = ROLE[item.role] or GOLD_D
+            c.band:SetColorTexture(1, 1, 1, 1)
+            if c.band.SetGradient and CreateColor then
+                c.band:SetGradient("HORIZONTAL", CreateColor(col[1], col[2], col[3], 0.55),
+                    CreateColor(col[1], col[2], col[3], 0.12))
             else
-                item.missing, item.lowerOn = Missing(item, macros)
+                c.band:SetColorTexture(col[1], col[2], col[3], 0.3)
             end
-            -- on no bar: a ring two pixels wide in red, and the wash
-            local edge, ring = item.missing and MISSING or GOLD_D, item.missing and 2 or 1
-            c.edge:SetColorTexture(edge[1], edge[2], edge[3], 1)
-            c.edge:ClearAllPoints()
-            c.edge:SetPoint("TOPLEFT", c.icon, -ring, ring)
-            c.edge:SetPoint("BOTTOMRIGHT", c.icon, ring, -ring)
-            c.miss:SetShown(item.missing and true or false)
-            -- Click Casting open: what it can bind lit (a halo while a slot
-            -- waits), the rest grey
-            local can = binding and Bindable(item)
-            c.halo:SetShown(can and ready or false)
-            if binding then
-                if can then
-                    c.edge:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+            c.line:SetColorTexture(col[1], col[2], col[3], 1)
+            c.title:SetText(item.heading)
+            c.role:SetShown(item.role ~= nil)
+            if item.role then c.role:SetTexture(ns.media .. "strips\\" .. ROLE_GLYPH[item.role]) end
+            c.count:ClearAllPoints()
+            c.count:SetPoint("RIGHT", item.role and -28 or -10, 0)
+            c.count:SetText((item.role and ROLE_WORD[item.role] .. "  ·  " or "") .. item.count
+                .. ((item.now or 0) > 0 and format("  ·  %d to train now", item.now) or ""))
+        else
+            Kind(c, item.rank and "rank" or "spell")
+            c.item = item
+            local info = item.info
+            local cast, cost = Costs(item)
+            if item.rank then
+                c.rank:SetText(info.subName ~= "" and info.subName or info.name)
+                c.rcast:SetText(cast or "")
+                c.rcost:SetText(cost or "")
+                -- in bind mode, a rank it cannot bind greyed
+                local grey = binding and not Bindable(item)
+                c.rank:SetTextColor(unpack(grey and ns.colors.dim or ns.colors.text or { 1, 1, 1 }))
+            else
+                local ranks = Ranked(item) and #item.lower + 1 or 0
+                local unfolded = ranks > 1 and Open(info.name)
+                -- with ranks: a smaller icon, a frame or two stacked behind
+                -- it, gold while they show
+                c.icon:ClearAllPoints()
+                if ranks > 1 then
+                    c.icon:SetSize(SMALL, SMALL)
+                    c.icon:SetPoint("LEFT", INDENT, -2)
                 else
-                    c.icon:SetDesaturated(true)
-                    c.icon:SetAlpha(0.5)
-                    c.name:SetTextColor(unpack(ns.colors.dim))
+                    c.icon:SetSize(ICON, ICON)
+                    c.icon:SetPoint("LEFT", INDENT, 0)
+                end
+                local rim = unfolded and GOLD or GOLD_D
+                for k, st in ipairs(c.stack) do
+                    local on = ranks > k
+                    st.rim:SetShown(on)
+                    st.fill:SetShown(on)
+                    st.rim:SetColorTexture(rim[1], rim[2], rim[3], 1)
+                end
+                c.icon:SetTexture(info.iconID)
+                local learned = info.itemType ~= TYPE.FutureSpell
+                if item.trainer then learned = item.now end
+                c.icon:SetDesaturated(not learned)
+                c.icon:SetAlpha((learned and not info.isPassive) and 1 or 0.6)
+                c.name:SetText(info.name)
+                c.name:SetTextColor(unpack(learned and (info.isPassive and ns.colors.dim or GOLD) or ns.colors.dim))
+                -- its rank (the trainer's), how many it has folded away, its click
+                local sub
+                if item.trainer then
+                    sub = item.trainer.rank ~= "" and item.trainer.rank or nil
+                else
+                    sub = Sub(item)
+                end
+                if ranks > 1 and not unfolded then
+                    sub = (sub and sub .. "  ·  " or "") .. format("%d ranks", ranks)
+                end
+                item.clicks = Clicks(item, bound)
+                if item.clicks then sub = (sub and sub .. "  ·  " or "") .. GOLD_HEX .. item.clicks .. "|r" end
+                c.sub:SetText(sub or "")
+                c.cast:SetText(cast or "")
+                c.cast:SetTextColor(unpack(item.trainer and not item.now and ns.colors.dim
+                    or ns.colors.text or { 1, 1, 1 }))
+                c.cost:SetText(cost or "")
+                c.badge:SetShown(item.clicks ~= nil and not binding)
+                -- (in bind mode the bars are not the question: no red edge)
+                if binding then
+                    item.missing, item.lowerOn = false, nil
+                else
+                    item.missing, item.lowerOn = Missing(item, macros)
+                end
+                -- on no bar: a ring two pixels wide in red, and the wash
+                local edge, ring = item.missing and MISSING or GOLD_D, item.missing and 2 or 1
+                c.edge:SetColorTexture(edge[1], edge[2], edge[3], 1)
+                c.edge:ClearAllPoints()
+                c.edge:SetPoint("TOPLEFT", c.icon, -ring, ring)
+                c.edge:SetPoint("BOTTOMRIGHT", c.icon, ring, -ring)
+                c.miss:SetShown(item.missing and true or false)
+                -- Click Casting open: what it can bind lit (a halo while a
+                -- slot waits), the rest grey
+                local can = binding and Bindable(item)
+                c.halo:SetShown(can and ready or false)
+                if binding then
+                    if can then
+                        c.edge:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+                    else
+                        c.icon:SetDesaturated(true)
+                        c.icon:SetAlpha(0.5)
+                        c.name:SetTextColor(unpack(ns.colors.dim))
+                    end
                 end
             end
         end
     end
-    for _, item in ipairs(items) do
-        if item.info and item.info.actionID == p.chosen then chosen = item end
-    end
-    p.pages = pages
-    if p.scroller then p.scroller.To(p.scroller.target) end
+    p.scroller.To(p.scroller.target)
     Band(p)
-    if p.trainer then
-        Summary(p, items, chosen)
-    elseif chosen then
-        local text = SB.GetSpellBookItemDescription and SB.GetSpellBookItemDescription(chosen.slot, chosen.bank)
-        local sub = Sub(chosen) or ""
-        -- the ranks left out, named
-        if not ns.db.spellbookAllRanks and chosen.lower and #chosen.lower > 0 then
-            local names = {}
-            for _, low in ipairs(chosen.lower) do table.insert(names, low.info.subName) end
-            sub = (sub ~= "" and sub .. "  ·  " or "") .. "Also " .. table.concat(names, ", ")
-        end
-        p.details:Set({ title = chosen.info.name, sub = sub, text = text or "" })
-        -- its tick: a spell with ranks to rise through, kept on its highest
-        local tick = p.details.ticks[1]
-        if tick then
-            local ranked = chosen.highest and not chosen.info.isPassive and chosen.lower and #chosen.lower > 0
-            tick:SetShown(ranked and true or false)
-            tick:Set(ns.db.spellbookUpRankAll or Wanted(chosen.info.name), not ns.db.spellbookUpRankAll)
-        end
-    else
-        p.details:Set(nil)
-    end
     Follow()
 end
 
--- Refresh keeps the page in range, as it must when the window grows
-local function Turn(p, by)
-    p.at = (p.at or 1) + by
-    Refresh(p)
-end
-
--- The margin, edge to edge (ns.window.Segments): All ranks (a toggle),
--- and Trainer once a class trainer has been read, which opens its page
--- and, from it, goes back.
+-- The margin, edge to edge (ns.window.Segments): Trainer, once a class
+-- trainer has been read, which opens its page and, from it, goes back.
 local trainerPage, back
 local function Controls(p, band)
     local row = ns.window.Segments(band, { height = band:GetHeight(), items = {
-        { key = "all", label = "All ranks", click = function()
-            if p.trainer then return end            -- it means nothing there
-            ns.SetOption("spellbookAllRanks", not ns.db.spellbookAllRanks)
-        end, tip = function()
-            if p.trainer then return "Every rank the trainer teaches is listed here." end
-            return ns.db.spellbookAllRanks and "List each spell once, at its highest rank."
-                or "List every rank of each spell."
-        end },
         { key = "trainer", label = "Trainer", click = function()
             if W.Current() == trainerPage then
                 -- the page it came from, or the first with a tab
@@ -746,52 +967,40 @@ local function Controls(p, band)
     row:SetPoint("TOPLEFT")
     row:SetPoint("TOPRIGHT")
     p.margin = row
-    p.allRanks, p.trainerButton = row.byKey.all, row.byKey.trainer
+    p.trainerButton = row.byKey.trainer
 end
 
--- the margin's state: All ranks marked while on, and off on the trainer's
--- page, where it means nothing; Trainer once read, marked while its page
--- shows (All ranks takes the row until then)
+-- the margin's state: Trainer once read, marked while its page shows
 function Band(p)
     if not p.margin then return end
-    p.margin:Set("all", { selected = not p.trainer and ns.db.spellbookAllRanks, enabled = not p.trainer })
     p.margin:Set("trainer", { selected = p.trainer, shown = ns.trainers.Visited() })
 end
 
 local function Page(spec)
     local p = spec
-    p.cells = {}
+    p.rows, p.cards = {}, {}
     p.flex, p.height, p.bandUsed, p.bandFlush = true, 0, true, true
     p.events = { "SPELLS_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE", "SPELL_UPDATE_ICON", "PLAYER_LEVEL_UP",
         "UNIT_PET", "PET_BAR_UPDATE", "ACTIONBAR_SLOT_CHANGED", "PLAYER_MONEY" }
     function p.Build(body, foot, band)
-        -- a spell with ranks: kept on its highest on your bars, or not
-        local ticks = not (p.pet or p.trainer) and { { label = "Keep on its highest rank",
-            tip = "A lower rank of it on your action bars is swapped for the highest as you learn it.",
-            click = function(on)
-                local chosen
-                for _, item in ipairs(Items(p)) do
-                    if item.info and item.info.actionID == p.chosen then chosen = item end
-                end
-                if not chosen then return end
-                MedalluinCharDB = MedalluinCharDB or {}
-                MedalluinCharDB.upRank = type(MedalluinCharDB.upRank) == "table" and MedalluinCharDB.upRank or {}
-                MedalluinCharDB.upRank[chosen.info.name] = on or nil
-                if on then UpRank() end
-                Refresh(p)
-            end } } or nil
-        p.details = ns.character.Details(foot, ticks, p.trainer and "" or "Choose a spell to read it.", 4)
-        p.footHeight = p.details.height
         Controls(p, band)
-        body:EnableMouseWheel(true)
-        if p.trainer then
-            p.scroller = ns.window.Scroller(body, GUTTER)
-            body:SetScript("OnMouseWheel", function(_, delta) p.scroller.To(p.scroller.target - delta * STEP) end)
-        else
-            body:SetScript("OnMouseWheel", function(_, delta) Turn(p, delta > 0 and -1 or 1) end)
+        if p.macros then
+            p.note = ns.Text(body, 12)
+            p.note:SetPoint("CENTER", 0, 0)
+            p.note:SetTextColor(unpack(ns.colors.dim))
+            p.note:SetText("Macros arrive in the next version.")
+            return
         end
+        p.scroller = ns.window.Scroller(body, GUTTER)
+        -- the buttons over the rows follow them as they scroll
+        if p.casts then p.scroller.Moved = function() Follow() end end
+        body:EnableMouseWheel(true)
+        body:SetScript("OnMouseWheel", function(_, delta) p.scroller.To(p.scroller.target - delta * STEP) end)
     end
-    function p.Refresh() Refresh(p) end
+    function p.Refresh()
+        if p.macros then Band(p) Follow() return end
+        Refresh(p)
+    end
     function p.Showing(on)
         if on then open = true elseif W.Current() == p then open = false end
         Follow()
@@ -799,31 +1008,23 @@ local function Page(spec)
     W.Page(p)
 end
 
--- General and each specialisation, by the book's own skill lines
-for i = 1, LINES do
-    local p = { key = "line" .. i, line = i, order = i, label = "", frame = "SpellBookFrame" }
-    function p.Available()
-        local line = SB and SB.GetSpellBookSkillLineInfo(i)
-        if not line or line.shouldHide then return false end
-        p.label, p.icon = line.name, line.iconID
-        return true
-    end
-    Page(p)
-end
--- the pet's, while it has spells
+-- the book: every skill line, then the pet's
 do
-    local p = { key = "pet", pet = true, order = LINES + 1, label = "Pet", frame = "SpellBookFrame" }
-    function p.Available()
-        if not (SB and SB.HasPetSpells and SB.HasPetSpells()) then return false end
-        p.icon = GetPetIcon and GetPetIcon() or 132599
-        return true
-    end
+    local p = { key = "book", casts = true, order = 1, label = "Spellbook", glyph = "spellbook",
+        frame = "SpellBookFrame" }
+    function p.Available() return SB ~= nil end
     Page(p)
 end
-
+-- macros: a page to come
+do
+    local p = { key = "macros", macros = true, order = 2, label = "Macros", glyph = "log",
+        frame = "SpellBookFrame" }
+    function p.Available() return SB ~= nil end
+    Page(p)
+end
 -- what the class trainers have still to teach, once one has been visited
 do
-    local p = { key = "trainer", trainer = true, tabless = true, order = LINES + 2, label = "Trainer",
+    local p = { key = "trainer", trainer = true, tabless = true, order = 3, label = "Trainer",
         frame = "SpellBookFrame", icon = 136243 }
     function p.Available() return ns.trainers.Visited() end
     Page(p)
@@ -856,7 +1057,7 @@ local function Start()
     -- a rank learned rises on the bars; a trainer read brings its button
     for _, e in ipairs({ "LEARNED_SPELL_IN_SKILL_LINE", "SPELLS_CHANGED" }) do ns.On(e, UpRank) end
     ns.OnSetting("spellbookUpRankAll", function(on) if on then UpRank() end end)
-    for _, key in ipairs({ "spellbookAllRanks", "spellbookMissing", "spellbookUpRankAll", "spellbookClickCast" }) do
+    for _, key in ipairs({ "spellbookMissing", "spellbookUpRankAll", "spellbookClickCast" }) do
         ns.OnSetting(key, function() W.Refresh() end)
     end
     for _, e in ipairs({ "TRAINER_SHOW", "TRAINER_UPDATE" }) do

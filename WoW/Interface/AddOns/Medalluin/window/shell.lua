@@ -401,7 +401,8 @@ ns.window.Segments = Segments
 -- at the left, where its bar stands: a track and a gold thumb, which a
 -- press or a drag places. To(y) eases the list there (the wheel), or sends
 -- it at once (now: the bar dragged). Lay the list out in s.child, and call
--- To(s.target) as it changes, to keep it in range.
+-- To(s.target) as it changes, to keep it in range. s.Moved, if set, is
+-- called as the list moves.
 local function Scroller(body, gutter)
     local s = { target = 0, offset = 0 }
     local scroll = CreateFrame("ScrollFrame", nil, body)
@@ -446,6 +447,7 @@ local function Scroller(body, gutter)
         end
         scroll:SetVerticalScroll(s.offset)
         s.Thumb()
+        if s.Moved then s.Moved() end
     end
     function s.To(to, now)
         local range = scroll:GetVerticalScrollRange() or 0
@@ -455,6 +457,7 @@ local function Scroller(body, gutter)
         scroll:SetVerticalScroll(s.offset)
         s.Thumb()
         scroll:SetScript("OnUpdate", s.offset ~= s.target and Ease or nil)
+        if s.Moved then s.Moved() end
     end
 
     -- pressed: the thumb's middle goes to the cursor, and follows it

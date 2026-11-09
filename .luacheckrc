@@ -121,7 +121,7 @@ read_globals = {
     "GetLifesteal", "GetMasteryEffect", "GetMeleeHaste", "GetParryChance", "GetRangedCritChance", "GetRangedHaste",
     "GetSpellBonusDamage", "GetSpellBonusHealing", "GetSpellCritChance", "GetSpellHitModifier", "GetUnitSpeed",
     "GetVersatilityBonus", "BASE_MOVEMENT_SPEED", "CR_HIT_MELEE", "CR_HIT_SPELL", "CR_VERSATILITY_DAMAGE_DONE",
-    "GetInventoryItemQuality", "GetInventoryItemTexture", "GetDetailedItemLevelInfo", "GetSpecializationInfo",
+    "GetInventoryItemQuality", "GetInventoryItemTexture", "GetDetailedItemLevelInfo", "GetSpecializationInfo", "GetSpecializationRoleByID",
     "C_GossipInfo", "C_MajorFactions", "C_SkillInfo", "GetText", "IsModifiedClick", "ChatEdit_InsertLink",
     "GetCurrentArenaSeason", "GetStatisticsCategoryList", "GetCategoryInfo", "GetCategoryNumAchievements",
     "GetStatistic", "GetAchievementInfo", "GetNumTitles", "IsTitleKnown", "GetTitleName", "GetCurrentTitle",

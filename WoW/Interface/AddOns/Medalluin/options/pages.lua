@@ -661,14 +661,11 @@ function ns.OptionPages()
         {
             id = "spellbook", name = "Spellbook", intro = "Forever only. Shared by every profile.",
             master = Check("spellbook", "Spellbook window",
-                "Your spells, a tab for General and each specialisation (and your pet's), in one window standing "
-                .. "on the side panel. Cast and drag them out of combat; in combat it reads. Untick it to keep the "
-                .. "game's spellbook.", true),
+                "Your spells in one list, a section for General and each specialisation (and your pet's), its "
+                .. "ranks folded under each spell, in one window standing on the side panel. Cast and drag them "
+                .. "out of combat; in combat it reads. Untick it to keep the game's spellbook.", true),
             groups = {
                 Group("Spells",
-                    Check("spellbookAllRanks", "Every rank",
-                        "List each rank of a spell. Unticked, a spell is listed once, at its highest rank learned, "
-                        .. "and its details name the others."),
                     Check("spellbookMissing", "Mark spells not on a bar",
                         "A red edge on a spell that is on none of your action bars, nor in a macro on one. Its "
                         .. "tooltip says so, or names the lower rank that is."),
