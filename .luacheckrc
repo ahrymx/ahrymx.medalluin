@@ -143,6 +143,8 @@ read_globals = {
     -- the LFG / Who window (social/)
     "C_LFGList", "PVEFrame", "GroupFinderFrame", "LFGParentFrame", "WhoFrame", "FriendsFrame", "ChatFrame_SendTell",
     "C_PartyInfo", "InviteUnit", "GetQuestDifficultyColor", "GetZoneText",
+    -- the Cooldown Manager (cooldowns/)
+    "CooldownViewerSettings", "EssentialCooldownViewer", "UtilityCooldownViewer", "BuffIconCooldownViewer",
     "C_LFGListRoles", "GameMenuFrame", "EnumerateFrames", "GAMEMENU_OPTIONS", "BLIZZARD_STORE", "ADDONS", "HUD_EDIT_MODE_MENU",
     "GAMEMENU_SUPPORT", "MACROS", "LOG_OUT", "EXIT_GAME", "GAMEMENU_EXTERNALEVENT", "GAME_MENU_SHOW_REWARDS",
     "GAMEMENU_NEW_BUTTON", "RATINGS_MENU", "MAINMENU_BUTTON", "RETURN_TO_GAME", "C_Map", "MapUtil", "ChatFrameUtil", "GetCVarBool", "GetClassInfo", "GetNumClasses",

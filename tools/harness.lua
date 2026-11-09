@@ -125,6 +125,12 @@ lfgPass = args[2] == "lfg"
 -- Blizzard's GameMenuFrame stubbed with its pool of buttons, taken docked
 -- and as the Medallion ring. "gamemenu game" leaves the game's.
 gamemenuPass = args[2] == "gamemenu"
+-- "cdm" (with "modern") plays the Cooldown Manager (cooldowns/): the game's
+-- CooldownViewerSettings stubbed with its parts and categories, its three
+-- icon viewers with their spells; the window dressed on the LFG window's
+-- place, the viewers' spells as medallions over the console. The LFG
+-- window's stubs come with it. "cdm off" plays both options off.
+cdmPass = args[2] == "cdm"
 lfgRetail = lfgPass and args[3] == "retail"
 local questieStub = questPass and args[3] == "questie"
 local questieBroken = questPass and args[3] == "broken"
@@ -235,6 +241,21 @@ function Region:SetPoint(p, rel, rp, x, y)
     end
     if type(rel) ~= "table" then rel, rp, x, y = self.parent, p, rel, rp end
     if type(rp) ~= "string" then rp, x, y = p, rp, x end
+    -- the game's own refusal (checked in the cdm pass): an anchor to a region
+    -- that hangs on this one, through its anchors or a scroll frame it is in
+    if anchorCycles and rel then
+        local seen = {}
+        local function on(r)
+            if r == self then return true end
+            if not r or seen[r] then return false end
+            seen[r] = true
+            for _, q in pairs(r.points or {}) do if on(q[1]) then return true end end
+            return r.parent and r.parent.kind == "ScrollFrame" and on(r.parent) or false
+        end
+        if on(rel) then
+            error("Action[SetPoint] failed because[Cannot anchor to a region dependent on it]", 2)
+        end
+    end
     if not self.points[p] then
         self.order = self.order or {}
         table.insert(self.order, p)
@@ -3566,7 +3587,7 @@ if mailPass then
 end
 
 -- ------------------------------------------------------------ the group finder
-if lfgPass then (function()
+if lfgPass or cdmPass then (function()
     -- Forever's group finder, shaped on Blizzard_GroupFinder_VanillaStyle's calls
     lfgWorld = { calls = {}, cvars = {} }
     local W = lfgWorld
@@ -3860,6 +3881,222 @@ if gamemenuPass then (function()
     C_AddOns = C_AddOns or {}
     C_AddOns.GetNumAddOns = function() return 3 end
     C_AddOns.IsAddOnLoaded = function(i) return i ~= 2 end
+end)() end
+
+if cdmPass then (function()
+    if args[3] == "off" then
+        MedalluinDB = MedalluinDB or {}
+        MedalluinDB.cdmWindow, MedalluinDB.cdmDisplay = false, false
+    end
+    function Region:GetObjectType() return self.kind end
+    -- the game's pools: what they gave out, in order
+    local function Pool()
+        local p = { list = {} }
+        function p:EnumerateActive()
+            local i = 0
+            return function() i = i + 1; return self.list[i] end
+        end
+        return p
+    end
+    cdmWorld = { calls = {}, Pool = Pool }
+    function Region:SetStatusBarTexture(t) self.statusTexture = t end
+    local W = cdmWorld
+    -- CooldownViewerSettings: a ButtonFrameTemplate, its side tabs, its lists
+    local f = CreateFrame("Frame", "CooldownViewerSettings", UIParent)
+    f:SetPoint("TOPLEFT", 16, -116)
+    f:SetSize(399, 609)
+    for _, k in ipairs({ "NineSlice", "PortraitContainer", "TitleContainer", "Inset" }) do
+        f[k] = CreateFrame("Frame", nil, f)
+        f[k]:Show()
+    end
+    for _, k in ipairs({ "Background", "Bg", "TopTileStreaks" }) do f[k] = f:CreateTexture(nil, "BACKGROUND") end
+    f.CloseButton = CreateFrame("Button", nil, f)
+    f.CloseButton.art = f.CloseButton:CreateTexture()
+    f.CloseButton:SetScript("OnClick", function() f:Hide() end)
+    f.TabButtons = {}
+    for i, m in ipairs({ "spells", "auras", "groupBuffs" }) do
+        local t = CreateFrame("Button", nil, f)
+        t.displayMode = m
+        for _, k in ipairs({ "Background", "Icon", "SelectedTexture", "TabGlow", "HighlightTexture" }) do
+            t[k] = t:CreateTexture()
+        end
+        t:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, -40 * i)
+        t:SetScript("OnClick", function() f:SetDisplayMode(m) end)
+        f.TabButtons[i] = t
+    end
+    local search = CreateFrame("EditBox", nil, f)
+    search.Left, search.Right, search.Middle = search:CreateTexture(), search:CreateTexture(), search:CreateTexture()
+    search.Instructions = search:CreateFontString()
+    f.SearchBox = search
+    f.SettingsDropdown = CreateFrame("Button", nil, f)
+    f.SettingsDropdown.Icon = f.SettingsDropdown:CreateTexture()
+    f.LayoutDropdown = CreateFrame("Button", nil, f)
+    f.LayoutDropdown.Background = f.LayoutDropdown:CreateTexture()
+    f.LayoutDropdown.Arrow = f.LayoutDropdown:CreateTexture()
+    f.LayoutDropdown.Text = f.LayoutDropdown:CreateFontString()
+    anchorCycles = true
+    f.CooldownScroll = CreateFrame("ScrollFrame", nil, f)
+    f.CooldownScroll.Content = CreateFrame("Frame", nil, f.CooldownScroll)
+    f.CooldownScroll.Content:SetPoint("TOPLEFT")
+    f.CooldownScroll.Content.ReorderMarker = CreateFrame("Frame", nil, f.CooldownScroll.Content)
+    f.GroupBuffFilter = CreateFrame("Frame", nil, f)
+    local undo = CreateFrame("Button", nil, f)
+    undo.Left = undo:CreateTexture()
+    undo.text = undo:CreateFontString()
+    function undo:GetFontString() return self.text end
+    undo:Disable()
+    f.UndoButton = undo
+    f.categoryPool = Pool()
+    -- its categories, built again on each layout: pooled, so a frame given
+    -- out again may hold another section
+    Enum = Enum or {}
+    Enum.CooldownViewerCategory = { Essential = 0, Utility = 1, TrackedBuff = 2, TrackedBar = 3,
+        HiddenActive = 4, HiddenPassive = 5 }
+    local CAT = Enum.CooldownViewerCategory
+    local NAMES = { "Frost Nova", "Blink", "Ice Block", "Arcane Intellect", "Slow Fall" }
+    local cats = {}
+    local function Category(i, name, n, id, bars)
+        local c = cats[i]
+        if not c then
+            c = CreateFrame("Frame", nil, f.CooldownScroll.Content)
+            c.Header = CreateFrame("Button", nil, c)
+            for _, k in ipairs({ "Left", "Right", "Middle", "HighlightLeft", "HighlightRight", "HighlightMiddle" }) do
+                c.Header[k] = c.Header:CreateTexture()
+            end
+            c.Header.Name = c.Header:CreateFontString()
+            c.Header:SetPoint("TOPLEFT", c, "TOPLEFT")
+            c.Header:SetPoint("TOPRIGHT", c, "TOPRIGHT")
+            c.Header:SetHeight(22)
+            c.Container = CreateFrame("Frame", nil, c)
+            c.Container:SetPoint("TOPLEFT", c.Header, "BOTTOMLEFT", 13, -15)
+            -- the game's grid: seven a row, by each item's own size
+            function c.Container:Layout()
+                table.insert(W.calls, "grid " .. tostring(c.Header.Name.text))
+                local x, y, j, w, h = 0, 0, 0, 0, 0
+                for item in c.itemPool:EnumerateActive() do
+                    item:ClearAllPoints()
+                    item:SetPoint("TOPLEFT", self, "TOPLEFT", x, -y)
+                    j = j + 1
+                    w, h = math.max(w, x + item:GetWidth()), math.max(h, y + item:GetHeight())
+                    if j % 7 == 0 then x, y = 0, y + item:GetHeight() + 8 else x = x + item:GetWidth() + 8 end
+                end
+                self:SetSize(w, h)
+            end
+            -- a ResizeLayoutFrame: its heading and its grid, 344 wide
+            function c:Layout()
+                self:SetSize(344, 37 + (self.collapsed and 0 or self.Container:GetHeight()))
+            end
+            function c:Init(obj)
+                self.obj = obj
+                self.Header.Name:SetText(obj.name)
+            end
+            function c:GetCategoryObject() return self.obj end
+            c.itemPool = Pool()
+            function c:IsCollapsed() return self.collapsed end
+            function c:SetCollapsed(on) self.collapsed = on; self:Layout() end
+            c.Header:SetScript("OnClick", function() c:SetCollapsed(not c.collapsed) end)
+            cats[i] = c
+        end
+        local obj = { name = name, GetCategory = function() return id end }
+        table.insert(f.currentCategories, obj)
+        c:Init(obj)
+        -- AddCategory: chained under the one before, the first at its parent's top
+        if W.prev then
+            c:SetPoint("TOPLEFT", W.prev, "BOTTOMLEFT", 0, -18)
+        else
+            c:SetPoint("TOPLEFT", c:GetParent(), "TOPLEFT", 0, 0)
+        end
+        W.prev = c
+        c:Show()
+        c.itemPool.list = {}
+        c.items = c.items or {}
+        for j = 1, n do
+            local item = c.items[j]
+            if not item then
+                item = CreateFrame("Frame", nil, c.Container)
+                item:SetSize(bars and 317 or 38, 38)
+                item.Icon = item:CreateTexture(nil, "ARTWORK")
+                if bars then item.Icon:SetPoint("TOPLEFT"); item.Icon:SetSize(38, 38) else item.Icon:SetAllPoints() end
+                item.Highlight = item:CreateTexture(nil, "HIGHLIGHT")
+                if bars then
+                    item.Bar = CreateFrame("StatusBar", nil, item)
+                    item.Bar.FillTexture = item.Bar:CreateTexture()
+                    item.Bar.Name = item.Bar:CreateFontString()
+                end
+                c.items[j] = item
+            end
+            item.layoutIndex = n - j + 1         -- the game's order, not the pool's
+            item.spell = NAMES[(j - 1) % #NAMES + 1]
+            function item:GetNameText() return self.spell end
+            function item:IsKnown() return self.spell ~= "Slow Fall" end
+            table.insert(c.itemPool.list, item)
+        end
+        c.Container:Layout()
+        c:SetCollapsed(c.collapsed)
+        table.insert(f.categoryPool.list, c)
+    end
+    function f:RefreshLayout()
+        table.insert(W.calls, "layout " .. tostring(self.displayMode))
+        for _, c in ipairs(self.categoryPool.list) do
+            c:Hide()
+            c:ClearAllPoints()
+        end
+        self.categoryPool.list, self.currentCategories, W.prev = {}, {}, nil
+        if self.displayMode == "groupBuffs" then return end
+        if self.displayMode == "auras" then
+            Category(3, "Tracked buffs", 2, CAT.TrackedBuff)
+            Category(4, "Tracked bars", 2, CAT.TrackedBar, true)
+            Category(2, "Not displayed", 2, CAT.HiddenPassive)
+        else
+            Category(1, "Essential", 4, CAT.Essential)
+            Category(2, "Utility", 3, CAT.Utility)
+            Category(3, "Not displayed", 5, CAT.HiddenActive)
+        end
+    end
+    function f:SetDisplayMode(m)
+        self.displayMode = m
+        self:RefreshLayout()
+    end
+    function f:UpdateSaveButtonStates() end
+    function f:ShowUIPanel() self:Show() end
+    function f:TogglePanel() if self:IsShown() then self:Hide() else self:ShowUIPanel() end end
+    f:SetScript("OnShow", function(self) self:SetDisplayMode(self.displayMode or "spells") end)
+    f:Hide()
+    SLASH_COOLDOWNVIEWERSETTINGS1 = "/CDM"
+    SlashCmdList.COOLDOWNVIEWERSETTINGS = function() f:TogglePanel() end
+    function HideUIPanel(p) p:Hide() end
+    -- the viewers: each an item pool at its Edit Mode place
+    W.viewers = {}
+    for _, v in ipairs({ { "EssentialCooldownViewer", 50, 4 }, { "UtilityCooldownViewer", 30, 3 },
+        { "BuffIconCooldownViewer", 40, 2 } }) do
+        local name, size, n = v[1], v[2], v[3]
+        local vf = CreateFrame("Frame", name, UIParent)
+        vf:SetPoint("CENTER", UIParent, "CENTER", 0, -200)
+        vf:SetSize(size * n, size)
+        vf.items = {}
+        function vf:GetItemFrames() return self.items end
+        function vf:OnAcquireItemFrame() end
+        function vf:RefreshLayout() end
+        function vf:Add()
+            local item = CreateFrame("Frame", nil, self)
+            item:SetSize(size, size)
+            item.Icon = item:CreateTexture(nil, "ARTWORK")
+            item.Icon:SetAllPoints()
+            item.mask = item:CreateMaskTexture()
+            item.Overlay = item:CreateTexture(nil, "OVERLAY")
+            item.OutOfRange = item:CreateTexture(nil, "OVERLAY")
+            item.Cooldown = CreateFrame("Cooldown", nil, item)
+            item.Cooldown.timer = item.Cooldown:CreateFontString()
+            item.ChargeCount = CreateFrame("Frame", nil, item)
+            item.ChargeCount.Current = item.ChargeCount:CreateFontString()
+            item.CooldownFlash = CreateFrame("Frame", nil, item)
+            table.insert(self.items, item)
+            self:OnAcquireItemFrame(item)
+            return item
+        end
+        for _ = 1, n do vf:Add() end
+        W.viewers[name] = vf
+    end
 end)() end
 
 -- ------------------------------------------------------------ load + fire
@@ -16075,4 +16312,214 @@ if gamemenuPass then (function()
     print("gamemenu shortcut clicked", table.concat(W.clicked, ","), "shown=" .. tostring(f.shown) .. "/"
         .. tostring(M.holder.shown), "ui=" .. tostring(UIParent.alpha))
     f:Hide()
+end)() end
+
+if cdmPass then (function()
+    local W = cdmWorld
+    local f = CooldownViewerSettings
+    local C = ns.cooldownWindow
+    local D = ns.cooldownDisplay
+    local function rect(f2)
+        local ok, q = pcall(resolve, f2)
+        return ok and q and q[4] and string.format("%.0f,%.0f-%.0f,%.0f", q[1], q[2], q[3], q[4]) or "unresolved"
+    end
+    local function has(fs) return fs and fs.font and (fs.font[1] or "?"):match("([^\\]+)$") or "theirs" end
+    print("cdm", "window=" .. tostring(ns.db.cdmWindow), "display=" .. tostring(ns.db.cdmDisplay),
+        "adopted=" .. tostring(C.frame ~= nil), "viewers=" .. tostring(next(D.viewers) ~= nil))
+    -- who holds the chat box's reach down
+    local holds = {}
+    local hold = ns.chat.Hold
+    ns.chat.Hold = function(on, who)
+        if who == "cdm" then table.insert(holds, tostring(on)) end
+        return hold(on, who)
+    end
+    SlashCmdList.COOLDOWNVIEWERSETTINGS("")
+    print("cdm open", "shown=" .. tostring(f.shown), "rect=" .. rect(f), "chat=" .. rect(ns.chat.box),
+        "lfg box=" .. rect(ns.lfg.box))
+    print("cdm art", "nineslice=" .. tostring(f.NineSlice.shown), "portrait=" .. tostring(f.PortraitContainer.shown),
+        "bg alpha=" .. tostring(f.Background.alpha), "inset alpha=" .. tostring(f.Inset.alpha),
+        "close art=" .. tostring(f.CloseButton.art.alpha))
+    local function tabs(tag)
+        local out = {}
+        for _, t in ipairs(f.TabButtons) do
+            local words
+            for _, r in ipairs({ t:GetRegions() }) do if r.kind == "FontString" then words = r end end
+            table.insert(out, string.format("%s[%s %s bg=%s%s]", t.displayMode, rect(t), words and words.text or "-",
+                tostring(t.Background.alpha), t.displayMode == f.displayMode and " on" or ""))
+        end
+        print(tag, table.concat(out, " "))
+    end
+    tabs("cdm tabs")
+    local function cats(tag)
+        local out = {}
+        for c in f.categoryPool:EnumerateActive() do
+            local n, round, rims, hl = 0, 0, 0, 0
+            for item in c.itemPool:EnumerateActive() do
+                n = n + 1
+                if item.Highlight.alpha == 0 then hl = hl + 1 end
+                for _, r in ipairs(item.all_) do
+                    if r.kind == "MaskTexture" then round = round + 1 end
+                    if r.kind == "Texture" and r.layer == "BACKGROUND" then rims = rims + 1 end
+                end
+            end
+            local signs = {}
+            for _, r in ipairs({ c.Header:GetRegions() }) do
+                if r.kind == "FontString" and r ~= c.Header.Name then table.insert(signs, r.text) end
+            end
+            table.insert(out, string.format("%s(%d: masks=%d rims=%d hl-hidden=%d slice=%s sign=%s font=%s)",
+                c.Header.Name.text, n, round, rims, hl, tostring(c.Header.Left.alpha), table.concat(signs, ""),
+                has(c.Header.Name)))
+        end
+        print(tag, table.concat(out, " "))
+    end
+    cats("cdm categories")
+    if not C.frame then
+        local e = W.viewers.EssentialCooldownViewer
+        print("cdm display off", rect(e), string.format("scale=%.2f", e:GetScale()),
+            "overlay=" .. tostring(e.items[1].Overlay.alpha))
+        return
+    end
+    -- a heading folded
+    local first = f.categoryPool.list[1]
+    first.Header.scripts.OnClick(first.Header)
+    cats("cdm folded")
+    first.Header.scripts.OnClick(first.Header)
+    -- Not displayed: a line each, in the game's order; the other sections a grid
+    local function lines(tag)
+        local out = {}
+        for c in f.categoryPool:EnumerateActive() do
+            local row = {}
+            local placed = {}
+            for _, item in ipairs(c.itemPool.list) do table.insert(placed, item) end
+            table.sort(placed, function(x, y)
+                local px, py = x.points.TOPLEFT or { 0, 0, 0, 0 }, y.points.TOPLEFT or { 0, 0, 0, 0 }
+                if px[4] ~= py[4] then return px[4] > py[4] end
+                return px[3] < py[3]
+            end)
+            for _, item in ipairs(placed) do
+                local name
+                for _, r in ipairs({ item:GetRegions() }) do
+                    if r.kind == "FontString" and r.shown ~= false and r.text then name = r.text end
+                end
+                local p = item.points and item.points.TOPLEFT
+                table.insert(row, string.format("%s@%s,%s %dx%d icon=%dx%d%s", name or "-", p and tostring(p[3]) or "?",
+                    p and tostring(p[4]) or "?", item:GetWidth(), item:GetHeight(), item.Icon:GetWidth(),
+                    item.Icon:GetHeight(), name and item.IsKnown and not item:IsKnown() and " dim" or ""))
+            end
+            table.insert(out, string.format("%s[box %dx%d: %s]", c.Header.Name.text, c.Container:GetWidth(),
+                c.Container:GetHeight(), table.concat(row, "; ")))
+        end
+        print(tag, table.concat(out, " "))
+    end
+    lines("cdm lines")
+    local hid = f.categoryPool.list[3].itemPool.list[1]
+    hid.scripts.OnEnter(hid)
+    local row
+    for _, r in ipairs(hid.all_) do if r.kind == "Texture" and r.sub == -8 then row = r end end
+    print("cdm line hover", "row=" .. tostring(row and row.shown))
+    hid.scripts.OnLeave(hid)
+    -- only the list scrolls: the sections over it in our block, its heading too
+    local content = f.CooldownScroll.Content
+    local function where(fr)
+        local p = fr:GetParent()
+        return p == content and "scroll" or p == f and "window" or p and p.parent == f and "block"
+            or p and p.parent == p and "?" or (p == nil and "none") or "own"
+    end
+    local function still(tag)
+        local out = {}
+        for c in f.categoryPool:EnumerateActive() do
+            table.insert(out, string.format("%s(in %s, heading %s %s)", c.Header.Name.text, where(c),
+                where(c.Header), rect(c.Header)))
+        end
+        print(tag, table.concat(out, " "), "scroll=" .. rect(f.CooldownScroll),
+            "marker=" .. where(content.ReorderMarker))
+    end
+    still("cdm still")
+    -- folding a still section: the list's heading and scroll follow it up
+    first.Header.scripts.OnClick(first.Header)
+    still("cdm still folded")
+    first.Header.scripts.OnClick(first.Header)
+    -- no room left for the list: the game's scroll, all of it
+    local bottom = f.GetBottom
+    local h = f.categoryPool.list[3].Header
+    f.GetBottom = function() return h:GetBottom() - 100 end
+    C.Stand(f)
+    still("cdm still no room")
+    f.GetBottom = bottom
+    C.Stand(f)
+    still("cdm still room again")
+    local item = first.itemPool.list[1]
+    local function rim(it)
+        for _, r in ipairs(it.all_) do
+            if r.kind == "Texture" and r.layer == "BACKGROUND" then
+                local c = r.vertex or r.color or {}
+                return string.format("%.2f,%.2f", c[1] or -1, c[4] or -1)
+            end
+        end
+        return "none"
+    end
+    local before = rim(item)
+    item.scripts.OnEnter(item)
+    local lit = rim(item)
+    item.scripts.OnLeave(item)
+    print("cdm hover", "rim " .. before .. " -> " .. lit .. " -> " .. rim(item))
+    -- the Buffs tab: bars
+    f.TabButtons[2].scripts.OnClick(f.TabButtons[2])
+    tabs("cdm tabs buffs")
+    cats("cdm categories buffs")
+    lines("cdm lines buffs")
+    -- back: the frame that was Not displayed is Utility again, a grid
+    f.TabButtons[1].scripts.OnClick(f.TabButtons[1])
+    lines("cdm lines back")
+    still("cdm still back")
+    local was = f.categoryPool.list[3]
+    f.TabButtons[3].scripts.OnClick(f.TabButtons[3])
+    print("cdm group buffs", "sections=" .. #f.categoryPool.list, "list's heading home=" ..
+        tostring(was.Header:GetParent() == was), "section shown=" .. tostring(was.shown),
+        "scroll=" .. rect(f.CooldownScroll))
+    f.TabButtons[2].scripts.OnClick(f.TabButtons[2])
+    f.TabButtons[2].scripts.OnClick(f.TabButtons[2])
+    local bar = f.categoryPool.list[2].itemPool.list[1].Bar
+    print("cdm bar", "texture=" .. tostring(bar.statusTexture or bar.texture), "name font=" .. has(bar.Name))
+    print("cdm controls", "search=" .. rect(f.SearchBox), "gear=" .. rect(f.SettingsDropdown),
+        "layout=" .. rect(f.LayoutDropdown), "list=" .. rect(f.CooldownScroll), "undo=" .. rect(f.UndoButton),
+        "undo words=" .. string.format("%.2f", f.UndoButton.text.textColor and f.UndoButton.text.textColor[1] or -1))
+    -- the panel manager moving it: back on the LFG place
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 16, -116)
+    print("cdm moved", rect(f))
+    -- the LFG window opening closes it; it opening closes the LFG window
+    ns.lfg.Open("browse")
+    print("cdm lfg opens", "cdm=" .. tostring(f.shown), "lfg=" .. tostring(ns.lfg.IsShown()))
+    SlashCmdList.COOLDOWNVIEWERSETTINGS("")
+    print("cdm opens over lfg", "cdm=" .. tostring(f.shown), "lfg=" .. tostring(ns.lfg.IsShown()),
+        "chat holds=" .. table.concat(holds, ","))
+    SlashCmdList.COOLDOWNVIEWERSETTINGS("")
+    print("cdm closed", "cdm=" .. tostring(f.shown), "chat holds=" .. table.concat(holds, ","))
+    -- the display: over the console
+    local function viewers(tag)
+        local out = {}
+        for _, name in ipairs({ "BuffIconCooldownViewer", "EssentialCooldownViewer", "UtilityCooldownViewer" }) do
+            local v = W.viewers[name]
+            local it = v.items[1]
+            table.insert(out, string.format("%s[%s scale=%.2f drawn=%.0f overlay=%s oor=%s flash=%s font=%s]",
+                name:gsub("CooldownViewer", ""), rect(v), v:GetScale(), it:GetWidth() * v:GetScale(),
+                tostring(it.Overlay.alpha),
+                tostring(it.OutOfRange.texture and it.OutOfRange.texture:match("round") and "round" or "theirs"),
+                tostring(it.CooldownFlash.alpha), has(it.ChargeCount.Current)))
+        end
+        print(tag, table.concat(out, " "))
+    end
+    print("cdm console", rect(ns.console))
+    viewers("cdm display")
+    -- a spell new in combat: dressed, nothing moved; Edit Mode moving one, undone after
+    inCombat = true
+    local e = W.viewers.EssentialCooldownViewer
+    local new = e:Add()
+    e:ClearAllPoints()
+    e:SetPoint("CENTER", UIParent, "CENTER", 300, 0)
+    print("cdm in combat", "new overlay=" .. tostring(new.Overlay.alpha), "essential=" .. rect(e))
+    inCombat = false
+    for _, fr in ipairs(events.PLAYER_REGEN_ENABLED or {}) do fr.scripts.OnEvent(fr, "PLAYER_REGEN_ENABLED") end
+    viewers("cdm after combat")
 end)() end

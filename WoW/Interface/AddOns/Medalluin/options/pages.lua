@@ -771,6 +771,23 @@ function ns.OptionPages()
             groups = {},
         },
         {
+            id = "cdm", name = "Cooldown Manager", intro = "Shared by every profile.",
+            master = Check("cdmWindow", "Cooldown Manager window",
+                "The game's Cooldown Manager (/cdm, Edit Mode's Cooldown Settings) in Medalluin's dress, standing "
+                .. "on the chat box where the LFG window stands: its tabs across the top, its spells as round "
+                .. "medallions. Everything in it is still the game's own: dragging spells between Essential, "
+                .. "Utility and Not displayed, their order, the alerts on a right-click, the layouts per spec, "
+                .. "import and export. It and the LFG window close each other. Untick it to keep the game's look.",
+                true),
+            groups = {
+                Group("Display", Check("cdmDisplay", "Cooldowns over the console",
+                    "The game's cooldown and buff icons as medallions in rows over the console: the tracked "
+                    .. "buffs on top, Essential under them, Utility smaller at its right, their sweeps round. "
+                    .. "Edit Mode moving them is undone out of combat. The tracked bars stay in the Auras tab. "
+                    .. "Untick it for the game's icons in their Edit Mode places.", true)),
+            },
+        },
+        {
             id = "npc", name = "Gossip and vendors", intro = "Shared by every profile.",
             master = Needs("chat", Check("npcWindows", "Gossip, quest, vendor, trainer, flight and mailbox windows",
                 "What an NPC says, its quest pages, its wares and what it teaches in one box standing on the chat "
