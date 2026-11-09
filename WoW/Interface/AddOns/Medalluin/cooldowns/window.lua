@@ -6,7 +6,7 @@
 --   Cooldown Manager                                       [x]
 --      Cooldowns         Buffs         Group buffs     <- its side tabs, open tabs across the top
 --   =========================================================
---   [ search spells          ] (gear) [ Enhancement  v ]
+--   [ search spells                                ] | (gear)
 --   - ESSENTIAL ----------------------------------------    its categories: our headings
 --     (o) (o) (o) (o)                                       its spells: round, a gold rim
 --   - UTILITY ------------------------------------------
@@ -15,7 +15,7 @@
 --     (o) Frost Nova                                        a line each: icon and name
 --     (o) Blink
 --   ---------------------------------------------------------
---   [                    Revert changes                  ]
+--   [<-] [ Enhancement       ^ ]                            Revert, the layouts
 --
 -- Only its look and its place are ours: every click, drag, menu, alert,
 -- layout and save is the game's own code, untouched, so nothing of ours
@@ -31,7 +31,12 @@ local _, ns = ...
 
 local L = ns.stripLayout
 local WIDTH = L.chatLeft + L.chatWidth
-local PAD, HEAD, TABS, ROW, BAND = 12, 36, 26, 24, 28
+local PAD, HEAD, TABS = 12, 36, 26
+local ROW, GAP = 28, 4              -- the search row's and the foot's cells, as the chat's tabs (strips/chat.lua)
+local EDGE = 3                      -- the gear's inset from the right: flush inside the window's border
+local TOP = -(HEAD + TABS + 18)     -- the search row's top, clear of the tabs' hairlines
+local LIST = TOP - ROW - 12         -- the lists' top, under it
+local FOOT = 1 + ROW + 12           -- the lists' foot, over the foot row
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local DIM = { 0.55, 0.52, 0.45 }
@@ -57,9 +62,14 @@ local function Fade(t, c, a)
     end
 end
 
--- Every texture of a frame put away (its art), fonts kept
+-- Every texture of a frame put away (its art), fonts kept: once, as first
+-- met, so ours drawn on it after stay
 local function Bare(f)
     if not f or not f.GetRegions then return end
+    local d = deco[f] or {}
+    deco[f] = d
+    if d.bare then return end
+    d.bare = true
     for _, r in ipairs({ f:GetRegions() }) do
         if r.GetObjectType and r:GetObjectType() == "Texture" then r:SetAlpha(0) end
     end
@@ -67,20 +77,33 @@ end
 
 -- A box in the windows' face: an ink well, a gold edge, drawn on the frame
 -- under its own (hidden) art
-local function Box(f)
+-- (its edge four lines, so a see-through well shows the world, not gold);
+-- fill: the well's opacity, 0.92 unless given
+local function Edge(d, c)
+    for _, t in ipairs(d.edges) do t:SetColorTexture(c[1], c[2], c[3], 1) end
+end
+
+local function Box(f, fill)
     local d = deco[f] or {}
     deco[f] = d
     if d.box then return d end
     d.box = true
-    local edge = f:CreateTexture(nil, "BACKGROUND", nil, -8)
-    edge:SetAllPoints()
-    edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    d.edges = {}
+    for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" },
+        { "TOPLEFT", "BOTTOMLEFT" }, { "TOPRIGHT", "BOTTOMRIGHT" } }) do
+        local t = f:CreateTexture(nil, "BACKGROUND", nil, -8)
+        t:SetPoint(side[1])
+        t:SetPoint(side[2])
+        if side[1]:sub(1, 3) == side[2]:sub(1, 3) then t:SetHeight(1) else t:SetWidth(1) end
+        table.insert(d.edges, t)
+    end
+    Edge(d, GOLD_D)
     local well = f:CreateTexture(nil, "BACKGROUND", nil, -7)
     well:SetPoint("TOPLEFT", 1, -1)
     well:SetPoint("BOTTOMRIGHT", -1, 1)
     local ink = ns.colors.ink
-    well:SetColorTexture(ink[1], ink[2], ink[3], 0.92)
-    d.edge, d.well = edge, well
+    well:SetColorTexture(ink[1], ink[2], ink[3], fill or 0.92)
+    d.well = well
     return d
 end
 
@@ -161,12 +184,15 @@ local function Chrome(f)
     local faint = ns.window.Hair(skin, false, 0.5)
     faint:SetPoint("TOPLEFT", PAD + 30, -(HEAD + TABS + 7))
     faint:SetPoint("TOPRIGHT", -PAD - 30, -(HEAD + TABS + 7))
-    -- the foot band's rule
-    local rule = skin:CreateTexture(nil, "ARTWORK")
-    rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
-    rule:SetHeight(1)
-    rule:SetPoint("BOTTOMLEFT", PAD, PAD + BAND + 7)
-    rule:SetPoint("BOTTOMRIGHT", -PAD, PAD + BAND + 7)
+    -- the search row's and the foot row's lines, edge to edge along their
+    -- cells (the chat's tab row's hairline)
+    for _, at in ipairs({ { "TOP", TOP }, { "BOTTOM", ROW } }) do
+        local rule = skin:CreateTexture(nil, "ARTWORK")
+        rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+        rule:SetHeight(1)
+        rule:SetPoint(at[1] .. "LEFT", 1, at[2])
+        rule:SetPoint(at[1] .. "RIGHT", -1, at[2])
+    end
     -- the close button: its click the game's, our glyph
     local close = f.CloseButton
     if close then
@@ -243,97 +269,163 @@ function cdm.Tabs()
 end
 
 -- ------------------------------------------------------- search and choices
+-- Its controls' box faces: the edge lit under the mouse
+local function Lit(f)
+    local d = deco[f]
+    if not d or d.lit then return end
+    d.lit = true
+    f:HookScript("OnEnter", function()
+        Edge(d, GOLD)
+        if d.glyph then d.glyph:SetVertexColor(1, 1, 1) end
+    end)
+    f:HookScript("OnLeave", function()
+        Edge(d, GOLD_D)
+        if d.glyph then
+            local on = not f.IsEnabled or f:IsEnabled()
+            local c = on and GOLD or DIM
+            d.glyph:SetVertexColor(c[1], c[2], c[3], on and 1 or 0.6)
+        end
+    end)
+end
+
+-- a button's own states' art (normal, pushed, lit, disabled): put away
+local function Plain(b)
+    Bare(b)
+    for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetDisabledTexture" }) do
+        local t = b[get] and b[get](b)
+        if t then t:SetAlpha(0) end
+    end
+end
+
+-- A divider between two cells: gold, the row's height (the chat's, before
+-- its cog)
+local function Divider(f, key, point, x, y)
+    local fd = deco[f] or {}
+    deco[f] = fd
+    if not fd[key] and skin then
+        fd[key] = skin:CreateTexture(nil, "ARTWORK")
+        fd[key]:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+        fd[key]:SetSize(1, ROW)
+        fd[key]:SetPoint(point, f, point, x, y)
+    end
+end
+
+-- The search row and the foot as the chat's tab row: cells edge to edge,
+-- flush to the window's sides, a gold divider between them. Up top the
+-- search, then the gear on the edge; at the foot Revert (a rounded arrow
+-- back), then the layouts (their menu opening upward, the game's own way),
+-- the rest of the row free.
 local function Controls(f)
-    local top = -(HEAD + TABS + 16)
-    -- the layout dropdown, at the search row's right
+    -- the gear, on the edge
+    local gear = f.SettingsDropdown
+    if gear then
+        Plain(gear)
+        if gear.Icon then gear.Icon:SetAlpha(0) end
+        Box(gear, 0.4)
+        Glyph(gear, "menu", 17)
+        Lit(gear)
+        gear:ClearAllPoints()
+        gear:SetPoint("TOPRIGHT", f, "TOPRIGHT", -EDGE, TOP)
+        gear:SetSize(ROW, ROW)
+        Divider(f, "gearRule", "TOPRIGHT", -(EDGE + ROW + GAP), TOP)
+    end
+    -- the search, the row's width up to the divider; its glass in off the edge
+    local search = f.SearchBox
+    if search then
+        for _, key in ipairs({ "Left", "Right", "Middle", "Mid" }) do
+            if search[key] then search[key]:SetAlpha(0) end
+        end
+        Box(search, 0.4)
+        Lit(search)
+        search:ClearAllPoints()
+        search:SetPoint("TOPLEFT", f, "TOPLEFT", 1, TOP)
+        search:SetPoint("TOPRIGHT", f, "TOPRIGHT", -(EDGE + ROW + GAP + 1 + GAP), TOP)
+        search:SetHeight(ROW)
+        if search.SetFont then search:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 13, "") end
+        if search.SetTextInsets then search:SetTextInsets(28, 24, 0, 0) end
+        local glass = search.searchIcon
+        if glass then
+            glass:SetVertexColor(GOLD_D[1], GOLD_D[2], GOLD_D[3])
+            glass:ClearAllPoints()
+            glass:SetPoint("LEFT", search, "LEFT", 10, 0)
+        end
+        if search.Instructions then
+            Font(search.Instructions, 12, DIM)
+            search.Instructions:ClearAllPoints()
+            search.Instructions:SetPoint("LEFT", search, "LEFT", 28, 0)
+            search.Instructions:SetPoint("RIGHT", search, "RIGHT", -24, 0)
+        end
+    end
+    -- its lists: under the search row, over the foot
+    for _, key in ipairs({ "CooldownScroll", "GroupBuffFilter" }) do
+        local s = f[key]
+        if s then
+            s:ClearAllPoints()
+            s:SetPoint("TOPLEFT", f, "TOPLEFT", PAD + 4, LIST)
+            s:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PAD - 18, FOOT)
+        end
+    end
+    -- Revert: a cell with a rounded arrow back (the reset glyph, mirrored);
+    -- its words in its tooltip
+    local undo = f.UndoButton
+    if undo then
+        Plain(undo)
+        for _, key in ipairs({ "Left", "Right", "Middle" }) do
+            if undo[key] then undo[key]:SetAlpha(0) end
+        end
+        local d = Box(undo)
+        local fs = undo.GetFontString and undo:GetFontString()
+        if not d.glyph then
+            d.words = fs and fs:GetText()
+            d.glyph = undo:CreateTexture(nil, "OVERLAY")
+            d.glyph:SetTexture(GLYPHS .. "side-reset")
+            d.glyph:SetTexCoord(1, 0, 0, 1)
+            d.glyph:SetSize(16, 16)
+            d.glyph:SetPoint("CENTER")
+            if undo.SetMotionScriptsWhileDisabled then undo:SetMotionScriptsWhileDisabled(true) end
+            undo:HookScript("OnEnter", function(self)
+                local words = d.words
+                if type(words) ~= "string" or words == "" then words = "Revert changes" end
+                ns.Tip(self, "ANCHOR_TOP", { title = words, color = GOLD,
+                    { "body", self:IsEnabled() and "Back to this layout as it was last saved."
+                        or "Nothing to revert: no changes since this layout was saved." } })
+            end)
+            undo:HookScript("OnLeave", function() GameTooltip:Hide() end)
+            Lit(undo)
+        end
+        if fs and fs:GetAlpha() ~= 0 then fs:SetAlpha(0) end
+        undo:ClearAllPoints()
+        undo:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1, 1)
+        undo:SetSize(ROW, ROW)
+        local on = undo:IsEnabled()
+        local c = on and GOLD or DIM
+        d.glyph:SetVertexColor(c[1], c[2], c[3], on and 1 or 0.6)
+        Divider(f, "footRule", "BOTTOMLEFT", 1 + ROW + GAP, 1)
+    end
+    -- the layouts: past the divider, their menu opening upward
     local layout = f.LayoutDropdown
-    local right = 0
     if layout then
         Bare(layout)
         if layout.Arrow then layout.Arrow:SetAlpha(0) end
         local d = Box(layout)
         if not d.arrow then
             d.arrow = layout:CreateTexture(nil, "OVERLAY")
-            d.arrow:SetTexture(GLYPHS .. "chevron-down")
-            d.arrow:SetSize(12, 12)
-            d.arrow:SetPoint("RIGHT", -6, 0)
+            d.arrow:SetTexture(GLYPHS .. "chevron-up")
+            d.arrow:SetSize(11, 11)
+            d.arrow:SetPoint("RIGHT", -10, 0)
             d.arrow:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+            Lit(layout)
         end
         Font(layout.Text, 12, ns.colors.text)
+        if layout.Text then
+            layout.Text:ClearAllPoints()
+            layout.Text:SetPoint("LEFT", 10, 0)
+            layout.Text:SetPoint("RIGHT", d.arrow, "LEFT", -6, 0)
+            if layout.Text.SetJustifyH then layout.Text:SetJustifyH("LEFT") end
+        end
         layout:ClearAllPoints()
-        layout:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, top)
-        layout:SetSize(180, 22)
-        right = 180 + 6
-    end
-    -- the gear: its menu the game's, our glyph
-    local gear = f.SettingsDropdown
-    if gear then
-        Bare(gear)
-        for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetDisabledTexture" }) do
-            local t = gear[get] and gear[get](gear)
-            if t then t:SetAlpha(0) end
-        end
-        if gear.Icon then gear.Icon:SetAlpha(0) end
-        gear:ClearAllPoints()
-        gear:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD - right, top)
-        gear:SetSize(22, 22)
-        Glyph(gear, "menu", 16)
-        right = right + 22 + 6
-    end
-    -- the search box: its art hidden, our well
-    local search = f.SearchBox
-    if search then
-        for _, key in ipairs({ "Left", "Right", "Middle", "Mid" }) do
-            if search[key] then search[key]:SetAlpha(0) end
-        end
-        Box(search)
-        search:ClearAllPoints()
-        search:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, top)
-        search:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD - right, top)
-        search:SetHeight(22)
-        if search.SetFont then search:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 12, "") end
-        if search.Instructions then Font(search.Instructions, 11, DIM) end
-        if search.searchIcon then search.searchIcon:SetVertexColor(DIM[1], DIM[2], DIM[3]) end
-    end
-    -- its lists: under the search row, over the foot band
-    local list = top - ROW - 8
-    for _, key in ipairs({ "CooldownScroll", "GroupBuffFilter" }) do
-        local s = f[key]
-        if s then
-            s:ClearAllPoints()
-            s:SetPoint("TOPLEFT", f, "TOPLEFT", PAD + 4, list)
-            s:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PAD - 18, PAD + BAND + 14)
-        end
-    end
-    -- Revert: the foot band, a box with gold words
-    local undo = f.UndoButton
-    if undo then
-        Bare(undo)
-        for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetDisabledTexture" }) do
-            local t = undo[get] and undo[get](undo)
-            if t then t:SetAlpha(0) end
-        end
-        for _, key in ipairs({ "Left", "Right", "Middle" }) do
-            if undo[key] then undo[key]:SetAlpha(0) end
-        end
-        local d = Box(undo)
-        if not d.glow then
-            d.glow = undo:CreateTexture(nil, "HIGHLIGHT")
-            d.glow:SetPoint("TOPLEFT", 1, -1)
-            d.glow:SetPoint("BOTTOMRIGHT", -1, 1)
-            d.glow:SetColorTexture(1, 1, 1, 0.08)
-        end
-        undo:ClearAllPoints()
-        undo:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", PAD, PAD)
-        undo:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PAD, PAD)
-        undo:SetHeight(BAND)
-        local fs = undo.GetFontString and undo:GetFontString()
-        Font(fs, 13)
-        if fs then
-            local on = undo:IsEnabled()
-            local c = on and GOLD or DIM
-            fs:SetTextColor(c[1], c[2], c[3])
-        end
+        layout:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1 + ROW + GAP + 1 + GAP, 1)
+        layout:SetSize(210, ROW)
     end
 end
 
@@ -373,7 +465,9 @@ local function Rim(item, d)
     local lit = d.hot or (item.IsBeingDragged and item:IsBeingDragged())
     local grey = item.Icon and item.Icon.IsDesaturated and item.Icon:IsDesaturated()
     local c = lit and GOLD or GOLD_D
-    d.rim:SetVertexColor(c[1], c[2], c[3], grey and not lit and 0.55 or 1)
+    d.rim:SetVertexColor(c[1], c[2], c[3], d.filtered and 0.35 or grey and not lit and 0.6 or 1)
+    -- left out by the search: faded in its ring (the game's square shade put away)
+    if item.Icon then item.Icon:SetAlpha(d.filtered and 0.3 or 1) end
     if d.row then d.row:SetShown(d.listed and lit or false) end
 end
 
@@ -388,12 +482,13 @@ function cdm.Bar(item)
     if bar.FillTexture then bar.FillTexture:SetAlpha(0) end
     local empty = item.IsEmptyCategory and item:IsEmptyCategory()
     local grey = (item.IsKnown and not item:IsKnown()) or (item.IsReorderLocked and item:IsReorderLocked())
+    local out = deco[item] and deco[item].filtered
     local c = grey and DIM or GOLD_D
-    e.fill:SetColorTexture(c[1], c[2], c[3], grey and 0.4 or 0.75)
+    e.fill:SetColorTexture(c[1], c[2], c[3], out and 0.2 or grey and 0.4 or 0.75)
     e.fill:SetShown(not empty)
     e.sheen:SetShown(not empty)
     local name = bar.Name or item.Name
-    Font(name, 12, grey and DIM or ns.colors.text)
+    Font(name, 12, (grey or out) and DIM or ns.colors.text)
     if name and name.SetDrawLayer then name:SetDrawLayer("OVERLAY", 7) end
 end
 
@@ -452,6 +547,24 @@ local function Badge(item)
 end
 cdm.Badge = Badge
 
+-- The search leaving a spell out: the game lays a black square over its
+-- icon or its bar; ours fades it instead, in its ring
+function cdm.Filter(item)
+    local d = deco[item]
+    if not d then return end
+    local out = false
+    for _, key in ipairs({ "FilterOverlay", "BarFilterOverlay" }) do
+        local o = item[key]
+        if o then
+            o:SetAlpha(0)
+            if o:IsShown() then out = true end
+        end
+    end
+    d.filtered = out
+    Rim(item, d)
+    if item.Bar then cdm.Bar(item) end
+end
+
 local function Spell(item)
     local icon = item.Icon
     if not icon then return end
@@ -465,14 +578,26 @@ local function Spell(item)
         if item.CreateMaskTexture and icon.AddMaskTexture then
             d.mask = item:CreateMaskTexture()
             d.mask:SetTexture(ROUND, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-            d.mask:SetPoint("TOPLEFT", icon, "TOPLEFT", 2, -2)
-            d.mask:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -2, 2)
+            d.mask:SetPoint("TOPLEFT", icon, "TOPLEFT", 3, -3)
+            d.mask:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -3, 3)
             icon:AddMaskTexture(d.mask)
         end
+        -- a thin gold ring round an ink well, the icon set in it: a slot with
+        -- no icon reads as an empty socket
         d.rim = item:CreateTexture(nil, "BACKGROUND", nil, -6)
         d.rim:SetTexture(ROUND)
         d.rim:SetPoint("TOPLEFT", icon, "TOPLEFT", 0, 0)
         d.rim:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 0, 0)
+        d.well = item:CreateTexture(nil, "BACKGROUND", nil, -5)
+        d.well:SetTexture(ROUND)
+        d.well:SetPoint("TOPLEFT", icon, "TOPLEFT", 1.5, -1.5)
+        d.well:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -1.5, 1.5)
+        local ink = ns.colors.ink
+        d.well:SetVertexColor(ink[1], ink[2], ink[3], 1)
+        -- the search's verdict on it, after the game's
+        if item.ApplyFilter then
+            hooksecurefunc(item, "ApplyFilter", function() cdm.Filter(item) end)
+        end
         if item.HookScript then
             item:HookScript("OnEnter", function() d.hot = true; Rim(item, d) end)
             item:HookScript("OnLeave", function() d.hot = false; Rim(item, d) end)
@@ -643,8 +768,8 @@ local function Loose(f)
     local scroll = f and f.CooldownScroll
     if not scroll then return end
     scroll:ClearAllPoints()
-    scroll:SetPoint("TOPLEFT", f, "TOPLEFT", PAD + 4, -(HEAD + TABS + 16) - ROW - 8)
-    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PAD - 18, PAD + BAND + 14)
+    scroll:SetPoint("TOPLEFT", f, "TOPLEFT", PAD + 4, LIST)
+    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PAD - 18, FOOT)
 end
 
 local function Unpin(cat)
@@ -710,7 +835,7 @@ local function Stand(f)
     end
     -- the still sections, stacked in the block where the scroll began
     block:ClearAllPoints()
-    block:SetPoint("TOPLEFT", f, "TOPLEFT", PAD + 4, -(HEAD + TABS + 16) - ROW - 8)
+    block:SetPoint("TOPLEFT", f, "TOPLEFT", PAD + 4, LIST)
     local prev
     for _, cat in ipairs(order) do
         if cat ~= list then
@@ -745,10 +870,10 @@ local function Stand(f)
     end
     scroll:ClearAllPoints()
     scroll:SetPoint("TOPLEFT", h, "BOTTOMLEFT", 0, -8)
-    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PAD - 18, PAD + BAND + 14)
+    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PAD - 18, FOOT)
     -- too tall to leave the list its room: the game's scroll after all
     local hb, fb = h:GetBottom(), f:GetBottom()
-    if hb and fb and hb - (fb + PAD + BAND + 14) < ROOM then
+    if hb and fb and hb - (fb + FOOT) < ROOM then
         Loose(f)
         Unpin(list)
         Restore()
@@ -847,6 +972,113 @@ local function Marker(f)
     end)
 end
 
+-- ------------------------------------------------------------------ menus
+-- The layout and gear menus (the game's shared menus, Blizzard_Menu): an
+-- ink panel with a gold edge over their art, their radio and check marks,
+-- dividers and hover glow in gold, while ours is open. Their frames and
+-- parts are the game's, pooled and lent to every other menu after: each
+-- change is noted and undone as ours closes, ours hidden. Fonts and text
+-- colours are left (the game sizes each line to its words as it opens; a
+-- class colour or a green New Layout is the game's meaning).
+local worn = {}                 -- the changes on the open menu, to undo
+local panels = {}               -- ours, by the game's menu frame
+
+local function Wear(r, how)
+    if how == "hide" then
+        table.insert(worn, { r, "alpha", r:GetAlpha() })
+        r:SetAlpha(0)
+    else
+        local vr, vg, vb, va = r:GetVertexColor()
+        table.insert(worn, { r, "tint", vr, vg, vb, va, r.IsDesaturated and r:IsDesaturated() })
+        if r.SetDesaturated then r:SetDesaturated(true) end
+        r:SetVertexColor(how[1], how[2], how[3], how[4] or 1)
+    end
+end
+
+local function Undo()
+    for i = #worn, 1, -1 do
+        local w = worn[i]
+        local r = w[1]
+        if w[2] == "alpha" then
+            r:SetAlpha(w[3] or 1)
+        else
+            r:SetVertexColor(w[3] or 1, w[4] or 1, w[5] or 1, w[6] or 1)
+            if r.SetDesaturated then r:SetDesaturated(w[7] and true or false) end
+        end
+    end
+    wipe(worn)
+    for _, p in pairs(panels) do p:Hide() end
+end
+
+-- a part's look by its art: the marks gold, the glow faint gold, the rule
+-- dark gold; anything else (an icon of the game's meaning) left
+local function Part(r)
+    if not (r.GetObjectType and r:GetObjectType() == "Texture") then return end
+    local atlas = r.GetAtlas and r:GetAtlas()
+    local file = r.GetTexture and r:GetTexture()
+    atlas = type(atlas) == "string" and atlas:lower() or ""
+    file = type(file) == "string" and file:lower() or ""
+    if atlas:find("tick") or atlas:find("radial") or atlas:find("checkmark") then
+        Wear(r, GOLD)
+    elseif atlas:find("highlight") or file:find("highlight") then
+        Wear(r, { GOLD[1], GOLD[2], GOLD[3], 0.35 })
+    elseif file:find("divider") then
+        Wear(r, GOLD_D)
+    end
+end
+
+local function Menu(menu)
+    if not menu or not menu.GetRegions then return end
+    Undo()
+    -- its background (the style's art on the menu itself): under our panel
+    for _, r in ipairs({ menu:GetRegions() }) do
+        if r.GetObjectType and r:GetObjectType() == "Texture" then Wear(r, "hide") end
+    end
+    local p = panels[menu]
+    if not p then
+        p = CreateFrame("Frame", nil, menu)
+        p:SetPoint("TOPLEFT", -2, 2)
+        p:SetPoint("BOTTOMRIGHT", 2, 5)
+        p:SetFrameLevel(menu:GetFrameLevel())
+        local edge = p:CreateTexture(nil, "BACKGROUND", nil, -8)
+        edge:SetAllPoints()
+        edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+        local well = p:CreateTexture(nil, "BACKGROUND", nil, -7)
+        well:SetPoint("TOPLEFT", 1, -1)
+        well:SetPoint("BOTTOMRIGHT", -1, 1)
+        local ink = ns.colors.ink
+        well:SetColorTexture(ink[1], ink[2], ink[3], 0.97)
+        panels[menu] = p
+    end
+    p:Show()
+    -- its lines: their marks, rules and glow
+    local function Walk(f, depth)
+        for _, r in ipairs({ f:GetRegions() }) do Part(r) end
+        if f.GetHighlightTexture then
+            local h = f:GetHighlightTexture()
+            if h then Part(h) end
+        end
+        if depth < 4 then
+            for _, c in ipairs({ f:GetChildren() }) do
+                if c ~= p then Walk(c, depth + 1) end
+            end
+        end
+    end
+    for _, c in ipairs({ menu:GetChildren() }) do
+        if c ~= p then Walk(c, 1) end
+    end
+end
+cdm.Menu = Menu
+
+local function Dropdown(button)
+    if not button or deco[button] and deco[button].menu then return end
+    local d = deco[button] or {}
+    deco[button] = d
+    d.menu = true
+    if button.OnMenuOpened then hooksecurefunc(button, "OnMenuOpened", function(_, menu) Menu(menu) end) end
+    if button.OnMenuClosed then hooksecurefunc(button, "OnMenuClosed", Undo) end
+end
+
 -- ------------------------------------------------------------- the dressing
 -- After the game lays its categories out (as it shows, a tab changes, a
 -- spell moves): each heading and spell dressed, new ones as first met
@@ -899,6 +1131,8 @@ local function Adopt()
     Tabs(f)
     Controls(f)
     Marker(f)
+    Dropdown(f.LayoutDropdown)
+    Dropdown(f.SettingsDropdown)
     -- the dragged spell's frame, as the game makes it (its mixin's method,
     -- copied into the frame then): ours dressed as it first shows
     local mixin = _G.CooldownViewerDraggedItemBaseMixin

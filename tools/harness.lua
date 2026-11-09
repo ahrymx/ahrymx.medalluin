@@ -3942,6 +3942,43 @@ if cdmPass then (function()
     f.LayoutDropdown.Background = f.LayoutDropdown:CreateTexture()
     f.LayoutDropdown.Arrow = f.LayoutDropdown:CreateTexture()
     f.LayoutDropdown.Text = f.LayoutDropdown:CreateFontString()
+    -- its menu: the game's shared one, its art and lines (lent to others after)
+    local menu = CreateFrame("Frame", nil, UIParent)
+    menu.bg = menu:CreateTexture(nil, "BACKGROUND")
+    menu.bg:SetAtlas("common-dropdown-bg")
+    menu.bg:SetAlpha(0.925)
+    local function Element(kind)
+        local e = CreateFrame("Button", nil, menu)
+        e.text = e:CreateFontString()
+        if kind == "radio" then
+            e.ring = e:CreateTexture()
+            e.ring:SetAtlas("common-dropdown-tickradial")
+            e.tick = e:CreateTexture()
+            e.tick:SetAtlas("common-dropdown-icon-radialtick-yellow")
+        elseif kind == "divider" then
+            e.rule = e:CreateTexture()
+            e.rule:SetTexture("Interface\\Common\\UI-TooltipDivider-Transparent")
+        else
+            e.plus = e:CreateTexture()
+            e.plus:SetAtlas("communities-icon-addchannelplus")
+        end
+        e.glow = e:CreateTexture(nil, "HIGHLIGHT")
+        e.glow:SetAtlas("common-dropdown-highlight")
+        return e
+    end
+    menu.radio, menu.divider, menu.new = Element("radio"), Element("divider"), Element("new")
+    menu:Hide()
+    W.menu = menu
+    function f.LayoutDropdown:OnMenuOpened(m) self.menu = m end
+    function f.LayoutDropdown:OnMenuClosed() self.menu = nil end
+    function f.LayoutDropdown:OpenMenu()
+        menu:Show()
+        self:OnMenuOpened(menu)
+    end
+    function f.LayoutDropdown:CloseMenu()
+        menu:Hide()
+        self:OnMenuClosed(menu)
+    end
     anchorCycles = true
     f.CooldownScroll = CreateFrame("ScrollFrame", nil, f)
     f.CooldownScroll.Content = CreateFrame("Frame", nil, f.CooldownScroll)
@@ -4084,6 +4121,20 @@ if cdmPass then (function()
                         local c = self:IsKnown() and { 1, 0.5, 0.25 } or { 0.5, 0.5, 0.5 }
                         self.Bar.FillTexture:SetVertexColor(c[1], c[2], c[3])
                         self.Bar.FillTexture:SetAlpha(1)
+                    end
+                end
+                -- the search's verdict: a black square over the icon (or the bar)
+                function item:ApplyFilter(passes)
+                    local key, over = self.Bar and "BarFilterOverlay" or "FilterOverlay", self.Bar or self.Icon
+                    if passes then
+                        if self[key] then self[key]:Hide() end
+                    else
+                        if not self[key] then
+                            self[key] = self:CreateTexture(nil, "OVERLAY", nil, 7)
+                            self[key]:SetColorTexture(0, 0, 0, 0.8)
+                            self[key]:SetAllPoints(over)
+                        end
+                        self[key]:Show()
                     end
                 end
                 c.items[j] = item
@@ -16635,6 +16686,26 @@ if cdmPass then (function()
     CooldownViewerDraggedItem_SetIsLegalTarget(false)
     print("cdm dragged illegal", "rim=" .. string.format("%.2f,%.2f", drim.vertex[1], drim.vertex[2]))
     CooldownViewerDraggedItem_SetIsLegalTarget(true)
+    -- the search leaving spells out: faded in their rings, no black squares
+    local function filtered(tag, it)
+        local o = it.FilterOverlay or it.BarFilterOverlay
+        local d
+        for _, r in ipairs(it.all_) do
+            if r.kind == "Texture" and r.layer == "BACKGROUND" and r.sub == -6 then d = r end
+        end
+        print(tag, "square alpha=" .. tostring(o and o.alpha), "icon alpha=" .. tostring(it.Icon.alpha),
+            "ring=" .. string.format("%.2f", d and d.vertex and d.vertex[4] or -1),
+            it.Bar and ("name=" .. string.format("%.2f", it.Bar.Name.textColor[1])) or "")
+    end
+    local out1 = f.categoryPool.list[1].itemPool.list[1]
+    out1:ApplyFilter(false)
+    filtered("cdm filtered icon", out1)
+    out1:ApplyFilter(true)
+    filtered("cdm filter cleared", out1)
+    local outBar = f.categoryPool.list[2].itemPool.list[2]
+    outBar:ApplyFilter(false)
+    filtered("cdm filtered bar", outBar)
+    outBar:ApplyFilter(true)
     local bars = f.categoryPool.list[2].itemPool.list
     f:Hover(bars[1])
     print("cdm marker bar", line())
@@ -16655,9 +16726,57 @@ if cdmPass then (function()
     barState("cdm bar unknown", bars[1])
     bars[1].spell = "Frost Nova"
     bars[1]:RefreshIconState()
+    -- the layout button: its box and the gear's glyph kept through layouts
+    local function kept(fr)
+        local n, on = 0, 0
+        for _, r in ipairs({ fr:GetRegions() }) do
+            if r.kind == "Texture" then
+                n = n + 1
+                if r.alpha ~= 0 then on = on + 1 end
+            end
+        end
+        return on .. "/" .. n
+    end
+    f:RefreshLayout()
+    C.Dress()
+    print("cdm controls kept", "layout drawn=" .. kept(f.LayoutDropdown), "gear drawn=" .. kept(f.SettingsDropdown),
+        "undo drawn=" .. kept(f.UndoButton))
+    -- its menu: ours while open, the game's again after
+    local menu = W.menu
+    local function look(tag)
+        local function tint(t)
+            local v = t.vertex
+            return v and string.format("%.2f,%.2f@%.2f%s", v[1], v[2], v[4] or 1, t.desaturated and " grey" or "")
+                or "theirs"
+        end
+        local panel
+        for _, c in ipairs(menu.all_) do if c.kind == "Frame" then panel = c end end
+        print(tag, "bg alpha=" .. tostring(menu.bg.alpha), "panel=" .. tostring(panel and panel.shown),
+            "ring=" .. tint(menu.radio.ring), "tick=" .. tint(menu.radio.tick), "rule=" .. tint(menu.divider.rule),
+            "glow=" .. tint(menu.radio.glow), "plus=" .. tint(menu.new.plus))
+    end
+    f.LayoutDropdown:OpenMenu()
+    look("cdm menu open")
+    f.LayoutDropdown:CloseMenu()
+    look("cdm menu closed")
+    -- Revert under the mouse: its tooltip; the gear's rule
+    local said = {}
+    local tip = { SetOwner = function() end, Hide = function() end, Show = function() end,
+        SetText = function(_, t) table.insert(said, t) end, AddLine = function(_, t) table.insert(said, t) end }
+    local realTip = GameTooltip
+    GameTooltip = tip
+    f.UndoButton.scripts.OnEnter(f.UndoButton)
+    f.UndoButton.scripts.OnLeave(f.UndoButton)
+    GameTooltip = realTip
+    local undoGlyph
+    for _, r in ipairs({ f.UndoButton:GetRegions() }) do
+        if r.texture and r.texture:match("side%-reset") then undoGlyph = r end
+    end
+    print("cdm revert", "tip=" .. table.concat(said, " / "), "glyph mirrored=" ..
+        tostring(undoGlyph and undoGlyph.coords and undoGlyph.coords[1] == 1),
+        "words alpha=" .. tostring(f.UndoButton.text.alpha))
     print("cdm controls", "search=" .. rect(f.SearchBox), "gear=" .. rect(f.SettingsDropdown),
-        "layout=" .. rect(f.LayoutDropdown), "list=" .. rect(f.CooldownScroll), "undo=" .. rect(f.UndoButton),
-        "undo words=" .. string.format("%.2f", f.UndoButton.text.textColor and f.UndoButton.text.textColor[1] or -1))
+        "layout=" .. rect(f.LayoutDropdown), "list=" .. rect(f.CooldownScroll), "undo=" .. rect(f.UndoButton))
     -- the panel manager moving it: back on the LFG place
     f:ClearAllPoints()
     f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 16, -116)
