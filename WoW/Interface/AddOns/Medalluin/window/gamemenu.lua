@@ -32,6 +32,12 @@
 --   The world is not dimmed but a little; no band, no title. "ribbon", its
 --   old name, is read as it.
 --
+-- Shortcuts of ours join them, docked only: a slash command each
+-- (Medalluin's options, the game's Cooldown Manager and Click Casting), a
+-- section of their own; one nothing answers (the game's not loaded, a
+-- client without it) is left out. The Medallion ring is for a controller,
+-- and those windows want a mouse: it has none of them.
+--
 -- While it is open the rest of the interface is gone: UIParent's alpha is
 -- nothing, and the frames that keep their own alpha (the strips, the minimap
 -- in the corner, the tracker, the windows) follow it again until it closes.
@@ -54,7 +60,8 @@ local DOCK_W, PAD = 360, 18
 local ROW, LEAVE, BACK = 34, 32, 38
 local MEDAL, BACK_MEDAL = 48, 58           -- a medallion's size; Return to Game's
 local REACH = 0.30                          -- the ring's radius, of the screen's height
-local ARCH_FROM, ARCH_TO = 160, 20          -- the arch's ends, in degrees
+local ARCH_FROM, ARCH_TO = 160, 20          -- the arch's ends, in degrees, for six
+local ARCH_GROW = 7                         -- each end's step out per medallion past six, to 180 and 0
 local LEAVE_AT = { logout = 225, exit = 315 }
 local BAR_W = 5                             -- a chain bar's thickness
 local ROUND = ns.media .. "strips\\round"
@@ -85,7 +92,16 @@ local function Kind(b, close)
 end
 menu.Kind = Kind
 
+-- the shortcuts (docked): a slash command, its words, its glyph, and the
+-- game's function opening it where no command answers
+local SHORTCUTS = {
+    { "/mui", "Medalluin", "achievement" },
+    { "/cdm", "Cooldown Manager", "legacy" },
+    { "/cc", "Click Casting", "spellbook", nil, "ToggleClickBindingFrame" },
+}
+
 local holder, docked, ring, shade
+local shortcuts = {}            -- our buttons for them, by command
 local bars = {}                 -- the chains' bars, pooled
 local deco = {}                 -- a button's dress, by button (no field of ours on Blizzard's)
 local heads = {}                -- the docked panel's headings, pooled
@@ -222,7 +238,7 @@ local function Look(b, look, kind, glyph, size, primary)
     d.label:ClearAllPoints()
     d.hint:ClearAllPoints()
     d.hint:Hide()
-    d.label:SetText(b:GetText() or "")
+    d.label:SetText(d.words or b:GetText() or "")
     local c = not on and DIM or (look == "primary" or d.primary) and GOLD or kind == "exit" and RED
         or ns.colors.text
     d.label:SetTextColor(c[1], c[2], c[3])
@@ -386,6 +402,65 @@ local function Read()
 end
 menu.Read = Read
 
+-- What a slash command runs: the chat box's own table of them first (the
+-- game's commands it has met), then the handler whose SLASH_ names it; nil
+-- when nothing answers it
+local function Handler(cmd)
+    local hash = _G.hash_SlashCmdList
+    if type(hash) == "table" and type(hash[cmd:upper()]) == "function" then return hash[cmd:upper()] end
+    if type(SlashCmdList) ~= "table" then return nil end
+    cmd = cmd:lower()
+    for key, fn in pairs(SlashCmdList) do
+        local i = 1
+        while true do
+            local name = _G["SLASH_" .. key .. i]
+            if type(name) ~= "string" then break end
+            if name:lower() == cmd then return fn end
+            i = i + 1
+        end
+    end
+end
+menu.Handler = Handler
+
+-- What a shortcut runs: its command's handler, else the game's function
+local function Runs(sc)
+    local fn = Handler(sc[1])
+    if fn then return function() fn("") end end
+    local game = sc[5] and _G[sc[5]]
+    if type(game) == "function" then return game end
+end
+
+-- Our shortcut buttons (docked), those something answers: the menu closes, then the
+-- command runs as if typed. They hold no words of their own (a button's
+-- own would show in the game's yellow under the mouse): ours, in the dress.
+local function Shortcuts(wanted)
+    local out = {}
+    for _, sc in ipairs(SHORTCUTS) do
+        local cmd = sc[1]
+        local b = shortcuts[cmd]
+        if wanted and Runs(sc) then
+            if not b then
+                b = CreateFrame("Button", nil, holder)
+                b:RegisterForClicks("LeftButtonUp")
+                b:SetScript("OnClick", function()
+                    local run = Runs(sc)
+                    HideUIPanel(GameMenuFrame)
+                    if run then run() end
+                end)
+                shortcuts[cmd] = b
+            end
+            Dress(b).words = sc[2]
+            b:Show()
+            table.insert(out, { b = b, kind = "shortcut", glyph = sc[3], hint = cmd })
+        elseif b then
+            b:Hide()
+        end
+    end
+    return out
+end
+menu.Shortcuts = Shortcuts
+function menu.Words(b) return deco[b] and deco[b].label:GetText() end
+
 -- a section's word, by what is in it
 local function Named(section)
     for _, it in ipairs(section) do
@@ -394,6 +469,7 @@ local function Named(section)
             return "Interface"
         end
         if it.kind == "event" then return "Event" end
+        if it.kind == "shortcut" then return "Shortcuts" end
     end
     return ""
 end
@@ -422,6 +498,13 @@ local function Docked(sections, leave, back)
             it.b:SetPoint("TOPLEFT", PAD - 4, y)
             it.b:SetSize(w + 8, ROW)
             Look(it.b, "row", it.kind, it.glyph)
+            if it.hint then
+                local d = deco[it.b]
+                d.hint:SetText(it.hint)
+                d.hint:SetTextColor(DIM[1], DIM[2], DIM[3])
+                d.hint:SetPoint("RIGHT", -10, 0)
+                d.hint:Show()
+            end
             y = y - ROW - 2
         end
         y = y - 10
@@ -494,10 +577,12 @@ local function Medallion(sections, leave, back)
         for _, it in ipairs(section) do table.insert(items, it) end
     end
     local n, used = #items, 0
+    local grow = math.min(math.max(n - 6, 0) * ARCH_GROW, 180 - ARCH_FROM)
+    local from, to = ARCH_FROM + grow, ARCH_TO - grow
     -- the arch, evenly from end to end; a chain bar from each to the next
     local px, py
     for i, it in ipairs(items) do
-        local deg = n > 1 and ARCH_FROM + (ARCH_TO - ARCH_FROM) * (i - 1) / (n - 1) or 90
+        local deg = n > 1 and from + (to - from) * (i - 1) / (n - 1) or 90
         local x, y = At(r, deg)
         Take(it.b, ring)
         Place(it.b, x, y, MEDAL)
@@ -543,6 +628,8 @@ local function Arrange()
     if not holder then return end
     local sections, leave, back = Read()
     local style = Style()
+    local extra = Shortcuts(style == "docked")
+    if #extra > 0 then table.insert(sections, extra) end
     docked:SetShown(style == "docked")
     ring:SetShown(style == "medallion")
     if style == "medallion" then Medallion(sections, leave, back) else Docked(sections, leave, back) end

@@ -3850,6 +3850,12 @@ if gamemenuPass then (function()
     end
     f:SetScript("OnShow", function(self) self:InitButtons() end)
     f:Hide()
+    function HideUIPanel(p) p:Hide() end
+    -- the game's Cooldown Manager answers /cdm; nothing answers /cc here
+    SLASH_COOLDOWNVIEWERSETTINGS1 = "/CDM"
+    SlashCmdList.COOLDOWNVIEWERSETTINGS = function(msg) table.insert(W.clicked, "ran /cdm(" .. msg .. ")") end
+    -- the game's Click Cast Bindings, opened by its function, no command
+    function ToggleClickBindingFrame() table.insert(W.clicked, "click bindings") end
     function UnitRace() return "Gnome" end
     C_AddOns = C_AddOns or {}
     C_AddOns.GetNumAddOns = function() return 3 end
@@ -15962,6 +15968,33 @@ if gamemenuPass then (function()
     state("gamemenu open")
     ui("gamemenu ui open")
     if not M.holder then return end
+    local function shortcuts(tag)
+        local out = {}
+        for _, cmd in ipairs({ "/mui", "/cdm", "/cc" }) do
+            table.insert(out, cmd .. "=" .. tostring(M.Handler(cmd) and true or false))
+        end
+        print(tag, table.concat(out, " "))
+    end
+    shortcuts("gamemenu shortcuts answer")
+    -- our shortcut rows, docked: under the game's, their own section, the command at the end
+    local rows = {}
+    -- ours are made on the holder and moved: found there
+    for _, c in ipairs(M.holder.all_ or {}) do
+        if c.kind == "Button" and c.parent == M.docked and c.shown and not c.layoutIndex then
+            local hint
+            for _, r in ipairs({ c:GetRegions() }) do
+                if r.kind == "FontString" and r.shown and r.text and r.text:sub(1, 1) == "/" then hint = r.text end
+            end
+            table.insert(rows, tostring(M.Words(c)) .. "(" .. tostring(hint) .. ")[" .. rect(c) .. "]"
+                .. " own=" .. tostring(c:GetText()))
+        end
+    end
+    print("gamemenu shortcuts docked", table.concat(rows, " "))
+    local heads = {}
+    for _, c in ipairs(M.docked.all_ or {}) do
+        if c.kind == "Frame" and c.word and c.shown then table.insert(heads, c.word.text) end
+    end
+    print("gamemenu headings", table.concat(heads, ", "))
     print("gamemenu who", M.docked and "docked=" .. tostring(M.docked.shown), "ring=" .. tostring(M.ring.shown))
     -- the dress: Blizzard's words hidden, ours drawn
     local opts = f.buttons[1]
@@ -16000,6 +16033,14 @@ if gamemenuPass then (function()
         table.insert(out, string.format("%s@%d/%s", M.Kind(b, f.closeButton), math.floor(deg + 0.5),
             math.abs(math.sqrt(x * x + y * y) - R) < 0.5 and "R" or string.format("%.0f", math.sqrt(x * x + y * y))))
     end
+    for _, c in ipairs(M.holder.all_ or {}) do
+        if c.kind == "Button" and c.parent == M.ring and c.shown and not c.layoutIndex then
+            local x, y = centre(c)
+            local deg = math.deg(math.atan2(y, x)) % 360
+            table.insert(out, string.format("%s@%d/%s", tostring(M.Words(c)), math.floor(deg + 0.5),
+                math.abs(math.sqrt(x * x + y * y) - R) < 0.5 and "R" or "off"))
+        end
+    end
     print("gamemenu medallion places", table.concat(out, " "))
     -- the chains: a bar from each centre to the next, its length and its turn
     local shown = {}
@@ -16020,5 +16061,18 @@ if gamemenuPass then (function()
         end
     end
     print("gamemenu medallion words", table.concat(d, " "))
+    -- a shortcut clicked (docked; the ring has none): the menu closes, the command runs
+    f:Hide()
+    ns.db.gameMenu = "docked"
+    W.clicked = {}
+    for _, words in ipairs({ "Cooldown Manager", "Click Casting" }) do
+        f:Show()
+        for _, c in ipairs(M.holder.all_ or {}) do
+            if c.kind == "Button" and c.shown and M.Words(c) == words then c.scripts.OnClick(c) end
+        end
+    end
+
+    print("gamemenu shortcut clicked", table.concat(W.clicked, ","), "shown=" .. tostring(f.shown) .. "/"
+        .. tostring(M.holder.shown), "ui=" .. tostring(UIParent.alpha))
     f:Hide()
 end)() end
