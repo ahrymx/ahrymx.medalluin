@@ -15742,6 +15742,15 @@ if lfgPass then (function()
     calls("lfg list cvar")
     -- roles: each click lights what was clicked, the game's answers late
     print("lfg roles at first", medals())
+    -- under the mouse a medallion lights itself (its rim), with no halo
+    for _, m in ipairs(G.listme.medals) do
+        local before = m.art.rim.color and m.art.rim.color[1]
+        m.scripts.OnEnter(m)
+        local hot = m.art.rim.color and m.art.rim.color[1]
+        m.scripts.OnLeave(m)
+        print("lfg medal hover", m.role, string.format("%.2f>%.2f>%.2f", before or -1, hot or -1,
+            m.art.rim.color and m.art.rim.color[1] or -1), "halo=" .. tostring(m.halo ~= nil))
+    end
     medal("TANK")
     print("lfg roles tank (the class cannot)", medals())
     medal("DAMAGER")
@@ -15977,5 +15986,22 @@ if gamemenuPass then (function()
     f:Show()
     state("gamemenu ribbon")
     print("gamemenu who", "docked=" .. tostring(M.docked.shown), "ribbon=" .. tostring(M.ribbon.shown))
+    -- under the mouse a medallion lights itself: its rim, its well
+    local edit = f.buttons[4]
+    local function lit(tag)
+        local rim, well = nil, nil
+        for _, r in ipairs({ edit:GetRegions() }) do
+            if r.kind == "Texture" and r.texture and r.texture:find("round") then
+                if r.w == 48 then rim = r elseif r.w == 44 then well = r end
+            end
+        end
+        print(tag, "rim=" .. string.format("%.2f", rim.vertex and rim.vertex[1] or -1),
+            "well=" .. string.format("%.2f", well.vertex and well.vertex[1] or -1))
+    end
+    lit("gamemenu medal")
+    edit.scripts.OnEnter(edit)
+    lit("gamemenu medal hot")
+    edit.scripts.OnLeave(edit)
+    lit("gamemenu medal left")
     f:Hide()
 end)() end

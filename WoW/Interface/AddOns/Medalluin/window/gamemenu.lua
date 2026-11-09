@@ -135,12 +135,8 @@ local function Dress(b)
     d.bar:SetPoint("BOTTOMLEFT")
     d.bar:SetWidth(2)
     d.bar:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
-    -- a medallion: a gold rim, an ink well, a glow behind it under the mouse
-    d.halo = b:CreateTexture(nil, "HIGHLIGHT")
-    d.halo:SetSize(MEDAL + 22, MEDAL + 22)
-    d.halo:SetTexture(ROUND)
-    d.halo:SetVertexColor(GOLD[1], GOLD[2], GOLD[3], 0.35)
-    if d.halo.SetBlendMode then d.halo:SetBlendMode("ADD") end
+    -- a medallion: a gold rim, an ink well; under the mouse it lights itself
+    -- (the rim bright, the well lifted), with nothing around it
     d.rim = b:CreateTexture(nil, "BACKGROUND", nil, 4)
     d.rim:SetSize(MEDAL, MEDAL)
     d.rim:SetTexture(ROUND)
@@ -153,6 +149,19 @@ local function Dress(b)
     d.glyph = b:CreateTexture(nil, "ARTWORK")
     d.label = ns.Text(b, 14)
     d.hint = ns.Text(b, 11)
+    local function Hot(hot)
+        if d.look ~= "medal" then return end
+        local lit = hot and b:IsEnabled()
+        local rim = lit and GOLD or GOLD_D
+        d.rim:SetVertexColor(rim[1], rim[2], rim[3], 1)
+        local lift = lit and 0.1 or 0
+        d.inner:SetVertexColor(0.063 + lift, 0.059 + lift, 0.055 + lift * 0.6, 1)
+        d.glyph:SetAlpha(lit and 1 or b:IsEnabled() and 0.9 or 0.35)
+        d.label:SetAlpha(lit and 1 or 0.85)
+    end
+    d.hot = Hot
+    b:HookScript("OnEnter", function() Hot(true) end)
+    b:HookScript("OnLeave", function() Hot(false) end)
     return d
 end
 
@@ -183,7 +192,6 @@ local function Look(b, look, kind, glyph)
     d.wash:SetShown(look == "row")
     d.bar:SetShown(look == "row")
     local medal = look == "medal"
-    d.halo:SetShown(medal)
     d.rim:SetShown(medal)
     d.inner:SetShown(medal)
     d.glyph:SetShown(glyph ~= nil)
@@ -208,8 +216,6 @@ local function Look(b, look, kind, glyph)
             d.hint:Show()
         end
     elseif medal then
-        d.halo:ClearAllPoints()
-        d.halo:SetPoint("CENTER", b, "TOP", 0, -MEDAL / 2)
         d.rim:ClearAllPoints()
         d.rim:SetPoint("CENTER", b, "TOP", 0, -MEDAL / 2)
         d.inner:ClearAllPoints()
@@ -233,6 +239,8 @@ local function Look(b, look, kind, glyph)
         end
     end
     d.look = look
+    d.label:SetAlpha(1)
+    if medal then d.hot(b.IsMouseOver and b:IsMouseOver() or false) end
 end
 menu.Look = Look
 

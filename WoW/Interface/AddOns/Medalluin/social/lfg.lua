@@ -167,29 +167,29 @@ end
 local function Medallion(parent, role)
     local b = CreateFrame("Button", nil, parent)
     b:SetSize(MEDAL, MEDAL)
-    b.halo = b:CreateTexture(nil, "BACKGROUND")
-    b.halo:SetSize(MEDAL + 18, MEDAL + 18)
-    b.halo:SetPoint("CENTER")
-    b.halo:SetTexture(ROUND)
-    b.halo:SetVertexColor(GOLD[1], GOLD[2], GOLD[3], 0.22)
-    if b.halo.SetBlendMode then b.halo:SetBlendMode("ADD") end
     b.art = ns.window.Ring(b, MEDAL - 10)
     b.art:SetPoint("CENTER")
     b.art:SetTexture(ART)
     b.art:SetTexCoord(unpack(COORDS[role]))
-    local glow = b:CreateTexture(nil, "HIGHLIGHT")
-    glow:SetSize(MEDAL, MEDAL)
-    glow:SetPoint("CENTER")
-    glow:SetTexture(ROUND)
-    glow:SetVertexColor(1, 1, 1, 0.08)
     b.role = role
+    -- chosen: a bright rim, the icon in colour; under the mouse the medallion
+    -- itself lights (its rim, its well, its icon), with nothing around it
+    function b:Paint()
+        local on, hot = self.on, self.hot and self.can
+        local rim = (on or hot) and GOLD or GOLD_D
+        self.art.rim:SetColorTexture(rim[1], rim[2], rim[3], 1)
+        local ink, lift = ns.colors.ink, hot and 0.08 or 0
+        self.art.well:SetColorTexture(ink[1] + lift, ink[2] + lift, ink[3] + lift * 0.6, 1)
+        if self.art.SetDesaturated then self.art:SetDesaturated(not on) end
+        self.art:SetAlpha(not self.can and 0.25 or (on or hot) and 1 or 0.55)
+    end
     function b:Set(on, can)
         self.on, self.can = on and true or false, can ~= false
-        local rim = on and GOLD or GOLD_D
-        self.art.rim:SetColorTexture(rim[1], rim[2], rim[3], 1)
-        self.halo:SetShown(on and true or false)
-        if self.art.SetDesaturated then self.art:SetDesaturated(not on) end
-        self.art:SetAlpha(not self.can and 0.25 or on and 1 or 0.55)
+        self:Paint()
+    end
+    function b:Hot(hot)
+        self.hot = hot
+        self:Paint()
     end
     return b
 end
@@ -1016,6 +1016,7 @@ function listme.Build(page)
             lfg.Refresh()
         end)
         m:SetScript("OnEnter", function(self)
+            self:Hot(true)
             local word = ROLE_WORD[field]
             local text
             if not self.can then text = "Your class cannot take this role."
@@ -1023,7 +1024,10 @@ function listme.Build(page)
             else text = self.on and "You list as this: click to stop." or "Click to list yourself as this too." end
             Tip(self, { title = word, color = GOLD, wrap = true, { "body", text } })
         end)
-        m:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        m:SetScript("OnLeave", function(self)
+            self:Hot(false)
+            GameTooltip:Hide()
+        end)
         listme.medals[i] = m
     end
     listme.chosen = ns.Text(page, 12)
