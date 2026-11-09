@@ -37,7 +37,6 @@ local GOLD_D = { 0.541, 0.439, 0.204 }
 local DIM = { 0.55, 0.52, 0.45 }
 local ROUND = ns.media .. "strips\\round"
 local GLYPHS = ns.media .. "strips\\"
-local WHITE = "Interface\\Buttons\\WHITE8X8"
 local TAB_WORDS = { spells = "Cooldowns", auras = "Buffs", groupBuffs = "Group buffs" }
 
 local cdm = {}
@@ -378,6 +377,81 @@ local function Rim(item, d)
     if d.row then d.row:SetShown(d.listed and lit or false) end
 end
 
+-- A tracked bar as the Auras tab draws its own: a solid gold fill with a
+-- sheen on its top half, cream words; grey when the game holds the spell
+-- unknown or locked. The game's fill is kept hidden (it shows it again, and
+-- tints it orange, as it refreshes the spell): ours stands in its place.
+function cdm.Bar(item)
+    local bar = item.Bar
+    local e = bar and deco[bar]
+    if not e then return end
+    if bar.FillTexture then bar.FillTexture:SetAlpha(0) end
+    local empty = item.IsEmptyCategory and item:IsEmptyCategory()
+    local grey = (item.IsKnown and not item:IsKnown()) or (item.IsReorderLocked and item:IsReorderLocked())
+    local c = grey and DIM or GOLD_D
+    e.fill:SetColorTexture(c[1], c[2], c[3], grey and 0.4 or 0.75)
+    e.fill:SetShown(not empty)
+    e.sheen:SetShown(not empty)
+    local name = bar.Name or item.Name
+    Font(name, 12, grey and DIM or ns.colors.text)
+    if name and name.SetDrawLayer then name:SetDrawLayer("OVERLAY", 7) end
+end
+
+-- A spell's alert marker (CooldownViewerVisualAlertTarget: the alerts set on
+-- it, a black strip on its icon's foot): an ink tag with a gold edge across
+-- the medallion's foot, its alert glyphs the game's; on a Not displayed
+-- line, at the line's end
+local function Badge(item)
+    local o = item.AlertTypesOverlay
+    if not o then return end
+    local e = deco[o]
+    if not e then
+        e = {}
+        deco[o] = e
+        e.edge = o:CreateTexture(nil, "BACKGROUND", nil, -1)
+        e.edge:SetPoint("TOPLEFT", -1, 1)
+        e.edge:SetPoint("BOTTOMRIGHT", 1, -1)
+        e.edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    end
+    -- its glyphs are atlases (common-icon-sound, -visual) the client may not
+    -- have, drawing nothing: only those it has count. None to draw but
+    -- alerts set: no tag (its frame kept: its OnHide lets the alerts go),
+    -- a gold pip on the medallion instead
+    local set, drawn = 0, 0
+    for _, g in ipairs(o.visibleIcons or {}) do
+        set = set + 1
+        local atlas = g.GetAtlas and g:GetAtlas()
+        local info = atlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)
+        if info then drawn = drawn + 1 end
+        g:SetAlpha(info and 1 or 0)
+    end
+    local glyphs = drawn > 0
+    if o.BG then
+        local ink = ns.colors.ink
+        o.BG:SetColorTexture(ink[1], ink[2], ink[3], glyphs and 0.95 or 0)
+    end
+    e.edge:SetShown(glyphs)
+    if not e.pip and item.Icon then
+        e.pip = o:CreateTexture(nil, "OVERLAY")
+        e.pip:SetTexture(ROUND)
+        e.pip:SetSize(8, 8)
+        e.pip:SetVertexColor(GOLD[1], GOLD[2], GOLD[3], 1)
+    end
+    if e.pip then
+        e.pip:ClearAllPoints()
+        e.pip:SetPoint("CENTER", item.Icon, "BOTTOMRIGHT", -5, 5)
+        e.pip:SetShown(set > 0 and not glyphs)
+    end
+    o:ClearAllPoints()
+    local d = deco[item]
+    if d and d.listed then
+        o:SetPoint("RIGHT", item, "RIGHT", -6, 0)
+    elseif item.Icon then
+        o:SetPoint("CENTER", item.Icon, "BOTTOM", 0, 0)
+    end
+end
+cdm.Badge = Badge
+
 local function Spell(item)
     local icon = item.Icon
     if not icon then return end
@@ -385,6 +459,9 @@ local function Spell(item)
     if not d then
         d = {}
         deco[item] = d
+        -- the icon's own square border cut off, so the round mask shows its
+        -- face (once, before the mask: the game refuses tex coords after)
+        if icon.SetTexCoord then icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
         if item.CreateMaskTexture and icon.AddMaskTexture then
             d.mask = item:CreateMaskTexture()
             d.mask:SetTexture(ROUND, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
@@ -400,16 +477,52 @@ local function Spell(item)
             item:HookScript("OnEnter", function() d.hot = true; Rim(item, d) end)
             item:HookScript("OnLeave", function() d.hot = false; Rim(item, d) end)
         end
+        -- its alert marker, made as alerts are set on it
+        if item.RefreshAlertTypeOverlay then
+            hooksecurefunc(item, "RefreshAlertTypeOverlay", function() Badge(item) end)
+        end
     end
     if item.Highlight then item.Highlight:SetAlpha(0) end
-    -- a tracked bar: our gold bar, our words
+    -- a tracked bar: our well, a gold fill, our words
     local bar = item.Bar
     if bar then
-        if bar.SetStatusBarTexture then bar:SetStatusBarTexture(WHITE) end
-        if bar.SetStatusBarColor then bar:SetStatusBarColor(GOLD_D[1], GOLD_D[2], GOLD_D[3]) end
-        local name = bar.Name or item.Name
-        Font(name, 11, ns.colors.text)
+        local e = deco[bar]
+        if not e then
+            e = {}
+            deco[bar] = e
+            -- the game sets its bars in LOW, under the window and its dress:
+            -- lifted to their row's strata, just over it
+            if bar.SetFrameStrata and item.GetFrameStrata then
+                bar:SetFrameStrata(item:GetFrameStrata())
+                bar:SetFrameLevel(item:GetFrameLevel() + 1)
+            end
+            -- the game's bar art (its frame, wider and taller than the bar, and
+            -- its fill): put away
+            for _, r in ipairs({ bar:GetRegions() }) do
+                if r.GetObjectType and r:GetObjectType() == "Texture" then r:SetAlpha(0) end
+            end
+            e.edge = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
+            e.edge:SetPoint("TOPLEFT", -1, 1)
+            e.edge:SetPoint("BOTTOMRIGHT", 1, -1)
+            e.edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+            e.well = bar:CreateTexture(nil, "BACKGROUND", nil, -7)
+            e.well:SetAllPoints()
+            local ink = ns.colors.ink
+            e.well:SetColorTexture(ink[1], ink[2], ink[3], 0.95)
+            e.fill = bar:CreateTexture(nil, "ARTWORK", nil, 1)
+            e.fill:SetAllPoints()
+            e.sheen = bar:CreateTexture(nil, "ARTWORK", nil, 2)
+            e.sheen:SetColorTexture(1, 1, 1, 0.07)
+            e.sheen:SetPoint("TOPLEFT")
+            e.sheen:SetPoint("BOTTOMRIGHT", bar, "RIGHT")
+            -- the game tints its fill orange as it refreshes the spell: ours after it
+            for _, method in ipairs({ "RefreshData", "RefreshIconState" }) do
+                if item[method] then hooksecurefunc(item, method, function() cdm.Bar(item) end) end
+            end
+        end
+        cdm.Bar(item)
     end
+    Badge(item)
     Rim(item, d)
 end
 
@@ -438,6 +551,7 @@ local function Unlist(item)
     item.Icon:SetSize(d.iw, d.ih)
     item.Icon:SetAllPoints()
     d.name:Hide()
+    Badge(item)
     Rim(item, d)
 end
 
@@ -472,6 +586,7 @@ local function Line(item)
     local known = not item.IsKnown or item:IsKnown()
     local c = known and ns.colors.text or DIM
     d.name:SetTextColor(c[1], c[2], c[3])
+    Badge(item)
     Rim(item, d)
 end
 
@@ -648,6 +763,90 @@ local function Stand(f)
 end
 cdm.Stand = Stand
 
+-- --------------------------------------------------------------- dragging
+-- The spell under the cursor as it is dragged (CooldownViewerDraggedItem,
+-- one frame the game makes on the first drag): a medallion, its rim red
+-- where it cannot be dropped. The drop marker: a gold line the length of
+-- the spell it falls beside (upright between icons, flat under a bar or a
+-- Not displayed line, at the line's top or foot as it will land), red
+-- where it cannot go. Their moves and choices stay the game's.
+local RED = { 0.86, 0.27, 0.22 }
+local dragged
+
+local function Dragged(frame)
+    local icon = frame and frame.Icon
+    if not icon or deco[frame] then return end
+    local d = {}
+    deco[frame] = d
+    dragged = frame
+    if icon.SetTexCoord then icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+    if frame.CreateMaskTexture and icon.AddMaskTexture then
+        d.mask = frame:CreateMaskTexture()
+        d.mask:SetTexture(ROUND, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        d.mask:SetPoint("TOPLEFT", icon, "TOPLEFT", 2, -2)
+        d.mask:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -2, 2)
+        icon:AddMaskTexture(d.mask)
+    end
+    d.rim = frame:CreateTexture(nil, "OVERLAY", nil, 5)
+    d.rim:SetTexture(ROUND)
+    d.rim:SetAllPoints(icon)
+    d.rim:SetVertexColor(GOLD[1], GOLD[2], GOLD[3], 1)
+end
+
+local function Legal(ok)
+    local d = dragged and deco[dragged]
+    if d then
+        local c = ok and GOLD or RED
+        d.rim:SetVertexColor(c[1], c[2], c[3], 1)
+    end
+end
+
+local function Marker(f)
+    local m = f.ReorderMarker or (f.CooldownScroll and f.CooldownScroll.Content.ReorderMarker)
+    if not m or deco[m] then return end
+    local e = { dir = "v" }
+    deco[m] = e
+    if m.Texture then m.Texture:SetAlpha(0) end
+    e.line = m:CreateTexture(nil, "OVERLAY")
+    e.line:SetPoint("CENTER")
+    e.line:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+    local function Target()
+        local t = f.GetReorderTargetItem and f:GetReorderTargetItem()
+        return t, t and deco[t] and deco[t].listed
+    end
+    local function Shape()
+        local t, listed = Target()
+        if e.dir == "h" or listed then
+            e.line:SetSize(t and t:GetWidth() or 300, 2)
+        else
+            e.line:SetSize(2, t and t:GetHeight() or 38)
+        end
+    end
+    if m.SetHorizontal then hooksecurefunc(m, "SetHorizontal", function() e.dir = "h"; Shape() end) end
+    if m.SetVertical then hooksecurefunc(m, "SetVertical", function() e.dir = "v"; Shape() end) end
+    if m.SetIsLegalTarget then
+        hooksecurefunc(m, "SetIsLegalTarget", function(_, ok)
+            local c = ok and GOLD or RED
+            e.line:SetColorTexture(c[1], c[2], c[3], 1)
+        end)
+    end
+    -- on a Not displayed line: at its top (before it) or its foot (after),
+    -- where the game set it at its left or its right
+    local moving = false
+    hooksecurefunc(m, "SetPoint", function()
+        if moving then return end
+        local t, listed = Target()
+        if not listed then return end
+        local _, _, rp = m:GetPoint(1)
+        local before = rp == "LEFT"
+        moving = true
+        m:ClearAllPoints()
+        m:SetPoint("CENTER", t, before and "TOP" or "BOTTOM", 0, before and 1 or -1)
+        moving = false
+        Shape()
+    end)
+end
+
 -- ------------------------------------------------------------- the dressing
 -- After the game lays its categories out (as it shows, a tab changes, a
 -- spell moves): each heading and spell dressed, new ones as first met
@@ -699,6 +898,16 @@ local function Adopt()
     Chrome(f)
     Tabs(f)
     Controls(f)
+    Marker(f)
+    -- the dragged spell's frame, as the game makes it (its mixin's method,
+    -- copied into the frame then): ours dressed as it first shows
+    local mixin = _G.CooldownViewerDraggedItemBaseMixin
+    if mixin and mixin.SetToCursor then
+        hooksecurefunc(mixin, "SetToCursor", function(frame) Dragged(frame) end)
+    end
+    if _G.CooldownViewerDraggedItem_SetIsLegalTarget then
+        hooksecurefunc("CooldownViewerDraggedItem_SetIsLegalTarget", Legal)
+    end
     Place()
     -- its own place, whenever the panel manager or the game moves it: ours
     hooksecurefunc(f, "SetPoint", function()

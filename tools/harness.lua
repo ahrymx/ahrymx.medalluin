@@ -3899,6 +3899,14 @@ if cdmPass then (function()
         return p
     end
     cdmWorld = { calls = {}, Pool = Pool }
+    -- the client's atlases: the alert glyphs, the visual one missing (Forever)
+    C_Texture = C_Texture or {}
+    local atlasInfo = C_Texture.GetAtlasInfo
+    function C_Texture.GetAtlasInfo(a)
+        if a == "common-icon-visual" then return nil end
+        if a == "common-icon-sound" then return { width = 12, height = 12 } end
+        return atlasInfo and atlasInfo(a)
+    end
     function Region:SetStatusBarTexture(t) self.statusTexture = t end
     local W = cdmWorld
     -- CooldownViewerSettings: a ButtonFrameTemplate, its side tabs, its lists
@@ -3938,7 +3946,49 @@ if cdmPass then (function()
     f.CooldownScroll = CreateFrame("ScrollFrame", nil, f)
     f.CooldownScroll.Content = CreateFrame("Frame", nil, f.CooldownScroll)
     f.CooldownScroll.Content:SetPoint("TOPLEFT")
-    f.CooldownScroll.Content.ReorderMarker = CreateFrame("Frame", nil, f.CooldownScroll.Content)
+    -- the drop marker: its glow, flat or upright, red where it cannot go
+    local marker = CreateFrame("Frame", nil, f.CooldownScroll.Content)
+    marker.Texture = marker:CreateTexture(nil, "ARTWORK")
+    function marker:SetHorizontal() self.Texture:SetAtlas("cdm-horizontal", true) end
+    function marker:SetVertical() self.Texture:SetAtlas("CDM-vertical", true) end
+    function marker:SetIsLegalTarget(ok) self.Texture:SetVertexColor(ok and 1 or 1, ok and 1 or 0.1, ok and 1 or 0.1) end
+    f.CooldownScroll.Content.ReorderMarker = marker
+    f.ReorderMarker = marker
+    function f:GetReorderTargetItem() return self.reorderTargetItem end
+    -- as the game moves its marker over a target: upright beside an icon
+    -- (left: before it), flat under a bar
+    function f:Hover(item, before)
+        self.reorderTargetItem = item
+        marker:ClearAllPoints()
+        if item.Bar then
+            marker:SetHorizontal()
+            marker:SetPoint("CENTER", item, "BOTTOM", 0, -5)
+        else
+            marker:SetVertical()
+            marker:SetPoint("CENTER", item, before and "LEFT" or "RIGHT", before and -4 or 4, 0)
+        end
+        marker:Show()
+    end
+    -- the dragged spell: one frame, made on the first drag from its mixin
+    CooldownViewerDraggedItemBaseMixin = {}
+    function CooldownViewerDraggedItemBaseMixin:SetToCursor(icon)
+        self.Icon:SetTexture(icon)
+        self:Show()
+    end
+    function CooldownViewerDraggedItem_Pickup(icon)
+        if not W.dragged then
+            local d = CreateFrame("Frame", nil, UIParent)
+            d:SetSize(38, 38)
+            d.Icon = d:CreateTexture(nil, "OVERLAY", nil, 6)
+            d.Icon:SetAllPoints()
+            for k, v in pairs(CooldownViewerDraggedItemBaseMixin) do d[k] = v end
+            W.dragged = d
+        end
+        W.dragged:SetToCursor(icon)
+    end
+    function CooldownViewerDraggedItem_SetIsLegalTarget(ok)
+        if W.dragged then W.dragged.Icon:SetVertexColor(1, ok and 1 or 0.1, ok and 1 or 0.1) end
+    end
     f.GroupBuffFilter = CreateFrame("Frame", nil, f)
     local undo = CreateFrame("Button", nil, f)
     undo.Left = undo:CreateTexture()
@@ -4014,22 +4064,60 @@ if cdmPass then (function()
             local item = c.items[j]
             if not item then
                 item = CreateFrame("Frame", nil, c.Container)
+                item:SetFrameStrata("MEDIUM")       -- the window's, as the game's rows inherit it
                 item:SetSize(bars and 317 or 38, 38)
                 item.Icon = item:CreateTexture(nil, "ARTWORK")
                 if bars then item.Icon:SetPoint("TOPLEFT"); item.Icon:SetSize(38, 38) else item.Icon:SetAllPoints() end
                 item.Highlight = item:CreateTexture(nil, "HIGHLIGHT")
                 if bars then
                     item.Bar = CreateFrame("StatusBar", nil, item)
+                    item.Bar:SetFrameStrata("LOW")
+                    item.Bar:SetFrameLevel(511)
                     item.Bar.FillTexture = item.Bar:CreateTexture()
                     item.Bar.Name = item.Bar:CreateFontString()
+                    -- the game's bar art, wider and taller than the bar
+                    item.Bar.art = item.Bar:CreateTexture(nil, "BACKGROUND")
+                    function item.Bar:GetStatusBarTexture() return self.FillTexture end
+                    -- as it refreshes the spell: its fill orange, grey when unknown
+                    function item:RefreshIconState()
+                        self.Icon:SetDesaturated(not self:IsKnown())
+                        local c = self:IsKnown() and { 1, 0.5, 0.25 } or { 0.5, 0.5, 0.5 }
+                        self.Bar.FillTexture:SetVertexColor(c[1], c[2], c[3])
+                        self.Bar.FillTexture:SetAlpha(1)
+                    end
                 end
                 c.items[j] = item
+            end
+            -- the alert marker, made when alerts are set on it (Frost Nova here)
+            function item:RefreshAlertTypeOverlay()
+                if self.spell ~= "Frost Nova" and self.spell ~= "Blink" then
+                    if self.AlertTypesOverlay then self.AlertTypesOverlay:Hide() end
+                    return
+                end
+                if not self.AlertTypesOverlay then
+                    local o = CreateFrame("Frame", nil, self)
+                    o:SetPoint("BOTTOM", self.Icon, "BOTTOM", 0, 2)
+                    o:SetSize(34, 14)
+                    o.BG = o:CreateTexture(nil, "BACKGROUND")
+                    o.BG:SetAllPoints(o)
+                    o.BG:SetColorTexture(0, 0, 0, 0.7)
+                    o.icons = { o:CreateTexture(nil, "ARTWORK") }
+                    self.AlertTypesOverlay = o
+                end
+                -- Frost Nova's alert a sound (its glyph the client has); Blink's a
+                -- visual, whose glyph Forever's client lacks
+                local o = self.AlertTypesOverlay
+                o.icons[1]:SetAtlas(self.spell == "Frost Nova" and "common-icon-sound" or "common-icon-visual")
+                o.visibleIcons = { o.icons[1] }
+                o:Show()
             end
             item.layoutIndex = n - j + 1         -- the game's order, not the pool's
             item.spell = NAMES[(j - 1) % #NAMES + 1]
             function item:GetNameText() return self.spell end
             function item:IsKnown() return self.spell ~= "Slow Fall" end
             table.insert(c.itemPool.list, item)
+            if item.RefreshIconState then item:RefreshIconState() end
+            item:RefreshAlertTypeOverlay()
         end
         c.Container:Layout()
         c:SetCollapsed(c.collapsed)
@@ -16418,6 +16506,24 @@ if cdmPass then (function()
     for _, r in ipairs(hid.all_) do if r.kind == "Texture" and r.sub == -8 then row = r end end
     print("cdm line hover", "row=" .. tostring(row and row.shown))
     hid.scripts.OnLeave(hid)
+    f:Hover(first.itemPool.list[2], true)
+    print("cdm marker icon", (function()
+        local m = f.ReorderMarker
+        local l
+        for _, r in ipairs(m.all_) do if r ~= m.Texture and r.kind == "Texture" then l = r end end
+        local p = m.points[m.order[1]]
+        return string.format("line %dx%d at %s, glow alpha=%s", l.w, l.h, p[2], tostring(m.Texture.alpha))
+    end)())
+    f:Hover(hid, false)
+    print("cdm marker line", (function()
+        local m = f.ReorderMarker
+        local l
+        for _, r in ipairs(m.all_) do if r ~= m.Texture and r.kind == "Texture" then l = r end end
+        local p = m.points[m.order[1]]
+        return string.format("line %dx%d at %s %s", l.w, l.h, p[2], tostring(p[4]))
+    end)())
+    f.ReorderMarker:SetIsLegalTarget(false)
+    f.ReorderMarker:SetIsLegalTarget(true)
     -- only the list scrolls: the sections over it in our block, its heading too
     local content = f.CooldownScroll.Content
     local function where(fr)
@@ -16480,7 +16586,75 @@ if cdmPass then (function()
     f.TabButtons[2].scripts.OnClick(f.TabButtons[2])
     f.TabButtons[2].scripts.OnClick(f.TabButtons[2])
     local bar = f.categoryPool.list[2].itemPool.list[1].Bar
-    print("cdm bar", "texture=" .. tostring(bar.statusTexture or bar.texture), "name font=" .. has(bar.Name))
+    if not CreateColor then function CreateColor(r, g, b, a) return { r, g, b, a } end end
+    if not Region.IsDesaturated then function Region:IsDesaturated() return self.desaturated end end
+    if not Region.SetGradient then function Region:SetGradient(o, a, b) self.gradient = { o, a, b } end end
+    local function barState(tag, it)
+        local b = it.Bar
+        local fill, sheen
+        for _, r in ipairs(b.all_) do
+            if r.kind == "Texture" and r.layer == "ARTWORK" and r.sub == 1 then fill = r end
+            if r.kind == "Texture" and r.layer == "ARTWORK" and r.sub == 2 then sheen = r end
+        end
+        local c = fill and fill.color or {}
+        print(tag, "art alpha=" .. tostring(b.art.alpha), "their fill alpha=" .. tostring(b.FillTexture.alpha),
+            string.format("ours=%.2f,%.2f,%.2f@%.2f", c[1] or -1, c[2] or -1, c[3] or -1, c[4] or -1),
+            "sheen=" .. tostring(sheen and sheen.color and sheen.color[4]),
+            "name=" .. has(b.Name) .. string.format(" %.2f", b.Name.textColor and b.Name.textColor[1] or -1),
+            "icon crop=" .. tostring(it.Icon.coords and it.Icon.coords[1]))
+    end
+    local function badge(tag, it)
+        local o = it.AlertTypesOverlay
+        if not o then print(tag, "none") return end
+        local p = o.points[o.order and o.order[1] or "CENTER"] or {}
+        local c = o.BG.color or {}
+        print(tag, string.format("bg=%.2f,%.2f,%.2f@%.2f", c[1] or -1, c[2] or -1, c[3] or -1, c[4] or -1),
+            "edge=" .. tostring(o.all_[3] and o.all_[3].shown), "glyph alpha=" .. tostring(o.icons[1].alpha),
+            "pip=" .. tostring(o.all_[4] and o.all_[4].shown), "at=" .. tostring(o.order and o.order[1]) .. " of " .. (p[1] == it.Icon and "icon" or p[1] == it and "item"
+                or "?") .. " " .. tostring(p[2]), "edges=" .. #o.all_)
+    end
+    -- dragging: the spell at the cursor a medallion; the marker a gold line
+    local function line()
+        local m = f.ReorderMarker
+        local l
+        for _, r in ipairs(m.all_) do if r ~= m.Texture and r.kind == "Texture" then l = r end end
+        local p = m.points[m.order and m.order[1] or "CENTER"] or {}
+        local c = l and l.color or {}
+        return string.format("line %dx%d %s glow alpha=%s at %s of %s", l and l.w or -1, l and l.h or -1,
+            (c[2] or 0) > 0.5 and "gold" or "red", tostring(m.Texture.alpha), tostring(p[2]),
+            p[1] and (p[1].Bar and "bar" or "item") or "?")
+    end
+    CooldownViewerDraggedItem_Pickup("spell")
+    local dr = W.dragged
+    local drim
+    for _, r in ipairs(dr.all_) do if r ~= dr.Icon and r.kind == "Texture" then drim = r end end
+    local masks = 0
+    for _, r in ipairs(dr.all_) do if r.kind == "MaskTexture" then masks = masks + 1 end end
+    print("cdm dragged", "masks=" .. masks, "crop=" .. tostring(dr.Icon.coords and dr.Icon.coords[1]),
+        "rim=" .. string.format("%.2f", drim and drim.vertex and drim.vertex[2] or -1))
+    CooldownViewerDraggedItem_SetIsLegalTarget(false)
+    print("cdm dragged illegal", "rim=" .. string.format("%.2f,%.2f", drim.vertex[1], drim.vertex[2]))
+    CooldownViewerDraggedItem_SetIsLegalTarget(true)
+    local bars = f.categoryPool.list[2].itemPool.list
+    f:Hover(bars[1])
+    print("cdm marker bar", line())
+    print("cdm bar strata", bars[1].Bar:GetFrameStrata(), "level=" .. tostring(bars[1].Bar:GetFrameLevel()),
+        "row=" .. bars[1]:GetFrameStrata() .. "/" .. tostring(bars[1]:GetFrameLevel()))
+    local notShown = f.categoryPool.list[3].itemPool.list
+    for _, it in ipairs(f.categoryPool.list[1].itemPool.list) do
+        if it.spell == "Frost Nova" or it.spell == "Blink" then badge("cdm badge buff " .. it.spell, it) end
+    end
+    for _, it in ipairs(notShown) do
+        if it.spell == "Frost Nova" or it.spell == "Blink" then badge("cdm badge line " .. it.spell, it) end
+    end
+    -- the game refreshing a spell after us: its orange, our gold again
+    bars[1]:RefreshIconState()
+    barState("cdm bar", bars[1])
+    bars[1].spell = "Slow Fall"
+    bars[1]:RefreshIconState()
+    barState("cdm bar unknown", bars[1])
+    bars[1].spell = "Frost Nova"
+    bars[1]:RefreshIconState()
     print("cdm controls", "search=" .. rect(f.SearchBox), "gear=" .. rect(f.SettingsDropdown),
         "layout=" .. rect(f.LayoutDropdown), "list=" .. rect(f.CooldownScroll), "undo=" .. rect(f.UndoButton),
         "undo words=" .. string.format("%.2f", f.UndoButton.text.textColor and f.UndoButton.text.textColor[1] or -1))

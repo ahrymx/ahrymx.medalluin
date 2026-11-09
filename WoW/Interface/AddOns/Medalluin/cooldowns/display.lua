@@ -68,6 +68,9 @@ local function Dress(item)
             if m then icon:RemoveMaskTexture(m) end
         end
     end
+    -- the icon's own square border cut off, so the round mask shows its face
+    -- (with the game's masks off: tex coords are refused on a masked texture)
+    if icon.SetTexCoord then icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
     if item.CreateMaskTexture and icon.AddMaskTexture then
         d.mask = item:CreateMaskTexture()
         d.mask:SetTexture(ROUND, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
