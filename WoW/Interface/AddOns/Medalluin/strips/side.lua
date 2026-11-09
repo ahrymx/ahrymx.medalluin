@@ -44,7 +44,6 @@ local PITCH = 30                                -- column buttons, top down
 local BUTTON, GLYPH = 24, 28                    -- a button's box, and its glyph's 32x32 art in it
 local SWATCH = 14                               -- a ladder's step: its pitch (the box 1 less, edges shared)
 local PAD, RULE, TABS = 8, 6, 28                -- as the chat box's (chat.lua)
-local SHORTER = 9                               -- the margin, as the chat's
 local GOLD_D = { 0.541, 0.439, 0.204 }
 
 local views = {}
@@ -262,7 +261,7 @@ end
 local function Build()
     local strip = ns.strips[1]
     local width = L.chatLeft + L.chatWidth
-    local margin = ns.window.band - SHORTER
+    local margin = ns.window.band               -- the windows' margin, as the chat's
     local foot = margin + RULE                  -- the body's foot, over the margin's rule
     local tall = L.chatHeight + TABS - PAD      -- the chat's messages and tab row: the same box
     panel = CreateFrame("Frame", "MedalluinSide", strip)

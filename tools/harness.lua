@@ -13206,7 +13206,7 @@ if profPass then
         end
         print(tag, table.concat(list, " "), "top=" .. top, "chevron=" .. tostring(W.window.chevron ~= nil),
             "open=" .. tostring(W.pages[1].tab.top ~= nil and W.window.close.top ~= nil),
-            "hairs=" .. table.concat(hairs, ","))
+            "hairs=" .. table.concat(hairs, ","), "cross=" .. W.window.close.w .. "x" .. W.window.close.h)
     end
     local function c3(c) return c and string.format("%.2f,%.2f,%.2f", c[1], c[2], c[3]) or "-" end
     local function pageOf(key)

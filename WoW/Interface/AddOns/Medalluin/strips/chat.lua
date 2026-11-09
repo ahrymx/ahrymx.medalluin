@@ -43,7 +43,6 @@ local _, ns = ...
 local L = ns.stripLayout
 local PARTS = ns.media .. "strips\\"
 local PAD, RULE, TABS = 8, 6, 28    -- the box's edge, the gap over the margin's rule, the tabs' height
-local SHORTER = 9                   -- the margin, 5px above the medallion (the edit box's and buffs' height)
 local BOX = TABS                    -- the head's height: the tabs, the cog and its drawer, flush to the box's top
 local GAP = 4                       -- either side of the divider between the tabs and the cog
 local GLYPH = 28                    -- a glyph in a box (its art is 20 of the 32)
@@ -610,7 +609,7 @@ end
 -- ----------------------------------------------------------------- build
 local function Build()
     local strip = ns.strips[-1]
-    local margin = ns.window.band - SHORTER
+    local margin = ns.window.band       -- the windows' margin (the edit box's and buffs' height)
     local foot = margin + RULE                  -- the panel's foot, over the margin's rule
     local top = foot + L.chatHeight + TABS      -- the tabs' top
     chatBox = CreateFrame("Frame", "MedalluinChat", strip)

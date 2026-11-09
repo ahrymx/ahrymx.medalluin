@@ -85,7 +85,7 @@ local GAP = 4                                   -- between the tabs and the cros
 local TOP = TAB + RULE / 2                      -- the page's top, under the tabs' row
 local MEDALLION = L.chatLeft                    -- the medallion's width: the strip's art left of the chat
 local OVER = ART.height - L.stripHeight         -- how far the medallion stands above the strip
-local BAND = OVER + 4                           -- the margin, up to its rule
+local BAND = OVER - 5                           -- the margin, up to its rule: as the chat's and the side panel's
 local BOTTOM = BAND + RULE                      -- the page's (or its details') foot
 local LIFT = 20                                 -- the medallion's buttons' level over the window's
 local HEIGHT, LEAST = 480, { WIDTH, 240 }        -- a detached window's first height, its least size
@@ -921,9 +921,9 @@ function ns.Window(spec)
 
     -- the row less the cross (and the view glyph) and the gap before
     -- them, shared out among the pages that are there, and the second row,
-    -- if any, across the whole width; flush in the window's corner, the
-    -- tabs overlap a pixel, sharing their edges (the window's border too),
-    -- row on row as well
+    -- if any, under it as wide, the cross as tall as both; flush in the
+    -- window's corner, the tabs overlap a pixel, sharing their edges (the
+    -- window's border too), row on row as well
     function Tabs()
         local first, second = {}, {}
         for _, p in ipairs(pages) do
@@ -936,9 +936,12 @@ function ns.Window(spec)
         local full = window:GetWidth() or WIDTH
         local edge = controls * TAB - (controls - 1)    -- the cross and the view glyph, joined
         local room = full - edge - GAP
+        local tall = #second > 0 and 2 * TAB - 1 or TAB
+        close:SetHeight(tall)
+        if view then view:SetHeight(tall) end
         local n = 0
         for r, list in ipairs({ first, second }) do
-            local span = r == 1 and room or full
+            local span = room
             local width = #list > 0 and math.floor((span + #list - 1) / #list) or 0
             local prev
             for k, p in ipairs(list) do
