@@ -966,11 +966,17 @@ local function HostNote()
     if c:GetParent() ~= listme.note then
         c:SetParent(listme.note)
         c:ClearAllPoints()
-        c:SetPoint("TOPLEFT", 6, -6)
-        c:SetPoint("BOTTOMRIGHT", -24, 6)
+        -- its own rounded border (drawn 5 out from it) put away: our face is its frame,
+        -- the words set in from our edge, the scroll bar's room kept at the right
+        for _, k in ipairs({ "TopLeftTex", "TopRightTex", "TopTex", "BottomLeftTex", "BottomRightTex",
+            "BottomTex", "LeftTex", "RightTex", "MiddleTex" }) do
+            if c[k] and c[k].SetAlpha then c[k]:SetAlpha(0) end
+        end
+        c:SetPoint("TOPLEFT", 8, -7)
+        c:SetPoint("BOTTOMRIGHT", -26, 7)
         c:SetFrameLevel(listme.note:GetFrameLevel() + 2)
         c:Show()
-        if c.EditBox and c.EditBox.SetWidth then c.EditBox:SetWidth(INNER - 36) end
+        if c.EditBox and c.EditBox.SetWidth then c.EditBox:SetWidth(INNER - 34) end
     end
     if hosted ~= c then
         hosted = c

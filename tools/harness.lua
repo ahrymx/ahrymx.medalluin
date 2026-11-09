@@ -3749,6 +3749,10 @@ if lfgPass or cdmPass then (function()
         -- Blizzard's note box (a secure reference) and its own Who tab
         LFGListingComment = CreateFrame("ScrollFrame", "LFGListingComment", LFGParentFrame)
         LFGListingComment.EditBox = CreateFrame("EditBox", nil, LFGListingComment)
+        for _, k in ipairs({ "TopLeftTex", "TopRightTex", "TopTex", "BottomLeftTex", "BottomRightTex",
+            "BottomTex", "LeftTex", "RightTex", "MiddleTex" }) do
+            LFGListingComment[k] = LFGListingComment:CreateTexture(nil, "BACKGROUND")
+        end
         LFGWhoListFrame = CreateFrame("Frame", "LFGWhoListFrame", LFGParentFrame)
         LFGWhoListFrame:Hide()
         -- Blizzard's filter: the suggested range near your level, or all of them
@@ -16075,7 +16079,9 @@ if lfgPass then (function()
     G.Refresh()
     state("lfg list")
     print("lfg note hosted", "parent=" .. tostring(LFGListingComment.parent == G.listme.note),
-        "missing=" .. tostring(G.listme.missing.shown), "count=" .. G.listme.count.text)
+        "missing=" .. tostring(G.listme.missing.shown), "count=" .. G.listme.count.text,
+        "border=" .. tostring(LFGListingComment.TopLeftTex:GetAlpha() == 0 and LFGListingComment.MiddleTex:GetAlpha() == 0
+            and "hidden" or "shown"))
     -- the medallions: lit (rim bright) as T/H/D, dark as t/h/d, x when the class cannot
     local function medals()
         local out = ""
