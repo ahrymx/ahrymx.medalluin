@@ -140,6 +140,13 @@ read_globals = {
     "GetQuestLogQuestText", "GetQuestLogRewardInfo", "GetQuestLogRewardMoney", "GetQuestLogRewardXP",
     "GetQuestLogSelection", "MAX_QUESTLOG_QUESTS", "MAX_WATCHABLE_QUESTS", "QuestLogPushQuest", "QuestMapFrame",
     "QuestMapFrame_Hide", "SelectQuestLogEntry", "SetAbandonQuest", "SetCVar", "SetOverrideBinding", "WorldMapFrame",
+    -- the LFG / Who window (social/)
+    "C_LFGList", "PVEFrame", "GroupFinderFrame", "LFGParentFrame", "WhoFrame", "FriendsFrame", "ChatFrame_SendTell",
+    "C_PartyInfo", "InviteUnit", "GetQuestDifficultyColor", "GetZoneText",
+    "C_LFGListRoles", "C_Map", "MapUtil", "ChatFrameUtil", "GetCVarBool", "GetClassInfo", "GetNumClasses",
+    "GetGeneralPlaystyleString", "LFGUtil_GetFilteredActivities", "MAX_WHOS_FROM_SERVER", "UnitIsGroupAssistant",
+    "UnitSetRole", "VOICE_CHAT_MODE_NONE", "VOICE_CHAT_MODE_LEGACY", "VOICE_CHAT_MODE_DISCORD",
+    "VOICE_CHAT_MODE_CUSTOM",
 }
 -- the saved variables, the slash command, the reset popup's key and the
 -- tooltip spec, the locked line and the beside test mdlui_Tooltips reads (core.lua,
@@ -147,7 +154,9 @@ read_globals = {
 globals = { "_G", "Medalluin_TooltipSpec", "Medalluin_LockedLine", "Medalluin_TooltipBeside", "MedalluinDB", "MedalluinCharDB", "SLASH_MEDALLUIN1", "SLASH_MEDALLUIN2", "SLASH_MDLUI1", "SlashCmdList",
     "StaticPopupDialogs",
     -- the quest log key's binding (Bindings.xml, quests/log.lua)
-    "MedalluinToggleQuestLog", "BINDING_NAME_MEDALLUIN_QUESTLOG" }
+    "MedalluinToggleQuestLog", "BINDING_NAME_MEDALLUIN_QUESTLOG",
+    -- the LFG / Who window's binding (Bindings.xml, social/lfg.lua)
+    "MedalluinToggleLFG", "BINDING_NAME_MEDALLUIN_LFG" }
 
 -- mdlui_Tooltips companion addon settings
 files["WoW/Interface/AddOns/mdlui_Tooltips/**/*.lua"] = {

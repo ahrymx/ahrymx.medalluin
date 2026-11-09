@@ -96,6 +96,8 @@ npc\merchant.lua
 npc\trainer.lua
 npc\mail.lua
 npc\flight.lua
+social\lfgdata.lua
+social\lfg.lua
 inventory\bank.lua
 keybind.lua
 diag.lua

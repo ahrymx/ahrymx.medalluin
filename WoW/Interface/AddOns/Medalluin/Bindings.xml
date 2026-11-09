@@ -9,4 +9,8 @@
 	<Binding name="MEDALLUIN_QUESTLOG" category="ADDONS">
 		MedalluinToggleQuestLog()
 	</Binding>
+	<!-- social/lfg.lua: the LFG / Who window -->
+	<Binding name="MEDALLUIN_LFG" category="ADDONS">
+		MedalluinToggleLFG()
+	</Binding>
 </Bindings>

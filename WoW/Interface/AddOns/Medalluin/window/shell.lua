@@ -221,6 +221,7 @@ local function Bare(b)
     glow:SetPoint("TOPLEFT", 4, -2)
     glow:SetPoint("BOTTOMRIGHT", -4, 0)
     glow:SetColorTexture(1, 1, 1, 0.06)
+    return glow
 end
 
 -- soft: Face's soft look; "open": Bare's
@@ -253,7 +254,8 @@ ns.window.Button = Button
 -- they come to (anchor it by the end it grows from).
 --
 --   local row = ns.window.Segments(parent, { height, fit, size (the
---               words', 12), iconSize (24), tipAt, items })
+--               words', 12), iconSize (24), tipAt, items, soft (true:
+--               Face's soft look; "open": tabs with no box, Bare's) })
 --   row:Fill({ { key, label, icon, group, tip() -> text, click(button),
 --                selected, enabled, shown, color } ... })   (again: the
 --               buttons kept, their words and deeds changed)
@@ -347,11 +349,17 @@ local function Segments(parent, spec)
             if not b then
                 b = CreateFrame("Button", nil, self)
                 b:SetHeight(spec.height)
-                local _, _, glow = Face(b)
-                b.glow = glow
-                b.label = ns.Text(b, spec.size or 12)
+                local face = b
+                if spec.soft == "open" then
+                    b.glow = Bare(b)
+                    face = b.top                -- over the mark's glow
+                else
+                    local _, _, glow = Face(b, nil, spec.soft)
+                    b.glow = glow
+                end
+                b.label = ns.Text(face, spec.size or 12)
                 b.label:SetPoint("CENTER")
-                b.icon = b:CreateTexture(nil, "ARTWORK")
+                b.icon = face:CreateTexture(nil, "ARTWORK")
                 b.icon:SetSize(spec.iconSize or 24, spec.iconSize or 24)
                 b.icon:SetPoint("CENTER")
                 b:RegisterForClicks("LeftButtonUp", "RightButtonUp")

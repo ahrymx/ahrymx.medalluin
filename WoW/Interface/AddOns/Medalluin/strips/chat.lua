@@ -662,14 +662,16 @@ local function Build()
     end
     -- An NPC window (npc/window.lua) stands on the box in the reach's
     -- place, a box of its own as tall as it needs: held, the reach is gone,
-    -- the tracker's asks kept for after.
-    local wanted, held = { false }, false
+    -- the tracker's asks kept for after. The LFG window (social/lfg.lua)
+    -- holds it too: each holder by name, held while any is.
+    local wanted, held, holders = { false }, false, {}
     function ns.chat.Reach(up, alpha)
         wanted = { up, alpha }
         if not held then Draw(up, alpha) end
     end
-    function ns.chat.Hold(on)
-        held = on and true or false
+    function ns.chat.Hold(on, who)
+        holders[who or "npc"] = on and true or nil
+        held = next(holders) ~= nil
         if held then
             reach:Hide()
         else

@@ -749,6 +749,19 @@ function ns.OptionPages()
             groups = {},
         },
         {
+            id = "lfg", name = "Group finder", intro = "Shared by every profile.",
+            master = Check("lfgWindow", "Looking for group and Who",
+                "The groups listed, your own listing and Who in one box standing on the chat box, where the quest "
+                .. "tracker stands (it steps aside while the box is open): Browse shows each group's activity, "
+                .. "leader, note, the roles it needs, its size and age, and a click opens its members with "
+                .. "Whisper and Ask to join; List me lists you as the roles you pick, for the activities you tick, "
+                .. "with a note; Who asks who is online, with your zone, your level and your guild a click away. "
+                .. "It opens on the game's LFG button and key, and on the Friends window's Who tab. Forever's "
+                .. "group finder only: on retail the game's stays, and the box has Who alone. Untick it to keep "
+                .. "the game's.", true),
+            groups = {},
+        },
+        {
             id = "npc", name = "Gossip and vendors", intro = "Shared by every profile.",
             master = Needs("chat", Check("npcWindows", "Gossip, quest, vendor, trainer, flight and mailbox windows",
                 "What an NPC says, its quest pages, its wares and what it teaches in one box standing on the chat "

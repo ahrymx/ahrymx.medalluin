@@ -78,6 +78,7 @@ local ROLE_COORDS = {
     HEALER = { 32 / 128, 64 / 128, 0, 1 },
     DAMAGER = { 64 / 128, 96 / 128, 0, 1 },
 }
+ns.ROLE_COORDS = ROLE_COORDS        -- media/role-icons, the LFG window's too (social/lfg.lua)
 
 local CHECK_COORDS = {
     ready = { 0, 32 / 128, 0, 1 },

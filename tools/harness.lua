@@ -113,6 +113,15 @@ local questPass = args[2] == "quests" or args[2] == "questlog"
 -- classic" plays Classic's QuestLogFrame and its global abandon calls.
 questLogPass = args[2] == "questlog"           -- globals: the main chunk is at its local limit
 questLogClassic = questLogPass and args[3] == "classic"
+-- "lfg" (with "modern") plays the LFG / Who window (social/) over a stubbed
+-- Forever group finder (C_LFGList: four categories, three groups, your
+-- listing) and Who: the box on the chat box, Browse's rows, filters and an
+-- open group, List me's roles, picks, note and listing, Who's picks,
+-- answers and buttons, Blizzard's LFG frame parked and followed, the
+-- Friends window's Who tab taken, the covers and Escape. "lfg retail" has
+-- retail's Group Finder: Who alone.
+lfgPass = args[2] == "lfg"
+lfgRetail = lfgPass and args[3] == "retail"
 local questieStub = questPass and args[3] == "questie"
 local questieBroken = questPass and args[3] == "broken"
 -- "npc" (with "modern") plays the NPC box (npc/): gossip, the four quest
@@ -3546,6 +3555,223 @@ if mailPass then
         end
     end
 end
+
+-- ------------------------------------------------------------ the group finder
+if lfgPass then (function()
+    -- Forever's group finder, shaped on Blizzard_GroupFinder_VanillaStyle's calls
+    lfgWorld = { calls = {}, cvars = {} }
+    local W = lfgWorld
+    local function called(s) table.insert(W.calls, s) end
+    local function ids(list)
+        local out = {}
+        for _, v in ipairs(list or {}) do table.insert(out, tostring(v)) end
+        return table.concat(out, ",")
+    end
+    W.cats = { { 2, "Dungeons" }, { 116, "Quests & Zones" }, { 118, "Battlegrounds" }, { 120, "Custom" } }
+    -- { id, name, min, max, size, activity group }
+    W.acts = {
+        [2] = { { 798, "Wailing Caverns", 17, 24, 5, 10 }, { 796, "The Deadmines", 15, 25, 5, 10 },
+            { 800, "Shadowfang Keep", 22, 30, 5, 10 }, { 802, "Scarlet Monastery", 28, 38, 5, 10 },
+            { 850, "Onyxia's Lair", 60, 60, 40, 11 } },
+        [116] = { { 900, "Westfall", 10, 20, 5, 0 } }, [118] = {}, [120] = {},
+    }
+    W.groups = { [10] = { "Dungeons", 1 }, [11] = { "Raids", 2 } }
+    local byAct = {}
+    for cat, list in pairs(W.acts) do
+        for _, a in ipairs(list) do
+            byAct[a[1]] = { fullName = a[2], minLevelSuggestion = a[3], maxLevelSuggestion = a[4], maxNumPlayers = a[5],
+                groupFinderActivityGroupID = a[6], categoryID = cat }
+        end
+    end
+    local function person(name, level, file, className, role, roles, leader)
+        return { name = name, level = level, classFilename = file, className = className, assignedRole = role,
+            lfgRoles = roles, isLeader = leader }
+    end
+    local function counts(t, h, d)
+        return { TANK_REMAINING = t, HEALER_REMAINING = h, DAMAGER_REMAINING = d }
+    end
+    W.results = {
+        [11] = { info = { searchResultID = 11, activityIDs = { 796 }, leaderName = "Thalric", numMembers = 3, age = 120,
+                comment = "need a healer, then go", generalPlaystyle = 2, voiceMode = 2, newPlayerFriendly = true },
+            people = { person("Thalric", 21, "WARRIOR", "Warrior", "TANK", { tank = true }, true),
+                person("Wenna", 20, "MAGE", "Mage", "DAMAGER", { dps = true }),
+                person("Corvo", 22, "ROGUE", "Rogue", "DAMAGER", { dps = true }) }, counts = counts(0, 1, 0) },
+        [12] = { info = { searchResultID = 12, activityIDs = { 800 }, leaderName = "Mirae", numMembers = 2, age = 300,
+                comment = "LFM tank & dps", generalPlaystyle = 3, voiceMode = 0, newPlayerFriendly = false },
+            people = { person("Mirae", 24, "MAGE", "Mage", "DAMAGER", { dps = true }, true),
+                person("Osric", 23, "PRIEST", "Priest", "HEALER", { healer = true }) }, counts = counts(1, 0, 2) },
+        [13] = { info = { searchResultID = 13, activityIDs = { 798, 796 }, leaderName = "Brakka", numMembers = 1,
+                age = 7200, comment = "", generalPlaystyle = 1, voiceMode = 0, newPlayerFriendly = false },
+            people = { person("Brakka", 19, "SHAMAN", "Shaman", "NONE", { healer = true, dps = true }, true) },
+            counts = counts(1, 0, 3) },
+        [14] = { info = { searchResultID = 14, activityIDs = { 800 }, leaderName = "Ilrana", numMembers = 1, age = 60,
+                comment = "heals for SFK", generalPlaystyle = 4, voiceMode = 1, newPlayerFriendly = false },
+            people = { person("Ilrana", 22, "PRIEST", "Priest", "NONE", { healer = true }, true) },
+            counts = counts(1, 0, 3) },
+    }
+    W.order = { 12, 11, 13, 14 }
+    W.roles = { tank = false, healer = true, dps = false }
+    if lfgRetail then PVEFrame = CreateFrame("Frame", "PVEFrame", UIParent) end
+    Enum = Enum or {}
+    Enum.LFGEntryGeneralPlaystyle = { None = 0, Learning = 1, FunRelaxed = 2, FunSerious = 3, Expert = 4 }
+    Enum.LFGEntryVoiceMode = { None = 0, Legacy = 1, Discord = 2, Custom = 3 }
+    Enum.SocialWhoOrigin = { Unknown = 0, Social = 1, Chat = 2, Item = 3 }
+    Enum.UIMapType = { Cosmic = 0, World = 1, Continent = 2, Zone = 3 }
+    function GetCVarBool(k) return W.cvars[k] == "1" end
+    function SetCVar(k, v)
+        called("cvar " .. k .. "=" .. tostring(v))
+        W.cvars[k] = tostring(v)
+    end
+    C_LFGList = {
+        GetAvailableCategories = function()
+            local out = {}
+            for _, c in ipairs(W.cats) do table.insert(out, c[1]) end
+            return out
+        end,
+        GetLfgCategoryInfo = function(id)
+            for _, c in ipairs(W.cats) do if c[1] == id then return { name = c[2] } end end
+        end,
+        GetAvailableActivities = function(cat)
+            local out = {}
+            for _, a in ipairs(W.acts[cat] or {}) do table.insert(out, a[1]) end
+            return out
+        end,
+        GetActivityInfoTable = function(id) return byAct[id] end,
+        GetActivityGroupInfo = function(g)
+            local x = W.groups[g]
+            if x then return x[1], x[2] end
+        end,
+        -- Search(categoryID [, filter, preferredFilters, languageFilter, crossFactionListings, advancedFilter,
+        -- activityIDs]): numbers where numbers go, or it raises
+        Search = function(cat, filter, preferred, language, cross, advanced, activityIDs)
+            if type(cat) ~= "number" or filter ~= nil and type(filter) ~= "number"
+                or preferred ~= nil and type(preferred) ~= "number" then
+                error("bad argument #2 to '?' (outside of expected range 0 to 4294967295)")
+            end
+            called("search " .. cat .. " [" .. ids(activityIDs) .. "]")
+        end,
+        GetSearchResults = function() return #W.order, W.order end,
+        GetSearchResultInfo = function(id) return W.results[id] and W.results[id].info end,
+        GetSearchResultLeaderInfo = function(id) return W.results[id] and W.results[id].people[1] end,
+        GetSearchResultPlayerInfo = function(id, i) return W.results[id] and W.results[id].people[i] end,
+        GetSearchResultMemberCounts = function(id) return W.results[id] and W.results[id].counts end,
+        HasActiveEntryInfo = function() return W.entry ~= nil end,
+        GetActiveEntryInfo = function() return W.entry end,
+        GetApplicants = function() return W.applicants or {} end,
+        -- the note is not passed: the game reads it from its own box
+        CreateListing = function(t)
+            if type(t) ~= "table" or not t.generalPlaystyle then error("GROUP_FINDER_PLAYSTYLE_REQUIRED") end
+            local note = LFGListingComment and LFGListingComment.EditBox:GetText() or ""
+            called(string.format("create [%s] style=%s voice=%s new=%s note=%q", ids(t.activityIDs),
+                tostring(t.generalPlaystyle), tostring(t.voiceMode), tostring(t.newPlayerFriendly), note))
+            W.entry = { activityIDs = t.activityIDs, duration = 0, generalPlaystyle = t.generalPlaystyle,
+                voiceMode = t.voiceMode, newPlayerFriendly = t.newPlayerFriendly, comment = note }
+        end,
+        UpdateListing = function(t)
+            called(string.format("update [%s] style=%s voice=%s new=%s", ids(t.activityIDs),
+                tostring(t.generalPlaystyle), tostring(t.voiceMode), tostring(t.newPlayerFriendly)))
+            W.entry.activityIDs, W.entry.voiceMode, W.entry.newPlayerFriendly = t.activityIDs, t.voiceMode,
+                t.newPlayerFriendly
+        end,
+        RemoveListing = function()
+            called("remove")
+            W.entry = nil
+        end,
+    }
+    -- the game answers a SetRoles later (LFG_LIST_ROLE_UPDATE): GetRoles
+    -- says the old roles until the test answers (W.asked -> W.roles)
+    W.saved = { tank = false, healer = true, dps = false }
+    W.roles = W.saved
+    C_LFGListRoles = {
+        GetSavedRoles = function() return W.saved end,
+        GetRoles = function() return W.roles end,
+        SetRoles = function(r)
+            called(string.format("roles t=%s h=%s d=%s", tostring(r.tank), tostring(r.healer), tostring(r.dps)))
+            W.asked = { tank = r.tank, healer = r.healer, dps = r.dps }
+            table.insert(W.sent, W.asked)
+        end,
+    }
+    W.sent = {}
+    -- this class cannot tank
+    C_LFGList.GetAvailableRoles = function() return false, true, true end
+    -- the game's timers, run by the test
+    W.timers = {}
+    C_Timer = C_Timer or {}
+    C_Timer.After = function(_, fn) table.insert(W.timers, fn) end
+    function GetGeneralPlaystyleString(v)
+        return ({ "Learning", "Relaxed", "Competitive", "Carry Offered" })[v]
+    end
+    function UnitGroupRolesAssigned() return W.groupRole or "NONE" end
+    function UnitSetRole(_, role)
+        called("set role " .. role)
+        W.groupRole = role
+    end
+    function ShowUIPanel(f) f:Show() end
+    function HideUIPanel(f) f:Hide() end
+    C_AddOns.IsAddOnLoaded = function() return false end
+    C_AddOns.LoadAddOn = function(name) called("load " .. name) end
+    if not lfgRetail then
+        LFGParentFrame = CreateFrame("Frame", "LFGParentFrame", UIParent)
+        LFGParentFrame:Hide()
+        function ToggleLFGParentFrame()
+            if LFGParentFrame:IsShown() then HideUIPanel(LFGParentFrame) else ShowUIPanel(LFGParentFrame) end
+        end
+        -- Blizzard's note box (a secure reference) and its own Who tab
+        LFGListingComment = CreateFrame("ScrollFrame", "LFGListingComment", LFGParentFrame)
+        LFGListingComment.EditBox = CreateFrame("EditBox", nil, LFGListingComment)
+        LFGWhoListFrame = CreateFrame("Frame", "LFGWhoListFrame", LFGParentFrame)
+        LFGWhoListFrame:Hide()
+        -- Blizzard's filter: the suggested range near your level, or all of them
+        function LFGUtil_GetFilteredActivities(cat)
+            local out = {}
+            for _, a in ipairs(W.acts[cat] or {}) do
+                if GetCVarBool("disableSuggestedLevelActivityFilter") or a[3] <= UnitLevel("player") + 5 then
+                    table.insert(out, a[1])
+                end
+            end
+            return out
+        end
+    end
+    FriendsFrame = CreateFrame("Frame", "FriendsFrame", UIParent)
+    FriendsFrame:Hide()
+    WhoFrame = CreateFrame("Frame", "WhoFrame", FriendsFrame)
+    WhoFrame:Hide()
+    C_FriendList.SendWho = function(q, origin, filters)
+        if filters then
+            called(string.format("who %q origin=%s classes=[%s] races=[%s] zones=[%s]", q, tostring(origin),
+                ids(filters.classIDs), ids(filters.raceIDs), ids(filters.uiMapIDs)))
+        else
+            called(string.format("who %q", q))
+        end
+    end
+    C_FriendList.SortWho = function(mode, asc) called("sort " .. mode .. " " .. tostring(asc)) end
+    C_FriendList.SetWhoToUi = function(v) called("whoToUi " .. tostring(v)) end
+    C_FriendList.AddFriend = function(n) called("friend " .. n) end
+    C_FriendList.GetWhoRaceFilters = function()
+        return { { raceID = 1, name = "Human" }, { raceID = 7, name = "Gnome" }, { raceID = 3, name = "Dwarf" } }
+    end
+    local classes = { { "Warrior", "WARRIOR" }, { "Paladin", "PALADIN" }, { "Hunter", "HUNTER" }, { "Rogue", "ROGUE" },
+        { "Priest", "PRIEST" }, [8] = { "Mage", "MAGE" } }
+    function GetNumClasses() return 8 end
+    function GetClassInfo(i)
+        local c = classes[i]
+        if c then return c[1], c[2], i end
+    end
+    C_Map = {
+        GetBestMapForUnit = function() return 1436 end,
+        GetMapChildrenInfo = function(top)
+            if top ~= 1415 then return {} end
+            return { { mapID = 1436, name = "Westfall" }, { mapID = 1429, name = "Elwynn Forest" },
+                { mapID = 1433, name = "Redridge Mountains" } }
+        end,
+    }
+    MapUtil = { GetMapParentInfo = function(_, kind) return kind == Enum.UIMapType.Continent and { mapID = 1415 } end }
+    function ChatFrame_SendTell(n) called("tell " .. n) end
+    C_PartyInfo = C_PartyInfo or {}
+    C_PartyInfo.InviteUnit = function(n) called("invite " .. n) end
+    function GetZoneText() return "Westfall" end
+    function GetGuildInfo() return "Silver Hand" end
+end)() end
 
 -- ------------------------------------------------------------ load + fire
 local ns = {}
@@ -15153,3 +15379,429 @@ if mailPass then
     end
     calls("mail close")
 end
+
+-- ------------------------------------------------------------ the LFG / Who window
+if lfgPass then (function()
+    local W = lfgWorld
+    local G = ns.lfg
+    local box = _G.MedalluinLFG
+    -- a frame passing: the box draws what changed
+    local function frame() if box and box.shown and box.scripts.OnUpdate then box.scripts.OnUpdate(box, 0.016) end end
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+        frame()
+    end
+    print("lfg", "box=" .. tostring(box ~= nil), "setting=" .. tostring(ns.db.lfgWindow), "shown=" .. tostring(box and
+        box.shown), "tool=" .. tostring(ns.lfgData.Has()))
+    if not box then return end
+    local function calls(tag)
+        print(tag, #W.calls > 0 and table.concat(W.calls, ", ") or "none")
+        W.calls = {}
+    end
+    local function rect(tag, f)
+        local ok, q = pcall(resolve, f)
+        print(tag, ok and q and string.format("%.0f,%.0f-%.0f,%.0f", q[1], q[2], q[3], q[4]) or "unresolved")
+    end
+    local function seg(row)
+        local out = {}
+        for _, b in ipairs(row.buttons) do
+            if b.shown and b.data then
+                table.insert(out, (b.label.text or "") .. (b.enabled and "" or "/off") .. (b.selected and "*" or ""))
+            end
+        end
+        return table.concat(out, " | ")
+    end
+    local function press(row, key, mouse)
+        local b = row.byKey[key]
+        b.scripts.OnClick(b, mouse or "LeftButton")
+        frame()
+    end
+    local function state(tag)
+        print(tag, "shown=" .. tostring(box.shown), "page=" .. tostring(G.Current()), "title=" .. tostring(G.title.text),
+            "tabs=" .. seg(G.tabs), "band=" .. seg(G.band),
+            "theirs=" .. tostring(LFGParentFrame and LFGParentFrame.shown))
+    end
+    -- a dropdown: what it says (red when it wants a pick, dim when off)
+    local function picker(p)
+        local c = p.edge.color or {}
+        return tostring(p.text.text) .. (p.off and " (off)" or "") .. ((c[1] or 0) > 0.8 and (c[2] or 1) < 0.4
+            and " (red)" or "")
+    end
+    -- its list opened, and the choice starting with these words clicked
+    local function menu()
+        local out = {}
+        for _, r in ipairs(_G.MedalluinOptionsMenu.rows) do
+            if r.shown then table.insert(out, (r.mark.shown and "[v]" or "") .. r.text.text) end
+        end
+        return table.concat(out, " | ")
+    end
+    local function choose(p, words, show)
+        p.scripts.OnClick(p, "LeftButton")
+        local m = _G.MedalluinOptionsMenu
+        if not (m and m.shown) then
+            print("  no list for", picker(p))
+            return
+        end
+        if show then print(show, menu()) end
+        for _, r in ipairs(m.rows) do
+            if r.shown and r.text.text:sub(1, #words) == words then
+                r.scripts.OnClick(r, "LeftButton")
+                break
+            end
+        end
+        ns.OptionsUI.CloseMenu()
+        frame()
+    end
+    local function shownRows(list)
+        local out = {}
+        for _, pool in pairs(list.pools) do
+            for _, r in ipairs(pool) do if r.shown then table.insert(out, r) end end
+        end
+        table.sort(out, function(a, b) return a.points.TOPLEFT[4] > b.points.TOPLEFT[4] end)
+        return out
+    end
+    -- the slots: T/H/D lit, t/h/d a ghost (wanted), o an open place, - none
+    local function slots(r)
+        local s = ""
+        for _, d in ipairs(r.slots) do
+            s = s .. (d.shown == false and "-" or d.state == "empty" and "o" or d.state == "on" and d.role:sub(1, 1)
+                or d.role:sub(1, 1):lower())
+        end
+        return s
+    end
+    local function results(tag)
+        local out = {}
+        for _, r in ipairs(shownRows(G.browse.list)) do
+            if r.word then
+                table.insert(out, "# " .. r.sign.text .. r.word.text .. " " .. r.count.text)
+            else
+                local m = {}
+                for _, x in ipairs(r.people) do
+                    if x.shown then table.insert(m, x.icon.role:sub(1, 1) .. ":" .. x.name.text .. "(" .. x.what.text .. ")") end
+                end
+                local style = r.style.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                table.insert(out, string.format("%s %s%s / %s / %s%s [%s] %s%s%s", r.name.text, tostring(r.lvl.text),
+                    r.new.shown and " (new)" or "", r.act.text, r.dot.shown and "* " or "", style, slots(r), r.meta.text,
+                    r.mark.shown and " OPEN" or "",
+                    #m > 0 and (" {" .. table.concat(m, " ") .. " | " .. seg(r.actions) .. "}") or ""))
+            end
+        end
+        print(tag, #out > 0 and table.concat(out, " || ") or ("empty: " .. tostring(G.browse.list.empty.text)))
+    end
+    local function row(list, field, text)
+        for _, r in ipairs(shownRows(list)) do
+            if r[field] and r[field].text and r[field].text:sub(1, #text) == text then return r end
+        end
+    end
+    local function click(list, field, text, mouse)
+        local r = row(list, field, text)
+        if not r then
+            print("  no row", text)
+            return
+        end
+        r.scripts.OnClick(r, mouse or "LeftButton")
+        frame()
+    end
+
+    -- 1. at login: Blizzard's addon asked for, its frame parked; Escape knows ours
+    print("lfg login", "parked=" .. tostring(LFGParentFrame and LFGParentFrame.parent == ns.hidden),
+        "escape=" .. tostring(table.concat(UISpecialFrames or {}, ","):find("MedalluinLFG") ~= nil),
+        "binding=" .. tostring(BINDING_NAME_MEDALLUIN_LFG))
+    calls("lfg login calls")
+    if lfgRetail then
+        MedalluinToggleLFG()
+        state("lfg retail open")
+        G.who.list.frame.h = 200
+        press(G.who.quick, "zone")
+        calls("lfg retail who")
+        harnessWho = { { fullName = "Arlenne", level = 24, raceStr = "Gnome", classStr = "Mage", filename = "MAGE",
+            area = "Westfall", fullGuildName = "Silver Hand" } }
+        fire("WHO_LIST_UPDATE")
+        print("lfg retail found", G.who.found.text)
+        calls("lfg retail answered")
+        return
+    end
+    -- 2. the game's LFG button opens ours, on Browse, and asks for everything that suits
+    ToggleLFGParentFrame()
+    state("lfg open")
+    rect("lfg box", box)
+    calls("lfg open calls")
+    print("lfg pickers", picker(G.browse.cat), picker(G.browse.acts))
+    G.browse.list.frame.h = 600
+    fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
+    results("lfg results")
+    print("lfg band", seg(G.band))
+    -- 3. the role filter: groups needing a tank, players offering it; then healers; then words
+    G.browse.discs[1].scripts.OnClick(G.browse.discs[1])
+    frame()
+    results("lfg need tank")
+    G.browse.discs[1].scripts.OnClick(G.browse.discs[1])
+    G.browse.discs[2].scripts.OnClick(G.browse.discs[2])
+    frame()
+    results("lfg need healer")
+    G.browse.discs[2].scripts.OnClick(G.browse.discs[2])
+    G.browse.search:SetText("sfk")
+    G.browse.search.scripts.OnTextChanged(G.browse.search, true)
+    frame()
+    results("lfg words sfk")
+    G.browse.search:SetText("")
+    G.browse.search.scripts.OnTextChanged(G.browse.search, true)
+    -- 4. a section folded
+    click(G.browse.list, "word", "Players")
+    results("lfg players folded")
+    click(G.browse.list, "word", "Players")
+    -- 5. a group opened: its members, Send message; no invite for a group
+    click(G.browse.list, "name", "Thalric")
+    results("lfg group open")
+    print("lfg group band", seg(G.band))
+    press(row(G.browse.list, "name", "Thalric").actions, "message")
+    click(G.browse.list, "name", "Thalric", "RightButton")
+    calls("lfg group calls")
+    click(G.browse.list, "name", "Thalric")
+    -- 6. a player picked: Invite
+    click(G.browse.list, "name", "Ilrana")
+    print("lfg player band", seg(G.band))
+    press(G.band, "invite")
+    press(G.band, "message")
+    calls("lfg player calls")
+    -- 7. the activity filter, then another category
+    choose(G.browse.acts, "The Deadmines", "lfg activities list")
+    calls("lfg filtered")
+    print("lfg pickers filtered", picker(G.browse.acts))
+    choose(G.browse.acts, "The Deadmines")
+    choose(G.browse.cat, "Quests", "lfg categories list")
+    calls("lfg category, while one is out")
+    fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
+    calls("lfg category, sent as it answers")
+    print("lfg pickers again", picker(G.browse.cat), picker(G.browse.acts), "saved=" .. tostring(ns.db.lfgCategory))
+    state("lfg searching")
+    fire("LFG_LIST_SEARCH_FAILED")
+    choose(G.browse.cat, "Dungeons")
+    fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
+    W.calls = {}
+    -- 8. List me: Blizzard's note box moved in; nothing posts until a playstyle
+    press(G.tabs, "list")
+    G.listme.list.frame.h = 300
+    G.Refresh()
+    state("lfg list")
+    print("lfg note hosted", "parent=" .. tostring(LFGListingComment.parent == G.listme.note),
+        "missing=" .. tostring(G.listme.missing.shown), "count=" .. G.listme.count.text)
+    -- the medallions: lit (rim bright) as T/H/D, dark as t/h/d, x when the class cannot
+    local function medals()
+        local out = ""
+        for _, m in ipairs(G.listme.medals) do
+            local l = m.role:sub(1, 1)
+            out = out .. (not m.can and "x" or m.on and l or l:lower())
+        end
+        return out .. " (" .. tostring(G.listme.chosen.text) .. " / " .. tostring(G.listme.as.text) .. ")"
+    end
+    local function medal(role)
+        for _, m in ipairs(G.listme.medals) do
+            if m.role == role then
+                m.scripts.OnClick(m, "LeftButton")
+                frame()
+            end
+        end
+    end
+    local function answer(tag)
+        W.roles = table.remove(W.sent, 1) or W.roles
+        fire("LFG_LIST_ROLE_UPDATE")
+        print(tag, "roles=" .. medals())
+    end
+    local function acts(tag)
+        local out = {}
+        for _, x in ipairs(shownRows(G.listme.list)) do
+            if x.word then table.insert(out, "#" .. tostring(x.tick.state) .. " " .. x.word.text .. " " .. x.count.text)
+            else table.insert(out, (x.tick.state and "[v]" or "[ ]") .. x.name.text .. " " .. x.range.text) end
+        end
+        print(tag, "roles=" .. medals(), "new=" .. tostring(G.listme.new.tick.state), "cat=" .. picker(G.listme.cat),
+            "style=" .. picker(G.listme.style), "voice=" .. picker(G.listme.voice),
+            "all=" .. tostring(G.listme.all.tick.state), "heading=" .. G.listme.acts.word.text .. " " .. G.listme.acts.count.text)
+        print(tag .. " rows", table.concat(out, " | "))
+        print(tag .. " status", tostring(G.listme.status.text), "band=" .. seg(G.band))
+    end
+    acts("lfg list rows")
+    -- the group's tick picks all its activities; All level ranges shows the raids too
+    click(G.listme.list, "word", "Dungeons")
+    acts("lfg list all dungeons")
+    click(G.listme.list, "name", "Wailing Caverns")
+    click(G.listme.list, "name", "Scarlet Monastery")
+    G.listme.all.scripts.OnClick(G.listme.all)
+    frame()
+    acts("lfg list all levels")
+    G.listme.all.scripts.OnClick(G.listme.all)
+    frame()
+    calls("lfg list cvar")
+    -- roles: each click lights what was clicked, the game's answers late
+    print("lfg roles at first", medals())
+    medal("TANK")
+    print("lfg roles tank (the class cannot)", medals())
+    medal("DAMAGER")
+    print("lfg roles damage", medals())
+    medal("HEALER")
+    print("lfg roles healer off", medals())
+    calls("lfg roles sent")
+    answer("lfg roles the first answer, a moment after: kept back")
+    answer("lfg roles the second")
+    local timers = W.timers
+    W.timers = {}
+    for _, fn in ipairs(timers) do fn() end
+    frame()
+    print("lfg roles the game's word", medals())
+    medal("HEALER")
+    W.sent = {}
+    W.roles = W.asked
+    now = now + 5
+    fire("LFG_LIST_ROLE_UPDATE")
+    print("lfg roles answered at once", medals())
+    -- then the playstyle (its list), new players, the voice, the note
+    choose(G.listme.style, "Relaxed", "lfg playstyles")
+    G.listme.new.scripts.OnClick(G.listme.new)
+    choose(G.listme.voice, "Discord", "lfg voices")
+    LFGListingComment.EditBox:SetText("Tank, quests for both")
+    LFGListingComment.EditBox.scripts.OnTextChanged(LFGListingComment.EditBox, true)
+    acts("lfg list ready")
+    print("lfg note", G.listme.count.text)
+    press(G.band, "post")
+    calls("lfg listed")
+    fire("LFG_LIST_ACTIVE_ENTRY_UPDATE")
+    W.applicants = { 1, 2 }
+    now = now + 240
+    W.entry.duration = 240
+    fire("LFG_LIST_ACTIVE_ENTRY_UPDATE")
+    acts("lfg list listed")
+    -- an update keeps the playstyle: it is not sent, and its dropdown is off
+    click(G.listme.list, "name", "Shadowfang Keep")
+    press(G.band, "post")
+    calls("lfg updated")
+    press(G.tabs, "browse")
+    print("lfg browse band listed", seg(G.band))
+    press(G.tabs, "list")
+    press(G.band, "delist")
+    calls("lfg delisted")
+    acts("lfg list delisted")
+    -- the listing timed out
+    fire("LFG_LIST_ENTRY_EXPIRED_TIMEOUT")
+    print("lfg expired", G.listme.status.text)
+    -- in a group, led by someone else: their call
+    grouped = true
+    W.groupRole = "HEALER"
+    fire("GROUP_ROSTER_UPDATE")
+    acts("lfg list in a group")
+    medal("DAMAGER")
+    print("lfg group role asked", medals())
+    calls("lfg group role")
+    fire("PLAYER_ROLES_ASSIGNED")
+    print("lfg group role assigned", medals())
+    grouped = false
+    W.groupRole = nil
+    fire("GROUP_ROSTER_UPDATE")
+    -- no playstyle: refused before the game is asked
+    ns.db.lfgPlaystyle = false
+    local ok, why = ns.lfgData.Post({ ids = { 796 }, voice = 0 })
+    print("lfg no playstyle", tostring(ok), tostring(why))
+    calls("lfg no playstyle calls")
+    -- 9. Who: a quick pick, the filters, the sort, the answer
+    press(G.tabs, "who")
+    G.who.list.frame.h = 140
+    G.Refresh()
+    state("lfg who")
+    print("lfg who empty", G.who.list.empty.text, "quick=" .. seg(G.who.quick))
+    press(G.who.quick, "zone")
+    calls("lfg who asked")
+    print("lfg who pending", G.who.found.text, G.who.query.edit:GetText())
+    choose(G.who.class, "Mage", "lfg who classes")
+    choose(G.who.race, "Gnome", "lfg who races")
+    choose(G.who.zone, "Westfall", "lfg who zones")
+    calls("lfg who filtered")
+    print("lfg who pickers", picker(G.who.class), picker(G.who.race), picker(G.who.zone), picker(G.who.sort))
+    choose(G.who.sort, "Level", "lfg who sorts")
+    calls("lfg who sorted")
+    print("lfg who sort", picker(G.who.sort), "saved=" .. tostring(ns.db.lfgWhoSort))
+    harnessWho = {}
+    for i, n in ipairs({ "Arlenne", "Ahrymx", "Coldrin", "Dessa", "Erwin", "Fiora", "Gallo" }) do
+        table.insert(harnessWho, { fullName = n, level = 20 + i, raceStr = "Gnome", classStr = "Mage", filename = "MAGE",
+            area = "Westfall", fullGuildName = i % 2 == 0 and "Silver Hand" or "" })
+    end
+    local numWho = C_FriendList.GetNumWhoResults
+    C_FriendList.GetNumWhoResults = function() return #harnessWho, 120 end
+    fire("WHO_LIST_UPDATE")
+    C_FriendList.GetNumWhoResults = numWho
+    calls("lfg who answered")
+    local function people(tag)
+        local out = {}
+        for _, x in ipairs(shownRows(G.who.list)) do
+            table.insert(out, x.name.text .. " " .. x.what.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") .. " "
+                .. x.zone.text .. " " .. x.guild.text .. (x.invite.shown and " [Invite]" or "") .. (x.mark.shown and " *" or ""))
+        end
+        print(tag, G.who.found.text, "quick=" .. seg(G.who.quick), table.concat(out, " | "))
+    end
+    people("lfg who rows")
+    click(G.who.list, "name", "Coldrin")
+    people("lfg who picked")
+    print("lfg who band", seg(G.band))
+    press(G.band, "whisper")
+    press(G.band, "invite")
+    press(G.band, "friend")
+    local r = row(G.who.list, "name", "Arlenne")
+    r.invite.scripts.OnClick(r.invite, "LeftButton")
+    click(G.who.list, "name", "Dessa", "RightButton")
+    calls("lfg who calls")
+    click(G.who.list, "name", "Ahrymx")
+    print("lfg who band, you", seg(G.band))
+    G.who.list:Scroll(3)
+    people("lfg who scrolled")
+    press(G.who.quick, "clear")
+    people("lfg who cleared")
+    print("lfg who pickers cleared", picker(G.who.class), picker(G.who.race), picker(G.who.zone))
+    -- 10. the game's own ways in and out
+    ToggleLFGParentFrame()
+    state("lfg game closes theirs: Who stays")
+    ToggleLFGParentFrame()
+    state("lfg game opens: Browse")
+    ToggleLFGParentFrame()
+    state("lfg game closes: ours too")
+    MedalluinToggleLFG()
+    state("lfg binding opens")
+    MedalluinToggleLFG()
+    state("lfg binding closes")
+    MedalluinToggleLFG()
+    G.box.scripts.OnHide(G.box)          -- Escape's Hide, as the harness has it
+    box.shown = false
+    state("lfg escape")
+    ShowUIPanel(FriendsFrame)
+    WhoFrame:Show()
+    state("lfg who tab")
+    MedalluinToggleLFG()
+    LFGWhoListFrame:Show()
+    state("lfg their who tab")
+    -- /who with theirs open: the panel manager shows theirs again, then the Who tab
+    MedalluinToggleLFG()
+    ToggleLFGParentFrame()
+    state("lfg theirs open again")
+    W.calls = {}
+    LFGParentFrame:Show()
+    WhoFrame:Show()
+    state("lfg slash who over theirs")
+    calls("lfg slash who calls")
+    print("lfg friends", "shown=" .. tostring(FriendsFrame.shown))
+    -- 11. covered by the character window; closed by an NPC window
+    local char = ns.character and ns.character.window
+    if char then
+        char:Show()
+        if char.scripts.OnShow then char.scripts.OnShow(char) end
+        state("lfg under character")
+        char:Hide()
+        if char.scripts.OnHide then char.scripts.OnHide(char) end
+        state("lfg character gone")
+    end
+    local npc = ns.npc and ns.npc.box
+    if npc then
+        npc:Show()
+        if npc.scripts.OnShow then npc.scripts.OnShow(npc) end
+        state("lfg npc opens")
+        npc:Hide()
+    end
+    print("lfg dump")
+    ns.lfgData.Dump()
+end)() end

@@ -292,6 +292,12 @@ local function Row(i)
     end)
     row:SetScript("OnClick", function(self)
         local spec, value = menu.spec, self.value
+        -- a list of several picks stays open, each click toggling one
+        if spec.multi then
+            Set(spec, value)
+            UI.MarkMenu()
+            return
+        end
         UI.CloseMenu()
         Set(spec, value)
     end)
@@ -307,8 +313,28 @@ function UI.CloseMenu()
     end
 end
 
+-- a choice's mark: the value chosen, or each of a multi list's (spec.on)
+local function Chosen(spec, value)
+    if spec.multi then return spec.on(value) and true or false end
+    return Get(spec) == value
+end
+
+function UI.MarkMenu()
+    if not (menu and menu:IsShown()) then return end
+    for _, row in ipairs(menu.rows) do
+        if row:IsShown() then
+            local on = Chosen(menu.spec, row.value)
+            row.mark:SetShown(on)
+            local c = on and C.goldBright or C.text
+            row.text:SetTextColor(c[1], c[2], c[3])
+        end
+    end
+end
+
 -- The list of a dropdown's choices under it; again on the same dropdown
--- closes it.
+-- closes it. spec: { choices = { { value, label, tip, font } }, key or
+-- get/set; multi (several picks: on(value) says which, set(value) toggles
+-- one, and the list stays open) }.
 function UI.OpenMenu(owner, spec)
     Menu()
     if menu.owner == owner and menu:IsShown() then
@@ -328,7 +354,7 @@ function UI.OpenMenu(owner, spec)
         -- a font's choice drawn in that font
         row.text:SetFont(choice[4] or menu.font[1], menu.font[2], menu.font[3])
         row.text:SetText(choice[2])
-        local on = Get(spec) == choice[1]
+        local on = Chosen(spec, choice[1])
         row.mark:SetShown(on)
         local c = on and C.goldBright or C.text
         row.text:SetTextColor(c[1], c[2], c[3])

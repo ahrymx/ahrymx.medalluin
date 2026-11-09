@@ -114,6 +114,16 @@ local DEFAULTS = {
     questLogFolded = false, -- its zones folded: { [zone] = true } (not on the page)
     questDropPlace = false, -- the Drop window's place, size and scale (quests/drop.lua)
     questPagePlace = false, -- a quest's page's, the same (quests/page.lua)
+    lfgWindow = true,       -- the LFG / Who window on the chat box, instead of the game's (social/lfg.lua)
+    lfgPage = "browse",     -- its page: browse, list or who (not on the page)
+    lfgCategory = false,    -- Browse's category, the game's id (not on the page)
+    lfgListed = false,      -- List me's picks: { [activity id] = true } (not on the page)
+    lfgListCategory = false, -- List me's category, the game's id (not on the page)
+    lfgPlaystyle = false,   -- List me's playstyle (the game's Enum.LFGEntryGeneralPlaystyle; not on the page)
+    lfgVoice = false,       -- List me's voice chat (Enum.LFGEntryVoiceMode; not on the page)
+    lfgNewPlayers = false,  -- List me: new players welcome (not on the page)
+    lfgWhoSort = false,     -- Who's order: name, level or class (not on the page)
+    lfgRoles = false,       -- the roles you list as, where the game keeps none: { tank, healer, dps }
     npcWindows = true,      -- gossip, the quest pages and the vendor in a box on the chat box (npc/window.lua)
     npcSpace = true,        -- Space presses a quest page's Accept, Continue or Complete Quest
     trainerFilter = false,  -- the trainer's type shown: "available", "unavailable" or "used"; Available if unset
@@ -505,6 +515,7 @@ local PAGES = {
     professions = "professions", profession = "professions", prof = "professions", craft = "professions",
     quests = "quests", quest = "quests", tracker = "quests",
     questlog = "questlog", log = "questlog",
+    lfg = "lfg", who = "lfg", group = "lfg", finder = "lfg",
     npc = "npc", gossip = "npc", vendor = "npc", merchant = "npc",
     tooltip = "tooltips", tooltips = "tooltips",
 }
@@ -513,6 +524,10 @@ local function OpenSettings(arg)
     arg = tostring(arg or ""):lower():match("^%s*(%S+)")
     if (arg == "taint" or arg == "debug") and ns.TaintReport then
         ns.TaintReport()
+        return
+    end
+    if arg == "lfgdump" and ns.lfgData then
+        ns.lfgData.Dump()
         return
     end
     if KEYBIND[arg] then
