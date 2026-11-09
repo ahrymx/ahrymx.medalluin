@@ -6,13 +6,20 @@
 --   [Available] [Unavailable] [Known]           <- one at a time, kept (trainerFilter);
 --                                                  the game lists all three
 --   -------------------------------------------
---                                      | Price
---   [icon] Fireball (Rank 2)           |    1s  <- a shop's table (npc/window.lua)
+--   [ Fire (2)                            - ]   <- a fold per skill line, in the
+--   Spell                              | Price     game's order; a click folds it
+--   [icon] Fireball (Rank 2)           |    1s     (Skill at a profession's trainer)
 --   [icon] Fire Ward                   |    2s  <- red: not yet; dim: known
---   [Fireball (Rank 2)]
---   Hurls a fiery ball ...
+--   [ Frost (1)                           + ]   <- folded (for the session)
+--   -------------------------------------------
+--   [Fireball (Rank 2)]                         <- docked: stays put under the
+--   Hurls a fiery ball ...                         list while it scrolls
 --   Requires level 6                            <- red while it is not met
 --   2g 36s 55c                         [Train] [Goodbye]
+--
+-- The folds are the services' skill lines (GetTrainerServiceSkillLine),
+-- those with none last under Other; when the game gives no line at all,
+-- the list is flat.
 --
 -- A click only picks: Blizzard's selection (SelectTrainerService) is left
 -- alone, and nothing of ClassTrainerFrame is written or called; it comes
@@ -26,6 +33,8 @@ local Money = ns.npc.Money
 local TYPES = { { "available", "Available" }, { "unavailable", "Unavailable" }, { "used", "Known" } }
 
 local picked                     -- the service picked, by name: indexes move as you learn
+local folded = {}                -- the skill lines folded, by name, for the session
+local OTHER = "Other"
 
 -- the game's services in its order. Forever's answer is name, type
 -- ("available", "unavailable" or "used"), icon, level, rank: not Classic's
@@ -35,8 +44,9 @@ local function Services()
     for i = 1, GetNumTrainerServices and GetNumTrainerServices() or 0 do
         local name, category, icon, _, rank = GetTrainerServiceInfo(i)
         if name then
+            local line = GetTrainerServiceSkillLine and GetTrainerServiceSkillLine(i)
             table.insert(out, { index = i, name = name, rank = rank ~= "" and rank or nil, category = category,
-                icon = icon, cost = GetTrainerServiceCost(i) or 0 })
+                icon = icon, cost = GetTrainerServiceCost(i) or 0, line = line ~= "" and line or nil })
         end
     end
     return out
@@ -103,6 +113,31 @@ local function Requirements(out, i)
     end
 end
 
+-- the services by skill line, the lines in the order the game first lists
+-- them, those with none last (Other); one group with no line when the game
+-- gives none at all
+local function Groups(list)
+    local groups, by, rest, any = {}, {}, {}, false
+    for _, s in ipairs(list) do
+        if s.line then
+            any = true
+            if not by[s.line] then
+                by[s.line] = { line = s.line }
+                table.insert(groups, by[s.line])
+            end
+            table.insert(by[s.line], s)
+        else
+            table.insert(rest, s)
+        end
+    end
+    if not any then return { rest } end
+    if #rest > 0 then
+        rest.line = OTHER
+        table.insert(groups, rest)
+    end
+    return groups
+end
+
 local function Blocks()
     local out = {}
     local greeting = GetTrainerGreetingText and GetTrainerGreetingText()
@@ -116,8 +151,16 @@ local function Blocks()
     end
     table.insert(out, tabs)
     local list = Shown()
-    local current = Picked(list)
-    for _, s in ipairs(list) do
+    local groups = Groups(list)
+    -- the first you can learn as they are seen: an open group's before a
+    -- folded one's (Foot finds it again by name)
+    local seen, hidden = {}, {}
+    for _, g in ipairs(groups) do
+        for _, s in ipairs(g) do table.insert(g.line and folded[g.line] and hidden or seen, s) end
+    end
+    for _, s in ipairs(hidden) do table.insert(seen, s) end
+    local current = Picked(seen)
+    local function Row(s)
         local i = s.index
         table.insert(out, { "row", label = Label(s), icon = s.icon,
             value = s.cost > 0 and Money(s.cost) or nil, selected = s == current,
@@ -133,13 +176,31 @@ local function Blocks()
                 GameTooltip:Show()
             end })
     end
+    for _, g in ipairs(groups) do
+        if g.line then
+            table.insert(out, { "fold", label = format("%s (%d)", g.line, #g), collapsed = folded[g.line],
+                click = function(button)
+                    if button == "RightButton" then return end
+                    folded[g.line] = not folded[g.line] or nil
+                    ns.npc.Update("trainer")
+                end })
+        end
+        if not (g.line and folded[g.line]) then
+            for _, s in ipairs(g) do Row(s) end
+        end
+    end
     if #list == 0 then table.insert(out, { "text", "Nothing to learn here right now.", ns.colors.dim }) end
+    -- the one picked, docked under the list
     if current then
-        table.insert(out, { "heading", Label(current) })
+        local details = { { "heading", Label(current) } }
         local text = GetTrainerServiceDescription and GetTrainerServiceDescription(current.index)
-        if text and text ~= "" then table.insert(out, { "text", text }) end
-        Requirements(out, current.index)
-        if current.cost > 0 then table.insert(out, { "text", "Costs " .. Money(current.cost) }) end
+        if text and text ~= "" then table.insert(details, { "text", text }) end
+        Requirements(details, current.index)
+        if current.cost > 0 then table.insert(details, { "text", "Costs " .. Money(current.cost) }) end
+        for _, b in ipairs(details) do
+            b.dock = true
+            table.insert(out, b)
+        end
     end
     return out
 end
@@ -163,6 +224,8 @@ local function Update() ns.npc.Update("trainer") end
 
 ns.npc.Page{
     key = "trainer", frame = "ClassTrainerFrame", addon = "Blizzard_TrainerUI", veil = true, price = "Price",
+    -- a profession's trainer teaches skills, any other spells
+    column = function() return IsTradeskillTrainer and IsTradeskillTrainer() and "Skill" or "Spell" end,
     Blocks = Blocks, Foot = Foot, Close = Close,
     Start = function()
         ns.On("TRAINER_SHOW", function()

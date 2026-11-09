@@ -43,7 +43,9 @@
 --                             veil (Blizzard's frame must stay visible:
 --                             parked under ns.veil, not ns.hidden),
 --                             price (a shop: its rows a table, under this
---                             heading over their values), icon (the
+--                             heading over their values), column (and
+--                             this over their names: "Item", or a
+--                             function saying), icon (the
 --                             portrait's, where there is no NPC: the
 --                             mailbox), Steady() -> blocks (the page as
 --                             tall as these, on every tab: the rest scrolls),
@@ -51,7 +53,7 @@
 --                             with the keys 1 to 0, - and =), space (Space presses the foot's primary
 --                             button, while the Space option is on) }
 --   ns.npc.Show(key) (its page to the front), ns.npc.Update(key) (drawn
---   again if in front), ns.npc.box, ns.npc.Room() (the room up to the
+--   again if in front), ns.npc.box, ns.npc.dock, ns.npc.Room() (the room up to the
 --   screen's top)
 --
 -- A page's blocks, top down:
@@ -59,6 +61,11 @@
 --                                        page's one that stays put, above
 --                                        the tabs: what the NPC says)
 --   { "heading", text }                  a label on a dark pill
+--   { "fold", label, collapsed, click() } a heading that folds what follows
+--                                        (its page leaves those out when
+--                                        collapsed): the professions' ornate
+--                                        band, + or - at its right, in the
+--                                        box's gold, fading as the box does
 --   { "row", label, icon, crop, badge, value, color, dim, selected,
 --     click(button), enter(row) }        a line that clicks (crop: the icon's
 --                                        own square border cut off, as an
@@ -81,13 +88,17 @@
 --                                        item wells, six a row: a click, or
 --                                        what the cursor holds dropped in
 --                                        (the icons cropped, being items)
+-- Any block with dock = true stands under the list instead, over a
+-- hairline above the foot, and stays put while the list scrolls (a
+-- trainer's spell picked, what it does and asks).
 -- A shop's rows, as a shop's list reads: shaded every other one, and a
 -- hairline between the names and the prices, the column as wide as the
--- widest price, under its heading (which stays put with the tabs):
+-- widest price; each run of rows (the list's, or a fold's) under its own
+-- heading, scrolling with them:
 --
 --   [Merchant][Buyback]
 --   --------------------------------------------------------
---                                                 |   Price
+--   Item                                          |   Price
 --   [icon] Fishing Pole                           |     23c   <- shaded
 --   [icon] Shiny Bauble                           |     50c
 -- Its foot: { left = text, { label, click, enabled, tip, primary } ... },
@@ -114,7 +125,9 @@ local CONTROL = 16
 local INPUT, LINE, LABEL, NAME, WELL = 26, 16, 72, 22, 40   -- the boxes, a line of one, the label's width
 local NAMES = 4                                  -- the names offered under a box, at most
 local ZEBRA, RULE = 0.05, 0.6                    -- a shop's shaded rows, its hairlines
-local HEADING = 18                               -- a shop's column heading
+local HEADING, HEADING_FONT = 14, 11             -- a shop's column heading, slim, and its words
+local FOLD_MARGIN, FOLD_FILL = 4, 0.45           -- a fold's room above and below its band, its gold
+local TENTH = 0.1                                -- the far edge of a fade, as the box's ink
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local DEED = { 0.42, 0.13, 0.09 }                -- the primary button's fill
@@ -123,7 +136,7 @@ local DEED = { 0.42, 0.13, 0.09 }                -- the primary button's fill
 local BAND_INK = 5 / 9
 
 local pages, order = {}, {}
-local box, head, portrait, name, under, close, bar, scroll, child, foot, footText, thumb
+local box, head, portrait, name, under, close, bar, scroll, child, dock, foot, footText, thumb
 local current
 local wanted                     -- the page last asked for, preferred once its frame is open
 local pools = {}
@@ -165,6 +178,18 @@ local function Glow(f)
     f.mark = f:CreateTexture(nil, "BACKGROUND", nil, 2)
     f.mark:SetAllPoints()
     f.mark:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.45)
+end
+
+-- c across a texture, at alpha a on the left fading to a tenth of it on
+-- the right, as the box's ink does (flat between the two where the client
+-- has no gradients)
+local function Fade(t, c, a)
+    if t.SetGradient and CreateColor then
+        t:SetColorTexture(1, 1, 1, 1)
+        t:SetGradient("HORIZONTAL", CreateColor(c[1], c[2], c[3], a), CreateColor(c[1], c[2], c[3], a * TENTH))
+    else
+        t:SetColorTexture(c[1], c[2], c[3], a * (1 + TENTH) / 2)
+    end
 end
 
 local function Clicks(f)
@@ -229,8 +254,8 @@ local function Pick(e, who)
     ns.npc.Refresh()
 end
 
-local function Field(multi)
-    local f = CreateFrame("Frame", nil, child)
+local function Field(parent, multi)
+    local f = CreateFrame("Frame", nil, parent)
     f.label = Label(f)
     f.label:ClearAllPoints()
     f.label:SetPoint("TOPLEFT", 2, -(INPUT - 14) / 2)
@@ -289,15 +314,15 @@ end
 
 local make = {
     -- what the NPC says, in a face made for reading (the game's own)
-    text = function()
-        local t = ns.Text(child, 14)
+    text = function(parent)
+        local t = ns.Text(parent, 14)
         t:SetFont(ns.FontPath("friz"), 14, "")
         t:SetJustifyH("LEFT")
         t:SetSpacing(4)
         return t
     end,
-    heading = function()
-        local h = CreateFrame("Frame", nil, child)
+    heading = function(parent)
+        local h = CreateFrame("Frame", nil, parent)
         h:SetHeight(PILL)
         local fill = h:CreateTexture(nil, "BACKGROUND")
         fill:SetAllPoints()
@@ -312,8 +337,8 @@ local make = {
         h.mid:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
         return h
     end,
-    row = function()
-        local r = CreateFrame("Button", nil, child)
+    row = function(parent)
+        local r = CreateFrame("Button", nil, parent)
         r:SetHeight(ROW)
         Glow(r)
         r.icon = r:CreateTexture(nil, "ARTWORK")
@@ -338,8 +363,81 @@ local make = {
         Clicks(r)
         return r
     end,
-    tile = function()
-        local t = CreateFrame("Button", nil, child)
+    -- a fold: the professions' ornate heading (character/list.lua), its band
+    -- inset by a margin in a rim lit along the top and shadowed along the
+    -- bottom, a shine inside; in the box's gold at its hairlines' strength,
+    -- fading to a tenth at the far edge as the box does
+    fold = function(parent)
+        local f = CreateFrame("Button", nil, parent)
+        f:SetHeight(ROW + 2 * FOLD_MARGIN)
+        local function Band(t, inset)
+            t:SetPoint("TOPLEFT", inset, -(FOLD_MARGIN + inset))
+            t:SetPoint("BOTTOMRIGHT", -inset, FOLD_MARGIN + inset)
+        end
+        local fill = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+        Band(fill, 0)
+        Fade(fill, GOLD_D, FOLD_FILL)
+        local glow = f:CreateTexture(nil, "HIGHLIGHT")
+        Band(glow, 1)
+        glow:SetColorTexture(1, 1, 1, 0.08)
+        local function Edge(point, y, c, a)
+            local t = f:CreateTexture(nil, "BORDER")
+            t:SetPoint(point .. "LEFT", 0, y)
+            t:SetPoint(point .. "RIGHT", 0, y)
+            t:SetHeight(1)
+            Fade(t, c, a)
+            return t
+        end
+        Edge("TOP", -FOLD_MARGIN, GOLD, RULE)
+        Edge("BOTTOM", FOLD_MARGIN, GOLD_D, RULE)
+        local shine = Edge("TOP", -(FOLD_MARGIN + 1), GOLD, RULE * 0.35)
+        shine:SetPoint("TOPLEFT", 1, -(FOLD_MARGIN + 1))
+        shine:SetPoint("TOPRIGHT", -1, -(FOLD_MARGIN + 1))
+        -- the sides run from the shadow up to the light; the far one faded
+        for _, side in ipairs({ "LEFT", "RIGHT" }) do
+            local t = f:CreateTexture(nil, "BORDER")
+            t:SetPoint("TOP" .. side, 0, -FOLD_MARGIN)
+            t:SetPoint("BOTTOM" .. side, 0, FOLD_MARGIN)
+            t:SetWidth(1)
+            local a = side == "LEFT" and RULE or RULE * TENTH
+            if t.SetGradient and CreateColor then
+                t:SetColorTexture(1, 1, 1, 1)
+                t:SetGradient("VERTICAL", CreateColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], a),
+                    CreateColor(GOLD[1], GOLD[2], GOLD[3], a))
+            else
+                t:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], a)
+            end
+        end
+        f.label = ns.Text(f, 14)
+        f.label:SetPoint("LEFT", 8, 0)
+        f.label:SetPoint("RIGHT", -28, 0)
+        f.label:SetJustifyH("LEFT")
+        f.label:SetWordWrap(false)
+        f.label:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+        f.sign = ns.Text(f, 14)
+        f.sign:SetPoint("RIGHT", -8, 0)
+        f.sign:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+        Clicks(f)
+        return f
+    end,
+    -- a shop's column heading, over a run of its rows: what they are at the
+    -- left, Price at the right of the column's rule
+    columns = function(parent)
+        local f = CreateFrame("Frame", nil, parent)
+        f:SetHeight(HEADING)
+        f.left = ns.Text(f, HEADING_FONT)
+        f.left:SetPoint("LEFT", 4, 0)
+        f.left:SetTextColor(ns.colors.dim[1], ns.colors.dim[2], ns.colors.dim[3])
+        f.right = ns.Text(f, HEADING_FONT)
+        f.right:SetPoint("RIGHT", -6, 0)
+        f.right:SetTextColor(ns.colors.dim[1], ns.colors.dim[2], ns.colors.dim[3])
+        f.rule = f:CreateTexture(nil, "BORDER")
+        f.rule:SetWidth(1)
+        f.rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], RULE)
+        return f
+    end,
+    tile = function(parent)
+        local t = CreateFrame("Button", nil, parent)
         t:SetHeight(TILE)
         local edge = t:CreateTexture(nil, "BACKGROUND", nil, 1)
         edge:SetAllPoints()
@@ -361,10 +459,10 @@ local make = {
         Clicks(t)
         return t
     end,
-    field = function() return Field(false) end,
-    area = function() return Field(true) end,
-    coins = function()
-        local f = CreateFrame("Frame", nil, child)
+    field = function(parent) return Field(parent, false) end,
+    area = function(parent) return Field(parent, true) end,
+    coins = function(parent)
+        local f = CreateFrame("Frame", nil, parent)
         f:SetHeight(INPUT)
         f.label = Label(f)
         f.boxes = {}
@@ -388,8 +486,8 @@ local make = {
         end
         return f
     end,
-    well = function()
-        local b = CreateFrame("Button", nil, child)
+    well = function(parent)
+        local b = CreateFrame("Button", nil, parent)
         b:SetSize(WELL, WELL)
         local edge = b:CreateTexture(nil, "BACKGROUND", nil, 1)
         edge:SetAllPoints()
@@ -428,14 +526,17 @@ local make = {
     end,
 }
 
--- the n-th of a kind this draw, made the first time
-local function Take(kind, used)
-    pools[kind] = pools[kind] or {}
+-- the n-th of a kind this draw on parent (the scroll's child, the dock),
+-- made the first time: each has its own
+local function Take(kind, used, parent)
+    pools[parent] = pools[parent] or {}
+    local pool = pools[parent]
+    pool[kind] = pool[kind] or {}
     used[kind] = (used[kind] or 0) + 1
-    local f = pools[kind][used[kind]]
+    local f = pool[kind][used[kind]]
     if not f then
-        f = make[kind]()
-        pools[kind][used[kind]] = f
+        f = make[kind](parent)
+        pool[kind][used[kind]] = f
     end
     f:ClearAllPoints()
     f:Show()
@@ -444,37 +545,59 @@ end
 
 local function Colour(t, c) t:SetTextColor(c[1], c[2], c[3]) end
 
--- Lays the blocks out down the scroll child; how tall they came to. With
--- col (a shop's price column, its width) the rows are a table.
-local function Lay(blocks, width, col)
+-- Lays the blocks out down parent (the scroll child, or the dock); how
+-- tall they came to. With col (a shop's price column, its width) the rows
+-- are a table.
+local function Lay(blocks, width, col, parent)
     local used, y, n = {}, 0, 0                -- n: the rows so far, for the shading
     drawing = true
-    wipe(edits)
-    wipe(keyed)
     for i, b in ipairs(blocks) do
         local kind = b[1]
-        -- rows run together; a pill sits closer to what it labels
+        -- rows and folds run together (a fold's margin is its room); a pill
+        -- sits closer to what it labels
         if i > 1 then
             local last = blocks[i - 1][1]
             local boxes = (kind == "input" or kind == "money") and (last == "input" or last == "money")
-            y = y + ((kind == "row" and last == "row") and 0 or (last == "heading" or boxes) and GAP / 2 or GAP)
+            local flush = (kind == "row" or kind == "fold" or kind == "columns")
+                and (last == "row" or last == "fold" or last == "columns")
+            y = y + (flush and 0 or (last == "heading" or boxes) and GAP / 2 or GAP)
         end
         if kind == "text" then
-            local t = Take(kind, used)
+            local t = Take(kind, used, parent)
             t:SetWidth(width)
             t:SetPoint("TOPLEFT", 0, -y)
             t:SetText(b[2] or "")
             Colour(t, b[3] or ns.colors.text)
             y = y + t:GetStringHeight()
         elseif kind == "heading" then
-            local h = Take("heading", used)
+            local h = Take("heading", used, parent)
             if i > 1 then y = y + GAP / 2 end    -- and further from what went before
             h:SetPoint("TOPLEFT", 0, -y)
             h.mid:SetText(b[2])
             h:SetWidth(h.mid:GetStringWidth() + 24)
             y = y + PILL
+        elseif kind == "fold" then
+            local f = Take("fold", used, parent)
+            f.data = b
+            f:SetPoint("TOPLEFT", 0, -y)
+            f:SetWidth(width)
+            f.label:SetText(b.label or "")
+            f.sign:SetText(b.collapsed and "+" or "-")
+            n = 0                               -- each group's shading starts afresh
+            y = y + ROW + 2 * FOLD_MARGIN
+        elseif kind == "columns" then
+            local f = Take("columns", used, parent)
+            f.data = b
+            f:SetPoint("TOPLEFT", 0, -y)
+            f:SetWidth(width)
+            f.left:SetText(b.left or "")
+            f.right:SetText(b.right or "")
+            f.rule:ClearAllPoints()
+            f.rule:SetPoint("TOPLEFT", width - col, 0)
+            f.rule:SetPoint("BOTTOMLEFT", width - col, 0)
+            y = y + HEADING
         elseif kind == "row" then
-            local r = Take("row", used)
+            local r = Take("row", used, parent)
             r.data = b
             r:SetPoint("TOPLEFT", 0, -y)
             r:SetWidth(width)
@@ -520,7 +643,7 @@ local function Lay(blocks, width, col)
             -- b[1] is the block's kind: the tiles are what follows it
             for j = 1, #b - 1 do
                 local d = b[j + 1]
-                local t = Take("tile", used)
+                local t = Take("tile", used, parent)
                 t.data = d
                 local across, down = (j - 1) % 2, math.floor((j - 1) / 2)
                 t:SetPoint("TOPLEFT", across * (half + GAP), -(y + down * (TILE + GAP)))
@@ -536,7 +659,7 @@ local function Lay(blocks, width, col)
             y = y + math.ceil((#b - 1) / 2) * (TILE + GAP) - GAP
         elseif kind == "input" then
             local multi = (b.lines or 1) > 1
-            local f = Take(multi and "area" or "field", used)
+            local f = Take(multi and "area" or "field", used, parent)
             f.data, f.edit.data = b, b
             f:SetPoint("TOPLEFT", 0, -y)
             f:SetWidth(width)
@@ -586,7 +709,7 @@ local function Lay(blocks, width, col)
             f:SetHeight(tall)
             y = y + tall
         elseif kind == "money" then
-            local f = Take("coins", used)
+            local f = Take("coins", used, parent)
             f.data = b
             f:SetPoint("TOPLEFT", 0, -y)
             f:SetWidth(width)
@@ -605,7 +728,7 @@ local function Lay(blocks, width, col)
         elseif kind == "slots" then
             for j = 1, #b - 1 do
                 local d = b[j + 1]
-                local w = Take("well", used)
+                local w = Take("well", used, parent)
                 w.data = d
                 w:SetPoint("TOPLEFT", ((j - 1) % 6) * (WELL + 6), -(y + math.floor((j - 1) / 6) * (WELL + 6)))
                 w.icon:SetShown(d.icon ~= nil)
@@ -616,18 +739,18 @@ local function Lay(blocks, width, col)
         end
     end
     drawing = false
-    for kind, list in pairs(pools) do
+    for kind, list in pairs(pools[parent] or {}) do
         for i = (used[kind] or 0) + 1, #list do list[i]:Hide() end
     end
     return y
 end
 
 -- What stays put under the head while the page scrolls: what the NPC
--- says, the tabs over a hairline, and a shop's column heading. The room it
--- takes, its gap below included (none with none of them).
+-- says, and the tabs over a hairline. The room it takes, its gap below
+-- included (none with neither).
 local pins = {}
-local function Pin(say, b, price, col, width)
-    bar:SetShown(say ~= nil or b ~= nil or price ~= nil)
+local function Pin(say, b)
+    bar:SetShown(say ~= nil or b ~= nil)
     local y = 0
     bar.say:SetShown(say ~= nil)
     if say then
@@ -664,19 +787,7 @@ local function Pin(say, b, price, col, width)
         bar.rule:SetPoint("TOPRIGHT", 0, -y)
         y = y + 1 + GAP / 2
     end
-    bar.price:SetShown(price ~= nil)
-    bar.priceRule:SetShown(price ~= nil)
-    if price then
-        bar.price:SetText(price)
-        bar.price:ClearAllPoints()
-        bar.price:SetPoint("RIGHT", bar, "TOPLEFT", width - 6, -(y + HEADING / 2))
-        bar.priceRule:ClearAllPoints()
-        bar.priceRule:SetPoint("TOPLEFT", width - col, -y)
-        bar.priceRule:SetSize(1, HEADING)
-        y = y + HEADING
-    elseif b then
-        y = y + GAP / 2
-    end
+    if b then y = y + GAP / 2 end
     bar:SetHeight(math.max(1, y))
     return y
 end
@@ -684,8 +795,8 @@ end
 -- a shop's price column: as wide as its widest price, and its heading;
 -- none with no rows to head
 local function Column(blocks, price)
-    bar.price:SetText(price)
-    local most, any = bar.price:GetStringWidth(), false
+    bar.head:SetText(price)
+    local most, any = bar.head:GetStringWidth(), false
     for _, b in ipairs(blocks) do
         if b[1] == "row" then
             any = true
@@ -813,27 +924,50 @@ function ns.npc.Refresh()
     end
     local width = WIDTH - 2 * PAD - 6
     child:SetWidth(width)
-    -- the blocks drawn: what stays put, then the rest; the room each took
+    -- the blocks drawn: what stays put over the list, the list, and what
+    -- stays put under it; the room each took (the dock's with its hairline)
     local function Draw(blocks)
-        local body, tabs, say = {}, nil, nil
+        local body, docked, tabs, say = {}, {}, nil, nil
         for _, b in ipairs(blocks) do
             if b[1] == "tabs" then tabs = b
             elseif b.pin then say = b
+            elseif b.dock then table.insert(docked, b)
             else table.insert(body, b) end
         end
+        wipe(edits)
+        wipe(keyed)
         local col = current.price and Column(body, current.price)
-        return Pin(say, tabs, col and current.price, col, width), Lay(body, width, col)
+        -- a shop's heading over each run of its rows
+        if col then
+            local left = current.column
+            if type(left) == "function" then left = left() end
+            local headed = {}
+            for i, b in ipairs(body) do
+                if b[1] == "row" and (i == 1 or body[i - 1][1] ~= "row") then
+                    table.insert(headed, { "columns", left = left, right = current.price })
+                end
+                table.insert(headed, b)
+            end
+            body = headed
+        end
+        local top = Pin(say, tabs)
+        local h = Lay(body, width, col, child)
+        local low = Lay(docked, width, nil, dock.body)
+        return top, h, #docked > 0 and low + GAP + 1 or 0
     end
     numbering = current.keys or false
     -- a page as tall on every tab: its steady blocks drawn first, to be
     -- measured, then drawn over
-    local steady = current.Steady and HEAD + PAD + (function(t, b) return t + b end)(Draw(current.Steady()))
+    local steady = current.Steady and HEAD + PAD + (function(t, b, d) return t + b + d end)(Draw(current.Steady()))
         + PAD + FOOT
-    local top, h = Draw(current.Blocks())
+    local top, h, low = Draw(current.Blocks())
     scroll:SetPoint("TOPLEFT", PAD, -(HEAD + PAD + top))
+    scroll:SetPoint("BOTTOMRIGHT", -PAD, FOOT + PAD + low)
     child:SetHeight(math.max(1, h))
+    dock:SetShown(low > 0)
+    dock:SetHeight(math.max(1, low))
     Foot(current.Foot and current.Foot())
-    local want = steady or HEAD + PAD + top + h + PAD + FOOT
+    local want = steady or HEAD + PAD + top + h + low + PAD + FOOT
     box:SetHeight(math.min(want, Room()))
     offset = math.min(offset, scroll:GetVerticalScrollRange() or 0)
     scroll:SetVerticalScroll(offset)
@@ -1022,10 +1156,8 @@ local function Build()
     bar.rule = bar:CreateTexture(nil, "ARTWORK")
     bar.rule:SetHeight(1)
     bar.rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], RULE)
-    bar.price = ns.Text(bar, 12)
-    bar.price:SetTextColor(ns.colors.dim[1], ns.colors.dim[2], ns.colors.dim[3])
-    bar.priceRule = bar:CreateTexture(nil, "ARTWORK")
-    bar.priceRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], RULE)
+    bar.head = ns.Text(bar, HEADING_FONT)           -- a column heading, measured
+    bar.head:Hide()
     bar.measure = ns.Text(bar, 13)
     bar.measure:Hide()
     bar:Hide()
@@ -1038,6 +1170,22 @@ local function Build()
     scroll:SetScrollChild(child)
     scroll:EnableMouseWheel(true)
     scroll:SetScript("OnMouseWheel", function(_, delta) ns.npc.Scroll(-delta) end)
+    -- what stays put under the list (a page's docked blocks): from the
+    -- scroll's foot down, over a hairline
+    dock = CreateFrame("Frame", nil, box)
+    dock:SetPoint("TOPLEFT", scroll, "BOTTOMLEFT", 0, 0)
+    dock:SetPoint("TOPRIGHT", scroll, "BOTTOMRIGHT", 0, 0)
+    dock:SetHeight(1)
+    dock.rule = dock:CreateTexture(nil, "ARTWORK")
+    dock.rule:SetHeight(1)
+    dock.rule:SetPoint("TOPLEFT", 0, -GAP / 2)
+    dock.rule:SetPoint("TOPRIGHT", 0, -GAP / 2)
+    dock.rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], RULE)
+    dock.body = CreateFrame("Frame", nil, dock)
+    dock.body:SetPoint("TOPLEFT", 0, -(GAP + 1))
+    dock.body:SetSize(WIDTH - 2 * PAD - 6, 1)
+    dock:Hide()
+    ns.npc.dock = dock
     thumb = box:CreateTexture(nil, "OVERLAY")
     thumb:SetWidth(3)
     thumb:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)

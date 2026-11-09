@@ -3171,13 +3171,17 @@ if npcPass or bankPass then
     -- the trainer: two to learn (one beyond your money), one not yet (level
     -- 40, a skill and a rank before it), one known, flat as Forever lists
     -- them. The game's filter decides which it lists; training one makes it
-    -- known. ClassTrainerFrame comes only with Blizzard_TrainerUI.
+    -- known. ClassTrainerFrame comes only with Blizzard_TrainerUI. Each
+    -- has its skill line, but Blink, which has none (Other).
     W.services = {
-        { name = "Fireball", rank = "Rank 2", category = "available", cost = 100, desc = "Hurls a fiery ball." },
-        { name = "Pyroblast", rank = "Rank 1", category = "available", cost = 50000 },
-        { name = "Fire Ward", rank = "", category = "unavailable", cost = 200, level = 40,
+        { name = "Fireball", rank = "Rank 2", category = "available", cost = 100, desc = "Hurls a fiery ball.",
+            line = "Fire" },
+        { name = "Blink", rank = "", category = "available", cost = 400 },
+        { name = "Frost Armor", rank = "Rank 2", category = "available", cost = 150, line = "Frost" },
+        { name = "Pyroblast", rank = "Rank 1", category = "available", cost = 50000, line = "Fire" },
+        { name = "Fire Ward", rank = "", category = "unavailable", cost = 200, level = 40, line = "Fire",
             skill = { "Fire", 50, false }, abilities = { { "Fireball (Rank 3)", false }, { "Arcane Mind", true } } },
-        { name = "Frostbolt", rank = "Rank 1", category = "used", cost = 0 },
+        { name = "Frostbolt", rank = "Rank 1", category = "used", cost = 0, line = "Frost" },
     }
     W.tfilter = { available = true, unavailable = true, used = true }
     local function listed()
@@ -3202,6 +3206,7 @@ if npcPass or bankPass then
     end
     function GetTrainerServiceCost(i) return listed()[i].cost end
     function GetTrainerServiceDescription(i) return listed()[i].desc end
+    function GetTrainerServiceSkillLine(i) return listed()[i].line or "" end
     function GetTrainerServiceLevelReq(i) return listed()[i].level or 0 end
     function GetTrainerServiceSkillReq(i) local k = listed()[i].skill if k then return k[1], k[2], k[3] end end
     function GetTrainerServiceNumAbilityReq(i) return #(listed()[i].abilities or {}) end
@@ -13404,7 +13409,8 @@ if npcPass then
         for _, c in ipairs(f.all_ or {}) do
             if c.shown and c.data then
                 local d = c.data
-                local text = type(d) == "table" and d.label or "?" .. tostring(d)
+                local text = type(d) == "table" and (d[1] == "columns" and "{" .. tostring(d.left) .. "|"
+                    .. tostring(d.right) .. "}" or d.label) or "?" .. tostring(d)
                 table.insert(out, { y = -(c.points.TOPLEFT and c.points.TOPLEFT[4] or 0), x = c.points.TOPLEFT
                     and c.points.TOPLEFT[3] or 0, s = text .. (d.value and d.value ~= "" and " [" .. d.value .. "]" or "")
                     .. (d.badge and " mark=" .. tostring(d.badge.file or d.badge.atlas or "?"):match("[^\\]+$") or "")
@@ -13423,6 +13429,10 @@ if npcPass then
             if s.kind == "ScrollFrame" then pool(s.scrollChild, out) end
         end
         table.sort(out, function(a, b) if a.y ~= b.y then return a.y < b.y end return a.x < b.x end)
+        -- a fold says whether it is folded
+        for _, r in ipairs(out) do
+            if r.c.sign then r.s = "[" .. r.s .. " " .. tostring(r.c.sign.text) .. "]" end
+        end
         -- the tabs held under the head come first, marked ^, outside the scroll
         local pinned = {}
         if ns.npc.bar.shown then pool(ns.npc.bar, pinned) end
@@ -13436,20 +13446,22 @@ if npcPass then
         print(tag .. " rows", table.concat(rows, " | "))
         return out
     end
-    -- a shop's table: what stays put (the words, the hairline, the heading
-    -- and its rule), then each row's shading, rule and label's reach
+    -- a shop's table: what stays put (the words, the hairline), then each
+    -- run's heading (its words' places and rule: H) and each row's shading,
+    -- rule and label's reach
     local bar = ns.npc.bar
     local function shop(tag)
         local function x(t, p) return t.shown and t.points[p] and tostring(t.points[p][3]) or "-" end
         print(tag .. " shop", "say=" .. (bar.say.shown and tostring(bar.say.text) or "-"),
             "hairline=" .. (bar.rule.shown and tostring(-bar.rule.points.TOPLEFT[4]) or "-"),
-            "price=" .. (bar.price.shown and bar.price.text .. "@" .. x(bar.price, "RIGHT") or "-"),
-            "priceRule=" .. x(bar.priceRule, "TOPLEFT") .. "/" .. tostring(bar.priceRule.h),
             "bar=" .. tostring(bar.h))
         local out = {}
         for _, r in ipairs(page(tag .. " shop")) do
             local c = r.c
-            if c.zebra then
+            if c.right then
+                table.insert(out, "H" .. tostring(c.left.text) .. "@" .. x(c.left, "LEFT") .. "/" .. tostring(c.right.text)
+                    .. "@" .. x(c.right, "RIGHT") .. "/" .. x(c.rule, "TOPLEFT") .. ":" .. tostring(c.h))
+            elseif c.zebra then
                 table.insert(out, (c.icon.shown and "i" or "") .. (c.zebra.shown and "#" or ".") .. (c.rule.shown and x(c.rule, "TOPLEFT") or "-")
                     .. ":" .. tostring(c.label.points.RIGHT and c.label.points.RIGHT[3]))
             end
@@ -13619,24 +13631,33 @@ if npcPass then
     QuestInfoFrame.questLog = nil
     page("npc detail")
     -- the blocks down the page: what each is, where it starts, the text's face
+    -- (the dock's, under the list, after it: _)
     local function stack(tag)
-        local out = {}
-        for _, s in ipairs(box.all_) do
-            if s.kind == "ScrollFrame" then
-                for _, c in ipairs(s.scrollChild.all_ or {}) do
-                    if c.shown and c.points.TOPLEFT and c.points.TOPLEFT[3] == 0 then
-                        local what = c.kind == "FontString" and ("text:" .. tostring(c.font and c.font[1]):match("[^\\]+$")
-                            .. "/" .. tostring(c.font and c.font[2]) .. "+" .. tostring(c.spacing)
-                            .. (c.textColor and c.textColor[1] == 1 and c.textColor[2] < 0.5 and "(red)" or ""))
-                            or c.mid and ("pill:" .. c.mid.text .. "/" .. c.w) or c.data and "item" or c.kind
-                        table.insert(out, { -c.points.TOPLEFT[4], what })
-                    end
+        local function blocks(parent)
+            local out = {}
+            for _, c in ipairs(parent.all_ or {}) do
+                if c.shown and c.points.TOPLEFT and c.points.TOPLEFT[3] == 0 then
+                    local what = c.kind == "FontString" and ("text:" .. tostring(c.font and c.font[1]):match("[^\\]+$")
+                        .. "/" .. tostring(c.font and c.font[2]) .. "+" .. tostring(c.spacing)
+                        .. (c.textColor and c.textColor[1] == 1 and c.textColor[2] < 0.5 and "(red)" or ""))
+                        or c.mid and ("pill:" .. c.mid.text .. "/" .. c.w) or c.sign and ("fold:" .. c.label.text)
+                        or c.data and "item" or c.kind
+                    table.insert(out, { -c.points.TOPLEFT[4], what })
                 end
             end
+            table.sort(out, function(a, b) return a[1] < b[1] end)
+            return out
         end
-        table.sort(out, function(a, b) return a[1] < b[1] end)
         local parts = {}
-        for _, o in ipairs(out) do table.insert(parts, o[1] .. "=" .. o[2]) end
+        for _, s in ipairs(box.all_) do
+            if s.kind == "ScrollFrame" then
+                for _, o in ipairs(blocks(s.scrollChild)) do table.insert(parts, o[1] .. "=" .. o[2]) end
+            end
+        end
+        local dock = ns.npc.dock
+        if dock.shown then
+            for _, o in ipairs(blocks(dock.body)) do table.insert(parts, "_" .. o[1] .. "=" .. o[2]) end
+        end
         print(tag .. " stack", table.concat(parts, " "))
     end
     stack("npc detail")
@@ -13926,6 +13947,45 @@ if npcPass then
     table.insert(W.services, 2, { name = "Flamestrike", rank = "Rank 1", category = "available", cost = 300 })
     fire("TRAINER_UPDATE")
     rows = page("npc trainer list moved")
+    -- the folds: a skill line each in the game's order, those with none
+    -- last (Other); the one picked stays docked under the list, the list's
+    -- foot raised over it
+    local function docked(tag)
+        local sb = scrollOf.points.BOTTOMRIGHT
+        print(tag .. " dock", "shown=" .. tostring(ns.npc.dock.shown), "h=" .. tostring(ns.npc.dock.h),
+            "scrollFoot=" .. tostring(sb and sb[4]), "box=" .. tostring(box.h))
+    end
+    docked("npc trainer")
+    stack("npc trainer folds")
+    click(rows, "Fire (1)")
+    rows = page("npc trainer Fire folded")
+    stack("npc trainer Fire folded")
+    foot("npc trainer Fire folded")
+    click(rows, "Frost (1)", "RightButton")
+    rows = page("npc trainer Frost right-clicked")
+    click(rows, "Frost (1)")
+    rows = page("npc trainer Frost folded too")
+    click(rows, "Fire (1)")
+    rows = page("npc trainer Fire unfolded")
+    -- kept while the trainer is shown again
+    fire("TRAINER_SHOW")
+    rows = page("npc trainer folds kept")
+    click(rows, "Frost (1)")
+    -- the game gives no skill line: flat, as before
+    local lines = {}
+    for i, v in ipairs(W.services) do lines[i], v.line = v.line, nil end
+    ns.npc.Update("trainer")
+    rows = page("npc trainer no lines")
+    for i, v in ipairs(W.services) do v.line = lines[i] end
+    ns.npc.Update("trainer")
+    -- nothing picked: no dock, the list down to the foot
+    local picks = W.services
+    W.services = {}
+    ns.npc.Update("trainer")
+    docked("npc trainer none")
+    W.services = picks
+    ns.npc.Update("trainer")
+    docked("npc trainer back")
     -- Escape: the game hides its frame, the box follows
     harnessBeside("npc trainer tips", MedalluinNPC)
     ClassTrainerFrame:Hide()

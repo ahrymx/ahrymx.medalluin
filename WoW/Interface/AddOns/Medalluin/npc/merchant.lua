@@ -291,7 +291,7 @@ end
 local function Update() ns.npc.Update("merchant") end
 
 ns.npc.Page{
-    key = "merchant", frame = "MerchantFrame", price = "Price",
+    key = "merchant", frame = "MerchantFrame", price = "Price", column = "Item",
     Blocks = Blocks, Foot = Foot, Close = function() CloseMerchant() end,
     Start = function()
         ns.On("MERCHANT_SHOW", function()
