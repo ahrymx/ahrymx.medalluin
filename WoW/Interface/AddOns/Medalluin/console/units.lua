@@ -491,15 +491,16 @@ local function PartyLeader(b, side, inset)
     b.leaderFrame:SetPoint("CENTER", b, "TOP" .. outer, -side * inset, 0)
 end
 
-local function Spawn(unit)
+local function Spawn(unit, forWidget)
     local window, side = unpack(ns.slots[unit])
-    local isParty = window ~= "unit"
+    local isParty = forWidget or window ~= "unit"
     local style = isParty and L.party or L.unit
 
-    local b = CreateFrame("Button", "MedalluinUnit_" .. unit, console, "SecureUnitButtonTemplate")
+    local name = forWidget and "MedalluinPartyWidgetPlayer" or ("MedalluinUnit_" .. unit)
+    local b = CreateFrame("Button", name, console, "SecureUnitButtonTemplate")
     b.unit = unit
     b:SetFrameLevel(ns.levels.bars)
-    ns.PlaceOn(b, console, window, side)
+    if not forWidget then ns.PlaceOn(b, console, window, side) end
     b:SetAttribute("unit", unit)
     b:SetAttribute("*type1", "target")
     b:SetAttribute("*type2", "togglemenu")
@@ -624,6 +625,7 @@ local function Spawn(unit)
         ns.RegisterUnitEvent(b, event, unit)
     end
     b:SetScript("OnEvent", function(self, event)
+        if forWidget and not self.inWidget then return end
         local fn = unitEvents[event]
         if fn then
             fn(self)
@@ -635,7 +637,11 @@ local function Spawn(unit)
     end)
     b:SetScript("OnShow", UpdateAll)
 
-    if unit == "player" then
+    if forWidget then
+        b:RegisterEvent("PLAYER_ENTERING_WORLD")
+        b:RegisterEvent("GROUP_ROSTER_UPDATE")
+        b:Hide()
+    elseif unit == "player" then
         b:RegisterEvent("PLAYER_ENTERING_WORLD")
     else
         -- target and party buttons show only while their unit exists
@@ -781,6 +787,7 @@ ns.partyPets = {}
 for _, unit in ipairs({ "player", "target", "party1", "party2", "party3", "party4" }) do
     ns.units[unit] = Spawn(unit)
 end
+ns.partyWidgetPlayer = Spawn("player", true)
 
 for i = 1, 4 do
     local partyUnit = "party" .. i
@@ -1019,6 +1026,9 @@ rangeChecker:SetScript("OnUpdate", function(_, elapsed)
 end)
 
 local function UpdatePartyFrames()
+    if ns.partyWidgetPlayer and ns.partyWidgetPlayer.inWidget then
+        UpdateAll(ns.partyWidgetPlayer)
+    end
     for _, unit in ipairs({ "party1", "party2", "party3", "party4" }) do
         local b = ns.units[unit]
         if b then
@@ -1069,6 +1079,14 @@ local function SetCheckStatus(b, status)
 end
 ns.SetCheckStatus = SetCheckStatus
 
+local function PartyCheckButtons()
+    local out = { ns.units.party1, ns.units.party2, ns.units.party3, ns.units.party4 }
+    if ns.partyWidgetPlayer and ns.partyWidgetPlayer.inWidget then
+        table.insert(out, ns.partyWidgetPlayer)
+    end
+    return out
+end
+
 local checkHideTime = nil
 local checkTimerFrame = CreateFrame("Frame")
 checkTimerFrame:SetScript("OnUpdate", function(_, elapsed)
@@ -1076,9 +1094,8 @@ checkTimerFrame:SetScript("OnUpdate", function(_, elapsed)
         checkHideTime = checkHideTime - elapsed
         if checkHideTime <= 0 then
             checkHideTime = nil
-            for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
-                local pb = ns.units[u]
-                if pb then SetCheckStatus(pb, nil) end
+            for _, pb in ipairs(PartyCheckButtons()) do
+                SetCheckStatus(pb, nil)
             end
         end
     end
@@ -1086,9 +1103,9 @@ end)
 
 local function OnReadyCheck()
     checkHideTime = nil
-    for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
-        local pb = ns.units[u]
-        if pb and (UnitExists(u) or pb.stub) then
+    for _, pb in ipairs(PartyCheckButtons()) do
+        local u = pb.unit
+        if UnitExists(u) or pb.stub then
             local status = GetReadyCheckStatus and GetReadyCheckStatus(u) or "waiting"
             SetCheckStatus(pb, status)
         end
@@ -1096,17 +1113,17 @@ local function OnReadyCheck()
 end
 
 local function OnReadyCheckConfirm(unit, isReady)
-    local pb = ns.units[unit]
+    local pb = unit == "player" and (ns.partyWidgetPlayer and ns.partyWidgetPlayer.inWidget and ns.partyWidgetPlayer)
+        or ns.units[unit]
     if pb then
         SetCheckStatus(pb, isReady and "ready" or "notready")
     end
 end
 
 local function OnReadyCheckFinished()
-    for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
-        local pb = ns.units[u]
-        if pb and pb.isChecking then
-            local status = GetReadyCheckStatus and GetReadyCheckStatus(u)
+    for _, pb in ipairs(PartyCheckButtons()) do
+        if pb.isChecking then
+            local status = GetReadyCheckStatus and GetReadyCheckStatus(pb.unit)
             if status then SetCheckStatus(pb, status) end
         end
     end
@@ -1115,19 +1132,17 @@ end
 
 local function OnRolePollBegin()
     checkHideTime = nil
-    for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
-        local pb = ns.units[u]
-        if pb and (UnitExists(u) or pb.stub) then
+    for _, pb in ipairs(PartyCheckButtons()) do
+        if UnitExists(pb.unit) or pb.stub then
             SetCheckStatus(pb, "waiting")
         end
     end
 end
 
 local function OnRolePollUpdate()
-    for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
-        local pb = ns.units[u]
-        if pb and pb.isChecking then
-            local role = UnitGroupRolesAssigned and UnitGroupRolesAssigned(u)
+    for _, pb in ipairs(PartyCheckButtons()) do
+        if pb.isChecking then
+            local role = UnitGroupRolesAssigned and UnitGroupRolesAssigned(pb.unit)
             if role and role ~= "NONE" then
                 SetCheckStatus(pb, "ready")
             end
@@ -1137,9 +1152,8 @@ end
 
 local function ClearCheckStatus()
     checkHideTime = nil
-    for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
-        local pb = ns.units[u]
-        if pb and pb.isChecking then
+    for _, pb in ipairs(PartyCheckButtons()) do
+        if pb.isChecking then
             SetCheckStatus(pb, nil)
         end
     end
@@ -1153,6 +1167,9 @@ ns.On("READY_CHECK_FINISHED", OnReadyCheckFinished)
 for _, e in ipairs({ "PARTY_LEADER_CHANGED", "GROUP_ROSTER_UPDATE" }) do
     ns.On(e, function()
         for _, b in pairs(ns.units) do UpdateLeader(b) end
+        if ns.partyWidgetPlayer and ns.partyWidgetPlayer.inWidget then
+            UpdateLeader(ns.partyWidgetPlayer)
+        end
     end)
 end
 ns.On("ROLE_POLL_BEGIN", OnRolePollBegin)

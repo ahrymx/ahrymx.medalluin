@@ -146,7 +146,7 @@ local DEFAULTS = {
     -- Arena tabs; console/auras.lua), shared by every profile: the Party
     -- widget's own range and auras (ns.PartyOption; it has no pets), the raid's out of
     -- battlegrounds and in one, the Boss widget's and the arena's
-    partyWidgetRange = 40, partyWidgetGlow = true, partyWidgetCC = true,
+    partyWidgetPlayer = true, partyWidgetRange = 40, partyWidgetGlow = true, partyWidgetCC = true,
     partyWidgetBuffs = true, partyWidgetBoss = true,
     raidRange = 40, raidGlow = true, raidCC = true, raidBoss = true,
     bgRange = 40, bgGlow = true, bgCC = true,

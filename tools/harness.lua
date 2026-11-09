@@ -5744,6 +5744,10 @@ if args[2] == "widgets" or args[3] == "widgets" then
     end
     local function party(tag)
         local o = {}
+        local pb = ns.partyWidgetPlayer
+        if pb and pb.inWidget then
+            table.insert(o, "player:box " .. at(pb, ns.partyWidget))
+        end
         for i = 1, 4 do
             local b = ns.units["party" .. i]
             local where = b.parent == ns.partyWidget and "box " .. at(b, ns.partyWidget)
@@ -5851,6 +5855,12 @@ if args[2] == "widgets" or args[3] == "widgets" then
     ns.SetOption("editPartyWidget", { cell = { w = 160, h = 50 } })
     widget("party taller cell", ns.partyWidget)
     ns.SetOption("editPartyWidget", wasCell)
+    S.partyWidgetPlayer:Set(false)
+    widget("party without player", ns.partyWidget)
+    party("without player")
+    S.partyWidgetPlayer:Set(true)
+    widget("party with player back", ns.partyWidget)
+    party("with player back")
     -- the lead passes to the first member: no roster change comes with it
     harnessLeader = "party1"
     fire("PARTY_LEADER_CHANGED")

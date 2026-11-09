@@ -72,6 +72,8 @@ local function Party(which)
             local b = ns.units and ns.units["party" .. i]
             if b and (b.inWidget and true or false) == which then table.insert(list, b) end
         end
+        local p = which and ns.partyWidgetPlayer
+        if p and p.inWidget then table.insert(list, p) end
         return list
     end
 end
@@ -125,6 +127,7 @@ end
 -- The frame a button is drawn as now: the party's by where its layout put it.
 function E.FrameOf(b)
     if b.editFrame then return byId[b.editFrame] end
+    if b == ns.partyWidgetPlayer then return byId.partyWidget end
     local unit = b.unit or ""
     if unit == "player" or unit == "target" then return byId.unit end
     if unit:match("^party%d$") then return byId[b.inWidget and "partyWidget" or "party"] end

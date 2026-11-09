@@ -749,6 +749,9 @@ local function UpdateAllAuras()
     for _, b in pairs(ns.units or {}) do
         UpdateUnitAuras(b)
     end
+    if ns.partyWidgetPlayer and ns.partyWidgetPlayer.inWidget then
+        UpdateUnitAuras(ns.partyWidgetPlayer)
+    end
     for b in pairs(carriers) do UpdateUnitAuras(b) end
 end
 ns.UpdateAllAuras = UpdateAllAuras   -- the simulation panel's aura toggles (simulate.lua)
@@ -762,6 +765,16 @@ for unit, b in pairs(ns.units or {}) do
     b.ccWidget = CreateCCWidget(b.health, isParty and 24 or 32)
     b.buffWidgets = CreateBuffWidgets(b.health, side, isParty)
     b.bossDebuff = CreateBossDebuffWidget(b.health, isParty and 24 or 32)
+end
+if ns.partyWidgetPlayer then
+    local b = ns.partyWidgetPlayer
+    b.auraKeys = { glow = "partyWidgetGlow", cc = "partyWidgetCC", buffs = "partyWidgetBuffs",
+        boss = "partyWidgetBoss" }
+    b.dispelGlow = CreateDispelGlow(b, -1)
+    b.ccWidget = CreateCCWidget(b.health, 24)
+    b.buffWidgets = CreateBuffWidgets(b.health, -1, true)
+    b.bossDebuff = CreateBossDebuffWidget(b.health, 24)
+    b:HookScript("OnHide", HideAuras)
 end
 
 -- Your debuffs: three icons (the editor's Max more), right to left from
@@ -871,6 +884,9 @@ events:SetScript("OnEvent", function(_, _, unit)
     if ns.units and ns.units[unit] then
         UpdateUnitAuras(ns.units[unit])
     end
+    if unit == "player" and ns.partyWidgetPlayer and ns.partyWidgetPlayer.inWidget then
+        UpdateUnitAuras(ns.partyWidgetPlayer)
+    end
 end)
 
 local loc = CreateFrame("Frame")
@@ -879,6 +895,9 @@ loc:RegisterEvent("LOSS_OF_CONTROL_ADDED")
 loc:SetScript("OnEvent", function()
     if ns.units and ns.units.player then
         UpdateUnitAuras(ns.units.player)
+    end
+    if ns.partyWidgetPlayer and ns.partyWidgetPlayer.inWidget then
+        UpdateUnitAuras(ns.partyWidgetPlayer)
     end
 end)
 

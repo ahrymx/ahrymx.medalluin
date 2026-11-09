@@ -46,56 +46,75 @@ local function Skin()
         if ns.units["party" .. i]:IsShown() then last = i end
     end
     if not last then return end             -- no party: the box is hidden
+    if ns.db.partyWidgetPlayer then last = last + 1 end
     ns.WidgetSkin(box, { "Party" }, CELL_W, (last - 1) * Step() + UNIT_H)
+end
+
+local function LayCell(b, row, CELL_W, UNIT_H, step)
+    local x, y = ns.WidgetColumnX(1, CELL_W), ns.WidgetRowY(row, step)
+    b:SetParent(box)
+    b:SetFrameLevel(box:GetFrameLevel() + 2)
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", box, "TOPLEFT", x, y)
+    b:SetSize(CELL_W, UNIT_H)
+    b.power:ClearAllPoints()
+    b.health:ClearAllPoints()
+    b.power:SetHeight(5)
+    b.power:SetPoint("BOTTOMLEFT")
+    b.power:SetPoint("BOTTOMRIGHT")
+    b.health:SetPoint("TOPLEFT")
+    b.health:SetPoint("TOPRIGHT")
+    b.health:SetHeight(UNIT_H - 5 - 1)
+    b.health:SetReverseFill(false)
+    b.power:SetReverseFill(false)
+    b.roleFrame:ClearAllPoints()
+    b.roleFrame:SetPoint("CENTER", b, "LEFT", 10, 2)
+    b.name:ClearAllPoints()
+    b.name:SetPoint("LEFT", b.health, "LEFT", 22, 0)
+    b.name:SetPoint("RIGHT", b.health, "RIGHT", -6, 0)
+    b.name:SetJustifyH("LEFT")
+    -- the health value where a cell has it (box.lua)
+    b.value:ClearAllPoints()
+    b.value:SetPoint("BOTTOMRIGHT", b.health, "BOTTOMRIGHT", -4, 3)
+    -- the level bottom left, under the name, clear of the role icon
+    b.levelText:ClearAllPoints()
+    b.levelText:SetPoint("BOTTOMLEFT", b.health, "BOTTOMLEFT", 22, 3)
+    -- the crown on the top edge, over the role icon
+    b.leaderFrame:ClearAllPoints()
+    b.leaderFrame:SetPoint("CENTER", b, "TOPLEFT", 10, 0)
+
+    -- a cell is a left copy, whichever way its console slot faced
+    ns.LayBuffs(b, -1)
+    b.inWidget = true
+    -- what the editor changed goes back on (editor.lua)
+    ns.editor.Relaid(b, "name", "level", "role", "leader", "value", "buffs")
+    ns.ApplyEdits(b)
 end
 
 -- Called by ns.RelayoutUnits (units.lua) while the layout is the widget.
 function ns.LayoutPartyWidget()
     local step = Step()
-    local height = 4 * step - W.gap
+    local withPlayer = ns.db.partyWidgetPlayer and true or false
+    local rows = withPlayer and 5 or 4
+    local height = rows * step - W.gap
     local CELL_W, UNIT_H = ns.CellSize("partyWidget")
     ns.OutOfCombat(function()
         ns.WidgetHolder(box, ns.WidgetSize(1, CELL_W, height))
+        local pb = ns.partyWidgetPlayer
+        if pb then
+            if withPlayer then
+                LayCell(pb, 1, CELL_W, UNIT_H, step)
+                pb:Show()
+                ns.UpdateUnitButton(pb)
+                if ns.UpdateUnitAuras then ns.UpdateUnitAuras(pb) end
+            else
+                pb:Hide()
+                pb.inWidget = nil
+            end
+        end
+        local offset = withPlayer and 1 or 0
         for i = 1, 4 do
-            local b = ns.units["party" .. i]
-            local x, y = ns.WidgetColumnX(1, CELL_W), ns.WidgetRowY(i, step)
-            b:SetParent(box)
-            b:SetFrameLevel(box:GetFrameLevel() + 2)
-            b:ClearAllPoints()
-            b:SetPoint("TOPLEFT", box, "TOPLEFT", x, y)
-            b:SetSize(CELL_W, UNIT_H)
-            b.power:ClearAllPoints()
-            b.health:ClearAllPoints()
-            b.power:SetHeight(5)
-            b.power:SetPoint("BOTTOMLEFT")
-            b.power:SetPoint("BOTTOMRIGHT")
-            b.health:SetPoint("TOPLEFT")
-            b.health:SetPoint("TOPRIGHT")
-            b.health:SetHeight(UNIT_H - 5 - 1)
-            b.health:SetReverseFill(false)
-            b.power:SetReverseFill(false)
-            b.roleFrame:ClearAllPoints()
-            b.roleFrame:SetPoint("CENTER", b, "LEFT", 10, 2)
-            b.name:ClearAllPoints()
-            b.name:SetPoint("LEFT", b.health, "LEFT", 22, 0)
-            b.name:SetPoint("RIGHT", b.health, "RIGHT", -6, 0)
-            b.name:SetJustifyH("LEFT")
-            -- the health value where a cell has it (box.lua)
-            b.value:ClearAllPoints()
-            b.value:SetPoint("BOTTOMRIGHT", b.health, "BOTTOMRIGHT", -4, 3)
-            -- the level bottom left, under the name, clear of the role icon
-            b.levelText:ClearAllPoints()
-            b.levelText:SetPoint("BOTTOMLEFT", b.health, "BOTTOMLEFT", 22, 3)
-            -- the crown on the top edge, over the role icon
-            b.leaderFrame:ClearAllPoints()
-            b.leaderFrame:SetPoint("CENTER", b, "TOPLEFT", 10, 0)
-
-            -- a cell is a left copy, whichever way its console slot faced
-            ns.LayBuffs(b, -1)
-            b.inWidget = true
-            -- what the editor changed goes back on (editor.lua)
-            ns.editor.Relaid(b, "name", "level", "role", "leader", "value", "buffs")
-            ns.ApplyEdits(b)
+            LayCell(ns.units["party" .. i], i + offset, CELL_W, UNIT_H, step)
         end
         Skin()
     end)
@@ -109,6 +128,11 @@ function ns.ReleasePartyWidget()
     if not b1.inWidget then return false end
     ns.OutOfCombat(function()
         ns.WidgetVisibility(box, "hide")
+        local pb = ns.partyWidgetPlayer
+        if pb then
+            pb:Hide()
+            pb.inWidget = nil
+        end
         for i = 1, 4 do
             local b = ns.units["party" .. i]
             b:SetParent(ns.console)
@@ -130,6 +154,9 @@ end
 -- the light console's own handler relayouts it (party_row.lua)
 ns.OnSetting("partyLayout", function()
     if not (ns.layout.party and ns.layout.party.row) then Relayout() end
+end)
+ns.OnSetting("partyWidgetPlayer", function()
+    if ns.PartyWidgetLayout() then Relayout() end
 end)
 -- the editor's cell size: the box laid again only when that changed (its
 -- pieces follow the editor at once, in combat too)

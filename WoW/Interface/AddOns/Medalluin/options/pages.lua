@@ -469,6 +469,8 @@ function ns.OptionPages()
                             Glow("auraGlow"), CC("auraCC", "the"), Buffs("auraBuffs"), BossDebuffs("auraBoss")),
                         Group("Widget (shared by every profile)",
                             Range("partyWidgetRange", "party"),
+                            Check("partyWidgetPlayer", "Include yourself",
+                                "Show your own unit frame as the first row of the Party widget."),
                             Glow("partyWidgetGlow"), CC("partyWidgetCC", "the"), Buffs("partyWidgetBuffs"),
                             BossDebuffs("partyWidgetBoss"), Movers("partyWidgetMoverHover", "Party")),
                     },
