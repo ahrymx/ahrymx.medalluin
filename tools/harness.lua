@@ -8711,6 +8711,17 @@ if bagsPass then
         for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
     end
     local w = _G.MedalluinBags
+    -- the window's own parts, and its head's buttons (one joined row)
+    -- a button's name: its word, or (an icon in the head) the word its tooltip heads
+    local function name(r) return r.data and r.data.label or r.label and r.label.text end
+    local function parts()
+        local out = {}
+        for _, r in ipairs(w.all_) do table.insert(out, r) end
+        for _, r in ipairs(w.head and w.head.all_ or {}) do
+            if r.kind == "Button" then table.insert(out, r) end
+        end
+        return out
+    end
     print("bags", "window=" .. tostring(w ~= nil), "combined=" .. tostring(ContainerFrameCombinedBags ~= nil),
         "setting=" .. tostring(ns.db.bags))
     if not w then return end
@@ -8760,8 +8771,8 @@ if bagsPass then
     end
     local function chrome(tag)
         local labels = {}
-        for _, r in ipairs(w.all_) do
-            if r.kind == "Button" and r.label then table.insert(labels, r.label.text) end
+        for _, r in ipairs(parts()) do
+            if r.kind == "Button" and r.label then table.insert(labels, name(r) .. (r.data and r.data.icon and "(" .. r.data.icon .. ")" or "")) end
         end
         local texts = {}
         for _, r in ipairs(w.all_) do
@@ -9012,31 +9023,35 @@ if bagsPass then
     grid("bags.groups")
     chrome("bags.groups chrome")
     -- the window's own button goes back, through the page
-    for _, r in ipairs(w.all_) do
-        if r.kind == "Button" and r.label and r.label.text == "Grid" then r.scripts.OnClick(r) end
+    for _, r in ipairs(parts()) do
+        if r.kind == "Button" and r.label and name(r) == "Grid" then r.scripts.OnClick(r) end
     end
     print("bags.view button", ns.db.bagsView, "window shows=" .. optionShows("bagsView"))
-    for _, r in ipairs(w.all_) do
-        if r.kind == "Button" and r.label and r.label.text == "Groups" then
+    for _, r in ipairs(parts()) do
+        if r.kind == "Button" and r.label and name(r) == "Groups" then
+            local lines, add = {}, GameTooltip.AddLine
+            GameTooltip.AddLine = function(_, t) table.insert(lines, t) end
             r.scripts.OnEnter(r)
-            print("bags.view tip", tostring(GameTooltip.text))
+            GameTooltip.AddLine = add
+            print("bags.view tip", tostring(GameTooltip.text) .. " / " .. table.concat(lines, " / "))
         end
     end
 
     -- the bags, each under its name; the empty bag slot (bag 2) left out.
     -- The choice is the saved table's, so a reload keeps it
-    for _, r in ipairs(w.all_) do
-        if r.kind == "Button" and r.mark and r.label.text == "Bags" then r.scripts.OnClick(r) end
+    for _, r in ipairs(parts()) do
+        if r.kind == "Button" and r.mark and name(r) == "Bags" then r.scripts.OnClick(r) end
     end
     print("bags.view bags", ns.db.bagsView, "saved=" .. tostring(MedalluinDB.global.bagsView),
         "window shows=" .. optionShows("bagsView"))
     grid("bags.by bag")
     do
         local lit = {}
-        for _, r in ipairs(w.all_) do
+        for _, r in ipairs(parts()) do
             if r.kind == "Button" and r.mark then
                 local c = r.label.textColor or {}
-                table.insert(lit, string.format("%s=%s/g%.2f", r.label.text, tostring(r.mark.shown), c[2] or -1))
+                table.insert(lit, string.format("%s=%s/g%.2f/a%.1f", name(r), tostring(r.mark.shown), c[2] or -1,
+                    r.icon and r.icon.shown and (r.icon.alpha or 1) or -1))
             end
         end
         print("bags.view lit", table.concat(lit, " "))
@@ -9058,8 +9073,8 @@ if bagsPass then
     w.scripts.OnUpdate(w, 0.02)
 
     -- 7. sort
-    for _, r in ipairs(w.all_) do
-        if r.kind == "Button" and r.label and r.label.text == "Sort" then r.scripts.OnClick(r) end
+    for _, r in ipairs(parts()) do
+        if r.kind == "Button" and r.label and name(r) == "Sort" then r.scripts.OnClick(r) end
     end
     print("bags.sort", W.sorted)
 
@@ -9106,8 +9121,8 @@ if bagsPass then
     w.scripts.OnUpdate(w, 0.02)
 
     -- 10. closed with the window's button: Blizzard's close, the new items seen
-    for _, r in ipairs(w.all_) do
-        if r.kind == "Button" and r.label and r.label.text == "x" then r.scripts.OnClick(r) end
+    for _, r in ipairs(parts()) do
+        if r.kind == "Button" and r.label and name(r) == "Close" then r.scripts.OnClick(r) end
     end
     blizz("bags.closed")
     print("bags.seen", table.concat(W.removed, ","), "still new=" .. tostring(W.new["0:3"]))
@@ -9159,6 +9174,18 @@ if bagsPass then
     local rule, closeTop = w.rule, nil
     print("bags.rule", "y=" .. -rule.points.TOPLEFT[4], "inset=" .. rule.points.TOPLEFT[3] .. "," .. rule.points.TOPRIGHT[3],
         "h=" .. rule.h, "slots from=" .. -_G.MedalluinBagsBag0.parent.points.TOPLEFT[4])
+    -- the head's row: in the corner, from the top border to the rule; its
+    -- buttons joined (left+width), dividers between the groups
+    do
+        local h, t = w.head, {}
+        for _, b in ipairs(h.buttons) do
+            if b.shown then table.insert(t, b.data.label .. "@" .. b.points.TOPLEFT[3] .. "+" .. b.w) end
+        end
+        for _, g in ipairs(h.gaps) do table.insert(t, "gap@" .. g) end
+        print("bags.head", "at=" .. tostring(h.points.TOPRIGHT and h.points.TOPRIGHT[3] .. "," .. h.points.TOPRIGHT[4]),
+            "size=" .. h.w .. "x" .. h.h, table.concat(t, " "),
+            "search right=" .. tostring(_G.MedalluinBagsSearch.points.RIGHT[1] == h and "head" or "?"))
+    end
 
     -- 16. the drawer: Bags opens it above the window, growing to the right
     local title = w.title
@@ -9310,7 +9337,8 @@ if bankPass then
         end
     end
     local function button(root, label)
-        return find(root, function(r) return r.kind == "Button" and r.label and r.label.text == label end)
+        return find(root, function(r) return r.kind == "Button" and r.label
+            and (r.label.text == label or r.data and r.data.icon and r.data.label == label) end)
     end
     local function click(b, ...) b.scripts.OnClick(b, ...) end
     local function where(r)
@@ -9386,14 +9414,17 @@ if bankPass then
             "purchase=" .. tostring(p.purchase.shown) .. "/" .. tostring(p.purchase.label.text)
             .. string.format("@%g", p.purchase.alpha or 1))
     end
+    -- the band's row: each button (left+width, * marked), the dividers
     local function band(tag, p)
         local list = {}
-        for _, r in ipairs(p.band.all_ or {}) do
-            if r.kind == "Button" and r.label and r.shown then
-                table.insert(list, r.label.text .. (r.mark and r.mark.shown and "*" or ""))
+        for _, r in ipairs(p.row.buttons) do
+            if r.shown then
+                table.insert(list, (r.data.icon and r.data.label .. "(" .. r.data.icon .. ")" or r.label.text)
+                    .. (r.mark.shown and "*" or "") .. "@" .. r.points.TOPLEFT[3] .. "+" .. r.w)
             end
         end
-        print(tag, table.concat(list, "|"), "search=" .. tostring(p.search and p.search.name))
+        for _, g in ipairs(p.row.gaps) do table.insert(list, "gap@" .. g) end
+        print(tag, table.concat(list, " "), "h=" .. p.row.h, "search=" .. tostring(p.search and p.search.name))
     end
 
     -- 1. at login: built, Blizzard's parked, nothing shown
@@ -9430,8 +9461,11 @@ if bankPass then
     slots("bank.view option grid", p)
     frame()
     local tip = button(p.band, "Grid")
+    local lines, add = {}, GameTooltip.AddLine
+    GameTooltip.AddLine = function(_, t) table.insert(lines, t) end
     tip.scripts.OnEnter(tip)
-    print("bank.view tip", tostring(GameTooltip.text))
+    GameTooltip.AddLine = add
+    print("bank.view tip", tostring(GameTooltip.text) .. " / " .. table.concat(lines, " / "))
 
     -- 4. the search, the client's; Sort, the bank's own; Deposit only where the bank takes it
     p.search.text = "potion"
@@ -10854,8 +10888,7 @@ if spellPass then
         end
         local function button(b)
             return b.shown == false and "-" or (b.mark.shown and "on" or "off")
-                .. (b.mouse == false and string.format("/grey %.1f %s", b.alpha or 1,
-                    table.concat(b.label.textColor or {}, ",")) or "")
+                .. (b.enabled == false and "/off " .. table.concat(b.label.textColor or {}, ",") or "")
         end
         print(tag, "page=" .. p.at .. "/" .. p.pages, "band=ranks:" .. button(p.allRanks)
             .. ",trainer:" .. button(p.trainerButton), table.concat(list, " "))
@@ -11341,10 +11374,10 @@ if talentPass then
         local specs = {}
         for _, b in ipairs(p.specs) do
             table.insert(specs, b.label.text .. (b.mark.shown and "*" or "") .. "(" .. c3(b.label.textColor)
-                .. string.format(",%.1f)", b.alpha or 1))
+                .. (b.enabled and "" or ",off") .. ")")
         end
         print(tag .. " margin", table.concat(specs, " "), "activate=" .. tostring(p.activate.shown)
-            .. string.format("(%.1f)", p.activate.alpha or 1), "calls=" .. table.concat(T.calls, ","))
+            .. (p.activate.enabled and "" or "(off)"), "calls=" .. table.concat(T.calls, ","))
     end
     local function node(name)
         for _, b in ipairs(W.Current().nodes) do
@@ -11565,10 +11598,20 @@ if talentPass then
             "save@" .. row(elemT.save), "name@" .. row(elemT.name), "points@" .. row(elemT.points),
             "reset@" .. row(elemT.reset), "apply@" .. row(elemT.apply), "follow@" .. row(elemT.follow),
             "face=" .. face(elemT.exit), "margin=" .. face(elemT.specs[1]),
-            "rule=" .. (elemT.rule.w .. "x" .. elemT.rule.h .. " " .. (elemT.rule.points.LEFT[1] == elemT.specs[2]
-                and "secondary" or "?") .. string.format(" %.2f", elemT.rule.color[4])),
-            "plans@" .. (elemT.plans.points.LEFT[1] == elemT.rule and "rule" or "?") .. " "
-                .. elemT.plans.points.LEFT[3])
+            "row=" .. (function()
+                -- the margin's buttons, joined (left+width), and the divider;
+                -- the band as wide as the game makes it (the harness resolves
+                -- no width from two anchors): the window less the medallion's
+                -- room
+                local m, t = elemT.margin, {}
+                m.w = W.window.w - (ns.stripWell.x + ns.stripLayout.ringRadius + 5)
+                m:Layout()
+                for _, b in ipairs(m.buttons) do
+                    if b.shown then table.insert(t, b.data.label .. "@" .. b.points.TOPLEFT[3] .. "+" .. b.w) end
+                end
+                for _, g in ipairs(m.gaps) do table.insert(t, "gap@" .. g) end
+                return table.concat(t, " ") .. " h=" .. m.h
+            end)())
         local hint = elemT.hint
         print("talents.chrome foot", "height=" .. elemT.footHeight, "shown=" .. tostring(elemT.foot.shown),
             "chevron=" .. tostring(W.window.chevron ~= nil), "hint@" .. tostring(hint.parent == elemT.foot and "foot"
@@ -13435,7 +13478,7 @@ if npcPass then
         end
         -- the tabs held under the head come first, marked ^, outside the scroll
         local pinned = {}
-        if ns.npc.bar.shown then pool(ns.npc.bar, pinned) end
+        if ns.npc.bar.shown then pool(ns.npc.bar.tabs, pinned) end
         table.sort(pinned, function(a, b) return a.x < b.x end)
         for i = #pinned, 1, -1 do
             pinned[i].s = "^" .. pinned[i].s
@@ -13453,7 +13496,19 @@ if npcPass then
     local function shop(tag)
         local function x(t, p) return t.shown and t.points[p] and tostring(t.points[p][3]) or "-" end
         print(tag .. " shop", "say=" .. (bar.say.shown and tostring(bar.say.text) or "-"),
-            "hairline=" .. (bar.rule.shown and tostring(-bar.rule.points.TOPLEFT[4]) or "-"),
+            "ornament=" .. (bar.ornament.shown and tostring(-bar.ornament.points.TOPLEFT[4]) or "-"),
+            "tabs=" .. (bar.tabs.shown and tostring(-bar.tabs.points.TOPLEFT[4]) .. ":" .. (function()
+                -- each tab's left and width: joined, a pixel shared, the row
+                -- as wide as the page (the harness resolves no width from
+                -- two anchors; the game does, and lays them out again)
+                bar.tabs.w = bar.say.w + 6
+                bar.tabs:Layout()
+                local t = {}
+                for _, b in ipairs(bar.tabs.buttons) do
+                    if b.shown then table.insert(t, b.points.TOPLEFT[3] .. "+" .. b.w) end
+                end
+                return table.concat(t, ",")
+            end)() or "-"),
             "bar=" .. tostring(bar.h))
         local out = {}
         for _, r in ipairs(page(tag .. " shop")) do
@@ -14208,7 +14263,7 @@ if mailPass then
         end
         table.sort(out, function(a, b) if a.y ~= b.y then return a.y < b.y end return a.x < b.x end)
         local tabs = {}
-        for _, t in ipairs(bar.all_ or {}) do
+        for _, t in ipairs(bar.tabs.all_ or {}) do
             if t.shown and t.data then table.insert(tabs, t.data.label .. (t.mark.shown and "*" or "")) end
         end
         local rows = {}
@@ -14254,7 +14309,7 @@ if mailPass then
         print(tag, "no row " .. label)
     end
     local function tab(label)
-        for _, t in ipairs(bar.all_ or {}) do
+        for _, t in ipairs(bar.tabs.all_ or {}) do
             if t.shown and t.data and t.data.label == label then return t.scripts.OnClick(t) end
         end
     end

@@ -17,7 +17,11 @@
 -- the window's strata, the medallion's art copied over them), and the
 -- margin's rule runs above it, so it covers nothing. A page may put a row
 -- of its own in the margin beside the medallion (the Character page's
--- shortcuts); the others have a divider there.
+-- shortcuts); the others have a divider there. A page with bandFlush has
+-- its margin edge to edge, as the side panel's tabs: from the window's
+-- outer border to 5 short of the medallion's ring, and from its foot up
+-- over the margin's rule (a row of joined buttons, ns.window.Segments,
+-- meets both lines); the corner's bracket there steps aside.
 --
 -- The tabs are icons spread across the row, with the page's name in a
 -- tooltip (tip, or the label): the glyph art/strips draws for the page
@@ -42,7 +46,7 @@
 --   w.Page{ key, label, tip, glyph, icon, frame (Blizzard's page), order, row,
 --           tabless (no tab: the page's own controls Select it),
 --           Available() (or Blizzard's frame exists), height, footHeight,
---           flex, bandUsed, events = { ... }, Build(body, foot, band),
+--           flex, bandUsed, bandFlush, events = { ... }, Build(body, foot, band),
 --           Fit(height), Refresh(), OnEvent(event, ...), Shown(),
 --           Showing(on) }
 --   w.Build(), w.Select(page), w.Open(page) (as its tab does), w.ByFrame(name), w.Retab(), w.SetShown(on),
@@ -117,7 +121,7 @@ local function Face(b, to, soft)
     glow:SetPoint("TOPLEFT", to, "TOPLEFT", 1, -1)
     glow:SetPoint("BOTTOMRIGHT", to, "BOTTOMRIGHT", -1, 1)
     glow:SetColorTexture(1, 1, 1, a.glow)
-    return well, edge
+    return well, edge, glow
 end
 ns.window.Face = Face           -- the chat's tabs wear it too (strips/chat.lua)
 
@@ -235,6 +239,152 @@ local function Button(parent, width, click, tip, template, soft)
     return b
 end
 ns.window.Button = Button
+
+-- ------------------------------------------------------------- segments
+-- A row of joined buttons, as the chat's and the side panel's tabs: each
+-- wears the box (Face), neighbours share their edge (a pixel's overlap),
+-- and where the group changes the two edges stand a little apart: a
+-- double line, as before the chat's tools. Stretched, the buttons share out the
+-- row's width; fit, each is as wide as its word and the row as wide as
+-- they come to (anchor it by the end it grows from).
+--
+--   local row = ns.window.Segments(parent, { height, fit, size (the
+--               words', 12), iconSize (24), tipAt, items })
+--   row:Fill({ { key, label, icon, group, tip() -> text, click(button),
+--                selected, enabled, shown, color } ... })   (again: the
+--               buttons kept, their words and deeds changed)
+--   row:Set(key, { selected, enabled, shown, color })        one's state
+--   row:Layout()          shared out again (as its width changes)
+--   row.byKey[key], row.buttons, row.gaps (where each gap starts)
+--
+-- Selected: the mark, its word gold. Off (enabled false): its word dim
+-- and no glow, its tooltip still saying why; its click still goes to the
+-- page, which asks the game itself (a state set a moment ago may already
+-- be stale: a specialization just learned). color overrides the word's
+-- colour (the talents' spec in use).
+--
+-- An icon (a glyph of media/strips, by name) stands in for the word: dim
+-- (as the window's tabs) until selected, faint when off; the word heads
+-- its tooltip, over the tip.
+local SEG_PAD, SEG_MIN, BREAK = 20, 36, 4       -- a fit button's room past its word, its least; the gap between groups
+local ICON_PAD = 12                              -- a fit button's room past its icon
+local function Paint(b)
+    b.mark:SetShown(b.selected and true or false)
+    b.glow:SetShown(b.enabled)
+    local c = not b.enabled and ns.colors.dim or b.color or b.selected and GOLD or ns.colors.text
+    b.label:SetTextColor(c[1], c[2], c[3])
+    b.icon:SetAlpha(not b.enabled and 0.3 or b.selected and 1 or 0.6)
+end
+
+local function Segments(parent, spec)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(spec.height)
+    row.buttons, row.byKey, row.gaps = {}, {}, {}
+    local n = 0                         -- the buttons in use
+
+    function row:Layout()
+        local shown = {}
+        for i = 1, n do
+            local b = self.buttons[i]
+            b:SetShown(b.shown)
+            if b.shown then table.insert(shown, b) end
+        end
+        local breaks = 0
+        for i = 2, #shown do
+            if shown[i].data.group ~= shown[i - 1].data.group then breaks = breaks + 1 end
+        end
+        -- the width less the gaps, the shared edges given back; none yet
+        -- (not placed): as wide as their words until it comes
+        -- (OnSizeChanged lays them out again)
+        local total = math.floor(self:GetWidth() or 0) - breaks * BREAK + (#shown - 1 - breaks)
+        local fit = spec.fit or total < #shown * SEG_MIN
+        local widths = {}
+        for i, b in ipairs(shown) do
+            local inner = b.data.icon and (spec.iconSize or 24) + ICON_PAD or math.ceil(b.label:GetStringWidth()) + SEG_PAD
+            widths[i] = fit and math.max(SEG_MIN, inner)
+                or math.floor(i * total / #shown) - math.floor((i - 1) * total / #shown)
+        end
+        local x = 0
+        self.gaps = {}
+        for i, b in ipairs(shown) do
+            if i > 1 then
+                if b.data.group ~= shown[i - 1].data.group then
+                    table.insert(self.gaps, x)  -- where the gap starts
+                    x = x + BREAK
+                else
+                    x = x - 1               -- the edge shared
+                end
+            end
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", x, 0)
+            b:SetWidth(widths[i])
+            x = x + widths[i]
+        end
+        if spec.fit then self:SetWidth(math.max(1, x)) end
+    end
+
+    function row:Set(key, state)
+        local b = self.byKey[key]
+        if not b then return end
+        local was = b.shown
+        b.selected = state.selected and true or false
+        b.enabled = state.enabled ~= false
+        b.shown = state.shown ~= false
+        b.color = state.color
+        Paint(b)
+        if b.shown ~= was then self:Layout() end
+    end
+
+    function row:Fill(items)
+        wipe(self.byKey)
+        n = #items
+        for i, d in ipairs(items) do
+            local b = self.buttons[i]
+            if not b then
+                b = CreateFrame("Button", nil, self)
+                b:SetHeight(spec.height)
+                local _, _, glow = Face(b)
+                b.glow = glow
+                b.label = ns.Text(b, spec.size or 12)
+                b.label:SetPoint("CENTER")
+                b.icon = b:CreateTexture(nil, "ARTWORK")
+                b.icon:SetSize(spec.iconSize or 24, spec.iconSize or 24)
+                b.icon:SetPoint("CENTER")
+                b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+                b:SetScript("OnClick", function(self, button)
+                    if self.data.click then self.data.click(button) end
+                end)
+                b:SetScript("OnEnter", function(self)
+                    local d = self.data
+                    local tip = d.tip and d.tip()
+                    if d.icon and d.label then
+                        ns.Tip(self, spec.tipAt or OutsideTop, { title = d.label, color = GOLD, wrap = true,
+                            tip and { "body", tip } or nil })
+                    elseif tip then
+                        ns.Tip(self, spec.tipAt or OutsideTop, { title = tip, color = ns.colors.white, wrap = true })
+                    end
+                end)
+                b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                self.buttons[i] = b
+            end
+            b.data = d
+            b.label:SetText(not d.icon and d.label or "")
+            b.icon:SetShown(d.icon and true or false)
+            if d.icon then b.icon:SetTexture(ns.media .. "strips\\" .. d.icon) end
+            b.selected, b.enabled, b.shown, b.color = d.selected and true or false, d.enabled ~= false,
+                d.shown ~= false, d.color
+            Paint(b)
+            if d.key ~= nil then self.byKey[d.key] = b end
+        end
+        for i = n + 1, #self.buttons do self.buttons[i]:Hide() end
+        self:Layout()
+    end
+
+    row:SetScript("OnSizeChanged", function(self) if not spec.fit then self:Layout() end end)
+    if spec.items then row:Fill(spec.items) end
+    return row
+end
+ns.window.Segments = Segments
 
 -- ------------------------------------------------------------- scrolling
 -- A list that scrolls, in a scroll frame filling the body but for a gutter
@@ -508,6 +658,7 @@ function ns.Window(spec)
             height = BAND } }
     local window, chevron, close, rule, footRule, medal, view, grip
     local hairs                         -- open tabs: the hairs under the rows
+    local corners                       -- the window's brackets, by point
     local pageTop = TOP                 -- the page's top: a row lower with a second row of tabs
     local current, dirty
     local tabs = {}
@@ -525,6 +676,36 @@ function ns.Window(spec)
     -- the detached view's place (none for a window that stays docked)
     local function At() return spec.place and type(ns.db[spec.place]) == "table" and ns.db[spec.place] or {} end
     function w.Detached() return (spec.detachedOnly or At().detached) and true or false end
+
+    -- A page's margin: beside the medallion, inside the edge; flush, from
+    -- the outer border to short of the medallion's ring (edge to edge
+    -- detached), over the margin's rule.
+    local function BandAt(p)
+        local off = w.Detached()
+        p.band:ClearAllPoints()
+        if p.bandFlush then
+            local medal = off and 0 or ns.stripWell.x + L.ringRadius + 5
+            p.band:SetPoint("BOTTOMLEFT", side < 0 and medal or 0, 0)
+            p.band:SetPoint("BOTTOMRIGHT", -(side < 0 and 0 or medal), 0)
+            p.band:SetHeight(BAND + 1)
+        else
+            p.band:SetPoint("BOTTOMLEFT", off and PAD or w.band.left, 0)
+            p.band:SetPoint("BOTTOMRIGHT", -(off and PAD or w.band.right), 0)
+            p.band:SetHeight(BAND)
+        end
+    end
+
+    -- the foot's brackets under a flush margin step aside: the outer one
+    -- (both, detached)
+    local function Brackets()
+        if not corners then return end
+        local flush, off = current and current.bandFlush, w.Detached()
+        for point, lines in pairs(corners) do
+            local outer = point == (side < 0 and "BOTTOMRIGHT" or "BOTTOMLEFT")
+            local hide = flush and point:find("^BOTTOM") and (outer or off)
+            for _, t in ipairs(lines) do t:SetShown(not hide) end
+        end
+    end
 
     -- -------------------------------------------------------- medallion
     -- The medallion's buttons lifted to the window's strata while the
@@ -634,12 +815,9 @@ function ns.Window(spec)
         if grip then grip:SetShown(off) end
         if view then view.icon:SetTexture(ns.media .. "strips\\" .. (off and "view-full" or "view-minimal")) end
         for _, p in ipairs(pages) do
-            if p.band then
-                p.band:ClearAllPoints()
-                p.band:SetPoint("BOTTOMLEFT", off and PAD or w.band.left, 0)
-                p.band:SetPoint("BOTTOMRIGHT", -(off and PAD or w.band.right), 0)
-            end
+            if p.band then BandAt(p) end
         end
+        Brackets()
         if window:IsShown() then Lift(not off) end
         Tabs()
         Layout()
@@ -712,6 +890,7 @@ function ns.Window(spec)
                 p.tab.icon:SetAlpha(p == page and 1 or 0.6)
             end
         end
+        Brackets()
         Layout()
         Listen()
         if window:IsShown() and page.Shown then page.Shown() end
@@ -754,9 +933,7 @@ function ns.Window(spec)
         p.foot:SetPoint("BOTTOMLEFT", PAD, BOTTOM)
         p.foot:SetPoint("BOTTOMRIGHT", -PAD, BOTTOM)
         p.band = CreateFrame("Frame", nil, window)
-        p.band:SetPoint("BOTTOMLEFT", w.Detached() and PAD or w.band.left, 0)
-        p.band:SetPoint("BOTTOMRIGHT", -(w.Detached() and PAD or w.band.right), 0)
-        p.band:SetHeight(BAND)
+        BandAt(p)
         p.body:Hide()
         p.foot:Hide()
         p.band:Hide()
@@ -912,7 +1089,7 @@ function ns.Window(spec)
         bandRule:SetPoint("BOTTOMLEFT", PAD, BAND)
         bandRule:SetPoint("BOTTOMRIGHT", -PAD, BAND)
         window.bandRule = bandRule
-        Corners(window, 3, 12)
+        corners = Corners(window, 3, 12)
         Medal()
 
         close = Button(window, TAB, function() spec.Close() end, function() return spec.closeTip end, nil, spec.tabs)

@@ -566,58 +566,56 @@ local function Turn(p, by)
     Refresh(p)
 end
 
--- The margin: All ranks (a toggle), and Trainer once a class trainer has
--- been read, which opens its page and, from it, goes back.
+-- The margin, edge to edge (ns.window.Segments): All ranks (a toggle),
+-- and Trainer once a class trainer has been read, which opens its page
+-- and, from it, goes back.
 local trainerPage, back
 local function Controls(p, band)
-    local all = ns.window.Button(band, 86, function()
-        ns.SetOption("spellbookAllRanks", not ns.db.spellbookAllRanks)
-    end, function()
-        return ns.db.spellbookAllRanks and "List each spell once, at its highest rank."
-            or "List every rank of each spell."
-    end)
-    all.label:SetText("All ranks")
-    all:SetHeight(24)
-    all:SetPoint("LEFT", 4, -1)
-    local trainer = ns.window.Button(band, 86, function()
-        if W.Current() == trainerPage then
-            -- the page it came from, or the first with a tab
-            local to = back and back.available and back
-            for _, page in ipairs(W.pages) do
-                if not to and page.available and not page.tabless then to = page end
+    local row = ns.window.Segments(band, { height = band:GetHeight(), items = {
+        { key = "all", label = "All ranks", click = function()
+            if p.trainer then return end            -- it means nothing there
+            ns.SetOption("spellbookAllRanks", not ns.db.spellbookAllRanks)
+        end, tip = function()
+            if p.trainer then return "Every rank the trainer teaches is listed here." end
+            return ns.db.spellbookAllRanks and "List each spell once, at its highest rank."
+                or "List every rank of each spell."
+        end },
+        { key = "trainer", label = "Trainer", click = function()
+            if W.Current() == trainerPage then
+                -- the page it came from, or the first with a tab
+                local to = back and back.available and back
+                for _, page in ipairs(W.pages) do
+                    if not to and page.available and not page.tabless then to = page end
+                end
+                if to then W.Select(to) end
+            else
+                back = W.Current()
+                W.Select(trainerPage)
             end
-            if to then W.Select(to) end
-        else
-            back = W.Current()
-            W.Select(trainerPage)
-        end
-    end, function()
-        return W.Current() == trainerPage and "Back to your spells."
-            or "What your class trainer has still to teach you."
-    end)
-    trainer.label:SetText("Trainer")
-    trainer:SetHeight(24)
-    trainer:SetPoint("LEFT", all, "RIGHT", 4, 0)
-    p.allRanks, p.trainerButton = all, trainer
+        end, tip = function()
+            return W.Current() == trainerPage and "Back to your spells."
+                or "What your class trainer has still to teach you."
+        end },
+    } })
+    row:SetPoint("TOPLEFT")
+    row:SetPoint("TOPRIGHT")
+    p.margin = row
+    p.allRanks, p.trainerButton = row.byKey.all, row.byKey.trainer
 end
 
--- the margin's state: All ranks marked while on, and greyed and deaf on
--- the trainer's page, where it means nothing; Trainer while its page shows
+-- the margin's state: All ranks marked while on, and off on the trainer's
+-- page, where it means nothing; Trainer once read, marked while its page
+-- shows (All ranks takes the row until then)
 function Band(p)
-    if not p.allRanks then return end
-    local all = p.allRanks
-    all:EnableMouse(not p.trainer)
-    all:SetAlpha(p.trainer and 0.4 or 1)
-    all.label:SetTextColor(unpack(p.trainer and ns.colors.dim or ns.colors.text))
-    all.mark:SetShown(not p.trainer and ns.db.spellbookAllRanks and true or false)
-    p.trainerButton:SetShown(ns.trainers.Visited())
-    p.trainerButton.mark:SetShown(p.trainer and true or false)
+    if not p.margin then return end
+    p.margin:Set("all", { selected = not p.trainer and ns.db.spellbookAllRanks, enabled = not p.trainer })
+    p.margin:Set("trainer", { selected = p.trainer, shown = ns.trainers.Visited() })
 end
 
 local function Page(spec)
     local p = spec
     p.cells = {}
-    p.flex, p.height, p.bandUsed = true, 0, true
+    p.flex, p.height, p.bandUsed, p.bandFlush = true, 0, true, true
     p.events = { "SPELLS_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE", "SPELL_UPDATE_ICON", "PLAYER_LEVEL_UP",
         "UNIT_PET", "PET_BAR_UPDATE", "ACTIONBAR_SLOT_CHANGED", "PLAYER_MONEY" }
     function p.Build(body, foot, band)

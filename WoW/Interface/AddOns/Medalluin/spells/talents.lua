@@ -601,19 +601,17 @@ local function Draw(p, config, group, groups, plan)
 end
 
 -- ------------------------------------------------------------- the foot
--- the margin: which talents are in view, which in use, and Order marked
--- while the plan's list shows
+-- the margin: which talents are in view (marked), which in use (gold),
+-- Plans marked while the plan's list shows, Activate while another's are
+-- in view (off in combat)
 local function Band(p)
     local active, groupsLearned = Active(), GetNumSpecGroups and GetNumSpecGroups() or 1
-    for i, b in ipairs(p.specs) do
-        b.mark:SetShown(i == Viewed())
-        local c = i == active and GOLD or ns.colors.dim
-        b.label:SetTextColor(c[1], c[2], c[3])
-        b:SetAlpha(i <= groupsLearned and 1 or 0.4)
+    for i in ipairs(p.specs) do
+        p.margin:Set(i, { selected = i == Viewed(), enabled = i <= groupsLearned,
+            color = i == active and GOLD or ns.colors.dim })
     end
-    p.activate:SetShown(Viewed() ~= active)
-    p.activate:SetAlpha(InCombatLockdown() and 0.4 or 1)
-    p.plans.mark:SetShown(p.list and true or false)
+    p.margin:Set("activate", { shown = Viewed() ~= active, enabled = not InCombatLockdown() })
+    p.margin:Set("plans", { selected = p.list and true or false })
 end
 
 local function Refresh(p)
@@ -697,52 +695,46 @@ local function Back()
     if to then W.Select(to) end
 end
 
+-- The margin, edge to edge: the specialisations, then the plans and
+-- Activate past a divider, joined (ns.window.Segments)
 local function Margin(p, band)
-    p.specs = {}
-    local prev
+    local items = {}
     for i, name in ipairs(SPECS) do
-        local b = Button(band, 86, function()
+        table.insert(items, { key = i, label = name, group = "specs", click = function()
             if i > (GetNumSpecGroups and GetNumSpecGroups() or 1) then return end
             if i ~= Viewed() then End() end
             view = i
             p.chosen = nil
             W.Refresh()
-        end, function()
+        end, tip = function()
             if i > (GetNumSpecGroups and GetNumSpecGroups() or 1) then
                 return "Learn a second specialization to use " .. name:lower() .. " talents."
             end
             return format("View your %s talents.", name:lower()) .. (i == Active() and " They are in use." or "")
-        end)
-        b.label:SetText(name)
-        if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("LEFT", 4, 0) end
-        p.specs[i], prev = b, b
+        end })
     end
-    p.activate = Button(band, 86, function()
-        if InCombatLockdown() or Viewed() == Active() then return end
-        C_SpecializationInfo.SetActiveSpecGroup(Viewed())
-    end, function()
-        return InCombatLockdown() and "Not in combat." or format("Use your %s talents.", SPECS[Viewed()]:lower())
-    end)
-    p.activate.label:SetText("Activate")
     -- the plans kept, and back from them to the tree they were opened over
-    p.plans = Button(band, 64, function()
+    table.insert(items, { key = "plans", label = "Plans", group = "plans", click = function()
         if W.Current() == plansPage then Back() else
             back = W.Current()
             W.Select(plansPage)
         end
-    end, function()
+    end, tip = function()
         return W.Current() == plansPage and "Back to the trees."
             or "The plans kept, and the order the active one learns in."
-    end)
-    p.plans.label:SetText("Plans")
-    -- a hairline between the specialisations and the plans
-    local rule = band:CreateTexture(nil, "ARTWORK")
-    rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.5)
-    rule:SetSize(1, 16)
-    rule:SetPoint("LEFT", prev, "RIGHT", 8, 0)
-    p.rule = rule
-    p.plans:SetPoint("LEFT", rule, "RIGHT", 8, 0)
-    p.activate:SetPoint("LEFT", p.plans, "RIGHT", 4, 0)
+    end })
+    table.insert(items, { key = "activate", label = "Activate", group = "plans", click = function()
+        if InCombatLockdown() or Viewed() == Active() then return end
+        C_SpecializationInfo.SetActiveSpecGroup(Viewed())
+    end, tip = function()
+        return InCombatLockdown() and "Not in combat." or format("Use your %s talents.", SPECS[Viewed()]:lower())
+    end })
+    local row = ns.window.Segments(band, { height = band:GetHeight(), items = items })
+    row:SetPoint("TOPLEFT")
+    row:SetPoint("TOPRIGHT")
+    p.margin = row
+    p.specs = { row.byKey[1], row.byKey[2] }
+    p.plans, p.activate = row.byKey.plans, row.byKey.activate
 end
 
 -- the points' row over the tree: [Reset]  points available  [Apply]
@@ -860,7 +852,7 @@ end
 for i = 1, TREES do
     local p = { key = "tree" .. i, tree = i, order = i, label = "", frame = "TalentsFrame" }
     p.nodes, p.edges = {}, {}
-    p.flex, p.height, p.bandUsed = true, 0, true
+    p.flex, p.height, p.bandUsed, p.bandFlush = true, 0, true, true
     p.events = { "TRAIT_CONFIG_UPDATED", "TRAIT_NODE_CHANGED", "TRAIT_TREE_CURRENCY_INFO_UPDATED",
         "PLAYER_TALENT_UPDATE", "ACTIVE_TALENT_GROUP_CHANGED", "SPELLS_CHANGED", "PLAYER_LEVEL_UP",
         "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }
@@ -1139,7 +1131,7 @@ end
 do
     local p = { key = "plans", tabless = true, order = TREES + 1, label = "Plans", frame = "TalentsFrame" }
     p.rows, p.heads, p.labels = {}, {}, {}
-    p.flex, p.height, p.bandUsed = true, 0, true
+    p.flex, p.height, p.bandUsed, p.bandFlush = true, 0, true, true
     p.events = { "TRAIT_CONFIG_UPDATED", "TRAIT_NODE_CHANGED", "PLAYER_TALENT_UPDATE",
         "ACTIVE_TALENT_GROUP_CHANGED", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }
     function p.Available() return C_Traits and C_SpecializationInfo and Groups()[1] ~= nil end

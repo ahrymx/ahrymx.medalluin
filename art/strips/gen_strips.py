@@ -185,6 +185,22 @@ def glyph(kind, x, y):
     if kind == "statistics":    # three bars on a line
         return P("M2,17 L18,17 L18,19 L2,19 Z M3.5,10 L7,10 L7,16 L3.5,16 Z M8.25,4 L11.75,4 L11.75,16 L8.25,16 Z"
                  "M13,7.5 L16.5,7.5 L16.5,16 L13,16 Z")
+    # the bags' head (inventory/bags.lua): its views
+    if kind == "view-bags":     # two bags alike, the second before the first and to its right
+        sack = ("M3.5,0.5 L8.5,0.5 L7.3,3 L4.7,3 Z M4.2,3.4 L7.8,3.4 L7.8,4.6 L4.2,4.6 Z"
+                "M4.5,5 C1,6.5 0,10 0.5,12.5 C1,14.5 3,15 6,15 C9,15 11,14.5 11.5,12.5 C12,10 11,6.5 7.5,5 Z")
+        return (f'<g transform="translate({x},{y}) scale({s})" {f}>'
+                f'<path d="{sack}" transform="translate(0.5,0.5)"/>'
+                f'<path d="{sack}" transform="translate(7.5,4.5)" stroke-width="1.4"/></g>')
+    if kind == "view-grid":     # every slot in one grid
+        return P("".join(f"M{x},{y} L{x + 5},{y} L{x + 5},{y + 5} L{x},{y + 5} Z"
+                         for y in (1.5, 7.5, 13.5) for x in (1.5, 7.5, 13.5)))
+    if kind == "view-groups":   # bars falling in length, an arrow down beside them
+        bars = "".join(f'<rect x="1.5" y="{1.5 + k * 3.6:.2f}" width="{10.5 - k * 2:.2f}" height="2.4" rx="1.2"/>'
+                       for k in range(5))
+        return (f'<g transform="translate({x},{y}) scale({s})" {f}>{bars}'
+                f'<path d="M14.3,2.7 C14.3,1.1 16.7,1.1 16.7,2.7 L16.7,12.5 L19.2,12.5 L15.5,18.5 '
+                f'L11.8,12.5 L14.3,12.5 Z"/></g>')
     # the window's own controls: fold the details, unfold them, close
     if kind == "chevron-down":
         return P("M2,5 L10,13 L18,5 L18,9.5 L10,17.5 L2,9.5 Z")
@@ -411,6 +427,7 @@ GLYPHS = ["spellbook", "talents", "quests", "social", "guild", "lfg", "map", "me
 # the character window's tabs, its controls, the quest tracker's footer, the chat box's head and the side panel's tabs
 TABS = ["character", "reputation", "currency", "skills", "pvp", "statistics",
         "chevron-down", "chevron-up", "chevron-double", "close", "questlog", "sort", "view-minimal", "view-full",
+        "view-bags", "view-grid", "view-groups",
         "chat-tools", "chat", "channels", "log", "side-auras", "side-meter", "side-loot"]
 
 

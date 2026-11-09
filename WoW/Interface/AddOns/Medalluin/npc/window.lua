@@ -73,9 +73,11 @@
 --   { "tiles", { icon, crop, label, count, color, selected, dim,
 --     click(button), enter(tile) } ... } items, two a row
 --   { "tabs", { label, selected, click } ... }
---                                        one a page: it stays put under the
---                                        head, over a hairline, while the
---                                        rest scrolls
+--                                        one a page: one joined row across
+--                                        it (ns.window.Segments), staying put
+--                                        under the head, under an ornament
+--                                        when the NPC says something, while
+--                                        the rest scrolls
 --   { "input", key, label, text, lines, numeric, complete(text) -> names,
 --     changed(text), enter() }           a labelled box, one line or several
 --                                        (lines); a box being typed in keeps
@@ -96,8 +98,7 @@
 -- widest price; each run of rows (the list's, or a fold's) under its own
 -- heading, scrolling with them:
 --
---   [Merchant][Buyback]
---   --------------------------------------------------------
+--   [   Merchant   |     Sell     |    Buyback    ]
 --   Item                                          |   Price
 --   [icon] Fishing Pole                           |     23c   <- shaded
 --   [icon] Shiny Bauble                           |     50c
@@ -515,15 +516,6 @@ local make = {
         b:SetScript("OnReceiveDrag", function(self) if self.data.receive then self.data.receive() end end)
         return b
     end,
-    tab = function()
-        local b = CreateFrame("Button", nil, bar)
-        b:SetHeight(TABS)
-        ns.window.Face(b)
-        b.label = ns.Text(b, 13)
-        b.label:SetPoint("CENTER")
-        b:SetScript("OnClick", function(self) self.data.click() end)
-        return b
-    end,
 }
 
 -- the n-th of a kind this draw on parent (the scroll's child, the dock),
@@ -746,9 +738,9 @@ local function Lay(blocks, width, col, parent)
 end
 
 -- What stays put under the head while the page scrolls: what the NPC
--- says, and the tabs over a hairline. The room it takes, its gap below
--- included (none with neither).
-local pins = {}
+-- says, an ornament, and the tabs, one joined row across the page
+-- (ns.window.Segments). The room it takes, its gap below included (none
+-- with neither).
 local function Pin(say, b)
     bar:SetShown(say ~= nil or b ~= nil)
     local y = 0
@@ -758,36 +750,27 @@ local function Pin(say, b)
         Colour(bar.say, say[3] or ns.colors.text)
         y = y + bar.say:GetStringHeight() + GAP
     end
-    local x, n = 0, b and #b - 1 or 0
-    for j = 1, math.max(n, #pins) do
-        local d, t = b and b[j + 1], pins[j]
-        if d and not t then
-            t = make.tab()
-            pins[j] = t
-        end
-        if t then
-            t:SetShown(d ~= nil)
-            if d then
-                t.data = d
-                t.label:SetText(d.label)
-                Colour(t.label, d.selected and GOLD or ns.colors.dim)
-                t.mark:SetShown(d.selected and true or false)
-                t:SetWidth(t.label:GetStringWidth() + 20)
-                t:ClearAllPoints()
-                t:SetPoint("TOPLEFT", x, -y)
-                x = x + t:GetWidth() + 4
-            end
-        end
+    -- what the NPC says parted from the tabs
+    bar.ornament:SetShown(say ~= nil and b ~= nil)
+    if say and b then
+        bar.ornament:ClearAllPoints()
+        bar.ornament:SetPoint("TOPLEFT", 0, -y)
+        bar.ornament:SetPoint("TOPRIGHT", 0, -y)
+        y = y + bar.ornament:GetHeight() + GAP
     end
-    bar.rule:SetShown(b ~= nil)
+    bar.tabs:SetShown(b ~= nil)
     if b then
-        y = y + TABS + GAP / 2
-        bar.rule:ClearAllPoints()
-        bar.rule:SetPoint("TOPLEFT", 0, -y)
-        bar.rule:SetPoint("TOPRIGHT", 0, -y)
-        y = y + 1 + GAP / 2
+        local items = {}
+        for j = 2, #b do
+            local d = b[j]
+            table.insert(items, { key = j, label = d.label, selected = d.selected, click = d.click })
+        end
+        bar.tabs:ClearAllPoints()
+        bar.tabs:SetPoint("TOPLEFT", 0, -y)
+        bar.tabs:SetPoint("TOPRIGHT", 0, -y)
+        bar.tabs:Fill(items)
+        y = y + TABS + GAP
     end
-    if b then y = y + GAP / 2 end
     bar:SetHeight(math.max(1, y))
     return y
 end
@@ -1153,9 +1136,10 @@ local function Build()
     bar.say:SetSpacing(4)
     bar.say:SetPoint("TOPLEFT")
     bar.say:SetWidth(WIDTH - 2 * PAD - 6)
-    bar.rule = bar:CreateTexture(nil, "ARTWORK")
-    bar.rule:SetHeight(1)
-    bar.rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], RULE)
+    bar.ornament = ns.window.Ornament(bar)
+    bar.ornament:Hide()
+    bar.tabs = ns.window.Segments(bar, { height = TABS, size = 13 })
+    bar.tabs:Hide()
     bar.head = ns.Text(bar, HEADING_FONT)           -- a column heading, measured
     bar.head:Hide()
     bar.measure = ns.Text(bar, 13)

@@ -42,15 +42,15 @@ local GOLD_D = { 0.541, 0.439, 0.204 }
 
 -- The views, as the header's buttons show them.
 local VIEWS = {
-    { key = "bags", name = "Bags", width = 40, tip = "Show each bag on rows of its own, under its name." },
-    { key = "grid", name = "Grid", width = 36, tip = "Show every slot in one grid, bag by bag." },
-    { key = "groups", name = "Groups", width = 50,
+    { key = "bags", name = "Bags", icon = "view-bags", tip = "Show each bag on rows of its own, under its name." },
+    { key = "grid", name = "Grid", icon = "view-grid", tip = "Show every slot in one grid, bag by bag." },
+    { key = "groups", name = "Groups", icon = "view-groups",
         tip = "Show the items in groups: new, equipment, consumables and the rest." },
 }
 
 local window, body, search, money, free, drawer
 local set                   -- the slots (inventory/slots.lua)
-local buttons = {}          -- the header's buttons, repainted together
+local head                  -- the header's buttons, one joined row
 local dirty = true
 local Remember              -- below: the window's place, saved
 local blizzard = {}         -- Blizzard's bag frames: kept, never seen
@@ -96,15 +96,9 @@ local function Free()
     return text
 end
 
+-- the view in use, marked in the head's row
 local function Paint()
-    for _, b in ipairs(buttons) do
-        b.label:SetText(b.text())
-        if b.lit then
-            local on = b.lit()
-            b.mark:SetShown(on)
-            b.label:SetTextColor(unpack(on and GOLD or ns.colors.text))
-        end
-    end
+    for _, v in ipairs(VIEWS) do head:Set(v.key, { selected = ns.db.bagsView == v.key }) end
 end
 
 local function Refresh()
@@ -118,40 +112,6 @@ local function Refresh()
 end
 
 -- --------------------------------------------------------------- the window
-local function Button(spec)
-    local b = CreateFrame("Button", nil, window)
-    b:SetSize(spec.width, 20)
-    local edge = b:CreateTexture(nil, "BACKGROUND", nil, 1)
-    edge:SetAllPoints()
-    edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
-    local well = b:CreateTexture(nil, "BACKGROUND", nil, 2)
-    well:SetPoint("TOPLEFT", 1, -1)
-    well:SetPoint("BOTTOMRIGHT", -1, 1)
-    well:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], 1)
-    local glow = b:CreateTexture(nil, "HIGHLIGHT")
-    glow:SetPoint("TOPLEFT", 1, -1)
-    glow:SetPoint("BOTTOMRIGHT", -1, 1)
-    glow:SetColorTexture(1, 1, 1, 0.12)
-    b.label = ns.Text(b, 10)
-    b.label:SetPoint("CENTER")
-    b.text = spec.text
-    -- one of a set: the one in use marked
-    if spec.lit then
-        b.lit = spec.lit
-        b.mark = b:CreateTexture(nil, "BACKGROUND", nil, 3)
-        b.mark:SetPoint("TOPLEFT", 1, -1)
-        b.mark:SetPoint("BOTTOMRIGHT", -1, 1)
-        b.mark:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.45)
-    end
-    b:SetScript("OnClick", spec.click)
-    b:SetScript("OnEnter", function(self)
-        ns.Tip(self, ns.window.OutsideTop, { title = spec.tip(), color = ns.colors.white, wrap = true })
-    end)
-    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    table.insert(buttons, b)
-    return b
-end
-
 -- Where the window sits: where it was dragged, or over the side panel.
 local function Anchor()
     window:ClearAllPoints()
@@ -411,29 +371,27 @@ local function Build()
     rule:SetHeight(1)
     window.rule = rule
 
-    local close = Button({ width = 20, text = function() return "x" end, click = function() CloseAllBags() end,
-        tip = function() return "Close the bags." end })
-    close:SetPoint("TOPRIGHT", -PAD, -PAD + 2)
-    local sort = Button({ width = 42, text = function() return "Sort" end,
+    -- the head's buttons, one joined row in the corner (ns.window.Segments),
+    -- from the top border down to the rule: the views, Sort, and the cross,
+    -- each a glyph (art/strips), its name and what it does in its tooltip
+    local items = {}
+    for _, v in ipairs(VIEWS) do
+        table.insert(items, { key = v.key, label = v.name, icon = v.icon, group = "views",
+            click = function() ns.SetOption("bagsView", v.key) end, tip = function() return v.tip end })
+    end
+    table.insert(items, { key = "sort", label = "Sort", icon = "sort", group = "sort",
         click = function() if Container.SortBags then Container.SortBags() end end,
         tip = function() return "Sort the bags, as the game sorts them." end })
-    sort:SetPoint("RIGHT", close, "LEFT", -4, 0)
-    -- the views, one button each, joined edge to edge, right to left
-    local view
-    for i = #VIEWS, 1, -1 do
-        local v = VIEWS[i]
-        local b = Button({ width = v.width, text = function() return v.name end,
-            click = function() ns.SetOption("bagsView", v.key) end,
-            lit = function() return ns.db.bagsView == v.key end,
-            tip = function() return v.tip end })
-        if view then b:SetPoint("RIGHT", view, "LEFT", 1, 0) else b:SetPoint("RIGHT", sort, "LEFT", -4, 0) end
-        view = b
-    end
+    table.insert(items, { key = "close", label = "Close", icon = "close", group = "close",
+        click = function() CloseAllBags() end })
+    head = ns.window.Segments(window, { height = RULE + 1, fit = true, items = items })
+    head:SetPoint("TOPRIGHT")
+    window.head = head
 
     search = CreateFrame("EditBox", "MedalluinBagsSearch", window, "SearchBoxTemplate")
     search:SetHeight(20)
     search:SetPoint("LEFT", title, "RIGHT", 12, 0)
-    search:SetPoint("RIGHT", view, "LEFT", -8, 0)
+    search:SetPoint("RIGHT", head, "LEFT", -8, 0)
     search:SetAutoFocus(false)
     search:HookScript("OnTextChanged", function(self)
         if Container.SetItemSearch then Container.SetItemSearch(self:GetText()) end

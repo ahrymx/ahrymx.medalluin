@@ -36,9 +36,9 @@ local BAG, BAR = 30, 24                 -- a bag slot, the purchase line
 local LOCK = "Interface\\Buttons\\LockButton-Locked-Up"
 local EMPTY = "Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag"
 local VIEWS = {
-    { key = "bags", name = "Bags", width = 40, tip = "Each bag on rows of its own, under its name." },
-    { key = "grid", name = "Grid", width = 36, tip = "Every slot in one grid, bag by bag." },
-    { key = "groups", name = "Groups", width = 50, tip = "The items in groups: new, equipment and the rest." },
+    { key = "bags", name = "Bags", icon = "view-bags", tip = "Each bag on rows of its own, under its name." },
+    { key = "grid", name = "Grid", icon = "view-grid", tip = "Every slot in one grid, bag by bag." },
+    { key = "groups", name = "Groups", icon = "view-groups", tip = "The items in groups: new, equipment and the rest." },
 }
 
 local function Money(c) return ns.npc and ns.npc.Money(c) or tostring(c) end
@@ -191,43 +191,33 @@ local function Refresh(p)
     p.set.Refresh()
     p.scroller.To(p.scroller.target)
     Slots(p)
-    for _, b in ipairs(p.views) do b.mark:SetShown(ns.db.bankView == b.key) end
-    p.deposit:SetShown(C_Bank.DoesBankTypeSupportAutoDeposit and C_Bank.DoesBankTypeSupportAutoDeposit(p.kind)
-        and true or false)
+    for _, v in ipairs(VIEWS) do p.row:Set(v.key, { selected = ns.db.bankView == v.key }) end
+    p.row:Set("deposit", { shown = C_Bank.DoesBankTypeSupportAutoDeposit
+        and C_Bank.DoesBankTypeSupportAutoDeposit(p.kind) and true or false })
     Follow()
 end
 
+-- The margin, edge to edge: the search, then one joined row at the far
+-- end (ns.window.Segments): the views, Deposit, Sort
 local function Band(p, band)
-    local function Button(width, label, click, tip)
-        local b = ns.window.Button(band, width, click, tip)
-        b:SetHeight(22)
-        b.label:SetText(label)
-        return b
+    local items = {}
+    for _, v in ipairs(VIEWS) do
+        table.insert(items, { key = v.key, label = v.name, icon = v.icon, group = "views",
+            click = function() ns.SetOption("bankView", v.key) end, tip = function() return v.tip end })
     end
-    local sort = Button(42, "Sort", function()
-        if Container.SortBankBags then Container.SortBankBags() end
-    end, function() return "Sort the bank, as the game sorts it." end)
-    sort:SetPoint("RIGHT", 0, 0)
-    p.deposit = Button(60, "Deposit", function()
+    table.insert(items, { key = "deposit", label = "Deposit", group = "deposit", click = function()
         if C_Bank.AutoDepositItemsIntoBank then C_Bank.AutoDepositItemsIntoBank(p.kind) end
-    end, function() return "Put what the bank takes in on its own into it, as the game's button does." end)
-    p.deposit:SetPoint("RIGHT", sort, "LEFT", -4, 0)
-    -- the views, joined edge to edge, right to left
-    p.views = {}
-    local prev = p.deposit
-    for i = #VIEWS, 1, -1 do
-        local v = VIEWS[i]
-        local b = Button(v.width, v.name, function() ns.SetOption("bankView", v.key) end,
-            function() return v.tip end)
-        b.key = v.key
-        b:SetPoint("RIGHT", prev, "LEFT", prev == p.deposit and -8 or 1, 0)
-        table.insert(p.views, b)
-        prev = b
-    end
+    end, tip = function() return "Put what the bank takes in on its own into it, as the game's button does." end })
+    table.insert(items, { key = "sort", label = "Sort", icon = "sort", group = "sort", click = function()
+        if Container.SortBankBags then Container.SortBankBags() end
+    end, tip = function() return "Sort the bank, as the game sorts it." end })
+    local row = ns.window.Segments(band, { height = band:GetHeight(), fit = true, items = items })
+    row:SetPoint("TOPRIGHT")
+    p.row, p.deposit = row, row.byKey.deposit
     local search = CreateFrame("EditBox", "MedalluinBankSearch" .. p.key, band, "SearchBoxTemplate")
     search:SetHeight(20)
     search:SetPoint("LEFT", 6, 0)
-    search:SetPoint("RIGHT", prev, "LEFT", -8, 0)
+    search:SetPoint("RIGHT", row, "LEFT", -8, 0)
     search:SetAutoFocus(false)
     search:HookScript("OnTextChanged", function(self)
         if Container.SetItemSearch then Container.SetItemSearch(self:GetText()) end
@@ -245,7 +235,7 @@ local KINDS = {
 
 for _, k in ipairs(KINDS) do
     local p = { key = k.key, label = k.label, tip = k.tip, icon = k.icon, order = k.order, frame = "BankFrame" }
-    p.flex, p.height, p.bandUsed = true, 0, true
+    p.flex, p.height, p.bandUsed, p.bandFlush = true, 0, true, true
     p.footHeight = BAG + 8 + BAR
     p.bags = {}
     p.events = { "BAG_UPDATE_DELAYED", "BAG_CONTAINER_UPDATE", "PLAYERBANKSLOTS_CHANGED", "BANK_TABS_CHANGED",
