@@ -274,7 +274,6 @@ local function Build()
     local dress = ns.window.Dress(panel, margin, true)
     dress.rule:SetPoint("BOTTOMLEFT", 0, margin)
     dress.rule:SetPoint("BOTTOMRIGHT", 0, margin)
-    for _, t in ipairs(dress.corners.BOTTOMLEFT or {}) do t:Hide() end
     -- the body's room, the old panel's: the column at its right
     area = CreateFrame("Frame", nil, panel)
     area:SetPoint("BOTTOMRIGHT", -PAD, foot)

@@ -1062,9 +1062,6 @@ local function Build()
     box:EnableMouse(true)
     local dress = ns.window.Dress(box, 0)
     dress.rule:Hide()
-    for point, lines in pairs(dress.corners) do
-        if point:find("^BOTTOM") then for _, t in ipairs(lines) do t:Hide() end end
-    end
     -- the head's and foot's band of ink, over the box's (BAND_INK)
     local function Band(f)
         local ink = f:CreateTexture(nil, "BACKGROUND")

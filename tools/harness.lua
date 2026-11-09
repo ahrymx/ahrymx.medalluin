@@ -13300,7 +13300,7 @@ if questPass and not questLogPass then
     view("quests.chat again")
     do
         -- the reach: a box of its own from the screen's top to the chat
-        -- box's top edge, its foot open (no corners, no band rule)
+        -- box's top edge, its foot open (no band rule)
         local r = ns.chat.reach
         local pts = {}
         for i = 1, r:GetNumPoints() do
@@ -13309,10 +13309,8 @@ if questPass and not questLogPass then
         end
         table.sort(pts)
         local dress
-        for _, c in ipairs({ r:GetChildren() }) do if c.corners then dress = c end end
+        for _, c in ipairs({ r:GetChildren() }) do if c.rule then dress = c end end
         print("quests.reach", table.concat(pts, " "), "level=" .. r:GetFrameLevel() .. "/" .. ns.chat.box:GetFrameLevel(),
-            "corners top=" .. tostring(dress.corners.TOPLEFT[1].shown) .. "/" .. tostring(dress.corners.TOPRIGHT[2].shown),
-            "bottom=" .. tostring(dress.corners.BOTTOMLEFT[1].shown) .. "/" .. tostring(dress.corners.BOTTOMRIGHT[2].shown),
             "rule=" .. tostring(dress.rule.shown))
     end
 
@@ -13325,9 +13323,7 @@ if questPass and not questLogPass then
             "driver=" .. tostring(layer.stateDrivers and layer.stateDrivers.visibility),
             "head mouse=" .. tostring(T.head.mouse), "footer mouse=" .. tostring(T.gear.mouse),
             "row mouse=" .. tostring(list.rows[1] and list.rows[1].mouse),
-            string.format("reach=%s %.2f chat corners=%.2f/%.2f", tostring(ns.chat.reach.shown),
-                ns.chat.reach:GetAlpha(), ns.chat.dress.corners.TOPLEFT[1]:GetAlpha(),
-                ns.chat.dress.corners.TOPRIGHT[2]:GetAlpha()))
+            string.format("reach=%s %.2f", tostring(ns.chat.reach.shown), ns.chat.reach:GetAlpha()))
     end
     local function combat(on)
         inCombat = on

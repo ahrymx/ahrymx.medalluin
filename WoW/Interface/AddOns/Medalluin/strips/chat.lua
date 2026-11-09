@@ -647,31 +647,22 @@ local function Build()
     chatBox:SetHeight(top)
     -- The box's reach up to the screen's top, the quest tracker's full view
     -- in it: a box of its own on the chat's, its foot the chat box's top
-    -- edge, so the two read as one; and the tracker fading fades it alone,
-    -- the chat box's top corners coming back as it goes.
+    -- edge, so the two read as one; and the tracker fading fades it alone.
     local reach = CreateFrame("Frame", nil, strip)
     reach:SetFrameStrata("BACKGROUND")
     reach:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
     reach:SetPoint("BOTTOMRIGHT", chatBox, "TOPRIGHT", 0, -1)
     local reachDress = ns.window.Dress(reach, 0)
     reachDress.rule:Hide()
-    local corners = {}
-    for point, lines in pairs(reachDress.corners) do
-        if point:find("^BOTTOM") then for _, t in ipairs(lines) do t:Hide() end end
-    end
-    for point, lines in pairs(dress.corners) do
-        if point:find("^TOP") then for _, t in ipairs(lines) do table.insert(corners, t) end end
-    end
     -- up: the reach shown, as much of it as alpha (the tracker's fade)
     local function Draw(up, alpha)
         alpha = up and (alpha or 1) or 0
         reach:SetShown(up and true or false)
         reach:SetAlpha(alpha)
-        for _, t in ipairs(corners) do t:SetAlpha(1 - alpha) end
     end
     -- An NPC window (npc/window.lua) stands on the box in the reach's
-    -- place, a box of its own as tall as it needs: held, the reach is gone
-    -- and the box's top corners with it, the tracker's asks kept for after.
+    -- place, a box of its own as tall as it needs: held, the reach is gone,
+    -- the tracker's asks kept for after.
     local wanted, held = { false }, false
     function ns.chat.Reach(up, alpha)
         wanted = { up, alpha }
@@ -681,7 +672,6 @@ local function Build()
         held = on and true or false
         if held then
             reach:Hide()
-            for _, t in ipairs(corners) do t:SetAlpha(0) end
         else
             Draw(wanted[1], wanted[2])
         end

@@ -21,7 +21,7 @@
 -- its margin edge to edge, as the side panel's tabs: from the window's
 -- outer border to 5 short of the medallion's ring, and from its foot up
 -- over the margin's rule (a row of joined buttons, ns.window.Segments,
--- meets both lines); the corner's bracket there steps aside.
+-- meets both lines).
 --
 -- The tabs are icons spread across the row, with the page's name in a
 -- tooltip (tip, or the label): the glyph art/strips draws for the page
@@ -577,29 +577,9 @@ local function Ornament(parent, label)
 end
 ns.window.Ornament = Ornament
 
--- Gold brackets in a frame's four corners, inset from its edge; each
--- corner's two lines, by its point.
-local function Corners(f, inset, size)
-    local corners = {}
-    for _, c in ipairs({ { "TOPLEFT", 1, -1 }, { "TOPRIGHT", -1, -1 }, { "BOTTOMLEFT", 1, 1 },
-        { "BOTTOMRIGHT", -1, 1 } }) do
-        local across = f:CreateTexture(nil, "ARTWORK")
-        across:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.8)
-        across:SetSize(size, 1)
-        across:SetPoint(c[1], c[2] * inset, c[3] * inset)
-        local down = f:CreateTexture(nil, "ARTWORK")
-        down:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.8)
-        down:SetSize(1, size)
-        down:SetPoint(c[1], c[2] * inset, c[3] * inset)
-        corners[c[1]] = { across, down }
-    end
-    return corners
-end
-ns.window.Corners = Corners
-
 -- The chat box's frame, and the quest tracker's when there is no chat box
--- (strips/chat.lua, quests/tracker.lua): the windows' gold trim and
--- corners, the ink fading from solid at the left to a tenth at the right
+-- (strips/chat.lua, quests/tracker.lua): the windows' gold trim, the
+-- ink fading from solid at the left to a tenth at the right
 -- so it can stand open over the world (the trim drawn as four lines, so
 -- nothing shows through it), and the medallion's margin under its rule:
 -- band high (the windows' own when not given). Mirrored (the side panel,
@@ -630,7 +610,6 @@ local function Dress(parent, band, mirrored)
         t:SetPoint(edge[2])
         t[edge[3]](t, 1)
     end
-    dress.corners = Corners(dress, 3, 12)
     local bandRule = dress:CreateTexture(nil, "ARTWORK")
     bandRule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
     bandRule:SetHeight(1)
@@ -665,7 +644,6 @@ function ns.Window(spec)
             height = BAND } }
     local window, chevron, close, rule, footRule, medal, view, grip
     local hairs                         -- open tabs: the hairs under the rows
-    local corners                       -- the window's brackets, by point
     local pageTop = TOP                 -- the page's top: a row lower with a second row of tabs
     local current, dirty
     local tabs = {}
@@ -702,18 +680,6 @@ function ns.Window(spec)
             p.band:SetPoint("BOTTOMLEFT", off and PAD or w.band.left, 0)
             p.band:SetPoint("BOTTOMRIGHT", -(off and PAD or w.band.right), 0)
             p.band:SetHeight(BAND)
-        end
-    end
-
-    -- the foot's brackets under a flush margin step aside: the outer one
-    -- (both, detached)
-    local function Brackets()
-        if not corners then return end
-        local flush, off = current and current.bandFlush, w.Detached()
-        for point, lines in pairs(corners) do
-            local outer = point == (side < 0 and "BOTTOMRIGHT" or "BOTTOMLEFT")
-            local hide = flush and point:find("^BOTTOM") and (outer or off)
-            for _, t in ipairs(lines) do t:SetShown(not hide) end
         end
     end
 
@@ -827,7 +793,6 @@ function ns.Window(spec)
         for _, p in ipairs(pages) do
             if p.band then BandAt(p) end
         end
-        Brackets()
         if window:IsShown() then Lift(not off) end
         Tabs()
         Layout()
@@ -900,7 +865,6 @@ function ns.Window(spec)
                 p.tab.icon:SetAlpha(p == page and 1 or 0.6)
             end
         end
-        Brackets()
         Layout()
         Listen()
         if window:IsShown() and page.Shown then page.Shown() end
@@ -1099,7 +1063,6 @@ function ns.Window(spec)
         bandRule:SetPoint("BOTTOMLEFT", PAD, BAND)
         bandRule:SetPoint("BOTTOMRIGHT", -PAD, BAND)
         window.bandRule = bandRule
-        corners = Corners(window, 3, 12)
         Medal()
 
         close = Button(window, TAB, function() spec.Close() end, function() return spec.closeTip end, nil, spec.tabs)

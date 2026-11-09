@@ -35,7 +35,7 @@ local W = ns.Window{
 }
 
 ns.character = { pages = W.pages, width = W.width, band = { left = W.band.left, height = W.band.height },
-    Button = ns.window.Button, Ornament = ns.window.Ornament, Corners = ns.window.Corners }
+    Button = ns.window.Button, Ornament = ns.window.Ornament }
 ns.CharacterPage = W.Page
 
 -- ----------------------------------------------- Blizzard's character window
