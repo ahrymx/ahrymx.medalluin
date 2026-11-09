@@ -2,7 +2,8 @@
 -- boss. It is not a second chat log (the chat keeps its loot lines): each
 -- boss, and each run of trash in one zone, is a heading with its time and
 -- your share of the money, and under it a line per item: the item, who got
--- it (in their class colour) and how (the roll that won it, or personal).
+-- it (in their class colour), how (the roll that won it, or personal) and
+-- when (the clock's time it dropped).
 --
 -- Two sources, joined:
 --   C_LootHistory    the boss drops the group rolled on: the winner, their
@@ -17,13 +18,17 @@
 -- In the newest-first order of the headings; within one, in the order
 -- looted. Held for the session only, the newest 30 headings.
 --
--- The column: whose loot (the group's or yours), the least quality shown;
--- at the foot, clear the log. All on the options page too.
+-- Over the list, a line says what it shows: whose loot, and from which
+-- quality up. The column: whose loot (the group's or yours), then the
+-- qualities as a ladder of swatches, epic at the top, each picked directly
+-- (the ones shown lit in their colour); at the foot, clear the log. All on
+-- the options page too.
 local _, ns = ...
 
 local LH = C_LootHistory
 local HISTORY = LH and LH.GetSortedDropsForEncounter and LH.GetInfoForEncounter
-local ROW, GAP, HEAD = 16, 2, 18
+local ROW, GAP, HEAD, STATUS = 16, 2, 18, 16
+local WHEN = 34                 -- a row's time, at its right end
 local KEEP, SAME = 30, 120      -- headings kept; seconds a chat line and a history drop count as one
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
@@ -45,6 +50,7 @@ local body, rows, heads, lines
 local first, shown = 0, 0
 
 local function Now() return GetTime() end
+local function Clock() return date and date("%H:%M") or "" end
 
 local function Short(name)
     if not name then return nil end
@@ -111,7 +117,7 @@ end
 
 -- ------------------------------------------------------------- the log
 local function Group(title, encounterID)
-    local g = { title = title, time = date and date("%H:%M") or "", at = Now(), money = 0,
+    local g = { title = title, time = Clock(), at = Now(), money = 0,
         drops = {}, items = {}, encounterID = encounterID }
     table.insert(groups, 1, g)
     while #groups > KEEP do
@@ -176,7 +182,7 @@ local function Encounter(id)
         local key = id .. ":" .. d.lootListKey
         local w, was = d.winner, old[key]
         local item = { key = key, link = d.itemHyperlink, id = ItemID(d.itemHyperlink),
-            quality = Quality(d.itemHyperlink), at = was and was.at or Now() }
+            quality = Quality(d.itemHyperlink), at = was and was.at or Now(), time = was and was.time or Clock() }
         if w then
             item.who, item.class, item.self = Short(w.playerName), w.playerClass, w.isSelf
             item.state, item.roll = w.state, w.roll
@@ -233,7 +239,7 @@ local function Loot(msg)
                 if not id or Rolled(id, who) then return true end
                 table.insert(Here().items, { link = link, id = id, count = tonumber(count), who = who,
                     class = ClassOf(self and "player" or who), self = self, how = "personal", quality = Quality(link),
-                    at = Now() })
+                    at = Now(), time = Clock() })
                 return true
             end
         end
@@ -245,7 +251,7 @@ local function Currency(msg)
         local link, count = msg:match(pat)
         if link then
             table.insert(Here().items, { link = link, count = tonumber(count), who = Me(), class = ClassOf("player"),
-                self = true, how = "personal", currency = true, at = Now() })
+                self = true, how = "personal", currency = true, at = Now(), time = Clock() })
             return true
         end
     end
@@ -325,14 +331,18 @@ local function Row(parent)
     r.icon:SetSize(ROW - 2, ROW - 2)
     r.icon:SetPoint("CENTER", r.edge)
     r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    -- right to left: how (the roll icon and number, or "personal"), who, the item
+    -- right to left: when, how (the roll icon and number, or "personal"),
+    -- who, the item
+    r.when = ns.PlainText(r, 10)
+    r.when:SetPoint("RIGHT", -2, 0)
+    r.when:SetTextColor(unpack(DIM))
     r.how = ns.Text(r, 10)
-    r.how:SetPoint("LEFT", r, "RIGHT", -42, 0)
+    r.how:SetPoint("LEFT", r, "RIGHT", -42 - WHEN, 0)
     r.die = r:CreateTexture(nil, "ARTWORK")
     r.die:SetSize(12, 12)
-    r.die:SetPoint("LEFT", r, "RIGHT", -56, 0)
+    r.die:SetPoint("LEFT", r, "RIGHT", -56 - WHEN, 0)
     r.who = ns.Text(r, 10)
-    r.who:SetPoint("RIGHT", r, "RIGHT", -60, 0)
+    r.who:SetPoint("RIGHT", r, "RIGHT", -60 - WHEN, 0)
     r.link = ns.PlainText(r, 10)
     r.link:SetPoint("LEFT", ROW + 6, 0)
     r.link:SetPoint("RIGHT", r.who, "LEFT", -6, 0)
@@ -360,6 +370,7 @@ local function FillRow(r, item)
     local icon = Icon(item)
     if icon then r.icon:SetTexture(icon) else r.icon:SetColorTexture(0.071, 0.067, 0.063, 1) end
     r.link:SetText(item.link .. (item.count and item.count > 1 and (" x" .. item.count) or ""))
+    r.when:SetText(item.time or "")
     r.who:SetText(item.who or "")
     local c = item.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[item.class]
     if c then r.who:SetTextColor(c.r, c.g, c.b) else r.who:SetTextColor(unpack(ns.colors.text)) end
@@ -370,23 +381,41 @@ local function FillRow(r, item)
         r.die:SetShown(how[3] ~= nil)
         if how[3] then r.die:SetTexture(how[3]) end
         r.how:ClearAllPoints()
-        r.how:SetPoint("LEFT", r, "RIGHT", how[3] and -42 or -56, 0)
+        r.how:SetPoint("LEFT", r, "RIGHT", (how[3] and -42 or -56) - WHEN, 0)
     else
         r.how:SetText(item.how or "")
         r.how:SetTextColor(unpack(DIM))
         r.die:Hide()
         r.how:ClearAllPoints()
-        r.how:SetPoint("LEFT", r, "RIGHT", -56, 0)
+        r.how:SetPoint("LEFT", r, "RIGHT", -56 - WHEN, 0)
     end
     r:Show()
 end
 
-local empty
+local function QualityName(q)
+    for _, e in ipairs(ns.LOOT_QUALITIES) do
+        if e[1] == q then return e[2] end
+    end
+    return "?"
+end
+
+-- What the list shows, in words: whose, and from which quality up (in its
+-- colour).
+local function Says()
+    local who = ns.db.lootWho == ns.LOOT_WHO.MINE and "Your loot" or "The group's loot"
+    local q = ns.db.lootQuality
+    local r, g, b = QualityColor(q)
+    local name = string.format("|cff%02x%02x%02x%s|r", r * 255, g * 255, b * 255, QualityName(q))
+    return who .. "  \194\183  " .. (q == 0 and "every quality" or name .. " and better")
+end
+
+local empty, status
 local function Refresh()
     if not body then return end
+    status:SetText(Says())
     lines = Lines()
     if first > 0 and first >= #lines then first = math.max(0, #lines - 1) end
-    local y, nh, nr = 0, 0, 0
+    local y, nh, nr = STATUS, 0, 0
     local height = body:GetHeight()
     shown = 0
     for i = first + 1, #lines do
@@ -439,8 +468,14 @@ ns.side.loot = view
 
 function view.Build(f)
     body, rows, heads = f, {}, {}
+    status = ns.Text(f, 10)
+    status:SetPoint("TOPLEFT", 2, -2)
+    status:SetPoint("TOPRIGHT", -2, -2)
+    status:SetJustifyH("LEFT")
+    status:SetWordWrap(false)
+    status:SetTextColor(unpack(DIM))
     empty = ns.Text(f, 10)
-    empty:SetPoint("TOPLEFT", 4, -6)
+    empty:SetPoint("TOPLEFT", 4, -STATUS - 6)
     empty:SetTextColor(unpack(DIM))
     empty:SetText("Nothing looted yet.")
     Patterns()
@@ -485,11 +520,6 @@ function view.Thumb()
     return first, shown, #(lines or {})
 end
 
-local function Step(by)
-    local q = (ns.db.lootQuality + by) % #ns.LOOT_QUALITIES
-    ns.SetOption("lootQuality", q)
-end
-
 view.buttons = {
     {
         glyph = function() return "side-filter" end,
@@ -504,17 +534,16 @@ view.buttons = {
             return "The group's", "Everything the group looted, yours included. Click for yours only."
         end,
     },
-    {
-        glyph = function() return "side-quality" end,
-        lit = function() return false end,
-        tint = function() return QualityColor(ns.db.lootQuality) end,
-        click = function(mouse) Step(mouse == "RightButton" and -1 or 1) end,
-        tip = function()
-            local name = "?"
-            for _, q in ipairs(ns.LOOT_QUALITIES) do
-                if q[1] == ns.db.lootQuality then name = q[2] end
-            end
-            return "Least quality: " .. name, "Click for the next quality up; right click for the one down."
+    {   -- the qualities, epic at the top: step i is the i-th from the best
+        steps = #ns.LOOT_QUALITIES,
+        color = function(i) return QualityColor(ns.LOOT_QUALITIES[#ns.LOOT_QUALITIES + 1 - i][1]) end,
+        lit = function(i) return ns.LOOT_QUALITIES[#ns.LOOT_QUALITIES + 1 - i][1] >= ns.db.lootQuality end,
+        click = function(i) ns.SetOption("lootQuality", ns.LOOT_QUALITIES[#ns.LOOT_QUALITIES + 1 - i][1]) end,
+        tip = function(i)
+            local q = ns.LOOT_QUALITIES[#ns.LOOT_QUALITIES + 1 - i][1]
+            local title = q == 0 and "Every quality" or QualityName(q) .. " and better"
+            if q == ns.db.lootQuality then return title, "Shown now." end
+            return title, "Click to show these."
         end,
     },
 }

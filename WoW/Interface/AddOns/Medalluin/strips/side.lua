@@ -26,6 +26,11 @@
 --                Scroll(lines), Thumb() -> first, shown, total,
 --                buttons = { spec... }, foot = spec, Shown(shown) }
 --   spec = { glyph(), lit(), tint() (optional), click(mouse), tip() -> title, line }
+--        or a ladder: { steps, color(i) -> r, g, b, lit(i), click(i, mouse),
+--                       tip(i) -> title, line }: a stack of swatches, one
+--                       per step, top down, picked directly; a lit one in
+--                       its colour, the rest faint. It takes a button's
+--                       room and more (steps * SWATCH); last in the list.
 --
 -- BACKGROUND strata, like the chat panel. Built at login, and only when the
 -- Side panel option is on; its tabs come and go with their own options.
@@ -37,6 +42,7 @@ local COLUMN = L.chatPad + L.chatColumn / 2     -- the column's centre, from the
 local INNER = L.chatPad + L.chatColumn + 5      -- the body's outer edge, the same
 local PITCH = 30                                -- column buttons, top down
 local BUTTON, GLYPH = 24, 28                    -- a button's box, and its glyph's 32x32 art in it
+local SWATCH = 14                               -- a ladder's step: its pitch (the box 1 less, edges shared)
 local PAD, RULE, TABS = 8, 6, 28                -- as the chat box's (chat.lua)
 local SHORTER = 9                               -- the margin, as the chat's
 local GOLD_D = { 0.541, 0.439, 0.204 }
@@ -96,6 +102,13 @@ end
 -- ------------------------------------------------------- column buttons
 local function Paint(b)
     local spec = b.spec
+    if b.step then
+        local on = spec.lit(b.step) and true or false
+        local r, g, bl = spec.color(b.step)
+        b.fill:SetColorTexture(r, g, bl, on and 0.9 or 0.18)
+        b.mark:SetShown(on)
+        return
+    end
     b.mark:SetShown(spec.lit() and true or false)
     b.glyph:SetTexture(PARTS .. spec.glyph())
     if spec.tint then b.glyph:SetVertexColor(spec.tint()) end
@@ -105,7 +118,7 @@ end
 function ns.side.Beside(owner) ns.window.Beside(panel, owner, 1) end
 
 local function Tip(b)
-    local title, line = b.spec.tip()
+    local title, line = b.spec.tip(b.step)
     ns.Tip(b, ns.side.Beside, { title = title, line and { "body", line } or false })
 end
 
@@ -129,6 +142,31 @@ local function Button(view, spec, y, from)
     table.insert(view.paint, b)
     Paint(b)
     return b
+end
+
+-- A ladder: its swatches stacked down from y (the top of the room a
+-- button there would have), sharing their edges.
+local function Ladder(view, spec, y, from)
+    for i = 1, spec.steps do
+        local b = CreateFrame("Button", nil, view.column)
+        b.spec, b.step = spec, i
+        b:SetSize(BUTTON, SWATCH + 1)
+        b:SetPoint("TOP", area, from, -COLUMN, y - (i - 1) * SWATCH)
+        ns.window.Face(b)
+        b.fill = b:CreateTexture(nil, "ARTWORK")
+        b.fill:SetPoint("TOPLEFT", 3, -3)
+        b.fill:SetPoint("BOTTOMRIGHT", -3, 3)
+        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        b:SetScript("OnClick", function(self, mouse)
+            self.spec.click(self.step, mouse)
+            ns.side.Changed()
+            if GameTooltip:IsOwned(self) then Tip(self) end
+        end)
+        b:SetScript("OnEnter", Tip)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        table.insert(view.paint, b)
+        Paint(b)
+    end
 end
 
 -- ----------------------------------------------------------------- tabs
@@ -269,7 +307,11 @@ local function Build()
             v.column = CreateFrame("Frame", nil, area)
             v.column:SetAllPoints()
             v.paint = {}
-            for i, spec in ipairs(v.buttons) do Button(v, spec, -16 - (i - 1) * PITCH, "TOPRIGHT") end
+            for i, spec in ipairs(v.buttons) do
+                local y = -16 - (i - 1) * PITCH
+                if spec.steps then Ladder(v, spec, y + BUTTON / 2, "TOPRIGHT")
+                else Button(v, spec, y, "TOPRIGHT") end
+            end
             if v.foot then Button(v, v.foot, 16, "BOTTOMRIGHT") end
             Tab(v)
             v.Build(v.body)

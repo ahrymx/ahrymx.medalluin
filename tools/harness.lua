@@ -4346,9 +4346,15 @@ if sidePass then
         local list = {}
         for _, b in ipairs(v.paint) do
             local l, t, r, bt = rect(b)
+            if b.step then
+                local c = b.fill.color
+                table.insert(list, string.format("step%d%s(%.2f,%.2f,%.2f/%.2f)@%.0f,%.0f", b.step,
+                    b.mark.shown and "+" or "", c[1], c[2], c[3], c[4] or 1, (l + r) / 2, (t + bt) / 2))
+            else
             table.insert(list, string.format("%s%s%s@%.0f,%.0f", b.glyph.texture:match("side%-(.*)$"),
                 b.mark.shown and "+" or "", b.glyph.vertex and string.format("(%.2f,%.2f,%.2f)",
                 b.glyph.vertex[1], b.glyph.vertex[2], b.glyph.vertex[3]) or "", (l + r) / 2, (t + bt) / 2))
+            end
         end
         print("column " .. v.key, v.column.shown and "shown" or "hidden", table.concat(list, " "))
     end
@@ -4418,6 +4424,9 @@ if sidePass then
     local function lootState(tag)
         print(tag)
         for _, f in ipairs(L.body.all_) do
+            if f.kind == "FontString" and f.shown and f.text and f.points.TOPRIGHT then print("", "says", f.text) end
+        end
+        for _, f in ipairs(L.body.all_) do
             if f.shown and f.kind == "Frame" and f.title then
                 local _, t = rect(f)
                 print("", string.format("head@%.0f", t), f.title.text, f.when.text)
@@ -4426,7 +4435,7 @@ if sidePass then
                 print("", string.format("row@%.0f", t), f.link.text, string.format("edge=%.2f,%.2f,%.2f",
                     unpack(f.edge.color)), "icon=" .. tostring(f.icon.texture), f.who.text,
                     f.who.textColor and string.format("(%.2f,%.2f,%.2f)", unpack(f.who.textColor)) or "",
-                    f.how.text, f.die.shown and tostring(f.die.texture):match("[^\\]+$") or "-")
+                    f.how.text, f.die.shown and tostring(f.die.texture):match("[^\\]+$") or "-", f.when.text)
             end
         end
         local _, shown, total = L.Thumb()
@@ -4474,20 +4483,19 @@ if sidePass then
     column(L)
     lootState("loot mine")
     click(L, 1)
-    click(L, 2)
+    -- the ladder: epic at the top (paint 2), poor at the foot (paint 6)
     click(L, 2)
     column(L)
     lootState("loot epic and up")
-    click(L, 2, "RightButton")
-    click(L, 2, "RightButton")
-    click(L, 2, "RightButton")
+    click(L, 5)
     column(L)
-    -- down past poor wraps round to epic, and up past epic to poor
-    click(L, 2, "RightButton")
-    click(L, 2, "RightButton")
-    print("lootQuality down past poor", ns.db.lootQuality)
-    click(L, 2)
-    print("lootQuality up past epic", ns.db.lootQuality)
+    click(L, 6)
+    print("lootQuality poor", ns.db.lootQuality)
+    do
+        local b = L.paint[4]
+        b.scripts.OnEnter(b)
+        print("loot ladder tip", tostring(GameTooltip.text))
+    end
     page.settings.lootQuality:Set(1)
     print("lootQuality", ns.db.lootQuality, "window shows", optionShows("lootQuality"),
         "lootWho window shows", optionShows("lootWho"))
