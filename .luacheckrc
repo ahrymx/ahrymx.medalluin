@@ -126,6 +126,11 @@ read_globals = {
     "GetCurrentArenaSeason", "GetStatisticsCategoryList", "GetCategoryInfo", "GetCategoryNumAchievements",
     "GetStatistic", "GetAchievementInfo", "GetNumTitles", "IsTitleKnown", "GetTitleName", "GetCurrentTitle",
     "SetCurrentTitle", "PLAYER_TITLE_NONE", "EquipmentManager_EquipSet", "MAX_EQUIPMENT_SETS_PER_PLAYER", "REMOVE",
+    -- the game's macro window (spells/macros.lua)
+    "MacroFrame", "MacroPopupFrame", "MacroFrame_Show", "MacroFrameText", "MacroFrameScrollFrame",
+    "MacroFrameTextButton", "MacroFrameTextBackground", "MacroFrameTab1", "MacroFrameTab2", "MacroSaveButton",
+    "MacroCancelButton", "MacroDeleteButton", "MacroNewButton", "MacroExitButton", "MacroEditButton",
+    "GetNumMacros", "PanelTemplates_GetSelectedTab", "IconSelectorPopupFrameModes", "Constants", "GetSpellInfo",
     -- the spellbook, talents and professions (spells/, talents/, professions/)
     "PlayerSpellsFrame", "PlayerSpellsUtil", "SpellbookMicroButton", "GetPetIcon", "C_Traits", "C_ClassTalents",
     "GetNumSpecGroups", "GetProfessions", "GetProfessionInfo", "ProfessionsFrame", "C_TradeSkillUI", "Professions", "SecondsToTime",

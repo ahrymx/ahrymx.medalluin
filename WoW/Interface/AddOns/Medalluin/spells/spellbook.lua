@@ -28,8 +28,8 @@
 -- One with ranks has its icon stacked; a left click on it lists each rank
 -- under it (MedalluinCharDB.bookOpen, by name), highest first, each a row
 -- that casts that rank. The right button casts; the left only drags (and
--- shows ranks). Macros is a page still to come. The margin
--- holds, once a class trainer has been visited (spells/trainers.lua),
+-- shows ranks). Macros is the game's macro window in the book's look
+-- (spells/macros.lua). The margin holds, once a class trainer has been visited (spells/trainers.lua),
 -- Trainer: a page without a tab, in the same cards, of what is still to
 -- learn, now or at a later level, a card for each skill line its spells
 -- belong to (Other for the rest); Trainer again goes back.
@@ -985,10 +985,7 @@ local function Page(spec)
     function p.Build(body, foot, band)
         Controls(p, band)
         if p.macros then
-            p.note = ns.Text(body, 12)
-            p.note:SetPoint("CENTER", 0, 0)
-            p.note:SetTextColor(unpack(ns.colors.dim))
-            p.note:SetText("Macros arrive in the next version.")
+            ns.macros.Build(p, body)
             return
         end
         p.scroller = ns.window.Scroller(body, GUTTER)
@@ -998,12 +995,17 @@ local function Page(spec)
         body:SetScript("OnMouseWheel", function(_, delta) p.scroller.To(p.scroller.target - delta * STEP) end)
     end
     function p.Refresh()
-        if p.macros then Band(p) Follow() return end
+        if p.macros then
+            Band(p)
+            ns.macros.Refresh()
+            return
+        end
         Refresh(p)
     end
     function p.Showing(on)
         if on then open = true elseif W.Current() == p then open = false end
         Follow()
+        if p.macros then ns.macros.Showing(on) end
     end
     W.Page(p)
 end
@@ -1015,7 +1017,7 @@ do
     function p.Available() return SB ~= nil end
     Page(p)
 end
--- macros: a page to come
+-- macros: the game's macro window (spells/macros.lua)
 do
     local p = { key = "macros", macros = true, order = 2, label = "Macros", glyph = "log",
         frame = "SpellBookFrame" }
@@ -1033,7 +1035,7 @@ end
 
 function W.Refresh()
     local p = W.Current()
-    if p and W.window:IsShown() then Refresh(p) end
+    if p and W.window:IsShown() then p.Refresh() end
 end
 
 local function Start()

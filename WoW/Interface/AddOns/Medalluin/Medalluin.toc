@@ -2,7 +2,7 @@
 ## Title: Medalluin
 ## Notes: The console (player, target, party, XP, minimap), an optional action bar on it, the corner strips (micro menu, bags, stats), and over them the chat and a side panel of loot, a meter and your auras; and a bags window.
 ## Author: ahrymx
-## Version: 0.25.0
+## Version: 0.26.0
 ## Category: Medalluin
 ## Category-enUS: Medalluin
 ## Group: Medalluin
@@ -102,6 +102,7 @@ social\lfg.lua
 cooldowns\window.lua
 cooldowns\display.lua
 spells\clickcast.lua
+spells\macros.lua
 window\gamemenu.lua
 inventory\bank.lua
 keybind.lua

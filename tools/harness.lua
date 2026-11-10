@@ -2877,6 +2877,8 @@ if spellPass or talentPass or profPass then
         if name == "Blizzard_PlayerSpells" and not bookWorld.loaded then
             print("book.load at", inCombat and "combat" or "rest")
             bookWorld.Load()
+        elseif name == "Blizzard_MacroUI" and bookWorld.LoadMacros and not MacroFrame then
+            bookWorld.LoadMacros()
         end
     end
     function ShowUIPanel(f) f:Show() end
@@ -2963,6 +2965,252 @@ if spellPass or talentPass or profPass then
         if f:IsShown() and f.tab == tab then HideUIPanel(f) return end
         if not f:IsShown() then ShowUIPanel(f) end
         f:SetTab(tab)
+    end
+    function PlayerSpellsUtil.OpenToSpellBookTab()
+        if not bookWorld.loaded then bookWorld.Load() end
+        table.insert(bookWorld.calls, "open book")
+        PlayerSpellsFrame:TrySetTab(3)
+        bookWorld.Panel(PlayerSpellsFrame)
+    end
+end
+
+-- Blizzard_MacroUI, loaded on demand (bookWorld.LoadMacros): three macros
+-- of the account's and one of the character's, and the game's macro window
+-- (Blizzard_MacroUI.lua, forever) with the parts and methods
+-- spells/macros.lua calls, each save, delete, new and pickup noted in
+-- bookWorld.macros.calls.
+if spellPass then
+    local MW = { calls = {},
+        account = { { "Heal", 136052, "#showtooltip\n/cast [@mouseover,help] Healing Wave" },
+            { "Focus", 136071, "/focus\n/cast [@focus] Purge" },
+            { "Totems", 136098, "/cast Searing Totem\n/cast Stoneskin Totem\n/cast Healing Stream Totem\n"
+                .. "/cast Windfury Totem" } },
+        character = { { "Mount", 132261, "/use Swift Brown Steed" } } }
+    bookWorld.macros = MW
+    Constants = Constants or {}
+    Constants.MacroConsts = { MAX_ACCOUNT_MACROS = 120, MAX_CHARACTER_MACROS = 18 }
+    IconSelectorPopupFrameModes = { New = "new", Edit = "edit" }
+    local function at(i)
+        if i > 120 then return MW.character[i - 120] end
+        return MW.account[i]
+    end
+    function GetNumMacros() return #MW.account, #MW.character end
+    function GetMacroInfo(i)
+        local m = at(i)
+        if m then return m[1], m[2], m[3] end
+    end
+    function GetMacroSpell(i) return i == 1 and 401 or nil end
+    function EditMacro(i, name, icon, body)
+        local m = at(i)
+        table.insert(MW.calls, "edit " .. i .. (name and " name=" .. name or "") .. (body and " body" or ""))
+        if name then m[1] = name end
+        if icon then m[2] = icon end
+        if body then m[3] = body end
+        return i
+    end
+    function CreateMacro(name, icon, body, perCharacter)
+        local list = perCharacter and MW.character or MW.account
+        table.insert(list, { name, icon, body or "" })
+        table.insert(MW.calls, "create " .. name .. (perCharacter and " character" or ""))
+        return (perCharacter and 120 or 0) + #list
+    end
+    function DeleteMacro(i)
+        table.insert(MW.calls, "delete " .. i)
+        if i > 120 then table.remove(MW.character, i - 120) else table.remove(MW.account, i) end
+    end
+    function PanelTemplates_GetSelectedTab(f) return f.selectedTab end
+    function bookWorld.LoadMacros()
+        print("book.macros load at", inCombat and "combat" or "rest")
+        local pickup = PickupMacro
+        function PickupMacro(i)
+            table.insert(MW.calls, "pickup " .. i)
+            pickup(i)
+        end
+        local f = CreateFrame("Frame", "MacroFrame", UIParent)
+        f:Hide()
+        f.selectedTab, f.macroBase, f.macroMax = 1, 0, 120
+        for _, key in ipairs({ "NineSlice", "PortraitContainer", "TitleContainer", "Inset" }) do
+            f[key] = CreateFrame("Frame", nil, f)
+        end
+        f.CloseButton = CreateFrame("Button", nil, f)
+        f.Bg = f:CreateTexture()
+        f:CreateTexture("MacroFramePortrait")
+        f:CreateTexture("MacroFrameSelectedMacroBackground")
+        f:CreateFontString("MacroFrameSelectedMacroName"):SetText("")
+        f:CreateFontString("MacroFrameCharLimitText")
+        f.MacroSelector = CreateFrame("Frame", nil, f)
+        f.SelectedMacroButton = CreateFrame("CheckButton", "MacroFrameSelectedMacroButton", f)
+        for _, name in ipairs({ "MacroEditButton", "MacroSaveButton", "MacroCancelButton", "MacroDeleteButton",
+            "MacroNewButton", "MacroExitButton", "MacroFrameTab1", "MacroFrameTab2", "MacroFrameTextButton" }) do
+            CreateFrame("Button", name, f)
+        end
+        CreateFrame("Frame", "MacroFrameTextBackground", f)
+        local scroll = CreateFrame("ScrollFrame", "MacroFrameScrollFrame", f)
+        local text = CreateFrame("EditBox", "MacroFrameText", scroll)
+        text.text = ""
+        -- the game's SetText runs OnTextChanged, not by the user's hand
+        function text:SetText(t)
+            self.text = t
+            if self.scripts.OnTextChanged then self.scripts.OnTextChanged(self, false) end
+        end
+        function text:GetText() return self.text end
+        function text:GetNumLetters() return #(self.text or "") end
+        -- typed into (bookWorld.Type)
+        function bookWorld.Type(t)
+            text.text = t
+            text.scripts.OnTextChanged(text, true)
+        end
+        text:SetScript("OnTextChanged", function()
+            f.textChanged = 1
+            if MacroPopupFrame.mode == "new" then MacroPopupFrame:Hide() end
+        end)
+        MacroFrameTab1:SetID(1)
+        MacroFrameTab2:SetID(2)
+        local popup = CreateFrame("Frame", "MacroPopupFrame", f)
+        popup:Hide()
+        popup:SetSize(300, 400)
+        popup:SetFrameStrata("HIGH")
+        popup:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, 5)
+        popup.BorderBox = CreateFrame("Frame", nil, popup)
+        popup.BorderBox.OkayButton = CreateFrame("Button", nil, popup.BorderBox)
+        popup.BorderBox.CancelButton = CreateFrame("Button", nil, popup.BorderBox)
+        popup.BorderBox.IconSelectorEditBox = CreateFrame("EditBox", nil, popup.BorderBox)
+
+        function f:GetSelectedIndex() return self.selected end
+        function f:GetMacroDataIndex(i) return self.macroBase + i end
+        function f:UpdateButtons()
+            local busy = popup:IsShown() or InClickBindingMode and InClickBindingMode()
+            MacroNewButton:SetEnabled(self.numMacros < self.macroMax and not (InClickBindingMode
+                and InClickBindingMode()))
+            MacroEditButton:SetEnabled(not busy)
+            MacroDeleteButton:SetEnabled(not busy and self.selected ~= nil)
+        end
+        function f:Update()
+            self.numMacros = select(self.selectedTab, GetNumMacros())
+            self:UpdateButtons()
+        end
+        function f:SelectMacro(index)
+            local count = select(self.selectedTab, GetNumMacros())
+            if not index or index > count then index = count > 0 and 1 or nil end
+            self.selected = index
+            if index then
+                local _, _, body = GetMacroInfo(self.macroBase + index)
+                MacroFrameText:SetText(body)
+            end
+            self:UpdateButtons()
+        end
+        function f:SaveMacro()
+            if self.textChanged and self.selected then
+                EditMacro(self.macroBase + self.selected, nil, nil, MacroFrameText:GetText())
+                self:SelectMacro(self.selected)
+                self.textChanged = nil
+            end
+        end
+        function f:SetAccountMacros()
+            self.macroBase, self.macroMax = 0, 120
+            self:Update()
+            self:SelectMacro(1, true)
+        end
+        function f:SetCharacterMacros()
+            self.macroBase, self.macroMax = 120, 18
+            self:Update()
+            self:SelectMacro(1, true)
+        end
+        function f:ChangeTab(id)
+            self.selectedTab = id
+            self:SaveMacro()
+            if id == 1 then self:SetAccountMacros() else self:SetCharacterMacros() end
+        end
+        function f:SelectTab(tab) self:ChangeTab(tab:GetID()) end
+        function f:DeleteMacro()
+            local sel = self.selected
+            DeleteMacro(self.macroBase + sel)
+            local count = select(self.selectedTab, GetNumMacros())
+            local new = math.min(count, sel)
+            self:SelectMacro(new > 0 and new or nil, true)
+            self:Update()
+        end
+        f:SetScript("OnShow", function(self)
+            table.insert(MW.calls, "show")
+            self:SetAccountMacros()
+            self:ChangeTab(1)
+        end)
+        f:SetScript("OnHide", function(self)
+            table.insert(MW.calls, "hide")
+            popup:Hide()
+            self:SaveMacro()
+        end)
+        local function tab(self) self:GetParent():SelectTab(self) end
+        MacroFrameTab1:SetScript("OnClick", tab)
+        MacroFrameTab2:SetScript("OnClick", tab)
+        MacroNewButton:SetScript("OnClick", function()
+            f:SaveMacro()
+            popup.mode = "new"
+            popup:Show()
+        end)
+        MacroEditButton:SetScript("OnClick", function()
+            f:SaveMacro()
+            popup.mode = "edit"
+            popup:Show()
+        end)
+        MacroSaveButton:SetScript("OnClick", function()
+            table.insert(MW.calls, "save")
+            f:SaveMacro()
+            f:Update()
+            popup:Hide()
+            MacroFrameText:ClearFocus()
+        end)
+        MacroCancelButton:SetScript("OnClick", function()
+            table.insert(MW.calls, "cancel")
+            f:Update()
+            popup:Hide()
+            MacroFrameText:ClearFocus()
+        end)
+        MacroDeleteButton:SetScript("OnClick", function()
+            table.insert(MW.calls, "confirm delete")
+            bookWorld.confirm = function() f:DeleteMacro() end
+        end)
+        -- the picker: the game reads its TOPLEFT back as it shows
+        popup:SetScript("OnShow", function(self)
+            local point = self.points.TOPLEFT
+            table.insert(MW.calls, "popup " .. self.mode .. (point and "" or " NO TOPLEFT"))
+            if self.mode == "new" then MacroFrameText:Hide() end
+            MacroEditButton:Disable()
+            MacroDeleteButton:Disable()
+            MacroNewButton:Disable()
+            MacroFrameTab1:Disable()
+            MacroFrameTab2:Disable()
+        end)
+        popup:SetScript("OnHide", function(self)
+            if self.mode == "new" then MacroFrameText:Show() end
+            MacroFrameTab1:Enable()
+            MacroFrameTab2:Enable()
+            f:UpdateButtons()
+        end)
+        popup.BorderBox.OkayButton:SetScript("OnClick", function()
+            popup:Hide()
+            local name = popup.name or "New"
+            local index
+            if popup.mode == "new" then
+                index = CreateMacro(name, 134400, nil, f.macroBase > 0) - f.macroBase
+            else
+                index = EditMacro(f.macroBase + f.selected, name, 134400) - f.macroBase
+            end
+            f:SelectMacro(index, true)
+            f:Update()
+        end)
+        popup.BorderBox.CancelButton:SetScript("OnClick", function()
+            table.insert(MW.calls, "popup cancel")
+            popup:Hide()
+            f:UpdateButtons()
+        end)
+        function MacroFrame_Show() ShowUIPanel(MacroFrame) end
+        for _, h in ipairs(events.ADDON_LOADED or {}) do h.scripts.OnEvent(h, "ADDON_LOADED", "Blizzard_MacroUI") end
+    end
+    -- the game's own way in (/macro)
+    function ShowMacroFrame()
+        if not MacroFrame then bookWorld.LoadMacros() end
+        MacroFrame_Show()
     end
 end
 
@@ -12262,18 +12510,23 @@ if spellPass then
     print("book.drag", table.concat(bookWorld.calls, ","))
     tall(book, 900)
 
-    -- the Macros tab: a page to come, no buttons
+    -- the Macros tab: the game's macro window loaded as it first shows, in
+    -- the page; none of the book's buttons
     local macros = pageOf("macros")
+    print("book.macros before", "loaded=" .. tostring(MacroFrame ~= nil))
     macros.tab.scripts.OnClick(macros.tab)
     frame()
     local shown = 0
     for _, bb in ipairs(layer.buttons) do if bb.shown then shown = shown + 1 end end
-    print("book.macros", "current=" .. B.Current().key, "note=" .. tostring(macros.note.text),
-        "buttons=" .. shown, "foot=" .. tostring(macros.foot.shown))
+    print("book.macros", "current=" .. B.Current().key, "loaded=" .. tostring(MacroFrame ~= nil),
+        "inPage=" .. tostring(MacroFrame and MacroFrame.parent == macros.body),
+        "shown=" .. tostring(MacroFrame and MacroFrame.shown), "buttons=" .. shown,
+        "foot=" .. tostring(macros.foot.shown))
     tabs("book.macros tabs")
     book.tab.scripts.OnClick(book.tab)
     frame()
     state("book.back to spells")
+    print("book.macros left", "shown=" .. tostring(MacroFrame.shown), "calls=" .. table.concat(bookWorld.macros.calls, ","))
 
     -- 8. the talents' tab: Blizzard's frame comes back under UIParent and
     -- our book closes; N with the book open, then N from closed with the
@@ -12610,6 +12863,222 @@ if spellPass then
     ns.SetOption("spellbookClickCast", true)
     C_ClickBindings.ResetCurrentProfile()
     marks("book.cc reset")
+
+    -- 8b. the Macros tab (spells/macros.lua): the switch, a card for each
+    -- macro of the set, the editor under them; every save, delete and new
+    -- the game's own buttons' (a function of its own: the chunk's locals
+    -- are at Lua's limit)
+    ;(function()
+        local MM, MW = ns.macros, bookWorld.macros
+        -- (the bars' section has its own)
+        local spellOf = GetMacroSpell
+        GetMacroSpell = function(i) return i == 1 and 401 or nil end
+        local function calls()
+            local out = table.concat(MW.calls, ",")
+            MW.calls = {}
+            return out
+        end
+        -- the switch: each set's words, * selected, - off
+        local function switch()
+            local out = {}
+            for _, b in ipairs(MM.switch.buttons) do
+                if b.shown then
+                    table.insert(out, b.label.text .. (b.selected and "*" or "") .. (b.enabled and "" or "-"))
+                end
+            end
+            return table.concat(out, " | ")
+        end
+        -- a card: name (+/- folded or open), first line or whole text,
+        -- [ed] the editor's (gold edge and bar), height, Delete, and the
+        -- secure button over its head (type2:macro=index), or none
+        local function cards(tag)
+            local out = {}
+            for _, c in ipairs(MM.cards) do
+                if c.shown and c.i then
+                    local sec = "none"
+                    for _, b in ipairs(MM.layer.buttons) do
+                        if b.shown and b.card == c then
+                            sec = tostring(b.attrs.type2) .. ":" .. tostring(b.attrs.macro)
+                                .. (b.attrs.type and "+left" or "") .. (harnessOver(b, c.hit) == "over" and "" or "!off")
+                        end
+                    end
+                    table.insert(out, string.format("%s%s(%s)%s y=%d h=%d%s [%s]", c.label.text, c.sign.text,
+                        c.text.shown and c.text.text:gsub("\n", "/") or c.first.text,
+                        c.bar.shown and "[ed]" or "", c.y, c.h, c.delete.shown and " del" or "", sec))
+                end
+            end
+            print(tag, table.concat(out, "  "))
+        end
+        local function edit(tag)
+            local e = MM.editor
+            local b = e.buttons.byKey
+            local function st(k) return k .. (b[k].selected and "*" or "") .. (b[k].enabled and "" or "-") end
+            print(tag, "name=" .. tostring(e.name.text), "icon=" .. tostring(e.icon.shown and e.icon.texture),
+                "pencil=" .. tostring(e.pencil.shown) .. "@" .. tostring(e.pencil:GetAlpha()),
+                st("new") .. " " .. st("save") .. " " .. st("cancel"), "casts=" .. tostring(e.casts.text),
+                "count=" .. tostring(e.count.text), "empty=" .. tostring(e.empty.shown),
+                "text=" .. tostring(MacroFrameText.text):gsub("\n", "/"))
+        end
+        local function card(name)
+            for _, c in ipairs(MM.cards) do if c.shown and c.name == name then return c end end
+        end
+        local function secure(name)
+            for _, b in ipairs(MM.layer.buttons) do if b.shown and b.card and b.card.name == name then return b end end
+        end
+        macros.tab.scripts.OnClick(macros.tab)
+        frame()
+        calls()
+        state("book.macros page")
+        print("book.macros frame", "inPage=" .. tostring(MacroFrame.parent == macros.body),
+            "at=" .. where(MacroFrame), "mouse=" .. tostring(MacroFrame.mouse),
+            "selector=" .. tostring(MacroFrame.MacroSelector.shown), "tabs=" .. tostring(MacroFrameTab1.shown),
+            "art=" .. tostring(MacroFrame.NineSlice.shown) .. "/" .. tostring(MacroFrame.Bg:GetAlpha()),
+            "edit=" .. tostring(MacroEditButton:GetAlpha()), "text in well=" .. where(MacroFrameScrollFrame),
+            "layer=" .. tostring(MM.layer.shown) .. "/" .. tostring(MM.layer.stateDrivers
+                and MM.layer.stateDrivers.visibility or "-"))
+        print("book.macros switch", switch())
+        macros.body.h = 900
+        MM.scroller.scroll.h = 900 - 26 - 8 - 232 - 10
+        MM.Refresh()
+        cards("book.macros cards")
+        edit("book.macros editor")
+        -- a left click on a card: opened, in the editor, remembered
+        local focus = card("Focus")
+        focus.scripts.OnClick(focus, "LeftButton")
+        cards("book.macros opened")
+        edit("book.macros opened editor")
+        print("book.macros remembered", tostring(MedalluinCharDB.macroOpen and MedalluinCharDB.macroOpen.Focus),
+            "calls=" .. calls())
+        -- the right on the card (the layer away): nothing
+        focus.scripts.OnClick(focus, "RightButton")
+        print("book.macros right on the card", "open=" .. tostring(MedalluinCharDB.macroOpen.Focus), "calls=" .. calls())
+        -- the secure button's left: as the card's (folds it again)
+        local sb = secure("Focus")
+        sb.scripts.PostClick(sb, "LeftButton", false)
+        cards("book.macros folded")
+        focus.scripts.OnClick(focus, "LeftButton")
+        -- typed into: Save marked, Cancel on; Save saves
+        bookWorld.Type("/focus\n/cast [@focus] Hex")
+        edit("book.macros typed")
+        MM.editor.buttons.byKey.save.scripts.OnClick(MM.editor.buttons.byKey.save, "LeftButton")
+        edit("book.macros saved")
+        cards("book.macros saved cards")
+        print("book.macros save calls", calls())
+        -- typed, then Cancel: the text as saved
+        bookWorld.Type("/focus\n/oops")
+        MM.editor.buttons.byKey.cancel.scripts.OnClick(MM.editor.buttons.byKey.cancel, "LeftButton")
+        edit("book.macros cancelled")
+        print("book.macros cancel calls", calls())
+        -- the other set: the game's tab pressed, remembered
+        MM.switch.buttons[2].scripts.OnClick(MM.switch.buttons[2], "LeftButton")
+        print("book.macros character", switch(), "tab=" .. tostring(MedalluinCharDB.macroTab), "calls=" .. calls())
+        cards("book.macros character cards")
+        edit("book.macros character editor")
+        -- New: the picker, left of the book at the list's top, over it
+        local new = MM.editor.buttons.byKey.new
+        new.scripts.OnClick(new, "LeftButton")
+        local pop = MacroPopupFrame
+        print("book.macros new", "shown=" .. tostring(pop.shown), "strata=" .. tostring(pop.strata),
+            "at=" .. where(pop), "left of book=" .. tostring(pop:GetRight() and w:GetLeft()
+                and math.floor(w:GetLeft() - pop:GetRight() + 0.5)),
+            "top=" .. tostring(pop:GetTop() and MM.list:GetTop() and math.floor(MM.list:GetTop() - pop:GetTop() + 0.5)),
+            "calls=" .. calls())
+        print("book.macros new switch", switch())
+        edit("book.macros new editor")
+        -- dragged by its title strip: held by its top left on the screen
+        local top
+        for _, k in ipairs(pop.all_) do if k.scripts.OnDragStart then top = k end end
+        harnessDropAt = { "TOPLEFT", "TOPLEFT", 400, -300 }
+        top.scripts.OnDragStart(top)
+        top.scripts.OnDragStop(top)
+        harnessDropAt = nil
+        print("book.macros dragged", "at=" .. where(pop))
+        pop.name = "Water"
+        pop.BorderBox.OkayButton.scripts.OnClick(pop.BorderBox.OkayButton)
+        print("book.macros created", "calls=" .. calls(), switch())
+        cards("book.macros created cards")
+        edit("book.macros created editor")
+        -- the pencil: the picker again, to change, placed again
+        MM.editor.pencil.scripts.OnClick(MM.editor.pencil)
+        print("book.macros pencil", "mode=" .. tostring(pop.mode), "at=" .. where(pop), "calls=" .. calls())
+        for _, k in ipairs(top.all_) do
+            if k.kind == "Button" and k.scripts.OnClick then k.scripts.OnClick(k) end
+        end
+        print("book.macros cross", "shown=" .. tostring(pop.shown), "calls=" .. calls())
+        -- Delete on an opened card: the game's confirm, then its delete
+        local water = card("Water")
+        water.scripts.OnClick(water, "LeftButton")
+        water.delete.scripts.OnClick(water.delete)
+        print("book.macros delete", "calls=" .. calls())
+        bookWorld.confirm()
+        cards("book.macros deleted")
+        print("book.macros deleted", switch(), "calls=" .. calls())
+        -- an empty set: only New
+        local kept = MW.character
+        MW.character = {}
+        MacroFrame.textChanged = nil
+        MacroFrame:ChangeTab(2)
+        cards("book.macros empty")
+        edit("book.macros empty editor")
+        MW.character = kept
+        MM.switch.buttons[1].scripts.OnClick(MM.switch.buttons[1], "LeftButton")
+        calls()
+        -- dragged to a bar: picked up, out of combat only
+        local heal = card("Heal")
+        heal.scripts.OnDragStart(heal)
+        secure("Heal").scripts.OnDragStart(secure("Heal"))
+        print("book.macros drag", "calls=" .. calls())
+        combat(true)
+        heal.scripts.OnDragStart(heal)
+        print("book.macros combat", "drag calls=" .. calls(), "layer=" .. tostring(MM.layer.shown))
+        heal.scripts.OnClick(heal, "LeftButton")
+        cards("book.macros combat cards")
+        combat(false)
+        cards("book.macros after combat")
+        -- the list scrolled: only heads wholly in view have a button
+        MM.scroller.scroll.h = 60
+        MM.Refresh()
+        cards("book.macros short")
+        MM.scroller.scroll.h = 900 - 26 - 8 - 232 - 10
+        MM.Refresh()
+        -- Click Casting open: either button binds the macro
+        ClickBindingFrame:Show()
+        frame()
+        bookWorld.calls = {}
+        cards("book.macros bind mode")
+        local tb = secure("Totems")
+        tb.scripts.PostClick(tb, "RightButton", true)
+        tb.scripts.PostClick(tb, "RightButton", false)
+        print("book.macros bind", table.concat(bookWorld.calls, " "), "clicks=" .. table.concat(tb.clicks, ","))
+        edit("book.macros bind editor")
+        ClickBindingFrame:Hide()
+        frame()
+        -- the game's own way in (/macro) with the book on its spells: the
+        -- book turned to Macros, the frame kept in the page
+        book.tab.scripts.OnClick(book.tab)
+        frame()
+        calls()
+        ShowMacroFrame()
+        print("book.macros /macro", "shown=" .. tostring(MacroFrame.shown), "page=" .. B.Current().key)
+        frame()
+        frame()
+        print("book.macros /macro after", "shown=" .. tostring(MacroFrame.shown), "page=" .. B.Current().key,
+            "inPage=" .. tostring(MacroFrame.parent == macros.body), "at=" .. where(MacroFrame), "calls=" .. calls())
+        -- and with the book closed: opened on Macros
+        bookWorld.Toggle("spellbook")
+        frame()
+        state("book.macros closed")
+        bookWorld.calls = {}
+        ShowMacroFrame()
+        frame()
+        frame()
+        state("book.macros /macro closed")
+        print("book.macros /macro closed", "shown=" .. tostring(MacroFrame.shown),
+            "calls=" .. table.concat(bookWorld.calls, " ") .. " / " .. calls())
+        book.tab.scripts.OnClick(book.tab)
+        frame()
+        GetMacroSpell = spellOf
+    end)()
 
     -- 9. the close button
     w.close.scripts.OnClick(w.close)
