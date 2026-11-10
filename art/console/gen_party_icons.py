@@ -30,7 +30,7 @@ def gen_ready_status():
     # Dark ink circle background helper
     def draw_disc(cx, cy, r):
         # Outer gold/bronze rim
-        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(22, 24, 30, 240), outline=(152, 138, 96, 255), width=int(1.2 * SS))
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(26, 22, 13, 240), outline=(152, 138, 96, 255), width=int(1.2 * SS))
 
     # Slot 0: Ready (Green Checkmark)
     cx0, cy0 = cell_w // 2, cell_h // 2
@@ -93,7 +93,7 @@ def gen_role_icons():
     cell_h = 32 * SS
 
     def draw_disc(cx, cy, r):
-        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(24, 27, 34, 245), outline=(160, 145, 102, 255), width=int(1.3 * SS))
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(29, 24, 13, 245), outline=(160, 145, 102, 255), width=int(1.3 * SS))
 
     # Slot 0: Tank (Shield)
     cx0, cy0 = cell_w // 2, cell_h // 2

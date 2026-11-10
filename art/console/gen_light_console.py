@@ -89,9 +89,9 @@ def rsvg(svg_text, png_path):
 
 
 def make_toolkit_icon(size=24):
-    """Recolour art/bars/toolkit.png into Medalluin's navy and gold."""
+    """Recolour art/bars/toolkit.png into Medalluin's brown and gold."""
     if not os.path.exists(TOOLKIT):
-        return Image.new("RGBA", (size, size), (40, 48, 68, 255))
+        return Image.new("RGBA", (size, size), (58, 48, 22, 255))
     src = np.asarray(Image.open(TOOLKIT).convert("RGBA")).astype(float)
     n = src.shape[0]
     rgb, alpha = src[..., :3], src[..., 3] / 255
@@ -104,7 +104,7 @@ def make_toolkit_icon(size=24):
     def lit(top, bottom):
         return np.array(top, float) + y * (np.array(bottom, float) - np.array(top, float))
 
-    navy, gold = lit((0x3e, 0x47, 0x60), (0x1a, 0x1e, 0x2b)), lit((0xf6, 0xdc, 0x8a), (0xa8, 0x82, 0x30))
+    navy, gold = lit((0x53, 0x43, 0x1f), (0x25, 0x1e, 0x0e)), lit((0xf6, 0xdc, 0x8a), (0xa8, 0x82, 0x30))
     out = navy * (1 - mix[..., None]) + gold * mix[..., None]
     yy, xx = np.mgrid[0:n, 0:n]
     d = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) / (n / 2)

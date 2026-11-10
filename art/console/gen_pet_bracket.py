@@ -35,7 +35,7 @@ def create_trapezoid_pill(W=129, H=18, pill_h=12, pill_pad=12):
     ]
 
     # 1. Slate stone body fill
-    d.polygon(poly, fill=(37, 41, 53, 255))
+    d.polygon(poly, fill=(46, 38, 20, 255))
 
     # 2. Outer gold/bronze bevels along slopes and bottom rim
     gold = (152, 138, 96, 255)
@@ -51,12 +51,12 @@ def create_trapezoid_pill(W=129, H=18, pill_h=12, pill_pad=12):
 
     # Inner subtle stone highlight along slopes
     d.line([(int(1.2 * ss), 0), (slope_x + int(1.2 * ss), s_h - 1 - int(1.2 * ss))],
-           fill=(48, 54, 68, 200), width=int(0.8 * ss))
+           fill=(58, 49, 27, 200), width=int(0.8 * ss))
     d.line([(s_w - 1 - int(1.2 * ss), 0), (s_w - 1 - slope_x - int(1.2 * ss), s_h - 1 - int(1.2 * ss))],
-           fill=(48, 54, 68, 200), width=int(0.8 * ss))
+           fill=(58, 49, 27, 200), width=int(0.8 * ss))
 
     # Top connection seam (flush into console bottom stone)
-    d.line([(0, 0), (s_w - 1, 0)], fill=(42, 46, 58, 255), width=int(1.0 * ss))
+    d.line([(0, 0), (s_w - 1, 0)], fill=(50, 42, 24, 255), width=int(1.0 * ss))
 
     # 3. Pill-shaped cutout window inside the trapezoid surface
     cut_y0 = int(((H - pill_h) / 2) * ss)

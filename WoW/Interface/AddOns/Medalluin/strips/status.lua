@@ -1,10 +1,10 @@
--- The stats on the right strip: Bags | Durability | clock, spread evenly
--- between the drawer arrow and the strip's inner end, with gold dividers.
--- Each one is a button: Bags opens the bags, Durability the character
--- pane, the clock Blizzard's time manager.
+-- The stats on the right strip: Bags | Durability | clock, a cell each of
+-- the strip's row (ns.StripCells), sharing it evenly. Each one is a
+-- button: Bags opens the bags, Durability the character pane, the clock
+-- Blizzard's time manager.
 local _, ns = ...
 
-local L, C = ns.stripLayout, ns.colors
+local C = ns.colors
 local SIZE = 15
 local WARN = { 0.90, 0.35, 0.28 }
 
@@ -12,11 +12,12 @@ local GetSlots = C_Container and C_Container.GetContainerNumSlots or GetContaine
 local GetFree = C_Container and C_Container.GetContainerNumFreeSlots or GetContainerNumFreeSlots
 
 local strip = ns.strips[1]
-local stats, dividers = {}, {}
+local stats = {}
 
 local function Stat(onClick, onEnter)
     local b = CreateFrame("Button", nil, strip)
     b:SetFrameLevel(ns.levels.stripTop)
+    ns.StripCell(b)
     b.text = ns.Text(b, SIZE)
     b.text:SetPoint("CENTER")
     b:SetScript("OnClick", onClick)
@@ -26,32 +27,9 @@ local function Stat(onClick, onEnter)
     return b
 end
 
--- Lay the stats out by their current widths: equal gaps, a divider centred
--- in each gap between two stats. x is measured from the screen edge, so the
--- clock (the last stat) sits nearest the console.
-local function Layout()
-    local widths, sum = {}, 0
-    for i, b in ipairs(stats) do
-        widths[i] = math.ceil(b.text:GetStringWidth())
-        sum = sum + widths[i]
-    end
-    local gap = (L.statsTo - L.statsFrom - sum) / #stats
-    local x = L.statsFrom + gap / 2
-    for i, b in ipairs(stats) do
-        local w = widths[i]
-        ns.OnStrip(b, 1, x + w / 2, ns.stripRow, w + 8, L.stripHeight - 6)
-        x = x + w + gap
-        if dividers[i] then
-            ns.OnStrip(dividers[i], 1, x - gap / 2, ns.stripRow, 1, L.stripHeight - 13)
-        end
-    end
-end
-
 local function Set(b, text, warn)
-    local before = b.text:GetText()
     b.text:SetText(text)
     b.text:SetTextColor(unpack(warn and WARN or C.text))
-    if text ~= before then Layout() end
 end
 
 -- ------------------------------------------------------------------- bags
@@ -136,16 +114,9 @@ clock:SetScript("OnUpdate", function(_, dt)
     Set(clock, Now())
 end)
 
--- --------------------------------------------------------------- dividers
--- on their own frame: the strip itself sits under its art
-local over = CreateFrame("Frame", nil, strip)
-over:SetAllPoints()
-over:SetFrameLevel(ns.levels.stripTop)
-for i = 1, #stats - 1 do
-    local t = over:CreateTexture(nil, "OVERLAY")
-    t:SetColorTexture(0.541, 0.439, 0.204)          -- the art's dark gold
-    dividers[i] = t
-end
+-- x is measured from the screen edge, so the clock (the last stat) sits
+-- nearest the console
+ns.StripCells(1, stats)
 
 for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "BAG_UPDATE" }) do ns.On(e, UpdateBags) end
 for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_INVENTORY_DURABILITY" }) do

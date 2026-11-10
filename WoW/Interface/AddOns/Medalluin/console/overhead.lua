@@ -1,5 +1,5 @@
 -- The overhead console: decks hanging from the screen's top edge, in the
--- console's navy and gold (art/console/gen_overhead.py, variant C).
+-- console's brown and gold (art/console/gen_overhead.py, variant C).
 --   the boss deck:      boss1..boss5
 --   the companion deck: pet, focus, target of target
 --   the tray:           the stance bar, the pet bar and the totem bar, one centred row of bare icons

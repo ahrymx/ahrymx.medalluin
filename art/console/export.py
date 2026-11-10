@@ -41,6 +41,9 @@ import sys
 import numpy as np
 from PIL import Image
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from brown import brown  # noqa: E402  (art/brown.py: the suite's navy as brown)
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 ADDON = os.path.join(ROOT, "WoW", "Interface", "AddOns", "Medalluin")
@@ -204,7 +207,8 @@ def generate_vial(width=267, height=54):
     """A glassy empty vial texture for the player and target frames:
     deep obsidian glass body, subtle cylindrical curvature highlights,
     crisp upper glass lip reflection, lower caustic glint, and 45-degree
-    diagonal specular glints matching the console frame's cuts."""
+    diagonal specular glints matching the console frame's cuts. Drawn cool,
+    then turned brown with the rest of the suite (art/brown.py)."""
     y_coords, x_coords = np.mgrid[0:height, 0:width].astype(np.float32)
     arr = np.zeros((height, width, 4), dtype=np.float32)
 
@@ -249,7 +253,7 @@ def generate_vial(width=267, height=54):
     ao = np.clip(dist_edge / 3.0, 0, 1)
     arr[:, :, :3] *= (0.65 + 0.35 * ao[:, :, None])
 
-    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+    return brown(Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8)))
 
 
 def tint_mask(img, box, centre, veins):
@@ -405,14 +409,14 @@ def export_bar(console_top):
     w, h = x1 - x0, y1 - y0
     tw, th = pow2(w), pow2(h)
     canvas = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
-    canvas.paste(img.crop(box), (0, 0))
+    canvas.paste(brown(img.crop(box)), (0, 0))
     to_tga(canvas, os.path.join(MEDIA, "actionbar.tga"))
 
     bg_path = os.path.join(ROOT, "assets", "layer2bg.png")
     if os.path.exists(bg_path):
         bg_img = Image.open(bg_path).convert("RGBA")
         bg_canvas = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
-        bg_canvas.paste(bg_img.crop(box), (0, 0))
+        bg_canvas.paste(brown(bg_img.crop(box)), (0, 0))
         to_tga(bg_canvas, os.path.join(MEDIA, "actionbar-bg.tga"))
     # the hybrid piece (assets/layer2hybrid.png): the lower row standing
     # alone, from just above its window down to the plate's foot, under the
@@ -425,7 +429,7 @@ def export_bar(console_top):
     hy_h = y1 - hy_top
     hy_th = pow2(hy_h)
     hy_canvas = Image.new("RGBA", (tw, hy_th), (0, 0, 0, 0))
-    hy_canvas.paste(hy_img.crop((x0, hy_top, x1, y1)), (0, 0))
+    hy_canvas.paste(brown(hy_img.crop((x0, hy_top, x1, y1))), (0, 0))
     to_tga(hy_canvas, os.path.join(MEDIA, "hybrid.tga"))
     os.makedirs(os.path.join(MEDIA, "bar"), exist_ok=True)
     for name in layout["parts"]:
@@ -570,9 +574,11 @@ def main():
         sys.exit(f"frame {box} is not centred on x={CENTRE_X}")
     w, h = x1 - x0, y1 - y0
     tw, th = pow2(w), pow2(h)
+    # the art is drawn in the suite's old navy, which the tint below reads
+    # its stone by; what ships is brown (art/brown.py)
     for img, name in ((solo, "console-solo"), (group, "console-group")):
         canvas = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
-        canvas.paste(img.crop(box), (0, 0))
+        canvas.paste(brown(img.crop(box)), (0, 0))
         to_tga(canvas, os.path.join(MEDIA, f"{name}.tga"))
 
     # Bar fill: white, lighter above a step at 42% like the H mockup's bars.

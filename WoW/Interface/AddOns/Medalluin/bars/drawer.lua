@@ -16,7 +16,7 @@
 -- and whenever the drawer is opened.
 --
 -- The toggle is a round button wearing the user's toolkit icon, recoloured
--- to the console's navy and gold, under the plate's round window, which is
+-- to the console's brown and gold, under the plate's round window, which is
 -- smaller than the button so the stone covers its gold rim; while
 -- the drawer is open its highlight stays lit. It and the drawer's line are
 -- drawn by art/bars/gen_bar.py; the buttons keep their own art.

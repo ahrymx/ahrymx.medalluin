@@ -76,7 +76,7 @@ def tab(x, label, selected, uid):
     b = TOP
     d = (f"M{x + 1.5},{b} L{x + 1.5},{top + r} Q{x + 1.5},{top} {x + 1.5 + r},{top} L{x + tw - 1.5 - r},{top} "
          f"Q{x + tw - 1.5},{top} {x + tw - 1.5},{top + r} L{x + tw - 1.5},{b}")
-    a, z = ("#4a5368", "#2c3242") if selected else ("#2c3242", "#1c202b")
+    a, z = ("#594b2a", "#392e16") if selected else ("#392e16", "#251e0e")
     out = [f'<linearGradient id="t{uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{a}"/>'
            f'<stop offset="1" stop-color="{z}"/></linearGradient>',
            f'<path d="{d} Z" fill="url(#t{uid})" fill-opacity="0.9"/>',

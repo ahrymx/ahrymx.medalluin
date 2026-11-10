@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The overhead console: the decks that hang from the screen's top edge
-(bosses, then pet / focus / target of target), in the console's navy and
+(bosses, then pet / focus / target of target), in the console's brown and
 gold, with the pet and stance bars laid over the plate's bottom rim as bare
 icons (variant A, chosen 2026-11-01: one centred row, stances then pet bar;
 the icon column on the LEFT of every unit). Round 2 (variant C, chosen the
@@ -56,7 +56,7 @@ MEDIA = os.path.join(ADDON, "media", "overhead")
 LUA = os.path.join(ADDON, "console", "overhead_art.lua")
 
 GOLD, GOLD_D, INK, TEXT, DIM = "#c4a557", "#8a7034", "#121110", "#f2ead2", "#b3a88c"
-NAVY_TOP, NAVY_BOTTOM = "#252a37", "#3a4154"   # the plate's gradient, fixed to screen y 0..64
+NAVY_TOP, NAVY_BOTTOM = "#2f2713", "#483c1f"   # the plate's gradient, fixed to screen y 0..64
 
 # ----------------------------------------------------------------- geometry (design pixels, 1080 high)
 DECK = {"boss": 34, "unit": 30, "tray": 30}   # deck heights
@@ -213,7 +213,7 @@ def defs():
             f'<stop offset="0" stop-color="{NAVY_TOP}"/><stop offset="1" stop-color="{NAVY_BOTTOM}"/>'
             '</linearGradient>'
             '<linearGradient id="chip" x1="0" y1="0" x2="0" y2="1">'
-            '<stop offset="0" stop-color="#2e3445"/><stop offset="1" stop-color="#1c202b"/></linearGradient>'
+            '<stop offset="0" stop-color="#3b3017"/><stop offset="1" stop-color="#251e0e"/></linearGradient>'
             '<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">'
             '<stop offset="0" stop-color="#f0d488"/><stop offset="1" stop-color="#a8823a"/></linearGradient>'
             + "".join(f'<linearGradient id="ic{i}" x1="0" y1="0" x2="1" y2="1">'

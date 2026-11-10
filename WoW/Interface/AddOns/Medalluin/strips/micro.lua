@@ -1,5 +1,6 @@
 -- The micro menu, on the left strip: the character portrait in the medallion
--- and one gold glyph per micro button after it. The buttons are Blizzard's
+-- and one gold glyph per micro button after it, each in a cell of the
+-- strip's row (ns.StripCells). The buttons are Blizzard's
 -- own, moved and redrawn, so their clicks, tooltips, level locks (talents)
 -- and enable rules stay Blizzard's.
 --
@@ -8,7 +9,9 @@
 -- or the mouse passes, and a texture of ours in a state slot would be
 -- overwritten. So the state textures are silenced, again after every set
 -- and against every alpha or colour Blizzard gives them, and the glyph is
--- drawn over them, following the button's state.
+-- drawn over them, following the button's state. Blizzard's notification
+-- (a blue diamond over the button: something new behind it) is silenced
+-- the same way; the glyph turns blue while it is up instead.
 local _, ns = ...
 
 local L = ns.stripLayout
@@ -76,18 +79,24 @@ local function MuteStates(btn)
     Silence(btn:GetHighlightTexture())
 end
 
+local NOTICE = { 0.35, 0.80, 1 }                -- a glyph with something new behind it
+local PLAIN = { 1, 1, 1 }
+
 -- Draw our picture (tex) and its hover glow from the button's state.
 local function Refresh(btn)
     local m = btn.medalluin
     local pushed = m.down or btn:GetButtonState() == "PUSHED"
     local enabled = btn:IsEnabled()
     local shade = pushed and 0.7 or 1
+    local notice = m.glyph and btn.NotificationOverlay and btn.NotificationOverlay:IsShown()
+    local c = notice and NOTICE or PLAIN
     m.tex:ClearAllPoints()
     m.tex:SetPoint("CENTER", 0, pushed and -1 or 0)
     m.tex:SetSize(m.size, m.size)
-    m.tex:SetVertexColor(shade, shade, shade)
+    m.tex:SetVertexColor(c[1] * shade, c[2] * shade, c[3] * shade)
     if m.glyph then
-        m.tex:SetDesaturated(not enabled)
+        -- the gold made grey, so the blue reads as blue
+        m.tex:SetDesaturated(notice or not enabled)
         m.tex:SetAlpha(enabled and 1 or 0.45)
     end
     m.glow:SetShown(enabled and m.over or false)
@@ -111,6 +120,12 @@ local function Skin(btn, tex, glow, size, glyph)
     for _, method in ipairs({ "SetButtonState", "Enable", "Disable", "SetEnabled" }) do
         if btn[method] then hooksecurefunc(btn, method, Update) end
     end
+    local notice = btn.NotificationOverlay
+    if glyph and notice then
+        Silence(notice)
+        notice:HookScript("OnShow", Update)
+        notice:HookScript("OnHide", Update)
+    end
     btn:HookScript("OnEnter", function() btn.medalluin.over = true; MuteStates(btn); Refresh(btn) end)
     btn:HookScript("OnLeave", function() btn.medalluin.over = false; Refresh(btn) end)
     btn:HookScript("OnMouseDown", function() btn.medalluin.down = true; Refresh(btn) end)
@@ -121,7 +136,7 @@ end
 local function Glyph(btn, kind)
     btn:SetParent(ns.strips[-1])
     btn:SetFrameLevel(ns.levels.stripTop)
-    btn:SetSize(L.glyphTex, L.glyphTex)
+    ns.StripCell(btn)
     local tex = btn:CreateTexture(nil, "OVERLAY", nil, 6)
     tex:SetTexture(ns.media .. "strips\\" .. kind)
     local glow = btn:CreateTexture(nil, "OVERLAY", nil, 7)
@@ -222,17 +237,15 @@ local function Buttons()
     return list
 end
 
--- The shown buttons close up, so a button Blizzard hides (Help on Forever,
--- the Store where it is closed) leaves no gap.
+-- The shown buttons share the row, so a button Blizzard hides (Help on
+-- Forever, the Store where it is closed) leaves no gap.
 local buttons = {}
 local function Layout()
-    local x = L.firstGlyph
+    local shown = {}
     for _, btn in ipairs(buttons) do
-        if btn:IsShown() then
-            ns.OnStrip(btn, -1, x, ns.stripRow)
-            x = x + L.pitch
-        end
+        if btn:IsShown() then table.insert(shown, btn) end
     end
+    ns.StripCells(-1, shown)
 end
 
 -- Micro menu notification banners (unspent talents, profession knowledge,

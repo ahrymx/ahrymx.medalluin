@@ -1694,6 +1694,10 @@ if modern then
         end
         b.normalTex, b.pushedTex = new("Texture", b), new("Texture", b)
         b.highlightTex, b.disabledTex = new("Texture", b), new("Texture", b)
+        -- the blue diamond: something new behind the button
+        b.NotificationOverlay = new("Frame", b)
+        b.NotificationOverlay.shown = false
+        function b:SetHasNotification(on) self.NotificationOverlay:SetShown(on) end
         hooksecurefunc(b, "SetParent", function() MicroMenuContainer:Layout() end)
     end
     new("Frame", MicroMenu)                             -- a child that is no button
@@ -6543,6 +6547,19 @@ if stripsPass then
         if type(f.name) == "string" and f.name:match("MicroButton$") and _G[f.name] == f then table.insert(micro, f) end
     end
     table.sort(micro, function(a, b) return (resolve(a)[1] or 1e9) < (resolve(b)[1] or 1e9) end)
+    -- a notification: the diamond unseen, the glyph blue instead; gone, gold
+    if GuildMicroButton and GuildMicroButton.NotificationOverlay then
+        local g = GuildMicroButton
+        local function tint()
+            local v = g.medalluin.tex.vertex or { 1, 1, 1 }
+            return string.format("%.2f,%.2f,%.2f", v[1], v[2], v[3])
+        end
+        g:SetHasNotification(true)
+        print("micro notification", "diamond alpha=" .. tostring(g.NotificationOverlay.alpha),
+            "shown=" .. tostring(g.NotificationOverlay:IsShown()), "glyph=" .. tint())
+        g:SetHasNotification(false)
+        print("micro notification gone", "glyph=" .. tint())
+    end
     for _, f in ipairs(micro) do
         if f.shown and resolve(f)[1] then
             local m, hl = f.medalluin, f:GetHighlightTexture()

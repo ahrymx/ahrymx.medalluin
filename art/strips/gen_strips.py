@@ -86,7 +86,7 @@ def glyph(kind, x, y):
         teeth = "".join(f'<rect x="8.6" y="0.5" width="2.8" height="5" transform="rotate({a} 10 10)"/>'
                         for a in range(0, 360, 45))
         return (f'<g transform="translate({x},{y}) scale({s})" {f}>{teeth}'
-                f'<circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2.6" fill="#252a37"/></g>')
+                f'<circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2.6" fill="#3b311a"/></g>')
     if kind == "help":          # a question mark
         return P("M5,6.5 C5,1.5 15,1.5 15,6.5 C15,10 11.2,10 11.2,13 L8.8,13 C8.8,9 12.4,8.6 12.4,6.5 "
                  "C12.4,4.2 7.6,4.2 7.6,6.5 Z M8,16.5 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 Z")
@@ -257,17 +257,17 @@ def pts(p):
 
 def strip(side):
     """One strip: flush with the screen edge and bottom, the inner end cut at
-    45 degrees like the console's own ends, a gold edge and inner hairline
-    along the top."""
+    45 degrees like the console's own ends, one gold edge along the top
+    (the inner hairline it had went 2026-11-10: the row's cells,
+    ns.StripCells, sit flush under the edge, and the hairline showed double
+    beside them)."""
     top = H - STRIP_H
 
     def m(x):
         return x if side < 0 else W - x
     body = [(m(0), H), (m(0), top), (m(LENGTH), top), (m(LENGTH + STRIP_H), H)]
-    hair = [(m(0), top + 3), (m(LENGTH + 1.2), top + 3), (m(LENGTH + STRIP_H - 1.8), H)]
     return (f'<polygon points="{pts(body)}" fill="url(#navy)" stroke="{GOLD_D}" stroke-width="1.6" '
-            f'filter="url(#shadow)"/>'
-            f'<polyline points="{pts(hair)}" fill="none" stroke="{GOLD}" stroke-width="0.9" opacity="0.8"/>')
+            f'filter="url(#shadow)"/>')
 
 
 def medallion(cx, cy, inner):
@@ -285,7 +285,7 @@ def portrait(cx, cy):
             f'<g clip-path="url(#pc{cx})"><circle cx="{cx}" cy="{cy}" r="{r}" fill="url(#portrait)"/>'
             f'<circle cx="{cx}" cy="{cy - 4}" r="7" fill="#c9a98a"/>'
             f'<path d="M{cx - 15},{cy + 20} C{cx - 14},{cy + 6} {cx + 14},{cy + 6} {cx + 15},{cy + 20} Z" '
-            f'fill="#5a6a8a"/></g>')
+            f'fill="#6d644d"/></g>')
 
 
 def backpack(cx, cy):
@@ -389,8 +389,8 @@ def mailbox(size=64):
     f = 'fill="url(#gold)" stroke="#2a1e08" stroke-width="1.1" stroke-linejoin="round"'
     line = 'fill="none" stroke="#5a431a" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"'
     return (f'<radialGradient id="post" cx="45%" cy="36%" r="68%">'
-            f'<stop offset="0" stop-color="#3f5378"/><stop offset="0.7" stop-color="#1c2638"/>'
-            f'<stop offset="1" stop-color="#0d121c"/></radialGradient>'
+            f'<stop offset="0" stop-color="#675427"/><stop offset="0.7" stop-color="#302712"/>'
+            f'<stop offset="1" stop-color="#181409"/></radialGradient>'
             f'<radialGradient id="wax" cx="40%" cy="35%" r="70%">'
             f'<stop offset="0" stop-color="#d0443a"/><stop offset="1" stop-color="#6e1410"/></radialGradient>'
             f'<circle cx="{c}" cy="{c}" r="{c}" fill="url(#post)"/>'
@@ -434,11 +434,11 @@ def mailbox_part():
 def svg(body):
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}"><defs>'
             f'<linearGradient id="navy" x1="0" y1="0" x2="0" y2="1">'
-            f'<stop offset="0" stop-color="#3a4154"/><stop offset="1" stop-color="#252a37"/></linearGradient>'
+            f'<stop offset="0" stop-color="#483c1f"/><stop offset="1" stop-color="#2f2713"/></linearGradient>'
             f'<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">'
             f'<stop offset="0" stop-color="#f0d488"/><stop offset="1" stop-color="#a8823a"/></linearGradient>'
             f'<radialGradient id="portrait" cx="50%" cy="35%" r="70%">'
-            f'<stop offset="0" stop-color="#4a5a7a"/><stop offset="1" stop-color="#151a26"/></radialGradient>'
+            f'<stop offset="0" stop-color="#695528"/><stop offset="1" stop-color="#211b0c"/></radialGradient>'
             f'<filter id="shadow" x="-20%" y="-60%" width="140%" height="220%">'
             f'<feGaussianBlur in="SourceAlpha" stdDeviation="3"/><feOffset dy="-1"/>'
             f'<feComponentTransfer><feFuncA type="linear" slope="0.6"/></feComponentTransfer>'
@@ -631,13 +631,13 @@ def chat_tab(selected):
     d = (f"M1.5,{TAB_H} L1.5,{top + r} Q1.5,{top} {1.5 + r},{top} L{TAB_W - 1.5 - r},{top} "
          f"Q{TAB_W - 1.5},{top} {TAB_W - 1.5},{top + r} L{TAB_W - 1.5},{TAB_H}")
     if selected:
-        fill = ('<linearGradient id="tab" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a5368"/>'
-                '<stop offset="1" stop-color="#2c3242"/></linearGradient>')
+        fill = ('<linearGradient id="tab" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#594b2a"/>'
+                '<stop offset="1" stop-color="#392e16"/></linearGradient>')
         rim, glow = 'url(#gold)', f'<line x1="{2 + r}" y1="{top + 1.5}" x2="{TAB_W - 2 - r}" y2="{top + 1.5}" ' \
             f'stroke="#f0d488" stroke-width="1" opacity="0.6"/>'
     else:
-        fill = ('<linearGradient id="tab" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2c3242"/>'
-                '<stop offset="1" stop-color="#1c202b"/></linearGradient>')
+        fill = ('<linearGradient id="tab" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#392e16"/>'
+                '<stop offset="1" stop-color="#251e0e"/></linearGradient>')
         rim, glow = GOLD_D, ""
     return (f'{fill}<path d="{d} Z" fill="url(#tab)" fill-opacity="0.9"/>'
             f'<path d="{d}" fill="none" stroke="{rim}" stroke-width="1.4"/>{glow}')

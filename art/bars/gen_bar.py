@@ -36,7 +36,7 @@ geometry, no gryphons (after the user's sketch):
   * the chevrons themselves (up and down, normal and pushed, and a shared
     highlight), as small textures for Blizzard's own page buttons to wear,
     and the drawer toggle: the user's toolkit icon (art/bars/toolkit.png),
-    recoloured from its pink-to-blue gradient to the console's navy and
+    recoloured from its pink-to-blue gradient to the console's brown and
     gold, in a gold rim.
 
 Rows 2 and 3 (the Rows option) stand above the frame, bare.
@@ -364,7 +364,7 @@ def toolkit(state):
     disc in a horizontal pink-to-blue gradient with the case drawn in white
     over it (the hammer is the gradient again, through the case), so every
     pixel is white mixed with the gradient colour at its column, and the mix
-    is solved for: 0 is the disc, 1 the case. The disc becomes navy, the
+    is solved for: 0 is the disc, 1 the case. The disc becomes brown, the
     case gold, both lit from above, and a gold rim goes round. Pushed is
     darker and a pixel lower."""
     src = np.asarray(Image.open(TOOLKIT).convert("RGBA")).astype(float)
@@ -379,7 +379,7 @@ def toolkit(state):
     y = (np.arange(n) / (n - 1))[:, None, None]
     def lit(top, bottom):
         return np.array(top, float) + y * (np.array(bottom, float) - np.array(top, float))
-    navy, gold = lit((0x3e, 0x47, 0x60), (0x1a, 0x1e, 0x2b)), lit((0xf6, 0xdc, 0x8a), (0xa8, 0x82, 0x30))
+    navy, gold = lit((0x53, 0x43, 0x1f), (0x25, 0x1e, 0x0e)), lit((0xf6, 0xdc, 0x8a), (0xa8, 0x82, 0x30))
     out = navy * (1 - mix[..., None]) + gold * mix[..., None]
 
     # the rim: gold, dark on its outer edge, over the disc's own edge

@@ -299,7 +299,9 @@ end
 
 -- ------------------------------------------------------------ shortcuts
 -- Talents, Spellbook and Professions, in the window's margin beside the
--- medallion. Each clicks Blizzard's own micro button through a secure
+-- medallion: flush, as a window's tabs, joined buttons from 5 short of the
+-- medallion's ring to the window's border, from its foot up over the
+-- margin's rule (as the strip's cells under them). Each clicks Blizzard's own micro button through a secure
 -- button, so the book or the talents open as the micro menu opens them,
 -- with no addon's hand on them.
 --
@@ -342,27 +344,30 @@ end
 local function Shortcuts(band)
     local strip = ns.strips[-1]
     local window = band:GetParent()
-    local B = ns.character.band
+    local from = ns.stripCells.from
     row = CreateFrame("Frame", "MedalluinCharacterShortcuts", strip)
     row:SetFrameStrata("MEDIUM")
     row:SetFrameLevel(window:GetFrameLevel() + 10)
     row:SetIgnoreParentAlpha(true)
-    row:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", B.left, ns.stripLayout.stripHeight)
-    row:SetSize(ns.character.width + 8 - B.left, B.height)
+    row:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", from, ns.stripLayout.stripHeight)
+    row:SetSize(ns.character.width + 2 * ns.window.pad - from, ns.window.band + 1)
     row:Hide()
     local list = {}
     for _, s in ipairs(SHORTCUTS) do
         local target = Target(s[4])
         if target then table.insert(list, { s, target }) end
     end
-    local gap = 6
-    local w = (row:GetWidth() - (#list - 1) * gap) / math.max(1, #list)
+    -- the shared edges given back
+    local total, n = math.floor(row:GetWidth()) + #list - 1, math.max(1, #list)
+    local x = 0
     row.buttons = {}
     for i, e in ipairs(list) do
         local s, target = e[1], e[2]
+        local w = math.floor(i * total / n) - math.floor((i - 1) * total / n)
         local b = ns.character.Button(row, w, nil, function() return s[2] end, "SecureActionButtonTemplate")
-        b:SetHeight(24)
-        b:SetPoint("LEFT", (i - 1) * (w + gap), -1)
+        b:SetHeight(row:GetHeight())
+        b:SetPoint("TOPLEFT", x, 0)
+        x = x + w - 1
         b:RegisterForClicks("AnyUp", "AnyDown")
         b:SetAttribute("type", "click")
         b:SetAttribute("clickbutton", target)
