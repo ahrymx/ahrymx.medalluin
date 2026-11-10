@@ -28,7 +28,7 @@ decks above grow, and their cells stretch to fill the floor. A deck is three tex
 The plate's gradient is fixed to the screen, so a deck's pieces depend on
 the y it hangs at: pieces are named for their kind and that y (boss-0,
 unit-34, tray-64, ...). A lower deck's pieces start OVERLAP rows above its own top, so they paint
-over the upper deck's rim and hairline wherever the two decks meet; cut from
+over the upper deck's rim wherever the two decks meet; cut from
 the plate drawn whole and masked to the lower deck, they put back the union's
 outline, mitred corners included (the check measures it).
 
@@ -37,6 +37,7 @@ column on its left that says who the frame is (skull, paw, crosshair, two
 heads), then health over a thin power strip. Cells sit inside their deck's
 floor, so no bar corner can poke past a diagonal (the round-6 rule).
 """
+import math
 import os
 import subprocess
 import sys
@@ -67,7 +68,6 @@ GAP = 4                           # between cells: the plate shows through
 MARGIN = 4                        # floor beyond the outer cells, each side
 LEDGE = 10                        # a lower deck's top corner, in from the floor above it
 POWER = 4                         # the power strip under health
-RIM = 3                           # the hairline's inset from the outline
 OVERLAP = 4                       # rows a lower deck's pieces reach up over the deck above
 ICON, ICON_GAP, ICON_SEP = 22, 2, 8   # command icons; ICON_SEP between stances and the pet bar
 TRAY_TOP = 3                      # a command icon's top below the tray's top
@@ -127,11 +127,45 @@ def cell_width(kind, n, half):
     return cw
 
 
+SIDE_STEPS = 24                   # points along a deck's curved side
+RAMP_R = 1.4                      # a side's curve: a circle this many curve heights across
+RAMP_UPRIGHT = 0.25               # the part of a side's height that runs straight up before it curves
+
+
+def ramp(h, steps=SIDE_STEPS, r=RAMP_R, upright=RAMP_UPRIGHT):
+    """A ramp's side, as a vert ramp: straight up for the first upright*h of
+    its depth (2026-11-10, the user's call: vertical up to about 75% of the
+    height), then the steep part of a circle r times the rest across, out to
+    depth h, where it meets the level at about 45 degrees (a full quarter
+    circle ran too wide and ended in a sliver). (out, depth) pairs, and its
+    width out at depth h."""
+    v, c = upright * h, (1 - upright) * h
+    r *= c
+    pts_ = [(0, 0)] + [(r - math.sqrt(r * r - (c * i / steps) ** 2), v + c * i / steps)
+                       for i in range(steps + 1)]
+    return [(round(x, 6), round(d, 6)) for x, d in pts_], pts_[-1][0]
+
+
 def deck_poly(cx, kind, y, half):
+    """A deck: its top, then each side a ramp (2026-11-10, were 45 degree
+    cuts) rising upright from the floor's corner and leaning out to the top.
+    The floor's corners are where the cut's were, so the cells and the Lua's
+    sums are unchanged; the top's corners sit in from the cut's by the
+    height less the ramp's width. The top deck's sides run on above the
+    screen's edge along the ramp's last slope."""
     h = DECK[kind]
-    top = y - 10 if y == 0 else y     # the top deck runs past the screen's edge: no rim up there
-    return Polygon([(cx - half - (y - top), top), (cx + half + (y - top), top),
-                    (cx + half - h, y + h), (cx - half + h, y + h)])
+    side, _ = ramp(h)
+    fl, fr = cx - half + h, cx + half - h        # the floor's corners
+    # (out, depth) from the floor's corner, up to the top
+    up = [(x, d) for x, d in side]
+    if y == 0:
+        (x1, d1), (x2, d2) = up[-2], up[-1]
+        k = (x2 - x1) / (d2 - d1)
+        up.append((x2 + 10 * k, d2 + 10))
+    left = [(fl - x, y + h - d) for x, d in up]
+    right = [(fr + x, y + h - d) for x, d in up]
+    # down the left side, along the floor, up the right; the top closes it
+    return Polygon(list(reversed(left)) + right)
 
 
 def cells(cx, kind, n, y, half):
@@ -226,10 +260,8 @@ def plate_svg(cx, decks):
     if not decks:
         return ""
     plate = unary_union([deck_poly(cx, k, y, h) for k, _, y, h in decks])
-    inner = plate.buffer(-RIM, join_style="mitre")
-    return (f'<polygon points="{pts(outline(plate))}" fill="url(#navy)" stroke="{GOLD_D}" stroke-width="1.6"/>'
-            f'<polygon points="{pts(outline(inner))}" fill="none" stroke="{GOLD}" stroke-width="0.9" '
-            f'opacity="0.8"/>')
+    # one gold edge (2026-11-10: the gold hairline RIM inside it went, it read as a double border)
+    return f'<polygon points="{pts(outline(plate))}" fill="url(#navy)" stroke="{GOLD_D}" stroke-width="1.6"/>'
 
 
 def svg(width, height, body, viewbox=None, scale=1):

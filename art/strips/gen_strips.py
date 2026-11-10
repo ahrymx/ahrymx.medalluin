@@ -30,6 +30,7 @@ media/.
 Distances are 1080p screen pixels. The base is the console's combat render;
 the action bar is the client's own art, so it is not in the mockup.
 """
+import math
 import os
 import subprocess
 
@@ -255,18 +256,30 @@ def pts(p):
     return " ".join(f"{x:.1f},{y:.1f}" for x, y in p)
 
 
+RAMP_R, RAMP_STEPS = 1.4, 24      # the strip's inner end: a circle this many curve heights across, its points
+RAMP_UPRIGHT = 0.25               # the part of the end's height that runs straight down before it curves
+
+
 def strip(side):
-    """One strip: flush with the screen edge and bottom, the inner end cut at
-    45 degrees like the console's own ends, one gold edge along the top
-    (the inner hairline it had went 2026-11-10: the row's cells,
-    ns.StripCells, sit flush under the edge, and the hairline showed double
-    beside them)."""
+    """One strip: flush with the screen edge and bottom, the inner end a ramp
+    (2026-11-10, was a 45 degree cut) as a vert ramp: straight down from the
+    top edge for RAMP_UPRIGHT of the height, then the steep part of a circle
+    RAMP_R times the rest across, leaning out to meet the screen's foot at
+    about 45 degrees, as the overhead's
+    decks' sides (art/console/gen_overhead.py). One gold edge along the top (the inner
+    hairline it had went 2026-11-10: the row's cells, ns.StripCells, sit
+    flush under the edge, and the hairline showed double beside them)."""
     top = H - STRIP_H
 
     def m(x):
         return x if side < 0 else W - x
-    body = [(m(0), H), (m(0), top), (m(LENGTH), top), (m(LENGTH + STRIP_H), H)]
-    return (f'<polygon points="{pts(body)}" fill="url(#navy)" stroke="{GOLD_D}" stroke-width="1.6" '
+    v, c = RAMP_UPRIGHT * STRIP_H, (1 - RAMP_UPRIGHT) * STRIP_H
+    r = RAMP_R * c
+    end = [(LENGTH, top)] + [(LENGTH + r - math.sqrt(r * r - (c * i / RAMP_STEPS) ** 2),
+                              top + v + c * i / RAMP_STEPS) for i in range(RAMP_STEPS + 1)]
+    d = (f"M{m(0)},{H} L{m(0)},{top} "
+         + " ".join(f"L{m(x):.3f},{y:.3f}" for x, y in end) + " Z")
+    return (f'<path d="{d}" fill="url(#navy)" stroke="{GOLD_D}" stroke-width="1.6" '
             f'filter="url(#shadow)"/>')
 
 

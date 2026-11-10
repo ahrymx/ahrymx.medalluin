@@ -3,7 +3,7 @@
 -- from its top-left; the right strip is its mirror.
 local _, ns = ...
 ns.stripArt = {
-    width = 498, height = 63, texWidth = 512, texHeight = 64,
+    width = 477, height = 63, texWidth = 512, texHeight = 64,
 }
 ns.stripWindows = {
     -- the medallion's well: { left, right, top, bottom }
