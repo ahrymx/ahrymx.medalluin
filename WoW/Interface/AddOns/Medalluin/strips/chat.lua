@@ -623,11 +623,13 @@ local function Build()
     panel:SetPoint("BOTTOMRIGHT", -PAD, foot)
     panel:SetHeight(L.chatHeight)
     area = CreateFrame("Frame", nil, panel)
-    -- the edit box over the margin, beside the medallion
-    local breakAt = ns.stripWell.x + L.ringRadius + 5
+    -- the edit box over the margin, beside the medallion, flush with the
+    -- margin's row as the character window's shortcuts are
+    -- (character/paperdoll.lua): from the strip's cells' start to the box's
+    -- right edge, the margin's full height, its top edge on the rule
     edit = CreateFrame("Frame", nil, chatBox)
-    edit:SetPoint("BOTTOMLEFT", breakAt, 2)
-    edit:SetPoint("TOPRIGHT", chatBox, "BOTTOMRIGHT", -PAD, margin - 2)
+    edit:SetPoint("BOTTOMLEFT", ns.stripCells.from, 0)
+    edit:SetPoint("TOPRIGHT", chatBox, "BOTTOMRIGHT", 0, margin + 1)
     -- the tab row, over the panel up to the box's top edge, edge to edge:
     -- the cog at its right end
     head = CreateFrame("Frame", nil, chatBox)
@@ -686,7 +688,7 @@ local function Build()
             if frame.editBox then Lit(frame.editBox) end
         end
     end
-    ns.BuffRow({ x = breakAt, y = ns.stripArt.height - L.stripHeight - (margin + 1) / 2 })
+    ns.BuffRow({ x = ns.stripCells.from, y = ns.stripArt.height - L.stripHeight - (margin + 1) / 2 })
 
     local function FitTabs()
         local prev
