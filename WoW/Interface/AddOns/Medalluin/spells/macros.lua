@@ -157,6 +157,7 @@ local function Tooltip(owner, c)
     local spell = Spell(c.index)
     ns.Tip(owner, ns.window.Outside, { title = c.name, color = GOLD,
         spell and { "body", "Casts " .. spell, ns.colors.dim } or false,
+        c.clicks and { "body", "Click casting: " .. c.clicks, GOLD } or false,
         Binding() and { "body", "Click to bind it.", GOLD } or false,
         not Binding() and { "body", Opened(c.name) and "Left-click to fold it." or "Left-click to show and edit it." }
             or false,
@@ -207,6 +208,30 @@ local function Card(n)
     c.label:SetJustifyH("LEFT")
     c.label:SetWordWrap(false)
     c.label:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+    -- its click-cast binding: a small mouse in a gold ring on the icon's
+    -- corner (as the book's spells), its click at the head's right
+    c.badge = CreateFrame("Frame", nil, c)
+    c.badge:SetSize(20, 20)
+    c.badge:SetPoint("CENTER", c.icon, "BOTTOMRIGHT", -3, 3)
+    local ring = c.badge:CreateTexture(nil, "ARTWORK", nil, 1)
+    ring:SetAllPoints()
+    ring:SetTexture(ns.media .. "strips\\round")
+    ring:SetVertexColor(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    local disc = c.badge:CreateTexture(nil, "ARTWORK", nil, 2)
+    disc:SetPoint("TOPLEFT", 1, -1)
+    disc:SetPoint("BOTTOMRIGHT", -1, 1)
+    disc:SetTexture(ns.media .. "strips\\round")
+    disc:SetVertexColor(ink[1], ink[2], ink[3], 1)
+    local mouse = c.badge:CreateTexture(nil, "ARTWORK", nil, 3)
+    mouse:SetSize(15, 15)
+    mouse:SetPoint("CENTER")
+    mouse:SetTexture(ns.media .. "strips\\mouse")
+    mouse:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+    c.badge:Hide()
+    c.keys = ns.Text(c, 11)
+    c.keys:SetPoint("TOPRIGHT", -30, -8)
+    c.keys:SetJustifyH("RIGHT")
+    c.keys:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
     c.first = ns.Text(c, 10)
     Plain(c.first, 11, ns.colors.dim)
     c.first:SetPoint("TOPLEFT", ICON + 18, -22)
@@ -357,6 +382,9 @@ local function Cards()
     local selected = f:GetSelectedIndex()
     local width = W.width - GUTTER
     local y = 0
+    -- the profile's macro bindings (the book's option, as its spells')
+    local bound = ns.db.spellbookClickCast and ns.clickcast and ns.clickcast.Macros and ns.clickcast.Macros() or {}
+    local binding = Binding()
     for i = 1, count do
         local c = cards[i] or Card(i)
         local name, icon, text = GetMacroInfo(base + i)
@@ -364,6 +392,17 @@ local function Cards()
         c.i, c.index, c.name = i, base + i, name
         c.icon:SetTexture(icon)
         c.label:SetText(name or "")
+        -- bound: the mouse and its click (in bind mode, as the book's, not)
+        c.clicks = bound[base + i]
+        local keys = c.clicks ~= nil and not binding
+        c.badge:SetShown(keys)
+        c.keys:SetShown(keys)
+        c.keys:SetText(c.clicks or "")
+        if keys then
+            c.label:SetPoint("RIGHT", c.keys, "LEFT", -8, 0)
+        else
+            c.label:SetPoint("RIGHT", c, "RIGHT", -30, 0)
+        end
         c.first:SetText(First(text))
         local open = name ~= nil and Opened(name)
         c.sign:SetText(open and "-" or "+")

@@ -12937,9 +12937,10 @@ if spellPass then
                                 .. (b.attrs.type and "+left" or "") .. (harnessOver(b, c.hit) == "over" and "" or "!off")
                         end
                     end
-                    table.insert(out, string.format("%s%s(%s)%s y=%d h=%d%s [%s]", c.label.text, c.sign.text,
+                    table.insert(out, string.format("%s%s(%s)%s y=%d h=%d%s%s [%s]", c.label.text, c.sign.text,
                         c.text.shown and c.text.text:gsub("\n", "/") or c.first.text,
-                        c.bar.shown and "[ed]" or "", c.y, c.h, c.delete.shown and " del" or "", sec))
+                        c.bar.shown and "[ed]" or "", c.y, c.h, c.delete.shown and " del" or "",
+                        c.badge.shown and " mouse{" .. c.keys.text .. "}" or "", sec))
                 end
             end
             print(tag, table.concat(out, "  "))
@@ -12978,6 +12979,20 @@ if spellPass then
         MM.Refresh()
         cards("book.macros cards")
         edit("book.macros editor")
+        -- bound in Click Casting (Focus twice): the mouse and its clicks,
+        -- named in its tooltip
+        C_ClickBindings.SetProfileByInfo({ { type = 2, actionID = 2, button = "MiddleButton", modifiers = 1 },
+            { type = 2, actionID = 2, button = "Button4" }, { type = 1, actionID = 401, button = "LeftButton" } })
+        cards("book.macros bound")
+        do
+            local said, add = {}, GameTooltip.AddLine
+            GameTooltip.AddLine = function(_, t) table.insert(said, tostring(t)) end
+            local c = card("Focus")
+            c.scripts.OnEnter(c)
+            c.scripts.OnLeave(c)
+            GameTooltip.AddLine = add
+            print("book.macros bound tip", table.concat(said, " / "))
+        end
         -- a left click on a card: opened, in the editor, remembered
         local focus = card("Focus")
         focus.scripts.OnClick(focus, "LeftButton")
@@ -13097,6 +13112,7 @@ if spellPass then
         frame()
         bookWorld.calls = {}
         cards("book.macros bind mode")
+        C_ClickBindings.ResetCurrentProfile()
         local tb = secure("Totems")
         tb.scripts.PostClick(tb, "RightButton", true)
         tb.scripts.PostClick(tb, "RightButton", false)

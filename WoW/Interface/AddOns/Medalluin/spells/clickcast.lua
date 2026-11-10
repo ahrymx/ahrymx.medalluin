@@ -102,6 +102,23 @@ function cc.Bound()
     return ids, names
 end
 
+-- The profile's macro bindings: by macro index, their clicks as words
+-- ("Shift+Middle, Left")
+function cc.Macros()
+    local out = {}
+    local get = C_ClickBindings and C_ClickBindings.GetProfileInfo
+    if not get then return out end
+    local ok, profile = pcall(get)
+    if not ok or type(profile) ~= "table" then return out end
+    for _, info in ipairs(profile) do
+        if info.type == TYPE.Macro and info.actionID then
+            local _, text = cc.Keys(info)
+            if text then out[info.actionID] = out[info.actionID] and out[info.actionID] .. ", " .. text or text end
+        end
+    end
+    return out
+end
+
 -- In the game's bind mode: its window open
 function cc.Binding()
     return _G.InClickBindingMode ~= nil and _G.InClickBindingMode() and true or false
