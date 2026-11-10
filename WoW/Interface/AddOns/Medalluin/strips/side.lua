@@ -29,8 +29,9 @@
 --        or a ladder: { steps, color(i) -> r, g, b, lit(i), click(i, mouse),
 --                       tip(i) -> title, line }: a stack of swatches, one
 --                       per step, top down, picked directly; a lit one in
---                       its colour, the rest faint. It takes a button's
---                       room and more (steps * SWATCH); last in the list.
+--                       its colour, the rest faint. Last in the list, it
+--                       fills the column down to the foot, SPACE clear of
+--                       the button above and the foot.
 --
 -- BACKGROUND strata, like the chat panel. Built at login, and only when the
 -- Side panel option is on; its tabs come and go with their own options.
@@ -38,12 +39,15 @@ local _, ns = ...
 
 local L = ns.stripLayout
 local PARTS = ns.media .. "strips\\"
-local COLUMN = L.chatPad + L.chatColumn / 2     -- the column's centre, from the panel's outer edge
-local INNER = L.chatPad + L.chatColumn + 5      -- the body's outer edge, the same
-local PITCH = 30                                -- column buttons, top down
-local BUTTON, GLYPH = 24, 28                    -- a button's box, and its glyph's 32x32 art in it
-local SWATCH = 14                               -- a ladder's step: its pitch (the box 1 less, edges shared)
+local BUTTON, GLYPH = 24, 28                    -- a button's height, and its glyph's 32x32 art in it
+local COLUMN = 30                               -- the column's width, and its buttons'
 local PAD, RULE, TABS = 8, 6, 28                -- as the chat box's (chat.lua)
+-- The column (2026-11-10, was the old panel's 29 and centred buttons):
+-- COLUMN wide, between the divider and the box's outer edge, its buttons
+-- flush in it, top down from the box's top edge, each sharing its edges
+-- with the next, the box's and the divider's; the foot's on the rule.
+local INNER = COLUMN + 5 - PAD                  -- the body's outer edge, from the room's
+local SPACE = 6                                 -- a ladder's room clear of the buttons above and below it
 local GOLD_D = { 0.541, 0.439, 0.204 }
 
 local views = {}
@@ -121,11 +125,13 @@ local function Tip(b)
     ns.Tip(b, ns.side.Beside, { title = title, line and { "body", line } or false })
 end
 
+-- a button with its top (from "TOPRIGHT") or its foot ("BOTTOMRIGHT") y
+-- from the panel's
 local function Button(view, spec, y, from)
     local b = CreateFrame("Button", nil, view.column)
     b.spec = spec
-    b:SetSize(BUTTON, BUTTON)
-    b:SetPoint("CENTER", area, from, -COLUMN, y)
+    b:SetSize(COLUMN, BUTTON)
+    b:SetPoint(from, panel, from, 0, y)
     ns.window.Face(b)
     b.glyph = b:CreateTexture(nil, "ARTWORK")
     b.glyph:SetSize(GLYPH, GLYPH)
@@ -143,14 +149,17 @@ local function Button(view, spec, y, from)
     return b
 end
 
--- A ladder: its swatches stacked down from y (the top of the room a
--- button there would have), sharing their edges.
-local function Ladder(view, spec, y, from)
+-- A ladder: its swatches from y down to bottom (from the panel's top),
+-- sharing their edges, the room shared out among them.
+local function Ladder(view, spec, y, bottom, from)
+    local room = y - bottom - 1
     for i = 1, spec.steps do
+        local t = math.floor((i - 1) * room / spec.steps + 0.5)
+        local h = math.floor(i * room / spec.steps + 0.5) - t + 1
         local b = CreateFrame("Button", nil, view.column)
         b.spec, b.step = spec, i
-        b:SetSize(BUTTON, SWATCH + 1)
-        b:SetPoint("TOP", area, from, -COLUMN, y - (i - 1) * SWATCH)
+        b:SetSize(COLUMN, h)
+        b:SetPoint("TOPRIGHT", panel, from, 0, y - t)
         ns.window.Face(b)
         b.fill = b:CreateTexture(nil, "ARTWORK")
         b.fill:SetPoint("TOPLEFT", 3, -3)
@@ -285,6 +294,14 @@ local function Build()
     row:SetPoint("BOTTOMRIGHT", -breakAt, 0)
     row:SetSize(width - breakAt, margin + 1)
 
+    -- the divider between the body and the button column, edge to edge:
+    -- from the box's top edge down to the margin's rule, the buttons' inner edge
+    local divider = panel:CreateTexture(nil, "ARTWORK")
+    divider:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+    divider:SetWidth(1)
+    divider:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -(COLUMN - 1), 0)
+    divider:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -(COLUMN - 1), margin)
+
     -- the scroll bar's track, where the chat's is on the other side
     track = area:CreateTexture(nil, "BORDER")
     track:SetColorTexture(0, 0, 0, 0.35)
@@ -295,6 +312,7 @@ local function Build()
     thumb:SetWidth(6)
 
     ns.side.panel, ns.side.area, ns.side.row, ns.side.dress = panel, area, row, dress
+    ns.side.divider = divider
     for _, v in ipairs(views) do
         v.available = v.Available() and true or false
         if v.available then
@@ -305,12 +323,14 @@ local function Build()
             v.column = CreateFrame("Frame", nil, area)
             v.column:SetAllPoints()
             v.paint = {}
+            -- a ladder's foot: SPACE over the foot's button, or the rule
+            local bottom = -(foot + tall + PAD) + margin + (v.foot and BUTTON + SPACE or 0)
             for i, spec in ipairs(v.buttons) do
-                local y = -16 - (i - 1) * PITCH
-                if spec.steps then Ladder(v, spec, y + BUTTON / 2, "TOPRIGHT")
+                local y = -(i - 1) * (BUTTON - 1)
+                if spec.steps then Ladder(v, spec, y - (i > 1 and SPACE + 1 or 0), bottom, "TOPRIGHT")
                 else Button(v, spec, y, "TOPRIGHT") end
             end
-            if v.foot then Button(v, v.foot, 16, "BOTTOMRIGHT") end
+            if v.foot then Button(v, v.foot, margin, "BOTTOMRIGHT") end
             Tab(v)
             v.Build(v.body)
             ns.OnSetting(v.option, Arrange)

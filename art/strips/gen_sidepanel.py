@@ -174,6 +174,19 @@ def g_filter(cx, cy):         # loot: who (group / mine)
             f'L{cx - 2},{cy} Z" fill="url(#gold)"/>')
 
 
+# the chat drawer's social glyph (gen_strips.py's "character"), head and shoulders in a 20 box
+PERSON = "M6,6.5 a4,4.5 0 1,0 8,0 a4,4.5 0 1,0 -8,0 Z M1.5,19 C1.5,13 5,11.5 10,11.5 C15,11.5 18.5,13 18.5,19 Z"
+
+
+def g_people(cx, cy, group):  # loot: whose (2026-11-10, was a funnel): yours, one; the group's, two behind it
+    def person(x, y, s):
+        return (f'<path d="{PERSON}" transform="translate({x - 10 * s:.2f},{y - 10 * s:.2f}) scale({s})" '
+                f'fill="url(#gold)" stroke="#2a1e08" stroke-width="{1.2 / s:.2f}" paint-order="stroke"/>')
+    if not group:
+        return person(cx, cy, 0.72)
+    return person(cx - 5, cy - 2.5, 0.55) + person(cx + 5, cy - 2.5, 0.55) + person(cx, cy + 1.5, 0.62)
+
+
 def g_quality(cx, cy):        # loot: least quality shown
     return (f'<polygon points="{cx},{cy - 7} {cx + 6},{cy} {cx},{cy + 7} {cx - 6},{cy}" fill="{QUALITY["epic"]}" '
             f'stroke="url(#gold)" stroke-width="1"/>')
@@ -231,7 +244,7 @@ def how_glyph(x, y, how):
 def loot_side(selected="Loot"):
     x0, x1 = content_box(1)
     out = [panel(1), tabs(1, ["Loot", "Meter"], selected), scrollbar(1),
-           column(1, [(g_filter, True), (g_quality, False), (g_reset, False)])]
+           column(1, [(lambda cx, cy: g_people(cx, cy, False), True), (g_quality, False), (g_reset, False)])]
     rows = [
         ("head", "Gurtogg Bloodboil", "21:14  ·  14g 20s"),
         ("item", "epic", "#6a3a8a", "Shoulderpads of Renewed Life", "Mira", "PRIEST", "need 87"),
@@ -539,6 +552,8 @@ def parts():
         "side-two": g_columns(c, c, True),
         "side-reset": g_reset(c, c),
         "side-filter": g_filter(c, c),
+        "side-mine": g_people(c, c, False),
+        "side-group": g_people(c, c, True),
         "side-quality": white,
         "side-timeless": g_timeless(c, c),
     }

@@ -522,7 +522,10 @@ end
 
 view.buttons = {
     {
-        glyph = function() return "side-filter" end,
+        -- whose (2026-11-10, was a funnel): one figure, or two behind it
+        -- for the group, as the chat drawer's social glyph; lit while it
+        -- filters to yours
+        glyph = function() return ns.db.lootWho == ns.LOOT_WHO.MINE and "side-mine" or "side-group" end,
         lit = function() return ns.db.lootWho == ns.LOOT_WHO.MINE end,
         click = function()
             ns.SetOption("lootWho", ns.db.lootWho == ns.LOOT_WHO.MINE and ns.LOOT_WHO.GROUP or ns.LOOT_WHO.MINE)
