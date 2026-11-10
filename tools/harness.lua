@@ -5112,23 +5112,50 @@ if barPass then
         print("options.modules card click", "opens=" .. tostring(ns.OptionsShown()))
         -- search: matches, where they are; choosing one opens its page at its
         -- section and outlines it; Esc gives the sidebar back
-        local found = ns.SearchOptions("sweep")
-        local o = {}
-        for _, e in ipairs(found) do table.insert(o, e.label .. " (" .. e.where .. ")") end
-        print("options.search sweep", #found, table.concat(o, "; "))
-        local shown = 0
-        for _, r in ipairs(win.tree.results) do if r.shown ~= false then shown = shown + 1 end end
-        print("options.search rows", shown, "items shown=" .. tostring(win.tree.rows[1].shown))
+        -- search: what it found on the right, each section under where it
+        -- is (lent: its options work there); a line opens the page at its
+        -- section and outlines the match; Esc gives the page back
+        ns.OpenOptions("bags")
+        local function found(label)
+            local o = {}
+            for _, b in ipairs(win.finds.links) do
+                if b.shown ~= false then table.insert(o, b.text.text) end
+            end
+            local lent = {}
+            for _, s in ipairs(win.finds.lent) do
+                local r = resolve(s)
+                local top = resolve(win.finds)
+                table.insert(lent, s.title.text .. string.format("@%d,%d", r[1] - top[1], r[2] - top[2]))
+            end
+            print("options.search " .. label, win.finds.head.crumb.text, "lines=" .. table.concat(o, "; "),
+                "sections=" .. table.concat(lent, "; "), "shown=" .. tostring(win.finds.shown),
+                "page=" .. tostring(ns.optionPages.bags.shown), "lit=" .. tostring(win.tree.rows[1].lit.shown))
+        end
+        ns.SearchOptions("sweep")
+        found("sweep")
+        local sweep = ns.optionControls.cooldownSwipe
+        local was = ns.db.cooldownSwipe
+        sweep.scripts.OnClick(sweep)
+        print("options.search toggled there", "cooldownSwipe " .. tostring(was) .. "->" .. tostring(ns.db.cooldownSwipe),
+            "tick=" .. tostring(sweep.tick.shown))
+        sweep.scripts.OnClick(sweep)
+        ns.SearchOptions("bags")
+        found("bags")
+        ns.SearchOptions("zzzq")
+        found("none")
+        ns.SearchOptions("s")
+        print("options.search one letter", "shown=" .. tostring(win.finds.shown), ns.OptionsShown())
         ns.SearchOptions("sweep", 1)
         local f = ns.optionPages[ns.OptionsShown()]
         print("options.search chosen", ns.OptionsShown(), "scroll=" .. win.scroll:GetVerticalScroll(),
             "flash=" .. tostring(win.flash.shown) .. " on " .. tostring(win.flash.control and win.flash.control.spec.label),
-            "section top=" .. tostring(f.sections[1] and f.sections[1].top))
-        print("options.search none", #ns.SearchOptions("zzzq"), win.tree.more.text)
+            "box=" .. tostring(win.search:GetText()), "finds=" .. tostring(win.finds.shown),
+            "home=" .. tostring(sweep:GetParent() and sweep:GetParent():GetParent() == f))
+        ns.SearchOptions("fade")
+        found("fade")
         win.search.scripts.OnEscapePressed(win.search)
-        shown = 0
-        for _, r in ipairs(win.tree.results) do if r.shown ~= false then shown = shown + 1 end end
-        print("options.search cleared", shown, "items shown=" .. tostring(win.tree.rows[1].shown ~= false))
+        print("options.search cleared", ns.OptionsShown(), "finds=" .. tostring(win.finds.shown),
+            "page=" .. tostring(ns.optionPages["console/bar"].shown), "lent=" .. #win.finds.lent)
         SlashCmdList.MDLUI("modules")
         print("options./mdlui modules", ns.OptionsShown())
         SlashCmdList.MDLUI("bar")

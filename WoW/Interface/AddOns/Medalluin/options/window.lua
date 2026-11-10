@@ -18,9 +18,8 @@ local C = UI.colors
 local W, H = 900, 600
 local PAD, SIDE_W, TITLE_ROOM, FOOT = 14, 200, 22, 46
 local HEAD_H, TAB_H, COL_GAP, SEC_GAP = 54, 24, 22, 14
-local ITEM_H, CAT_H, SEARCH_H, RESULT_H = 22, 22, 22, 32
+local ITEM_H, CAT_H, SEARCH_H, LINK_H = 22, 22, 22, 20
 local CARD_H, CARD_GAP = 44, 8
-local MOST = 30                         -- search results listed
 local X = PAD + SIDE_W + 14             -- the header's and body's left
 local ROUND = ns.media .. "strips\\round"
 local GREEN = { 0.42, 0.78, 0.36 }
@@ -28,6 +27,8 @@ local GREEN = { 0.42, 0.78, 0.36 }
 local pages        -- pages.lua's, built at login
 local categories
 local window, side, nav, navChild, search, tabStrip, body, scroll, thumb, flash
+local finds        -- a search's page: the sections it matched, lent by their own
+local colW         -- a section's width
 local footProfile, footReload
 local built = {}   -- page frames by path ("general", "console/unit")
 ns.optionPages = built
@@ -38,7 +39,7 @@ local controls = {}
 ns.optionControls = controls
 local place = {}   -- each path's category and sidebar item
 local index = {}   -- what search looks through
-local query        -- what it is looking for, while it is
+local query        -- what it is looking for, while it shows what it found
 local results = {}
 
 -- ------------------------------------------------------------ pages
@@ -242,13 +243,12 @@ local function Build(content, path, page, tab, width)
         f.intro = intro
         y = y - math.ceil(intro:GetStringHeight()) - 16
     end
-    local colW = math.floor((width - COL_GAP) / 2)
     local tops = { y, y }
     for i, group in ipairs(content.groups) do
         local col = tops[2] > tops[1] and 2 or 1
         local s = Section(f, group, colW, path)
         s:SetPoint("TOPLEFT", (col - 1) * (colW + COL_GAP), tops[col])
-        s.top, s.col = -tops[col], col
+        s.home, s.x, s.top, s.col = f, (col - 1) * (colW + COL_GAP), -tops[col], col
         tops[col] = tops[col] - s:GetHeight() - SEC_GAP
         f.sections[i] = s
     end
@@ -450,64 +450,36 @@ local function Fold(name)
 end
 
 -- The rows down the sidebar: a heading for each category, a row for each
--- item; or, while searching, the matches.
+-- item. While a search shows what it found, no item is lit.
 local function Nav()
     local y = -2
     for _, h in ipairs(side.heads) do h:Hide() end
     for _, r in ipairs(side.rows) do r:Hide() end
-    for _, r in ipairs(side.results) do r:Hide() end
-    side.more:Hide()
-    local item = current and place[current] and place[current].item
-    if query then
-        for i, r in ipairs(side.results) do
-            local e = results[i]
-            if e then
-                r.entry = e
-                r.text:SetText(e.label)
-                r.where:SetText(e.where)
+    local item = not query and current and place[current] and place[current].item
+    for _, h in ipairs(side.heads) do
+        -- the shown page's category stays open
+        local here = false
+        for _, r in ipairs(h.rows) do here = here or r.path == item end
+        h.open = here or not Folded(h.cat.name)
+        h.sign:SetText(h.open and "" or "+")
+        h:SetPoint("TOPLEFT", 0, y)
+        h:SetPoint("TOPRIGHT", 0, y)
+        h:Show()
+        y = y - CAT_H
+        for _, r in ipairs(h.rows) do
+            if h.open then
                 r:SetPoint("TOPLEFT", 0, y)
                 r:SetPoint("TOPRIGHT", 0, y)
                 r:Show()
-                y = y - RESULT_H
+                y = y - ITEM_H
             end
+            local on = r.path == item
+            r.lit:SetShown(on)
+            r.bar:SetShown(on)
+            local c = on and C.goldBright or C.gold
+            r.text:SetTextColor(c[1], c[2], c[3])
         end
-        if #results > MOST then
-            side.more:SetText("and " .. (#results - MOST) .. " more")
-            side.more:SetPoint("TOPLEFT", 10, y - 4)
-            side.more:Show()
-            y = y - 22
-        elseif #results == 0 then
-            side.more:SetText("Nothing matches.")
-            side.more:SetPoint("TOPLEFT", 10, y - 4)
-            side.more:Show()
-            y = y - 22
-        end
-    else
-        for _, h in ipairs(side.heads) do
-            -- the shown page's category stays open
-            local here = false
-            for _, r in ipairs(h.rows) do here = here or r.path == item end
-            h.open = here or not Folded(h.cat.name)
-            h.sign:SetText(h.open and "" or "+")
-            h:SetPoint("TOPLEFT", 0, y)
-            h:SetPoint("TOPRIGHT", 0, y)
-            h:Show()
-            y = y - CAT_H
-            for _, r in ipairs(h.rows) do
-                if h.open then
-                    r:SetPoint("TOPLEFT", 0, y)
-                    r:SetPoint("TOPRIGHT", 0, y)
-                    r:Show()
-                    y = y - ITEM_H
-                end
-                local on = r.path == item
-                r.lit:SetShown(on)
-                r.bar:SetShown(on)
-                local c = on and C.goldBright or C.gold
-                r.text:SetTextColor(c[1], c[2], c[3])
-            end
-            y = y - 4
-        end
+        y = y - 4
     end
     navChild:SetHeight(-y + 4)
     local range = math.max(0, navChild:GetHeight() - nav:GetHeight())
@@ -579,6 +551,28 @@ local function Flash(c)
     flash:Show()
 end
 
+-- The sections a search lent its page, back on their own pages.
+local function Home()
+    for _, s in ipairs(finds.lent) do
+        s:SetParent(s.home)
+        s:ClearAllPoints()
+        s:SetPoint("TOPLEFT", s.home, "TOPLEFT", s.x, -s.top)
+    end
+    finds.lent = {}
+end
+
+-- The search over: its page gone, the sections home; the box emptied too
+-- when something else ends it (a page chosen).
+local function EndSearch(clear)
+    if not finds.on then return end
+    query, results = nil, {}
+    finds.on = false
+    Home()
+    finds:Hide()
+    finds.head:Hide()
+    if clear and search:GetText() ~= "" then search:SetText("") end
+end
+
 local function Choose(e)
     Select(e.path)
     local f = built[current]
@@ -590,39 +584,111 @@ local function Choose(e)
     if e.control then Flash(e.control) end
 end
 
-local function Search(text)
-    text = tostring(text or ""):lower():match("^%s*(.-)%s*$")
-    query = #text >= 2 and text or nil
-    results = {}
-    if query then
-        for _, e in ipairs(index) do
-            if e.label:lower():find(query, 1, true) then table.insert(results, e) end
-        end
-    end
-    nav:SetVerticalScroll(0)
-    Nav()
+-- A line over a match: where it is, a click opening it there.
+local function Link(n)
+    local b = finds.links[n]
+    if b then return b end
+    b = CreateFrame("Button", nil, finds)
+    b:SetHeight(LINK_H)
+    b.text = UI.Plain(b, 11, C.dim)
+    b.text:SetPoint("LEFT", 0, 0)
+    b.text:SetPoint("RIGHT", 0, 0)
+    b.text:SetJustifyH("LEFT")
+    b.text:SetWordWrap(false)
+    b:SetScript("OnEnter", function(self) self.text:SetTextColor(C.goldBright[1], C.goldBright[2], C.goldBright[3]) end)
+    b:SetScript("OnLeave", function(self) self.text:SetTextColor(C.dim[1], C.dim[2], C.dim[3]) end)
+    b:SetScript("OnClick", function(self) Choose(self.entry) end)
+    finds.links[n] = b
+    return b
 end
 
-local function Result()
-    local r = CreateFrame("Button", nil, navChild)
-    r:SetHeight(RESULT_H)
-    r.lit = UI.Fill(r, "BACKGROUND", C.hover, 1)
-    r.lit:SetAllPoints()
-    r.lit:Hide()
-    r.text = UI.Serif(r, 12, C.gold)
-    r.text:SetPoint("TOPLEFT", 10, -3)
-    r.text:SetPoint("RIGHT", -6, 0)
-    r.text:SetJustifyH("LEFT")
-    r.text:SetWordWrap(false)
-    r.where = UI.Plain(r, 10, C.dim)
-    r.where:SetPoint("BOTTOMLEFT", 10, 4)
-    r.where:SetPoint("RIGHT", -6, 0)
-    r.where:SetJustifyH("LEFT")
-    r.where:SetWordWrap(false)
-    r:SetScript("OnEnter", function(self) self.lit:Show() end)
-    r:SetScript("OnLeave", function(self) self.lit:Hide() end)
-    r:SetScript("OnClick", function(self) Choose(self.entry) end)
-    return r
+-- What a search found, on the right: the pages whose names match, then each
+-- section with a match (its own, lent: its options work there) under a
+-- line saying where it is, in two columns.
+local function Found()
+    Home()
+    local seen, sections, named = {}, {}, {}
+    for _, e in ipairs(results) do
+        if not e.section then
+            table.insert(named, e)
+        elseif not seen[e.section] then
+            seen[e.section] = true
+            table.insert(sections, e)
+        end
+    end
+    for _, b in ipairs(finds.links) do b:Hide() end
+    local n = 0
+    local function Line(e, text, x, y, w)
+        n = n + 1
+        local b = Link(n)
+        b.entry = e
+        b.text:SetText(text)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", x, y)
+        b:SetWidth(w)
+        b:Show()
+    end
+    local width = finds:GetWidth()
+    local y = -4
+    for _, e in ipairs(named) do
+        Line(e, "Open " .. e.label .. "   (" .. e.where .. ")", 0, y, width)
+        y = y - LINK_H
+    end
+    if #named > 0 then y = y - 10 end
+    local tops = { y, y }
+    for _, e in ipairs(sections) do
+        local s = e.section
+        local col = tops[2] > tops[1] and 2 or 1
+        local x = (col - 1) * (colW + COL_GAP)
+        Line(e, Where(e.path) .. "  >", x, tops[col], colW)
+        s:SetParent(finds)
+        s:ClearAllPoints()
+        s:SetPoint("TOPLEFT", finds, "TOPLEFT", x, tops[col] - LINK_H - 2)
+        table.insert(finds.lent, s)
+        tops[col] = tops[col] - LINK_H - 2 - s:GetHeight() - SEC_GAP
+    end
+    finds.none:SetShown(#results == 0)
+    finds.head.crumb:SetText(#results == 0 and ("Nothing matches \"" .. query .. "\".")
+        or (#sections .. (#sections == 1 and " section" or " sections") .. " and "
+            .. #named .. (#named == 1 and " page" or " pages") .. " match \"" .. query .. "\""))
+    finds:SetHeight(-math.min(tops[1], tops[2]) + 4)
+end
+
+local function Search(text)
+    text = tostring(text or ""):lower():match("^%s*(.-)%s*$")
+    if #text < 2 then
+        -- back to the page it was on
+        if finds.on then
+            EndSearch()
+            Select(current)
+        end
+        return
+    end
+    query = text
+    results = {}
+    for _, e in ipairs(index) do
+        if e.label:lower():find(query, 1, true) then table.insert(results, e) end
+    end
+    if not finds.on then
+        finds.on = true
+        for _, f in pairs(built) do
+            f:Hide()
+            f.head:Hide()
+        end
+        for _, t in ipairs(tabStrip.tabs) do t:Hide() end
+        body:ClearAllPoints()
+        body:SetPoint("TOPLEFT", window, "TOPLEFT", X, -(PAD + TITLE_ROOM + HEAD_H + 12))
+        body:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -PAD, FOOT + 4)
+        finds:Show()
+        finds.head:Show()
+        scroll:SetScrollChild(finds)
+        flash:Hide()
+        UI.CloseMenu()
+    end
+    Found()
+    scroll:SetVerticalScroll(0)
+    Thumb()
+    Nav()
 end
 
 local function SearchBox()
@@ -645,13 +711,14 @@ local function SearchBox()
         Search(self:GetText())
     end)
     box:SetScript("OnEscapePressed", function(self)
-        self:SetText("")
         self:ClearFocus()
+        self:SetText("")
         Search("")
     end)
     box:SetScript("OnEnterPressed", function(self)
         self:ClearFocus()
-        if results[1] then Choose(results[1]) end
+        local first = finds.links[1]
+        if first and first:IsShown() then Choose(first.entry) end
     end)
     box:SetScript("OnEditFocusGained", function(self)
         for _, t in ipairs(self.edge) do t:SetColorTexture(C.gold[1], C.gold[2], C.gold[3], 1) end
@@ -700,6 +767,7 @@ ns.RefreshOptions = Refresh
 function Select(path)
     local page, tab = Find(path)
     if not page then return end
+    EndSearch(true)
     if tab then lastTab[page.id] = tab.id end
     current = tab and (page.id .. "/" .. tab.id) or page.id
     local at = place[current]
@@ -782,7 +850,7 @@ local function Sidebar()
         local range = math.max(0, navChild:GetHeight() - self:GetHeight())
         self:SetVerticalScroll(math.max(0, math.min(range, self:GetVerticalScroll() - delta * 40)))
     end)
-    side.heads, side.rows, side.results = {}, {}, {}
+    side.heads, side.rows = {}, {}
     for _, cat in ipairs(categories) do
         local h = Head(cat)
         for _, item in ipairs(cat.items) do
@@ -794,8 +862,6 @@ local function Sidebar()
         end
         table.insert(side.heads, h)
     end
-    for i = 1, MOST do side.results[i] = Result() end
-    side.more = UI.Plain(navChild, 11, C.dim)
     -- the pages' names are found too
     for _, cat in ipairs(categories) do
         for _, item in ipairs(cat.items) do
@@ -919,6 +985,31 @@ local function Window()
     window.footProfile, window.footReload = footProfile, footReload
 
     local width = W - 2 * PAD - SIDE_W - 14 - 12
+    colW = math.floor((width - COL_GAP) / 2)
+    -- a search's page, its header saying what it found
+    finds = CreateFrame("Frame", nil, scroll)
+    finds:SetWidth(width)
+    finds:SetHeight(1)
+    finds.lent, finds.links = {}, {}
+    finds.head = CreateFrame("Frame", nil, window)
+    finds.head:SetPoint("TOPLEFT", window, "TOPLEFT", X, -(PAD + TITLE_ROOM))
+    finds.head:SetPoint("TOPRIGHT", window, "TOPRIGHT", -PAD, -(PAD + TITLE_ROOM))
+    finds.head:SetHeight(HEAD_H)
+    finds.head.title = UI.Serif(finds.head, 20, C.goldBright)
+    finds.head.title:SetPoint("TOPLEFT", 0, -2)
+    finds.head.title:SetText("Search")
+    finds.head.crumb = UI.Plain(finds.head, 12, C.dim)
+    finds.head.crumb:SetPoint("TOPLEFT", 0, -30)
+    local rule = UI.Fill(finds.head, "ARTWORK", C.goldDark)
+    rule:SetHeight(1)
+    rule:SetPoint("BOTTOMLEFT", 0, 0)
+    rule:SetPoint("BOTTOMRIGHT", 0, 0)
+    finds.none = UI.Plain(finds, 12, C.dim)
+    finds.none:SetPoint("TOPLEFT", 0, -4)
+    finds.none:SetText("No option, section or page has those letters in its name.")
+    finds:Hide()
+    finds.head:Hide()
+    window.finds = finds
     Each(function(content, path, page, tab)
         built[path] = content.modules and Modules(content, path, page, width) or Build(content, path, page, tab, width)
     end)
@@ -951,13 +1042,16 @@ function ns.BuildOptions()
     Window()
 end
 
--- What a search finds, and choosing its nth match (the harness's way in).
+-- What a search finds, and choosing its nth line on the right (the
+-- harness's way in).
 function ns.SearchOptions(text, choose)
     Window()
     search:SetText(text or "")
     Search(text)
-    if choose and results[choose] then Choose(results[choose]) end
-    return results
+    local found = results
+    local link = choose and finds.links[choose]
+    if link and link:IsShown() then Choose(link.entry) end
+    return found
 end
 
 ns.OnAnySetting(function() Refresh() end)
