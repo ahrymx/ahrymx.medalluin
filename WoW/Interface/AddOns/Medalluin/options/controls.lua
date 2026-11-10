@@ -1,8 +1,12 @@
--- The settings window's controls, in the console's ink and gold
--- (art/settings/gen_settings.py, draft B): a checkbox, a dropdown and the
--- list it opens, a colour swatch and a button. Each option control reads
--- ns.db and writes through ns.SetOption, so the modules hear about the
--- change the way they always have; Refresh(enabled) redraws one from ns.db.
+-- The settings window's controls, in the console's ink and gold: a
+-- checkbox, a switch, a dropdown and the list it opens, a colour swatch, a
+-- slider, a key box and a button. Each option control reads ns.db and
+-- writes through ns.SetOption, so the modules hear about the change the
+-- way they always have; Refresh(enabled) redraws one from ns.db.
+--
+-- In a row (row true: the window's sections) a control is one line, its
+-- label at the left and its box at the right; a label too long for its
+-- room wraps, and the row grows to hold it.
 --
 -- Nothing here is Blizzard's settings machinery or its dropdown menu: the
 -- window's frames are Medalluin's own, so they can taint nothing the game's
@@ -102,6 +106,15 @@ local function Tipped(frame, title, text)
     frame:SetScript("OnLeave", Untip)
 end
 
+-- a row's label: the room left of its box, wrapped; the row as tall as it
+UI.ROW_H = 24
+local function Fit(f, label, room)
+    label:SetWidth(math.max(20, room))
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(true)
+    f:SetHeight(math.max(UI.ROW_H, math.ceil(label:GetStringHeight() or 0) + 8))
+end
+
 -- ------------------------------------------------------------ button
 -- A gold-edged button; red for the window's Close.
 function UI.Button(parent, label, width, height, click, tip, red)
@@ -137,13 +150,13 @@ end
 local CHECK = 16
 UI.CHECK_H = 22
 
-function UI.Check(parent, spec, width)
+function UI.Check(parent, spec, width, row)
     local b = CreateFrame("Button", nil, parent)
     b:SetSize(width, UI.CHECK_H)
     b.spec = spec
     local box = Fill(b, "BACKGROUND", C.goldDark, 1)
     box:SetSize(CHECK, CHECK)
-    box:SetPoint("LEFT", 0, 0)
+    box:SetPoint(row and "RIGHT" or "LEFT", 0, 0)
     local well = Fill(b, "BACKGROUND", C.well, 2)
     well:SetPoint("TOPLEFT", box, "TOPLEFT", 1, -1)
     well:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -1, 1)
@@ -152,10 +165,16 @@ function UI.Check(parent, spec, width)
     b.tick:SetSize(CHECK + 4, CHECK + 4)
     b.tick:SetPoint("CENTER", box, "CENTER", 1, 1)
     b.label = UI.Plain(b, 12)
-    b.label:SetPoint("LEFT", box, "RIGHT", 7, 0)
-    b.label:SetPoint("RIGHT", 0, 0)
-    b.label:SetJustifyH("LEFT")
-    b.label:SetText(spec.label)
+    if row then
+        b.label:SetPoint("LEFT", 0, 0)
+        b.label:SetText(spec.label)
+        Fit(b, b.label, width - CHECK - 12)
+    else
+        b.label:SetPoint("LEFT", box, "RIGHT", 7, 0)
+        b.label:SetPoint("RIGHT", 0, 0)
+        b.label:SetJustifyH("LEFT")
+        b.label:SetText(spec.label)
+    end
     b:SetScript("OnClick", function() Set(spec, not Get(spec)) end)
     Tipped(b, spec.label, spec.tip)
     function b:Refresh(enabled)
@@ -164,6 +183,53 @@ function UI.Check(parent, spec, width)
         local c = enabled and C.text or C.dim
         self.label:SetTextColor(c[1], c[2], c[3])
         self:SetAlpha(enabled and 1 or 0.55)
+    end
+    return b
+end
+
+-- ------------------------------------------------------------ switch
+-- An on/off pill (a page's master, a module's card): a track gold-edged,
+-- filled while on, its knob at the right while on and at the left while
+-- off; label (optional) left of it. Its tick is the fill, as a checkbox's.
+UI.SWITCH_W, UI.SWITCH_H = 36, 18
+
+function UI.Switch(parent, spec, label)
+    local b = CreateFrame("Button", nil, parent)
+    b.spec = spec
+    local track = CreateFrame("Frame", nil, b)
+    track:SetSize(UI.SWITCH_W, UI.SWITCH_H)
+    track:SetPoint("RIGHT", 0, 0)
+    local well = Fill(track, "BACKGROUND", C.well, 1)
+    well:SetAllPoints()
+    b.edge = Outline(track, "BORDER", C.goldDark, 0)
+    b.tick = Fill(track, "ARTWORK", C.goldDark, 1)
+    b.tick:SetPoint("TOPLEFT", 1, -1)
+    b.tick:SetPoint("BOTTOMRIGHT", -1, 1)
+    b.knob = track:CreateTexture(nil, "OVERLAY")
+    b.knob:SetTexture(ns.media .. "strips\\round")
+    b.knob:SetSize(UI.SWITCH_H - 6, UI.SWITCH_H - 6)
+    b.track = track
+    local w = UI.SWITCH_W
+    if label then
+        b.label = UI.Serif(b, 12, C.gold)
+        b.label:SetPoint("RIGHT", track, "LEFT", -8, 0)
+        b.label:SetText(label)
+        w = w + 8 + math.ceil(b.label:GetStringWidth())
+    end
+    b:SetSize(w, UI.SWITCH_H + 4)
+    b:SetScript("OnClick", function() Set(spec, not Get(spec)) end)
+    Tipped(b, spec.label, spec.tip)
+    function b:Refresh(enabled)
+        self:SetEnabled(enabled)
+        local on = Get(spec) and true or false
+        self.tick:SetShown(on)
+        self.knob:ClearAllPoints()
+        self.knob:SetPoint(on and "RIGHT" or "LEFT", on and -3 or 3, 0)
+        local k = on and C.goldBright or C.dim
+        self.knob:SetVertexColor(k[1], k[2], k[3], 1)
+        local e = on and C.gold or C.goldDark
+        for _, t in ipairs(self.edge) do t:SetColorTexture(e[1], e[2], e[3], 1) end
+        self:SetAlpha(enabled and 1 or 0.45)
     end
     return b
 end
@@ -391,16 +457,29 @@ local function ChoiceLabel(spec)
     return tostring(value)
 end
 
-function UI.Choice(parent, spec, width)
+UI.CHOICE_W = 150                       -- a row's dropdown
+
+function UI.Choice(parent, spec, width, row)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(width, UI.CHOICE_H)
     f.spec = spec
-    f.label = UI.Serif(f, 11, C.goldBright)
-    f.label:SetPoint("TOPLEFT", 0, 0)
-    f.label:SetText(spec.label)
     local b = CreateFrame("Button", nil, f)
-    b:SetPoint("BOTTOMLEFT", 0, 0)
-    b:SetPoint("BOTTOMRIGHT", 0, 0)
+    if row then
+        local box = math.min(UI.CHOICE_W, math.floor(width * 0.55))
+        f.label = UI.Plain(f, 12)
+        f.label:SetPoint("LEFT", 0, 0)
+        f.label:SetText(spec.label)
+        Fit(f, f.label, width - box - 10)
+        b:SetPoint("RIGHT", 0, 0)
+        b:SetWidth(box)
+    else
+        f.label = UI.Serif(f, 11, C.goldBright)
+        f.label:SetPoint("TOPLEFT", 0, 0)
+        f.label:SetText(spec.label)
+        b:SetPoint("BOTTOMLEFT", 0, 0)
+        b:SetPoint("BOTTOMRIGHT", 0, 0)
+    end
+    f.row = row
     b:SetHeight(22)
     local bg = Fill(b, "BACKGROUND", C.well, 1)
     bg:SetAllPoints()
@@ -421,6 +500,7 @@ function UI.Choice(parent, spec, width)
         b.value:SetText(ChoiceLabel(spec))
         local c = enabled and C.text or C.dim
         b.value:SetTextColor(c[1], c[2], c[3])
+        if self.row then self.label:SetTextColor(c[1], c[2], c[3]) end
         self:SetAlpha(enabled and 1 or 0.55)
         if not enabled and menu and menu.owner == b then UI.CloseMenu() end
     end
@@ -451,19 +531,25 @@ local function Pick(key)
         swatchFunc = Changed, cancelFunc = Cancel })
 end
 
-function UI.Color(parent, spec, width)
+function UI.Color(parent, spec, width, row)
     local b = CreateFrame("Button", nil, parent)
     b:SetSize(width, UI.CHECK_H)
     b.spec = spec
     local edge = Fill(b, "BACKGROUND", C.gold, 1)
     edge:SetSize(CHECK, CHECK)
-    edge:SetPoint("LEFT", 0, 0)
+    edge:SetPoint(row and "RIGHT" or "LEFT", 0, 0)
     b.swatch = Fill(b, "ARTWORK", { 1, 1, 1 })
     b.swatch:SetPoint("TOPLEFT", edge, "TOPLEFT", 1, -1)
     b.swatch:SetPoint("BOTTOMRIGHT", edge, "BOTTOMRIGHT", -1, 1)
     b.label = UI.Plain(b, 12)
-    b.label:SetPoint("LEFT", edge, "RIGHT", 7, 0)
-    b.label:SetText(spec.label)
+    if row then
+        b.label:SetPoint("LEFT", 0, 0)
+        b.label:SetText(spec.label)
+        Fit(b, b.label, width - CHECK - 12)
+    else
+        b.label:SetPoint("LEFT", edge, "RIGHT", 7, 0)
+        b.label:SetText(spec.label)
+    end
     b:SetScript("OnClick", function() Pick(spec.key) end)
     Tipped(b, spec.label, spec.tip)
     function b:Refresh(enabled)
@@ -483,15 +569,30 @@ end
 -- its ends. spec.text, when there is one, says the value ("No limit").
 UI.SLIDER_H = 40
 
-function UI.Slider(parent, spec, width)
+UI.SLIDER_W, UI.VALUE_W = 140, 44      -- a row's slider (its buttons and track), and its value
+
+function UI.Slider(parent, spec, width, row)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(width, UI.SLIDER_H)
     f.spec = spec
-    f.label = UI.Serif(f, 11, C.goldBright)
-    f.label:SetPoint("TOPLEFT", 0, 0)
-    f.label:SetText(spec.label)
-    f.value = UI.Plain(f, 11)
-    f.value:SetPoint("TOPRIGHT", 0, 0)
+    f.row = row
+    local room = row and math.min(UI.SLIDER_W, math.floor(width * 0.45)) or width
+    if row then
+        f.label = UI.Plain(f, 12)
+        f.label:SetPoint("LEFT", 0, 0)
+        f.label:SetText(spec.label)
+        Fit(f, f.label, width - room - UI.VALUE_W - 12)
+        f.value = UI.Plain(f, 11)
+        f.value:SetPoint("RIGHT", f, "RIGHT", -(room + 6), 0)
+        f.value:SetWidth(UI.VALUE_W)
+        f.value:SetJustifyH("RIGHT")
+    else
+        f.label = UI.Serif(f, 11, C.goldBright)
+        f.label:SetPoint("TOPLEFT", 0, 0)
+        f.label:SetText(spec.label)
+        f.value = UI.Plain(f, 11)
+        f.value:SetPoint("TOPRIGHT", 0, 0)
+    end
     local step = spec.step or 1
     local function Clamp(v)
         v = math.floor(v / step + 0.5) * step
@@ -501,12 +602,17 @@ function UI.Slider(parent, spec, width)
         Set(spec, Clamp((Get(spec) or spec.min) + by))
     end
     f.less = UI.Button(f, "-", 18, 18, function() Nudge(-step) end)
-    f.less:SetPoint("BOTTOMLEFT", 0, 0)
     f.more = UI.Button(f, "+", 18, 18, function() Nudge(step) end)
-    f.more:SetPoint("BOTTOMRIGHT", 0, 0)
+    if row then
+        f.less:SetPoint("RIGHT", f, "RIGHT", -(room - 18), 0)
+        f.more:SetPoint("RIGHT", 0, 0)
+    else
+        f.less:SetPoint("BOTTOMLEFT", 0, 0)
+        f.more:SetPoint("BOTTOMRIGHT", 0, 0)
+    end
     local track = CreateFrame("Button", nil, f)
-    track:SetPoint("BOTTOMLEFT", f.less, "BOTTOMRIGHT", 8, 0)
-    track:SetPoint("BOTTOMRIGHT", f.more, "BOTTOMLEFT", -8, 0)
+    track:SetPoint("BOTTOMLEFT", f.less, "BOTTOMRIGHT", 6, 0)
+    track:SetPoint("BOTTOMRIGHT", f.more, "BOTTOMLEFT", -6, 0)
     track:SetHeight(18)
     local rail = Fill(track, "BACKGROUND", C.well, 1)
     rail:SetPoint("LEFT", 0, 0)
@@ -545,6 +651,7 @@ function UI.Slider(parent, spec, width)
         self.more:Refresh(enabled)
         local c = enabled and C.text or C.dim
         self.value:SetTextColor(c[1], c[2], c[3])
+        if self.row then self.label:SetTextColor(c[1], c[2], c[3]) end
         self:SetAlpha(enabled and 1 or 0.55)
     end
     return f

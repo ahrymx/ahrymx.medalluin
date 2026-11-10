@@ -1,9 +1,11 @@
--- What the settings window shows: the tree's pages in order, Console's and
--- Unit Frames' pages as tabs, each page's options in groups. Data only; the window
--- (window.lua) draws it and controls.lua makes the controls.
+-- What the settings window shows: its pages, some with tabs, each page's
+-- options in groups, and the sidebar's categories they are listed under.
+-- Data only; the window (window.lua) draws it and controls.lua makes the
+-- controls.
 --
--- A page's master, when it has one, is the checkbox at its top: while it is
--- off, everything else on the page is drawn but cannot be changed. An
+-- A page's master, when it has one, is the switch in its header and its
+-- card on Modules: while it is off, everything else on the page is drawn
+-- but cannot be changed. An
 -- option marked reload takes effect after a reload; the window's footer
 -- says so once one has changed.
 local _, ns = ...
@@ -91,6 +93,54 @@ local function LowRows()
     end
     table.insert(out, { "mana", "Mana", "Your mana, the amount at its right. Empty for a class without mana." })
     return out
+end
+
+-- A module's medallion (media/strips) and its line on Modules, by path; an
+-- addon's page has a card without a switch.
+local MODULES = {
+    ["console/bar"] = { "skills", "Medalluin's bar on top of the console, holding action bar 1." },
+    ["console/overhead"] = { "view-full", "Boss, pet, focus and target frames, and bars, at the top of the screen." },
+    chat = { "chat", "Blizzard's chat in a box over the micro menu." },
+    ["side/general"] = { "side-meter", "Auras, meter and loot tabs on the right strip." },
+    ["side/auras"] = { "side-auras", "Your buffs and debuffs, with the time each has left." },
+    ["side/meter"] = { "side-rate", "Damage, healing and more for each member, from the game's meter." },
+    ["side/loot"] = { "side-loot", "What your group looted, boss by boss, with who won each roll." },
+    quests = { "quests", "Your tracked quests on the left of the screen, by zone." },
+    bags = { "view-bags", "One window for every bag, sorted and searchable." },
+    bank = { "currency", "The bank in a window of its own, with the bags' views and search." },
+    character = { "character", "Gear, stats, reputation and currency." },
+    spellbook = { "spellbook", "Spells in role cards, macros and the trainer." },
+    talents = { "talents", "A tab for each tree, with Apply and your plans." },
+    professions = { "profession", "An overview, and a tab for each profession that crafts." },
+    questlog = { "questlog", "Every quest in your log, by zone, on the right strip." },
+    lfg = { "lfg", "The group finder and Who." },
+    cdm = { "side-timeless", "The game's Cooldown Manager, its spells as medallions." },
+    cc = { "mouse", "The game's Click Casting, each binding with its keycaps." },
+    npc = { "social", "Gossip, quests, vendors, trainers, flights and mail." },
+    tooltips = { "help", "Tooltips reskinned, with a live style editor.", addon = true },
+}
+local SCOPES = { "Shared by every profile.", "Kept per profile." }
+
+-- A page's or tab's extras for the window: Forever only, and the scope its
+-- intro opened with (said once, in its header), off the intro; its
+-- medallion and line.
+local function Dress(content, path)
+    local intro = content.intro
+    if intro then
+        if intro:find("^Forever only%. ") then
+            content.forever = true
+            intro = intro:sub(#"Forever only. " + 1)
+        end
+        for _, scope in ipairs(SCOPES) do
+            if intro:sub(1, #scope) == scope then
+                content.scope = scope:sub(1, -2)
+                intro = (intro:sub(#scope + 1):gsub("^ +", ""))
+            end
+        end
+        content.intro = intro ~= "" and intro or nil
+    end
+    local m = MODULES[path]
+    if m then content.glyph, content.blurb, content.addon = m[1], m[2], m.addon end
 end
 
 -- Lists of groups, one after another.
@@ -207,7 +257,12 @@ function ns.OptionPages()
         })
     end
 
-    return {
+    local list = {
+        {
+            id = "modules", name = "Modules", modules = true,
+            intro = "Turn Medalluin's parts on or off. Some take effect after a reload; the footer says when.",
+            groups = {},
+        },
         {
             id = "general", name = "General", intro = "Shared by every profile.",
             groups = {
@@ -828,5 +883,33 @@ function ns.OptionPages()
                         .. "(/mdltip options).")),
             },
         },
+    }
+    for _, page in ipairs(list) do
+        if page.tabs then
+            for _, tab in ipairs(page.tabs) do Dress(tab, page.id .. "/" .. tab.id) end
+        else
+            Dress(page, page.id)
+        end
+    end
+    return list
+end
+
+-- The sidebar: its categories in order, each a heading over its items (a
+-- page, or one of a page's tabs; a page with tabs listed whole keeps them as
+-- a row under its header). A category's scope or note sits by its heading on
+-- Modules.
+function ns.OptionCategories()
+    return {
+        { name = "Overview", items = { "modules", "general" } },
+        { name = "Console", scope = "Kept per profile",
+            items = { "console/general", "console/bar", "console/overhead", "console/minimap" } },
+        { name = "Unit frames",
+            items = { "units/general", "units/party", "units/raid", "units/battleground", "units/boss",
+                "units/arena" } },
+        { name = "Interface", scope = "Shared by every profile", items = { "chat", "side", "quests" } },
+        { name = "Windows", note = "Blizzard's windows, reskinned",
+            items = { "bags", "bank", "character", "spellbook", "talents", "professions", "questlog", "lfg", "cdm",
+                "cc", "npc" } },
+        { name = "Extensions", note = "Companion addons", items = { "tooltips" } },
     }
 end

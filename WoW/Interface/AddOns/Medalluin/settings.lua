@@ -131,6 +131,7 @@ local DEFAULTS = {
     questsTitleFont = "marcellus", questsTitleSize = 12,         -- ns.Fonts()'s keys, and points
     questsObjectiveFont = "marcellus", questsObjectiveSize = 12,
     optionsPoint = false,   -- where the settings window was dragged to, the same way (options/window.lua)
+    optionsFolded = false,  -- the settings sidebar's folded categories, by name
     editorPoint = false,    -- and the unit-frame editor's (options/editor.lua)
     editCanvasPoint = false, -- and its edit-mode canvas (options/canvas.lua)
     xpCast = false,         -- the player's casts over the experience bar
@@ -504,6 +505,7 @@ local MOVE = { move = true, movers = true, unlock = true }
 
 -- /mdlui <word>: the window on that page.
 local PAGES = {
+    [""] = "modules", modules = "modules", module = "modules", mods = "modules",
     console = "console/general", profile = "console/general", profiles = "console/general",
     position = "console/general", scale = "console/general", place = "console/general",
     layout = "console/general", unitlayout = "console/general",
@@ -531,7 +533,7 @@ local PAGES = {
 }
 
 local function OpenSettings(arg)
-    arg = tostring(arg or ""):lower():match("^%s*(%S+)")
+    arg = tostring(arg or ""):lower():match("^%s*(%S*)")
     if (arg == "taint" or arg == "debug") and ns.TaintReport then
         ns.TaintReport()
         return

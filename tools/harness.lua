@@ -5018,16 +5018,14 @@ if barPass then
             "tabs=" .. lit(win.tabs, function(t) return not t.edge[2].shown end),
             "height=" .. f.h, "range=" .. win.scroll:GetVerticalScrollRange(),
             "thumb=" .. tostring(win.thumb.shown))
-        -- a group's heading must draw over its border, not under it: on a
-        -- frame no lower than the one the border is drawn on
-        local over, groups = 0, 0
-        for _, e in ipairs(f.all_ or {}) do
-            if e.title then
-                groups = groups + 1
-                if e.title.parent.level >= e.level then over = over + 1 end
-            end
-        end
-        print("  headings over their borders", over .. "/" .. groups)
+        -- the header: title, where it sits, the master's switch; then each
+        -- section's column and top
+        local m = f.master
+        print("  header", f.head.title.text, f.head.crumb.text, m and ("switch=" .. (m.label and m.label.text or "")
+            .. (m.tick.shown and " on" or " off") .. (m:IsEnabled() and "" or " grey")) or "switch=-")
+        local secs = {}
+        for _, s in ipairs(f.sections) do table.insert(secs, s.title.text .. "@" .. tostring(s.col) .. "," .. s.top) end
+        print("  sections", table.concat(secs, "; "))
         local top = resolve(f)
         for _, c in ipairs(f.controls) do
             local r = resolve(c)
@@ -5054,6 +5052,88 @@ if barPass then
     page.settings.side:Set(false)
     dump("side/auras")
     page.settings.side:Set(true)
+    ;(function()
+        -- the sidebar: each category, open or folded, its items and their dots
+        local function sidebar(label)
+            local o = {}
+            for _, h in ipairs(win.tree.heads) do
+                local items = {}
+                for _, r in ipairs(h.rows) do
+                    if r.shown ~= false then
+                        table.insert(items, (r.lit.shown and "*" or "") .. r.text.text
+                            .. (r.dot and (r.dot.on and "(on)" or "(off)") or ""))
+                    end
+                end
+                table.insert(o, h.cat.name .. (h.open and "" or "+") .. ": " .. table.concat(items, ", "))
+            end
+            print("options.sidebar " .. label, table.concat(o, " | "))
+        end
+        ns.OpenOptions("bags")
+        sidebar("bags")
+        local function head(name)
+            for _, h in ipairs(win.tree.heads) do if h.cat.name == name then return h end end
+        end
+        head("Unit frames").scripts.OnClick(head("Unit frames"))
+        head("Windows").scripts.OnClick(head("Windows"))
+        sidebar("folded")
+        print("options.folded saved", ns.db.optionsFolded and ns.db.optionsFolded["Unit frames"],
+            ns.db.optionsFolded and ns.db.optionsFolded.Windows)
+        head("Unit frames").scripts.OnClick(head("Unit frames"))
+        ns.OpenOptions("console/bar")
+        sidebar("unit frames unfolded")
+        head("Windows").scripts.OnClick(head("Windows"))
+        print("options.folded cleared", tostring(ns.db.optionsFolded))
+        -- Modules: a card a part, under its category
+        ns.OpenOptions("modules")
+        local mods = ns.optionPages.modules
+        local function cards(label)
+            local o = {}
+            for _, c in ipairs(mods.cards) do
+                table.insert(o, c.name.text .. (c.tag.shown ~= false and ("[" .. c.tag.text.text .. "]") or "")
+                    .. (c.switch and ((c.switch.tick.shown and " on" or " off")
+                        .. (c.switch:IsEnabled() and "" or " grey")) or "") .. ">" .. c.path)
+            end
+            print("options.modules " .. label, table.concat(o, "; "))
+        end
+        local secs = {}
+        for _, s in ipairs(mods.sections) do table.insert(secs, s.title.text .. " (" .. s.note.text .. ")") end
+        print("options.modules sections", table.concat(secs, "; "))
+        cards("all on")
+        page.settings.side:Set(false)
+        cards("side off")
+        page.settings.side:Set(true)
+        local bags
+        for _, c in ipairs(mods.cards) do if c.path == "bags" then bags = c end end
+        bags.switch.scripts.OnClick(bags.switch)
+        print("options.modules bags switch", "bags=" .. tostring(ns.db.bags), "reload=" .. tostring(win.footReload.shown),
+            "header=" .. tostring(ns.optionControls.bags.tick.shown))
+        bags.switch.scripts.OnClick(bags.switch)
+        bags.scripts.OnClick(bags)
+        print("options.modules card click", "opens=" .. tostring(ns.OptionsShown()))
+        -- search: matches, where they are; choosing one opens its page at its
+        -- section and outlines it; Esc gives the sidebar back
+        local found = ns.SearchOptions("sweep")
+        local o = {}
+        for _, e in ipairs(found) do table.insert(o, e.label .. " (" .. e.where .. ")") end
+        print("options.search sweep", #found, table.concat(o, "; "))
+        local shown = 0
+        for _, r in ipairs(win.tree.results) do if r.shown ~= false then shown = shown + 1 end end
+        print("options.search rows", shown, "items shown=" .. tostring(win.tree.rows[1].shown))
+        ns.SearchOptions("sweep", 1)
+        local f = ns.optionPages[ns.OptionsShown()]
+        print("options.search chosen", ns.OptionsShown(), "scroll=" .. win.scroll:GetVerticalScroll(),
+            "flash=" .. tostring(win.flash.shown) .. " on " .. tostring(win.flash.control and win.flash.control.spec.label),
+            "section top=" .. tostring(f.sections[1] and f.sections[1].top))
+        print("options.search none", #ns.SearchOptions("zzzq"), win.tree.more.text)
+        win.search.scripts.OnEscapePressed(win.search)
+        shown = 0
+        for _, r in ipairs(win.tree.results) do if r.shown ~= false then shown = shown + 1 end end
+        print("options.search cleared", shown, "items shown=" .. tostring(win.tree.rows[1].shown ~= false))
+        SlashCmdList.MDLUI("modules")
+        print("options./mdlui modules", ns.OptionsShown())
+        SlashCmdList.MDLUI("bar")
+        print("options./mdlui bar", ns.OptionsShown())
+    end)()
     -- a dropdown's list: its choices, the one in use marked; a row chosen
     ns.OpenOptions("units/party")
     local range = ns.optionControls.partyRange

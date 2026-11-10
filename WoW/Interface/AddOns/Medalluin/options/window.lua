@@ -1,9 +1,12 @@
--- Medalluin's settings window (art/settings/gen_settings.py, draft B): the
--- tree down the left holds the top pages, Console's pages are tabs over the
--- body, and a page's options sit in framed groups, two to a row. The title
--- on the top edge, or the window itself, drags it; where it is left is
--- kept. The footer names the profile being edited and, once an option that
--- waits for one has changed, asks for a reload.
+-- Medalluin's settings window: a sidebar down the left lists the pages
+-- under their categories (pages.lua's), with a search over every option
+-- above them; the page shown has a header (its title, where it sits, its
+-- master's switch) over its options, each group a section of label-left
+-- rows, the sections in two columns. Modules, the page it opens on, has a
+-- card for each part with a master. The title on the top edge, or the
+-- window itself, drags it; where it is left is kept. The footer names the
+-- profile being edited and, once an option that waits for one has
+-- changed, asks for a reload.
 --
 -- Built the first time it opens (/mdlui, the minimap button, the button on
 -- Options > AddOns > Medalluin); pages.lua says what is on it.
@@ -12,12 +15,19 @@ local _, ns = ...
 local UI = ns.OptionsUI
 local C = UI.colors
 
-local W, H = 820, 560
-local PAD, TREE_W, TITLE_ROOM, FOOT = 14, 170, 22, 46
-local TAB_H, ROW_GAP, COL_GAP, INSET = 24, 8, 18, 14
+local W, H = 900, 600
+local PAD, SIDE_W, TITLE_ROOM, FOOT = 14, 200, 22, 46
+local HEAD_H, TAB_H, COL_GAP, SEC_GAP = 54, 24, 22, 14
+local ITEM_H, CAT_H, SEARCH_H, RESULT_H = 22, 22, 22, 32
+local CARD_H, CARD_GAP = 44, 8
+local MOST = 30                         -- search results listed
+local X = PAD + SIDE_W + 14             -- the header's and body's left
+local ROUND = ns.media .. "strips\\round"
+local GREEN = { 0.42, 0.78, 0.36 }
 
 local pages        -- pages.lua's, built at login
-local window, tree, tabStrip, body, scroll, thumb
+local categories
+local window, side, nav, navChild, search, tabStrip, body, scroll, thumb, flash
 local footProfile, footReload
 local built = {}   -- page frames by path ("general", "console/unit")
 ns.optionPages = built
@@ -26,6 +36,10 @@ local lastTab = {} -- each tabbed page's tab, by page id
 local reloadAt     -- what the reload options were at login
 local controls = {}
 ns.optionControls = controls
+local place = {}   -- each path's category and sidebar item
+local index = {}   -- what search looks through
+local query        -- what it is looking for, while it is
+local results = {}
 
 -- ------------------------------------------------------------ pages
 local function Find(path)
@@ -45,9 +59,35 @@ end
 local function Each(fn)
     for _, page in ipairs(pages) do
         if page.tabs then
-            for _, tab in ipairs(page.tabs) do fn(tab, page.id .. "/" .. tab.id) end
+            for _, tab in ipairs(page.tabs) do fn(tab, page.id .. "/" .. tab.id, page, tab) end
         else
-            fn(page, page.id)
+            fn(page, page.id, page, nil)
+        end
+    end
+end
+
+-- A sidebar item's name, and whether it is a tabbed page listed whole (its
+-- tabs a row under its header).
+local function Whole(item)
+    local page = Find(item)
+    return page and page.tabs and not item:find("/") and page
+end
+local function ItemName(item)
+    local page, tab = Find(item)
+    if not page then return item end
+    return (tab and not Whole(item)) and tab.name or page.name
+end
+
+-- Every path's category and item.
+local function Places()
+    for _, cat in ipairs(categories) do
+        for _, item in ipairs(cat.items) do
+            local page, tab = Find(item)
+            if Whole(item) then
+                for _, t in ipairs(page.tabs) do place[item .. "/" .. t.id] = { cat = cat, item = item } end
+            elseif page then
+                place[tab and (page.id .. "/" .. tab.id) or page.id] = { cat = cat, item = item }
+            end
         end
     end
 end
@@ -74,20 +114,24 @@ local function NeedsReload()
 end
 
 -- ------------------------------------------------------------ a page
-local function Control(parent, spec, width)
+-- An option's control: in a section's row (row true), or a header's switch
+-- (row "switch", label by it).
+local function Control(parent, spec, width, row, label)
     local c
-    if spec.kind == "check" then
-        c = UI.Check(parent, spec, width)
+    if row == "switch" then
+        c = UI.Switch(parent, spec, label)
+    elseif spec.kind == "check" then
+        c = UI.Check(parent, spec, width, row)
     elseif spec.kind == "choice" then
-        c = UI.Choice(parent, spec, width)
+        c = UI.Choice(parent, spec, width, row)
     elseif spec.kind == "color" then
-        c = UI.Color(parent, spec, width)
+        c = UI.Color(parent, spec, width, row)
     elseif spec.kind == "slider" then
-        c = UI.Slider(parent, spec, width)
+        c = UI.Slider(parent, spec, width, row)
     elseif spec.kind == "key" then
         c = UI.Key(parent, spec, width)
     else
-        c = UI.Button(parent, spec.label, math.min(width, 160), 24, spec.click, spec.tip)
+        c = UI.Button(parent, spec.label, math.min(width, 200), 24, spec.click, spec.tip)
     end
     -- a control drawn greyed while another option is off, or while its
     -- page's own test says no (spec.needs; content.enabled) unless it is
@@ -98,78 +142,273 @@ local function Control(parent, spec, width)
     return c
 end
 
--- Lay a page's content out top down: its line of intro, its master, then
--- each group, two controls a row, a row as tall as its tallest and every
--- control on the row's bottom (so a checkbox sits level with a dropdown's
--- box).
-local function Build(content, width)
+-- A page's header, over its body: its title, where it sits ("Console >
+-- Action Bars · Kept per profile"), its master's switch, a hairline under.
+-- Shown with its page.
+local function Header(f, content, path, page, tab)
+    local head = CreateFrame("Frame", nil, window)
+    head:SetPoint("TOPLEFT", window, "TOPLEFT", X, -(PAD + TITLE_ROOM))
+    head:SetPoint("TOPRIGHT", window, "TOPRIGHT", -PAD, -(PAD + TITLE_ROOM))
+    head:SetHeight(HEAD_H)
+    local at = place[path]
+    local whole = at and Whole(at.item)
+    head.title = UI.Serif(head, 20, C.goldBright)
+    head.title:SetPoint("TOPLEFT", 0, -2)
+    head.title:SetText(at and ItemName(at.item) or (tab and tab.name or page.name))
+    local parts = {}
+    if at then
+        table.insert(parts, at.cat.name)
+        table.insert(parts, ItemName(at.item))
+        if whole then table.insert(parts, tab.name) end
+    end
+    local scope = content.scope or at and at.cat.scope
+    head.crumb = UI.Plain(head, 12, C.dim)
+    head.crumb:SetPoint("TOPLEFT", 0, -30)
+    head.crumb:SetText(table.concat(parts, "  >  ") .. (scope and ("   \194\183   " .. scope) or ""))
+    if content.master then
+        -- a tab's switch names what it turns on: the page's own is Enabled
+        local m = Control(head, content.master, nil, "switch", whole and content.master.label or "Enabled")
+        m:SetPoint("TOPRIGHT", 0, -6)
+        f.master = m
+        table.insert(f.controls, m)
+    end
+    local rule = UI.Fill(head, "ARTWORK", C.goldDark)
+    rule:SetHeight(1)
+    rule:SetPoint("BOTTOMLEFT", 0, 0)
+    rule:SetPoint("BOTTOMRIGHT", 0, 0)
+    head:Hide()
+    f.head = head
+end
+
+local function Where(path, title)
+    local at = place[path]
+    local s = at and (at.cat.name .. " > " .. ItemName(at.item)) or path
+    local _, tab = Find(path)
+    if at and Whole(at.item) and tab then s = s .. " > " .. tab.name end
+    return title and (s .. " > " .. title) or s
+end
+
+-- A group as a section: its heading over a hairline, its tip, then an
+-- option a row.
+local function Section(f, group, width, path)
+    local s = CreateFrame("Frame", nil, f)
+    s:SetWidth(width)
+    s.title = UI.Serif(s, 14, C.goldBright)
+    s.title:SetPoint("TOPLEFT", 0, 0)
+    s.title:SetText(group.title)
+    local rule = UI.Fill(s, "ARTWORK", C.goldDark)
+    rule:SetHeight(1)
+    rule:SetPoint("TOPLEFT", 0, -20)
+    rule:SetPoint("TOPRIGHT", 0, -20)
+    local y = -28
+    if group.tip then
+        local tip = UI.Plain(s, 11, C.dim)
+        tip:SetPoint("TOPLEFT", 6, y)
+        tip:SetWidth(width - 6)
+        tip:SetJustifyH("LEFT")
+        tip:SetText(group.tip)
+        y = y - math.ceil(tip:GetStringHeight()) - 8
+    end
+    local where = Where(path, group.title)
+    table.insert(index, { label = group.title, path = path, section = s, where = Where(path) })
+    for _, spec in ipairs(group.items) do
+        local c = Control(s, spec, width - 6, true)
+        c:SetPoint("TOPLEFT", 6, y)
+        table.insert(f.controls, c)
+        y = y - c:GetHeight() - 6
+        if spec.label then
+            table.insert(index, { label = spec.label, path = path, section = s, control = c, where = where })
+        end
+    end
+    s:SetHeight(-y)
+    return s
+end
+
+-- The page's intro, then its sections in two columns, each in the shorter.
+local function Build(content, path, page, tab, width)
     local f = CreateFrame("Frame", nil, scroll)
     f:SetWidth(width)
     f.controls = {}
+    f.sections = {}
     f.enabled = content.enabled
-    local y = -INSET
+    Header(f, content, path, page, tab)
+    local y = -4
     if content.intro then
-        local intro = UI.Plain(f, 11, C.dim)
-        intro:SetPoint("TOPLEFT", INSET, y)
-        intro:SetWidth(width - 2 * INSET)
+        local intro = UI.Plain(f, 12, C.dim)
+        intro:SetPoint("TOPLEFT", 0, y)
+        intro:SetWidth(width)
         intro:SetJustifyH("LEFT")
         intro:SetText(content.intro)
-        y = y - math.ceil(intro:GetStringHeight()) - 10
+        f.intro = intro
+        y = y - math.ceil(intro:GetStringHeight()) - 16
     end
-    if content.master then
-        local m = Control(f, content.master, width - 2 * INSET)
-        m:SetPoint("TOPLEFT", INSET, y)
-        f.master = m
-        table.insert(f.controls, m)
-        y = y - m:GetHeight() - 12
+    local colW = math.floor((width - COL_GAP) / 2)
+    local tops = { y, y }
+    for i, group in ipairs(content.groups) do
+        local col = tops[2] > tops[1] and 2 or 1
+        local s = Section(f, group, colW, path)
+        s:SetPoint("TOPLEFT", (col - 1) * (colW + COL_GAP), tops[col])
+        s.top, s.col = -tops[col], col
+        tops[col] = tops[col] - s:GetHeight() - SEC_GAP
+        f.sections[i] = s
     end
-    local inner = width - 2 * INSET
-    local colW = math.floor((inner - 2 * INSET - COL_GAP) / 2)
-    for _, group in ipairs(content.groups) do
-        local top = y
-        y = top - 26
-        if group.tip then
-            local tip = UI.Plain(f, 11, C.dim)
-            tip:SetPoint("TOPLEFT", 2 * INSET, y)
-            tip:SetWidth(inner - 2 * INSET)
-            tip:SetJustifyH("LEFT")
-            tip:SetText(group.tip)
-            y = y - math.ceil(tip:GetStringHeight()) - 8
+    f:SetHeight(-math.min(tops[1], tops[2]) + 4)
+    f:Hide()
+    return f
+end
+
+-- ------------------------------------------------------------ modules
+local Select
+
+-- A part's card on Modules: its medallion, name, tag and line, its master's
+-- switch (not the header's: the header's is the option's control); a click
+-- off the switch opens its page. An addon's card has no switch, only
+-- whether the addon is loaded.
+local function CardName(content)
+    local name = (content.master.label:gsub(" window$", ""))
+    return #name > 22 and content.name or name
+end
+
+local function Card(parent, content, path, width, names)
+    local m = content.master
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(width, CARD_H)
+    b.path, b.needs, b.content = path, m and m.needs, content
+    UI.Fill(b, "BACKGROUND", C.ink, 1):SetAllPoints()
+    b.edge = UI.Outline(b, "BORDER", C.goldDark, 0)
+    local ring = b:CreateTexture(nil, "ARTWORK", nil, 1)
+    ring:SetTexture(ROUND)
+    ring:SetSize(32, 32)
+    ring:SetPoint("LEFT", 8, 0)
+    ring:SetVertexColor(C.goldDark[1], C.goldDark[2], C.goldDark[3], 1)
+    local well = b:CreateTexture(nil, "ARTWORK", nil, 2)
+    well:SetTexture(ROUND)
+    well:SetSize(28, 28)
+    well:SetPoint("CENTER", ring, "CENTER", 0, 0)
+    well:SetVertexColor(C.well[1], C.well[2], C.well[3], 1)
+    b.glyph = b:CreateTexture(nil, "ARTWORK", nil, 3)
+    b.glyph:SetTexture(ns.media .. "strips\\" .. (content.glyph or "help"))
+    b.glyph:SetSize(18, 18)
+    b.glyph:SetPoint("CENTER", ring, "CENTER", 0, 0)
+    b.name = UI.Serif(b, 13, C.gold)
+    b.name:SetPoint("TOPLEFT", 50, -7)
+    b.name:SetText(m and CardName(content) or content.name)
+    -- the tag: Forever, what it needs, or the addon's state
+    local tag = CreateFrame("Frame", nil, b)
+    tag:SetHeight(14)
+    tag:SetPoint("LEFT", b.name, "RIGHT", 8, 0)
+    UI.Outline(tag, "BORDER", C.goldDark, 0)
+    tag.text = UI.Plain(tag, 10, C.gold)
+    tag.text:SetPoint("CENTER", 0, 0)
+    b.tag = tag
+    local function Tag(text)
+        tag.text:SetText(text or "")
+        tag:SetWidth(math.ceil(tag.text:GetStringWidth()) + 10)
+        tag:SetShown(text ~= nil)
+    end
+    Tag(content.forever and "Forever" or b.needs and ("Needs " .. (names[b.needs] or b.needs)) or nil)
+    b.blurb = UI.Plain(b, 11, C.dim)
+    b.blurb:SetPoint("BOTTOMLEFT", 50, 7)
+    b.blurb:SetPoint("RIGHT", b, "RIGHT", -(UI.SWITCH_W + 18), 0)
+    b.blurb:SetJustifyH("LEFT")
+    b.blurb:SetWordWrap(false)
+    b.blurb:SetText(content.blurb or "")
+    if m then
+        b.switch = UI.Switch(b, m)
+        b.switch:SetPoint("RIGHT", -10, 0)
+    end
+    b:SetScript("OnClick", function(self) Select(self.path) end)
+    b:SetScript("OnEnter", function(self)
+        local why = self.off and ("Turn on " .. (names[self.needs] or self.needs) .. " first.")
+        UI.Tip(self, self.name:GetText(), why or (m and m.tip) or content.intro)
+    end)
+    b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    function b:Refresh(enabled)
+        local on
+        if m then
+            self.switch:Refresh(enabled)
+            on = enabled and UI.Get(m) and true or false
+        else
+            on = content.enabled and content.enabled() and true or false
+            Tag(on and "Loaded" or "Addon off")
         end
-        local items = group.items
-        for i = 1, #items, 2 do
-            local row = {}
-            local rowH = 0
-            for col = 0, 1 do
-                local spec = items[i + col]
-                if spec then
-                    local c = Control(f, spec, colW)
-                    row[col + 1] = c
-                    rowH = math.max(rowH, c:GetHeight())
-                    table.insert(f.controls, c)
-                end
+        self.off = m and not enabled
+        local e = on and C.gold or C.goldDark
+        for _, t in ipairs(self.edge) do t:SetColorTexture(e[1], e[2], e[3], 1) end
+        local n = enabled and (on and C.goldBright or C.gold) or C.dim
+        self.name:SetTextColor(n[1], n[2], n[3])
+        local g = on and C.goldBright or C.dim
+        self.glyph:SetVertexColor(g[1], g[2], g[3], 1)
+    end
+    return b
+end
+
+-- Every part with a master, a card each under the sidebar's categories.
+local function Modules(content, path, page, width)
+    local f = CreateFrame("Frame", nil, scroll)
+    f:SetWidth(width)
+    f.controls = {}
+    f.sections = {}
+    f.cards = {}
+    Header(f, content, path, page, nil)
+    local intro = UI.Plain(f, 12, C.dim)
+    intro:SetPoint("TOPLEFT", 0, -4)
+    intro:SetWidth(width)
+    intro:SetJustifyH("LEFT")
+    intro:SetText(content.intro)
+    f.intro = intro
+    local y = -4 - math.ceil(intro:GetStringHeight()) - 16
+    -- the parts, and the names of those another needs
+    local names = {}
+    local function Parts(cat)
+        local out = {}
+        local function Add(c, p)
+            if c.master and c.master.kind == "check" then
+                table.insert(out, { c, p })
+                names[c.master.key] = CardName(c)
+            elseif c.addon then
+                table.insert(out, { c, p })
             end
-            for col, c in pairs(row) do
-                c:SetPoint("TOPLEFT", 2 * INSET + (col - 1) * (colW + COL_GAP), y - (rowH - c:GetHeight()))
-            end
-            y = y - rowH - ROW_GAP
         end
-        y = y - 4
-        -- the group's frame, its heading set into the top edge: the heading
-        -- and the panel-coloured gap behind it on the frame's own frame, as
-        -- a child frame draws over its parent's text
-        local edge = CreateFrame("Frame", nil, f)
-        edge:SetPoint("TOPLEFT", INSET, top - 8)
-        edge:SetPoint("BOTTOMRIGHT", f, "TOPLEFT", INSET + inner, y)
-        UI.Outline(edge, "BACKGROUND", C.goldDark, 0)
-        local title = UI.Serif(edge, 13, C.goldBright)
-        title:SetPoint("LEFT", edge, "TOPLEFT", 12, 0)
-        title:SetText(group.title)
-        local backing = UI.Fill(edge, "BORDER", C.panel)
-        backing:SetPoint("TOPLEFT", title, "TOPLEFT", -5, 2)
-        backing:SetPoint("BOTTOMRIGHT", title, "BOTTOMRIGHT", 5, -2)
-        edge.title = title
-        y = y - 14
+        for _, item in ipairs(cat.items) do
+            local pg, tab = Find(item)
+            if Whole(item) then
+                for _, t in ipairs(pg.tabs) do Add(t, item .. "/" .. t.id) end
+            elseif pg then
+                Add(tab or pg, item)
+            end
+        end
+        return out
+    end
+    local lists = {}
+    for i, cat in ipairs(categories) do lists[i] = Parts(cat) end
+    local cardW = math.floor((width - CARD_GAP) / 2)
+    for i, cat in ipairs(categories) do
+        local list = lists[i]
+        if #list > 0 then
+            local s = CreateFrame("Frame", nil, f)
+            s:SetPoint("TOPLEFT", 0, y)
+            s:SetWidth(width)
+            s.title = UI.Serif(s, 14, C.goldBright)
+            s.title:SetPoint("TOPLEFT", 0, 0)
+            s.title:SetText(cat.name)
+            s.note = UI.Plain(s, 11, C.dim)
+            s.note:SetPoint("BOTTOMLEFT", s.title, "BOTTOMRIGHT", 10, 1)
+            s.note:SetText(cat.note or cat.scope or "")
+            local sy = -24
+            for n, part in ipairs(list) do
+                local card = Card(s, part[1], part[2], cardW, names)
+                local col = (n - 1) % 2
+                card:SetPoint("TOPLEFT", col * (cardW + CARD_GAP), sy)
+                if col == 1 or n == #list then sy = sy - CARD_H - CARD_GAP end
+                table.insert(f.controls, card)
+                table.insert(f.cards, card)
+            end
+            s:SetHeight(-sy)
+            s.top = -y
+            table.insert(f.sections, s)
+            y = y - s:GetHeight() - SEC_GAP
+        end
     end
     f:SetHeight(-y + 4)
     f:Hide()
@@ -187,7 +426,7 @@ local function Thumb()
     local size = math.max(24, view * view / (view + range))
     thumb:SetHeight(size)
     thumb:ClearAllPoints()
-    thumb:SetPoint("TOPRIGHT", body, "TOPRIGHT", -4, -4 - (view - size) * scroll:GetVerticalScroll() / range)
+    thumb:SetPoint("TOPRIGHT", body, "TOPRIGHT", 0, -(view - size) * scroll:GetVerticalScroll() / range)
     thumb:Show()
 end
 
@@ -198,16 +437,255 @@ local function Scroll(delta)
     Thumb()
 end
 
+-- ------------------------------------------------------------ the sidebar
+local function Folded(name)
+    local folded = ns.db.optionsFolded
+    return type(folded) == "table" and folded[name] or false
+end
+
+local function Fold(name)
+    local folded = type(ns.db.optionsFolded) == "table" and ns.db.optionsFolded or {}
+    folded[name] = not folded[name] or nil
+    ns.db.optionsFolded = next(folded) and folded or false
+end
+
+-- The rows down the sidebar: a heading for each category, a row for each
+-- item; or, while searching, the matches.
+local function Nav()
+    local y = -2
+    for _, h in ipairs(side.heads) do h:Hide() end
+    for _, r in ipairs(side.rows) do r:Hide() end
+    for _, r in ipairs(side.results) do r:Hide() end
+    side.more:Hide()
+    local item = current and place[current] and place[current].item
+    if query then
+        for i, r in ipairs(side.results) do
+            local e = results[i]
+            if e then
+                r.entry = e
+                r.text:SetText(e.label)
+                r.where:SetText(e.where)
+                r:SetPoint("TOPLEFT", 0, y)
+                r:SetPoint("TOPRIGHT", 0, y)
+                r:Show()
+                y = y - RESULT_H
+            end
+        end
+        if #results > MOST then
+            side.more:SetText("and " .. (#results - MOST) .. " more")
+            side.more:SetPoint("TOPLEFT", 10, y - 4)
+            side.more:Show()
+            y = y - 22
+        elseif #results == 0 then
+            side.more:SetText("Nothing matches.")
+            side.more:SetPoint("TOPLEFT", 10, y - 4)
+            side.more:Show()
+            y = y - 22
+        end
+    else
+        for _, h in ipairs(side.heads) do
+            -- the shown page's category stays open
+            local here = false
+            for _, r in ipairs(h.rows) do here = here or r.path == item end
+            h.open = here or not Folded(h.cat.name)
+            h.sign:SetText(h.open and "" or "+")
+            h:SetPoint("TOPLEFT", 0, y)
+            h:SetPoint("TOPRIGHT", 0, y)
+            h:Show()
+            y = y - CAT_H
+            for _, r in ipairs(h.rows) do
+                if h.open then
+                    r:SetPoint("TOPLEFT", 0, y)
+                    r:SetPoint("TOPRIGHT", 0, y)
+                    r:Show()
+                    y = y - ITEM_H
+                end
+                local on = r.path == item
+                r.lit:SetShown(on)
+                r.bar:SetShown(on)
+                local c = on and C.goldBright or C.gold
+                r.text:SetTextColor(c[1], c[2], c[3])
+            end
+            y = y - 4
+        end
+    end
+    navChild:SetHeight(-y + 4)
+    local range = math.max(0, navChild:GetHeight() - nav:GetHeight())
+    if nav:GetVerticalScroll() > range then nav:SetVerticalScroll(range) end
+end
+
+local function Head(cat)
+    local h = CreateFrame("Button", nil, navChild)
+    h:SetHeight(CAT_H)
+    h.cat = cat
+    h.text = UI.Plain(h, 10, C.dim)
+    h.text:SetPoint("LEFT", 10, -2)
+    h.text:SetText(cat.name:upper())
+    h.sign = UI.Plain(h, 12, C.dim)
+    h.sign:SetPoint("RIGHT", -8, -2)
+    local rule = UI.Fill(h, "ARTWORK", C.goldDark)
+    rule:SetHeight(1)
+    rule:SetPoint("LEFT", h.text, "RIGHT", 8, 0)
+    rule:SetPoint("RIGHT", h, "RIGHT", -22, -2)
+    h:SetScript("OnClick", function(self)
+        Fold(self.cat.name)
+        Nav()
+    end)
+    h.rows = {}
+    return h
+end
+
+local function Item(path)
+    local r = CreateFrame("Button", nil, navChild)
+    r:SetHeight(ITEM_H)
+    r.path = path
+    r.lit = UI.Fill(r, "BACKGROUND", C.selected, 1)
+    r.lit:SetAllPoints()
+    r.lit:Hide()
+    r.bar = UI.Fill(r, "ARTWORK", C.gold)
+    r.bar:SetWidth(3)
+    r.bar:SetPoint("TOPLEFT", 0, 0)
+    r.bar:SetPoint("BOTTOMLEFT", 0, 0)
+    r.bar:Hide()
+    r.text = UI.Serif(r, 12, C.gold)
+    r.text:SetPoint("LEFT", 20, 0)
+    r.text:SetText(ItemName(path))
+    local content = Whole(path) and Whole(path).tabs[1] or select(2, Find(path)) or Find(path)
+    r.master = content.master and content.master.kind == "check" and content.master or nil
+    r.addon = content.addon and content or nil
+    if r.master or r.addon then
+        r.dot = r:CreateTexture(nil, "ARTWORK")
+        r.dot:SetTexture(ROUND)
+        r.dot:SetSize(7, 7)
+        r.dot:SetPoint("RIGHT", -10, 0)
+    end
+    local function Lit(self, c)
+        if not self.lit:IsShown() then self.text:SetTextColor(c[1], c[2], c[3]) end
+    end
+    r:SetScript("OnEnter", function(self) Lit(self, C.goldBright) end)
+    r:SetScript("OnLeave", function(self) Lit(self, C.gold) end)
+    r:SetScript("OnClick", function(self) Select(self.path) end)
+    return r
+end
+
+-- ------------------------------------------------------------ search
+local function Flash(c)
+    flash:ClearAllPoints()
+    flash:SetPoint("TOPLEFT", c, "TOPLEFT", -4, 3)
+    flash:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", 4, -3)
+    flash.left = 1.2
+    flash.control = c
+    flash:SetAlpha(1)
+    flash:Show()
+end
+
+local function Choose(e)
+    Select(e.path)
+    local f = built[current]
+    if e.section and f then
+        local range = math.max(0, f:GetHeight() - scroll:GetHeight())
+        scroll:SetVerticalScroll(math.min(range, e.section.top))
+        Thumb()
+    end
+    if e.control then Flash(e.control) end
+end
+
+local function Search(text)
+    text = tostring(text or ""):lower():match("^%s*(.-)%s*$")
+    query = #text >= 2 and text or nil
+    results = {}
+    if query then
+        for _, e in ipairs(index) do
+            if e.label:lower():find(query, 1, true) then table.insert(results, e) end
+        end
+    end
+    nav:SetVerticalScroll(0)
+    Nav()
+end
+
+local function Result()
+    local r = CreateFrame("Button", nil, navChild)
+    r:SetHeight(RESULT_H)
+    r.lit = UI.Fill(r, "BACKGROUND", C.hover, 1)
+    r.lit:SetAllPoints()
+    r.lit:Hide()
+    r.text = UI.Serif(r, 12, C.gold)
+    r.text:SetPoint("TOPLEFT", 10, -3)
+    r.text:SetPoint("RIGHT", -6, 0)
+    r.text:SetJustifyH("LEFT")
+    r.text:SetWordWrap(false)
+    r.where = UI.Plain(r, 10, C.dim)
+    r.where:SetPoint("BOTTOMLEFT", 10, 4)
+    r.where:SetPoint("RIGHT", -6, 0)
+    r.where:SetJustifyH("LEFT")
+    r.where:SetWordWrap(false)
+    r:SetScript("OnEnter", function(self) self.lit:Show() end)
+    r:SetScript("OnLeave", function(self) self.lit:Hide() end)
+    r:SetScript("OnClick", function(self) Choose(self.entry) end)
+    return r
+end
+
+local function SearchBox()
+    local box = CreateFrame("EditBox", nil, side)
+    box:SetHeight(SEARCH_H)
+    box:SetPoint("TOPLEFT", 8, -8)
+    box:SetPoint("TOPRIGHT", -8, -8)
+    box:SetAutoFocus(false)
+    box:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 12, "")
+    box:SetTextColor(C.text[1], C.text[2], C.text[3])
+    box:SetTextInsets(8, 8, 0, 0)
+    box:SetMaxLetters(40)
+    UI.Fill(box, "BACKGROUND", C.well, 1):SetAllPoints()
+    box.edge = UI.Outline(box, "BORDER", C.goldDark, 0)
+    box.hint = UI.Plain(box, 12, C.dim)
+    box.hint:SetPoint("LEFT", 8, 0)
+    box.hint:SetText("Search options")
+    box:SetScript("OnTextChanged", function(self)
+        self.hint:SetShown((self:GetText() or "") == "")
+        Search(self:GetText())
+    end)
+    box:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
+        self:ClearFocus()
+        Search("")
+    end)
+    box:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+        if results[1] then Choose(results[1]) end
+    end)
+    box:SetScript("OnEditFocusGained", function(self)
+        for _, t in ipairs(self.edge) do t:SetColorTexture(C.gold[1], C.gold[2], C.gold[3], 1) end
+    end)
+    box:SetScript("OnEditFocusLost", function(self)
+        for _, t in ipairs(self.edge) do t:SetColorTexture(C.goldDark[1], C.goldDark[2], C.goldDark[3], 1) end
+    end)
+    return box
+end
+
 -- ------------------------------------------------------------ redraw
 local function Refresh()
     if not window then return end
+    -- a master greys only with what it needs; all else with it too
+    local function Has(c) return not c.needs or ns.db[c.needs] and true or false end
     for _, f in pairs(built) do
-        -- a master greys only with what it needs; all else with it too
-        local function Has(c) return not c.needs or ns.db[c.needs] and true or false end
         local on = (not f.master or ns.db[f.master.spec.key] and Has(f.master))
             and (not f.enabled or f.enabled()) and true or false
         for _, c in ipairs(f.controls) do
             c:Refresh((c == f.master or c.always or on) and Has(c))
+        end
+    end
+    -- the sidebar's dots: a part on, or off
+    for _, r in ipairs(side.rows) do
+        if r.dot then
+            local on
+            if r.master then
+                on = ns.db[r.master.key] and Has(r.master)
+            else
+                on = r.addon.enabled and r.addon.enabled()
+            end
+            local c = on and GREEN or C.dim
+            r.dot:SetVertexColor(c[1], c[2], c[3], 1)
+            r.dot.on = on and true or false
         end
     end
     local name = ns.db.consoleProfile
@@ -219,22 +697,17 @@ local function Refresh()
 end
 ns.RefreshOptions = Refresh
 
-local function Select(path)
+function Select(path)
     local page, tab = Find(path)
     if not page then return end
     if tab then lastTab[page.id] = tab.id end
     current = tab and (page.id .. "/" .. tab.id) or page.id
-    for _, row in ipairs(tree.rows) do
-        row.lit:SetShown(row.page == page)
-        local c = row.page == page and C.goldBright or C.gold
-        row.text:SetTextColor(c[1], c[2], c[3])
-    end
-    -- the tabs, for a page that has them; the body under them
+    local at = place[current]
+    -- a tabbed page listed whole: its tabs under its header, the body under them
     for _, t in ipairs(tabStrip.tabs) do t:Hide() end
-    body:ClearAllPoints()
-    body:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -PAD, FOOT)
-    if tab then
-        local x = 8
+    local top = PAD + TITLE_ROOM + HEAD_H + 12
+    if tab and at and Whole(at.item) then
+        local x = 0
         for i, t in ipairs(page.tabs) do
             local b = tabStrip.tabs[i]
             b.page, b.tab = page, t
@@ -243,27 +716,32 @@ local function Select(path)
             b:ClearAllPoints()
             b:SetPoint("BOTTOMLEFT", tabStrip, "BOTTOMLEFT", x, 0)
             local on = t == tab
-            b.bg:SetColorTexture(unpack(on and { C.panel[1], C.panel[2], C.panel[3], 1 }
+            b.bg:SetColorTexture(unpack(on and { C.selected[1], C.selected[2], C.selected[3], 1 }
                 or { C.ink[1], C.ink[2], C.ink[3], 1 }))
             for _, line in ipairs(b.edge) do
                 local c = on and C.gold or C.goldDark
                 line:SetColorTexture(c[1], c[2], c[3], 1)
             end
-            b.edge[2]:SetShown(not on)   -- the open tab runs into the body
+            b.edge[2]:SetShown(not on)
             local c = on and C.goldBright or C.dim
             b.text:SetTextColor(c[1], c[2], c[3])
-            b:SetFrameLevel(body:GetFrameLevel() + (on and 3 or 1))
             b:Show()
             x = x + b:GetWidth() + 4
         end
-        body:SetPoint("TOPLEFT", window, "TOPLEFT", PAD + TREE_W + 12, -(PAD + TITLE_ROOM + TAB_H - 2))
-    else
-        body:SetPoint("TOPLEFT", window, "TOPLEFT", PAD + TREE_W + 12, -(PAD + TITLE_ROOM))
+        top = top + TAB_H + 10
     end
-    for p, f in pairs(built) do f:SetShown(p == current) end
+    body:ClearAllPoints()
+    body:SetPoint("TOPLEFT", window, "TOPLEFT", X, -top)
+    body:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -PAD, FOOT + 4)
+    for p, f in pairs(built) do
+        f:SetShown(p == current)
+        f.head:SetShown(p == current)
+    end
     scroll:SetScrollChild(built[current])
     scroll:SetVerticalScroll(0)
+    flash:Hide()
     UI.CloseMenu()
+    Nav()
     Refresh()
     Thumb()
 end
@@ -285,29 +763,51 @@ local function Grip(frame)
     end)
 end
 
-local function TreeRows()
-    tree.rows = {}
-    for i, page in ipairs(pages) do
-        local row = CreateFrame("Button", nil, tree)
-        row:SetHeight(24)
-        row:SetPoint("TOPLEFT", 4, -6 - (i - 1) * 26)
-        row:SetPoint("TOPRIGHT", -4, -6 - (i - 1) * 26)
-        row.page = page
-        row.lit = UI.Fill(row, "BACKGROUND", C.selected, 1)
-        row.lit:SetAllPoints()
-        row.lit:Hide()
-        row.text = UI.Serif(row, 14, C.gold)
-        row.text:SetPoint("LEFT", 10, 0)
-        row.text:SetText(page.name)
-        row:SetScript("OnClick", function() Select(page.id) end)
-        tree.rows[i] = row
+local function Sidebar()
+    side = CreateFrame("Frame", nil, window)
+    side:SetPoint("TOPLEFT", PAD, -(PAD + TITLE_ROOM))
+    side:SetPoint("BOTTOMLEFT", PAD, FOOT + 4)
+    side:SetWidth(SIDE_W)
+    UI.Skin(side, C.ink, 1)
+    search = SearchBox()
+    nav = CreateFrame("ScrollFrame", nil, side)
+    nav:SetPoint("TOPLEFT", 3, -(8 + SEARCH_H + 8))
+    nav:SetPoint("BOTTOMRIGHT", -3, 4)
+    navChild = CreateFrame("Frame", nil, nav)
+    navChild:SetWidth(SIDE_W - 6)
+    navChild:SetHeight(1)
+    nav:SetScrollChild(navChild)
+    nav:EnableMouseWheel(true)
+    nav:SetScript("OnMouseWheel", function(self, delta)
+        local range = math.max(0, navChild:GetHeight() - self:GetHeight())
+        self:SetVerticalScroll(math.max(0, math.min(range, self:GetVerticalScroll() - delta * 40)))
+    end)
+    side.heads, side.rows, side.results = {}, {}, {}
+    for _, cat in ipairs(categories) do
+        local h = Head(cat)
+        for _, item in ipairs(cat.items) do
+            if Find(item) then
+                local r = Item(item)
+                table.insert(h.rows, r)
+                table.insert(side.rows, r)
+            end
+        end
+        table.insert(side.heads, h)
+    end
+    for i = 1, MOST do side.results[i] = Result() end
+    side.more = UI.Plain(navChild, 11, C.dim)
+    -- the pages' names are found too
+    for _, cat in ipairs(categories) do
+        for _, item in ipairs(cat.items) do
+            if Find(item) then table.insert(index, { label = ItemName(item), path = item, where = cat.name }) end
+        end
     end
 end
 
 local function TabStrip()
     tabStrip = CreateFrame("Frame", nil, window)
-    tabStrip:SetPoint("TOPLEFT", window, "TOPLEFT", PAD + TREE_W + 12, -(PAD + TITLE_ROOM))
-    tabStrip:SetPoint("TOPRIGHT", window, "TOPRIGHT", -PAD, -(PAD + TITLE_ROOM))
+    tabStrip:SetPoint("TOPLEFT", window, "TOPLEFT", X, -(PAD + TITLE_ROOM + HEAD_H + 8))
+    tabStrip:SetPoint("TOPRIGHT", window, "TOPRIGHT", -PAD, -(PAD + TITLE_ROOM + HEAD_H + 8))
     tabStrip:SetHeight(TAB_H)
     tabStrip.tabs = {}
     local most = 0
@@ -390,32 +890,39 @@ local function Window()
     x:SetScript("OnLeave", function(self) self.text:SetTextColor(C.gold[1], C.gold[2], C.gold[3]) end)
     window.closeX = x
 
-    tree = CreateFrame("Frame", nil, window)
-    tree:SetPoint("TOPLEFT", PAD, -(PAD + TITLE_ROOM))
-    tree:SetPoint("BOTTOMLEFT", PAD, FOOT)
-    tree:SetWidth(TREE_W)
-    UI.Skin(tree, C.ink)
-    TreeRows()
+    Places()
+    Sidebar()
     TabStrip()
 
     body = CreateFrame("Frame", nil, window)
-    UI.Skin(body, C.panel)
     scroll = CreateFrame("ScrollFrame", nil, body)
-    scroll:SetPoint("TOPLEFT", 3, -3)
-    scroll:SetPoint("BOTTOMRIGHT", -12, 3)
+    scroll:SetPoint("TOPLEFT", 0, 0)
+    scroll:SetPoint("BOTTOMRIGHT", -12, 0)
     scroll:EnableMouseWheel(true)
     scroll:SetScript("OnMouseWheel", function(_, delta) Scroll(delta) end)
     thumb = UI.Fill(body, "ARTWORK", C.goldDark)
     thumb:SetWidth(4)
     thumb:Hide()
+    -- a search's match, outlined a moment
+    flash = CreateFrame("Frame", nil, body)
+    flash:SetFrameLevel(body:GetFrameLevel() + 20)
+    UI.Outline(flash, "OVERLAY", C.goldBright, 0)
+    flash:Hide()
+    flash:SetScript("OnUpdate", function(self, elapsed)
+        self.left = self.left - elapsed
+        if self.left <= 0 then self:Hide() else self:SetAlpha(self.left / 1.2) end
+    end)
     Footer()
     -- its parts, by name (the harness reads them)
-    window.tree, window.tabs, window.scroll, window.thumb = tree, tabStrip.tabs, scroll, thumb
+    window.tree, window.tabs, window.scroll, window.thumb = side, tabStrip.tabs, scroll, thumb
+    window.search, window.nav, window.flash = search, nav, flash
     window.footProfile, window.footReload = footProfile, footReload
 
-    local width = W - 2 * PAD - TREE_W - 12 - 15
-    Each(function(content, path) built[path] = Build(content, width) end)
-    Select(current or "general")
+    local width = W - 2 * PAD - SIDE_W - 14 - 12
+    Each(function(content, path, page, tab)
+        built[path] = content.modules and Modules(content, path, page, width) or Build(content, path, page, tab, width)
+    end)
+    Select(current or "modules")
 end
 
 -- ------------------------------------------------------------ open
@@ -444,10 +951,20 @@ function ns.BuildOptions()
     Window()
 end
 
+-- What a search finds, and choosing its nth match (the harness's way in).
+function ns.SearchOptions(text, choose)
+    Window()
+    search:SetText(text or "")
+    Search(text)
+    if choose and results[choose] then Choose(results[choose]) end
+    return results
+end
+
 ns.OnAnySetting(function() Refresh() end)
 
 ns.On("PLAYER_LOGIN", function()
     pages = ns.OptionPages()
+    categories = ns.OptionCategories()
     reloadAt = {}
     ReloadKeys(function(key) reloadAt[key] = ns.db[key] end)
 end)
