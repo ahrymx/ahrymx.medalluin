@@ -255,6 +255,12 @@ local function OnBar(id, macros)
     return slots ~= nil and #slots > 0
 end
 
+-- on a bar by either of its IDs: the book's own, or the one it is known by
+-- now (its replacement: Ghost Wolf's)
+local function Placed(info, macros)
+    return OnBar(info.actionID, macros) or info.spellID ~= info.actionID and OnBar(info.spellID, macros)
+end
+
 -- Whether an item is on no bar, and the lower rank that is if one is. Only
 -- a highest rank asks, and only one cast: no passive, nothing of the pet's.
 local function Missing(item, macros)
@@ -262,9 +268,9 @@ local function Missing(item, macros)
     if not (ns.db.spellbookMissing and item.highest and not info.isPassive and item.bank == BANK.Player) then
         return false
     end
-    if OnBar(info.spellID or info.actionID, macros) then return false end
+    if Placed(info, macros) then return false end
     for _, low in ipairs(item.lower or {}) do
-        if OnBar(low.info.spellID or low.info.actionID, macros) then return true, low.info.subName end
+        if Placed(low.info, macros) then return true, low.info.subName end
     end
     return true
 end
@@ -758,12 +764,17 @@ end
 
 -- What a row's button casts on the right button: a spell or a flyout, or
 -- nothing (a passive, one not learned yet). type2, not type: the left
--- button (type1, else type) finds nothing, and casts nothing.
+-- button (type1, else type) finds nothing, and casts nothing. A spell by
+-- the book's own ID (actionID), the one learned: its spellID can be a
+-- replacement the client will not cast from a button (Ghost Wolf's,
+-- 1238640 for 2645). A pet's by its spell's.
 local function Arm(b, item)
     local info = item and item.info
     local kind, what
     if info and not info.isPassive then
-        if info.itemType == TYPE.Spell or info.itemType == TYPE.PetAction then
+        if info.itemType == TYPE.Spell then
+            kind, what = "spell", info.actionID or info.spellID
+        elseif info.itemType == TYPE.PetAction then
             kind, what = "spell", info.spellID or info.actionID
         elseif info.itemType == TYPE.Flyout then
             kind, what = "flyout", info.actionID

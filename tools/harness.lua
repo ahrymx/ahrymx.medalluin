@@ -12543,6 +12543,17 @@ if spellPass then
     book.tab.scripts.OnClick(book.tab)
     frame()
     state("book.back to spells")
+    -- a spell the book knows by a replacement ID (Ghost Wolf's 1238640 for
+    -- 2645): cast by its own
+    do
+        local it
+        for _, x in pairs(bookWorld.items) do if x.name == "Lightning Shield" then it = x end end
+        it.spellID = 1303
+        book.Refresh()
+        print("book.replaced", over(row("Lightning Shield")))
+        it.spellID = 303
+        book.Refresh()
+    end
     print("book.macros left", "shown=" .. tostring(MacroFrame.shown), "calls=" .. table.concat(bookWorld.macros.calls, ","))
 
     -- 8. the talents' tab: Blizzard's frame comes back under UIParent and
