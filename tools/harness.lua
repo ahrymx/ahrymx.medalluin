@@ -3075,6 +3075,23 @@ if spellPass then
         popup.BorderBox.OkayButton = CreateFrame("Button", nil, popup.BorderBox)
         popup.BorderBox.CancelButton = CreateFrame("Button", nil, popup.BorderBox)
         popup.BorderBox.IconSelectorEditBox = CreateFrame("EditBox", nil, popup.BorderBox)
+        -- its parts as IconSelectorPopupFrameTemplate lays them: the name's
+        -- header and box, the chosen icon and its words, the filter, the grid
+        local bb = popup.BorderBox
+        bb.EditBoxHeaderText = bb:CreateFontString()
+        bb.EditBoxHeaderText:SetText("Enter Macro Name (Max 16 Characters):")
+        bb.EditBoxHeaderText:SetPoint("TOPLEFT", popup, "TOPLEFT", 24, -21)
+        bb.IconSelectionText = bb:CreateFontString()
+        bb.IconSelectionText:SetText("Choose an Icon:")
+        bb.SelectedIconArea = CreateFrame("Frame", nil, bb)
+        bb.SelectedIconArea.SelectedIconButton = CreateFrame("Button", nil, bb.SelectedIconArea)
+        bb.SelectedIconArea.SelectedIconButton:SetHighlightTexture("glow")
+        bb.SelectedIconArea.SelectedIconText = CreateFrame("Frame", nil, bb.SelectedIconArea)
+        bb.IconTypeDropdown = CreateFrame("Button", nil, bb)
+        bb.IconTypeDropdown:SetSize(180, 26)
+        popup.IconSelector = CreateFrame("Frame", nil, popup)
+        popup.IconSelector:SetPoint("TOPLEFT", popup, "TOPLEFT", 21, -90)
+        popup.IconSelector:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", -21, 40)
 
         function f:GetSelectedIndex() return self.selected end
         function f:GetMacroDataIndex(i) return self.macroBase + i end
@@ -12934,6 +12951,7 @@ if spellPass then
             "selector=" .. tostring(MacroFrame.MacroSelector.shown), "tabs=" .. tostring(MacroFrameTab1.shown),
             "art=" .. tostring(MacroFrame.NineSlice.shown) .. "/" .. tostring(MacroFrame.Bg:GetAlpha()),
             "edit=" .. tostring(MacroEditButton:GetAlpha()), "text in well=" .. where(MacroFrameScrollFrame),
+            "box=" .. MacroFrameText.w .. "x" .. MacroFrameText.h .. " button mouse=" .. tostring(MacroFrameTextButton.mouse),
             "layer=" .. tostring(MM.layer.shown) .. "/" .. tostring(MM.layer.stateDrivers
                 and MM.layer.stateDrivers.visibility or "-"))
         print("book.macros switch", switch())
@@ -12984,6 +13002,21 @@ if spellPass then
             "top=" .. tostring(pop:GetTop() and MM.list:GetTop() and math.floor(MM.list:GetTop() - pop:GetTop() + 0.5)),
             "calls=" .. calls())
         print("book.macros new switch", switch())
+        do
+            local bb = pop.BorderBox
+            local function at(r)
+                local x, y = r:GetLeft(), r:GetTop()
+                return (x and y) and string.format("%d,%d", math.floor(x - pop:GetLeft() + 0.5),
+                    math.floor(pop:GetTop() - y + 0.5)) .. (r.w > 0 and "/" .. r.w .. "x" .. r.h or "") or where(r)
+            end
+            local chosen = bb.SelectedIconArea.SelectedIconButton
+            print("book.macros picker", "header=" .. tostring(bb.EditBoxHeaderText.text) .. "@" .. at(bb.EditBoxHeaderText),
+                "box@" .. where(bb.IconSelectorEditBox), "chosen@" .. at(chosen),
+                "glow=" .. tostring(chosen:GetHighlightTexture() and chosen:GetHighlightTexture():GetAlpha()),
+                "words=" .. tostring(bb.SelectedIconArea.SelectedIconText.shown),
+                "choose@" .. where(bb.IconSelectionText), "filter@" .. at(bb.IconTypeDropdown),
+                "grid@" .. at(pop.IconSelector), "ok@" .. where(bb.OkayButton), "cancel@" .. where(bb.CancelButton))
+        end
         edit("book.macros new editor")
         -- dragged by its title strip: held by its top left on the screen
         local top

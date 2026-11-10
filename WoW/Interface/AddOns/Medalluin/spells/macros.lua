@@ -461,9 +461,9 @@ local function Editor(parent)
     e.name:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
     e.name:SetWordWrap(false)
     e.pencil = CreateFrame("Button", nil, e.head)
-    e.pencil:SetSize(22, 22)
+    e.pencil:SetSize(28, 28)
     e.pencil:SetPoint("LEFT", e.name, "RIGHT", 6, 0)
-    R.Glyph(e.pencil, "edit", 12)
+    R.Glyph(e.pencil, "edit", 18)
     e.pencil:SetScript("OnClick", function() Press(MacroEditButton) end)
     e.pencil:SetScript("OnEnter", function(self)
         ns.Tip(self, ns.window.Outside, { title = "Change its name and icon", color = GOLD })
@@ -539,10 +539,18 @@ local function Strip(f)
     scroll:ClearAllPoints()
     scroll:SetPoint("TOPLEFT", editor.well, "TOPLEFT", 10, -8)
     scroll:SetPoint("BOTTOMRIGHT", editor.well, "BOTTOMRIGHT", -26, 8)
-    MacroFrameText:SetWidth(W.width - 40)
     Plain(MacroFrameText, 13, ns.colors.text)
+    -- the box as big as the well, so a press anywhere in it lands on the
+    -- text and a drag selects; the game's button over it (which only
+    -- focuses) out of the mouse's way
+    local function Fit(w, h)
+        if w and w > 0 then MacroFrameText:SetSize(w, h) end
+    end
+    MacroFrameText:SetSize(W.width - 36, EDITOR - BAR - 6 - 20 - 16)
+    scroll:HookScript("OnSizeChanged", function(_, w, h) Fit(w, h) end)
     MacroFrameTextButton:ClearAllPoints()
     MacroFrameTextButton:SetAllPoints(scroll)
+    MacroFrameTextButton:EnableMouse(false)
 end
 
 -- The name and icon picker: our box and a title strip it is dragged by,
@@ -552,6 +560,76 @@ local function Spot(p)
     local wt, lt = W.window:GetTop(), list:GetTop()
     -- TOPLEFT: the game reads that point back to size its panel
     p:SetPoint("TOPLEFT", W.window, "TOPLEFT", -(p:GetWidth() + 8), (wt and lt) and lt - wt or 0)
+end
+
+-- Its parts in two columns, the grid's edges: the name's header and box
+-- on the left, the chosen icon on the right as tall as both; "Choose an
+-- Icon:" beside the icon filter; the grid under, OK and Cancel at the foot.
+-- The chosen icon's two lines of words (currently selected, click to view
+-- in the list) and its glow under the mouse away.
+local NAME_HEADER = "Macro Name (16 Characters Max):"
+local edges                             -- the grid's left and right insets, as the game lays it
+local function Layout(p)
+    local box = p.BorderBox
+    local grid = p.IconSelector
+    if not box or not grid then return end
+    if not edges then
+        local pl, pr, gl, gr = p:GetLeft(), p:GetRight(), grid:GetLeft(), grid:GetRight()
+        edges = (pl and gl) and { math.floor(gl - pl + 0.5), math.floor(pr - gr + 0.5) } or { 14, 14 }
+    end
+    local L, Rt = edges[1], edges[2]
+    local TOP, CHOSEN, ROW = 40, 42, 22     -- the first row's top; the chosen icon; the name's box
+    local header, input = box.EditBoxHeaderText, box.IconSelectorEditBox
+    if header then
+        header:ClearAllPoints()
+        header:SetPoint("TOPLEFT", p, "TOPLEFT", L, -TOP)
+        header:SetText(NAME_HEADER)
+        R.Font(header, 12, ns.colors.text)
+    end
+    local area = box.SelectedIconArea
+    local chosen = area and area.SelectedIconButton
+    if chosen then
+        chosen:ClearAllPoints()
+        chosen:SetPoint("TOPRIGHT", p, "TOPRIGHT", -Rt, -TOP + 2)
+        chosen:SetSize(CHOSEN, CHOSEN)
+        local glow = chosen.GetHighlightTexture and chosen:GetHighlightTexture()
+        if glow then glow:SetAlpha(0) end
+        if chosen.Highlight then chosen.Highlight:SetAlpha(0) end
+    end
+    if area and area.SelectedIconText then
+        area.SelectedIconText:SetAlpha(0)
+        area.SelectedIconText:Hide()
+    end
+    if input then
+        input:ClearAllPoints()
+        input:SetPoint("TOPLEFT", p, "TOPLEFT", L + 4, -(TOP + 18))
+        input:SetPoint("TOPRIGHT", p, "TOPRIGHT", -(Rt + CHOSEN + 14), -(TOP + 18))
+        input:SetHeight(ROW)
+    end
+    local below = TOP + CHOSEN + 12
+    local filter = box.IconTypeDropdown
+    local fh = filter and filter:GetHeight() or 0
+    if fh <= 0 then fh = 24 end
+    if filter then
+        filter:ClearAllPoints()
+        filter:SetPoint("TOPRIGHT", p, "TOPRIGHT", -Rt, -below)
+    end
+    local choose = box.IconSelectionText
+    if choose then
+        choose:ClearAllPoints()
+        choose:SetPoint("LEFT", p, "TOPLEFT", L, -(below + fh / 2))
+        R.Font(choose, 12, ns.colors.text)
+    end
+    grid:ClearAllPoints()
+    grid:SetPoint("TOPLEFT", p, "TOPLEFT", L, -(below + fh + 10))
+    grid:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -Rt, 44)
+    local okay, cancel = box.OkayButton, box.CancelButton
+    if okay and cancel then
+        cancel:ClearAllPoints()
+        cancel:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -Rt, 10)
+        okay:ClearAllPoints()
+        okay:SetPoint("RIGHT", cancel, "LEFT", -6, 0)
+    end
 end
 
 local function Popup()
@@ -604,6 +682,7 @@ local function Popup()
     p:HookScript("OnShow", function(self)
         self:SetFrameStrata("DIALOG")
         Spot(self)
+        Layout(self)
         local new = IconSelectorPopupFrameModes and IconSelectorPopupFrameModes.New or "new"
         title:SetText(self.mode == new and "New macro" or "Change name and icon")
         Refresh()
