@@ -63,7 +63,9 @@ NAVY_TOP, NAVY_BOTTOM = "#2f2713", "#483c1f"   # the plate's gradient, fixed to 
 DECK = {"boss": 34, "unit": 30, "tray": 30}   # deck heights
 CELL = {"boss": 168, "unit": 200} # a cell's least width; cells stretch to fill a grown deck
 COL = {"boss": 20, "unit": 18}    # the icon column, inside the cell's edge
-CELL_TOP, CELL_BOTTOM = 3, 7      # a cell's top below its deck's top; its bottom above the deck's floor
+CELL_TOP, CELL_BOTTOM = 0, 0      # a cell's top below its deck's top; its bottom above the deck's floor
+                                  # (2026-11-10: flush, were 3 and 7)
+CELL_EDGE = 2                     # a cell's gold edge and its chip's divider (2026-11-10, was 1)
 GAP = 4                           # between cells: the plate shows through
 MARGIN = 4                        # floor beyond the outer cells, each side
 LEDGE = 10                        # a lower deck's top corner, in from the floor above it
@@ -229,8 +231,8 @@ WHO = {"boss": ("skull", "boss"), "pet": ("paw", "unit"), "focus": ("target", "u
 
 
 def chip_size(kind):
-    """The icon column's inside: COL wide, the cell less its 1px edge top and bottom."""
-    return COL[kind], DECK[kind] - CELL_TOP - CELL_BOTTOM - 2
+    """The icon column's inside: COL wide, the cell less its edge top and bottom."""
+    return COL[kind], DECK[kind] - CELL_TOP - CELL_BOTTOM - 2 * CELL_EDGE
 
 
 def chip_svg(who, x, y):
@@ -293,22 +295,23 @@ def text(x, y, s, anchor="start", size=10, fill=TEXT):
 
 
 def cell_svg(who, rect, data):
-    """The cell as the Lua builds it: 1px gold edge, the chip, a 1px gold
-    divider, then health over one ink row over power, in the window."""
+    """The cell as the Lua builds it: a CELL_EDGE gold edge, the chip, a gold
+    divider as wide, then health over one ink row over power, in the window."""
     l, t, r, b = rect
     kind = WHO[who][1]
     name, frac, hp, pw = data
-    bx, br = l + 1 + COL[kind] + 1, r - 1
-    ht, hb = t + 1, b - 1 - POWER - 1
+    e = CELL_EDGE
+    bx, br = l + e + COL[kind] + e, r - e
+    ht, hb = t + e, b - e - POWER - 1
     w = br - bx
     cid = f"n{l}_{t}"
     return "".join([
         f'<rect x="{l}" y="{t}" width="{r - l}" height="{b - t}" fill="{GOLD_D}"/>',
-        f'<rect x="{l + 1}" y="{t + 1}" width="{r - l - 2}" height="{b - t - 2}" fill="{INK}"/>',
-        chip_svg(who, l + 1, t + 1),
+        f'<rect x="{l + e}" y="{t + e}" width="{r - l - 2 * e}" height="{b - t - 2 * e}" fill="{INK}"/>',
+        chip_svg(who, l + e, t + e),
         f'<rect x="{bx:.2f}" y="{ht}" width="{w * frac:.2f}" height="{hb - ht}" fill="{hp}"/>',
         f'<rect x="{bx:.2f}" y="{ht}" width="{w * frac:.2f}" height="{(hb - ht) / 2:.2f}" fill="#fff" opacity="0.08"/>',
-        f'<rect x="{bx}" y="{b - 1 - POWER}" width="{w * 0.7:.2f}" height="{POWER}" fill="{pw}"/>',
+        f'<rect x="{bx}" y="{b - e - POWER}" width="{w * 0.7:.2f}" height="{POWER}" fill="{pw}"/>',
         f'<clipPath id="{cid}"><rect x="{bx}" y="{t}" width="{w - 34}" height="{b - t}"/></clipPath>',
         f'<g clip-path="url(#{cid})">{text(bx + 4, (ht + hb) / 2 + 3.6, name)}</g>',
         text(br - 4, (ht + hb) / 2 + 3.6, f"{round(frac * 100)}%", "end", fill=DIM),
@@ -582,7 +585,7 @@ ns.overheadArt = {{
     deck = {{ boss = {DECK["boss"]}, unit = {DECK["unit"]}, tray = {DECK["tray"]} }},
     cell = {{ boss = {CELL["boss"]}, unit = {CELL["unit"]} }},
     col = {{ boss = {COL["boss"]}, unit = {COL["unit"]} }},
-    cellTop = {CELL_TOP}, cellBottom = {CELL_BOTTOM},
+    cellTop = {CELL_TOP}, cellBottom = {CELL_BOTTOM}, cellEdge = {CELL_EDGE},
     gap = {GAP}, margin = {MARGIN}, ledge = {LEDGE}, power = {POWER},
     icon = {ICON}, iconGap = {ICON_GAP}, iconSep = {ICON_SEP}, trayTop = {TRAY_TOP},
     edge = {{ {rgb(GOLD_D)} }},

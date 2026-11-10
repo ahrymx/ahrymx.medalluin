@@ -164,13 +164,14 @@ local function CreateCell(unit, kind, chip)
     b:RegisterForClicks("AnyUp")
     b:SetSize(A.cell[kind], A.deck[kind] - A.cellTop - A.cellBottom)
 
-    -- the gold edge, and the ink well one pixel inside it
+    -- the gold edge, and the ink well A.cellEdge inside it
+    local e = A.cellEdge
     local edge = b:CreateTexture(nil, "BACKGROUND", nil, 0)
     edge:SetAllPoints()
     edge:SetColorTexture(unpack(A.edge))
     local ink = b:CreateTexture(nil, "BACKGROUND", nil, 1)
-    ink:SetPoint("TOPLEFT", 1, -1)
-    ink:SetPoint("BOTTOMRIGHT", -1, 1)
+    ink:SetPoint("TOPLEFT", e, -e)
+    ink:SetPoint("BOTTOMRIGHT", -e, e)
     ink:SetColorTexture(unpack(C.ink))
 
     -- the icon column on the left: chip and glyph, then the gold divider
@@ -179,18 +180,18 @@ local function CreateCell(unit, kind, chip)
     icon:SetTexture(MEDIA .. c.file)
     icon:SetTexCoord(0, c.w / c.tw, 0, c.h / c.th)
     icon:SetSize(c.w, c.h)
-    icon:SetPoint("TOPLEFT", 1, -1)
+    icon:SetPoint("TOPLEFT", e, -e)
     b.chip = icon
     local divider = b:CreateTexture(nil, "ARTWORK")
     divider:SetColorTexture(unpack(A.edge))
-    divider:SetWidth(1)
+    divider:SetWidth(e)
     divider:SetPoint("TOPLEFT", icon, "TOPRIGHT")
     divider:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT")
 
     -- the window: health, one ink row, power
     local window = CreateFrame("Frame", nil, b)
-    window:SetPoint("TOPLEFT", 1 + c.w + 1, -1)
-    window:SetPoint("BOTTOMRIGHT", -1, 1)
+    window:SetPoint("TOPLEFT", e + c.w + e, -e)
+    window:SetPoint("BOTTOMRIGHT", -e, e)
     local health = CreateFrame("StatusBar", nil, window)
     health:SetPoint("TOPLEFT")
     health:SetPoint("BOTTOMRIGHT", 0, A.power + 1)
@@ -234,7 +235,7 @@ for i = 1, 5 do
     local b = CreateCell("boss" .. i, "boss", "boss")
     -- your debuffs at the health's right end (Unit Frames > Boss; auras.lua),
     -- four pixels short of its height
-    ns.AttachAuras(b, "overhead", A.deck.boss - A.cellTop - A.cellBottom - 2 - A.power - 1 - 4)
+    ns.AttachAuras(b, "overhead", A.deck.boss - A.cellTop - A.cellBottom - 2 * A.cellEdge - A.power - 1 - 4)
     ns.RegisterUnitEvent(b, "UNIT_AURA", b.unit)
     -- the unit watch shows it in combat, with no word to the layout
     b:HookScript("OnShow", ns.UpdateUnitAuras)

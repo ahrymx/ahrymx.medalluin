@@ -9752,7 +9752,7 @@ if savedSimParty then
                         local l, t, r, bt = rel(b)
                         n = n + 1
                         lo, hi = math.min(lo, l), math.max(hi, r)
-                        if l < -d.half + h or r > d.half - h or t < d.y or bt > d.y + h - 3 then inside = false end
+                        if l < -d.half + h or r > d.half - h or t < d.y or bt > d.y + h then inside = false end
                     end
                 end
                 local w
