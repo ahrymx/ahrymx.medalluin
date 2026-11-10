@@ -9739,8 +9739,9 @@ if savedSimParty then
         "rightMirrored=" .. tostring(decks[1].right.coords[1] > decks[1].right.coords[2]),
         "plateUnderCells=" .. tostring(decks[1].left.parent.level < ns.overheadUnits.boss1.level))
     -- every shown cell inside its deck's floor; the row centred on the line,
-    -- each cell its own width however wide the deck (2026-11-02: stretched to
-    -- the floor, a pet over a full pet bar ran under the ToT beside it)
+    -- the cells filling the floor however wide the deck (2026-11-10, the
+    -- user's call; the 2026-11-02 overlap of a stretched pet and the ToT is
+    -- the unitrow pass's: each layout shares the floor among the cells shown)
     local function cellState(tag)
         for slot, d in ipairs(decks) do
             if d.shown and d.kind ~= "tray" then
@@ -9758,7 +9759,7 @@ if savedSimParty then
                 for _, b in pairs(ns.overheadUnits) do if b.shown and b.kind == d.kind then w = b.w end end
                 print(tag, slot .. ":" .. d.kind, "cells=" .. n, "insideFloor=" .. tostring(inside),
                     "centred=" .. tostring(round(lo + hi) == 0), string.format("span=%d..%d", round(lo), round(hi)),
-                    "ownWidth=" .. tostring(w == A.cell[d.kind]), "w=" .. tostring(w))
+                    "fills=" .. tostring(hi - lo > 2 * (d.half - h - A.margin) - 2 * n), "w=" .. tostring(w))
             end
         end
     end
@@ -9863,8 +9864,9 @@ if savedSimParty then
     page.settings.topFocus:Set(true)
     page.settings.topToT:Set(true)
     -- every deck width a stack can reach keeps the row's total even (centred
-    -- on whole pixels), the cells inside the floor, and each cell its own
-    -- width: a widened deck centres its cells, it does not stretch them
+    -- on whole pixels) and the cells inside the floor, filling it but for
+    -- the rounding (under two pixels a cell: the share's fraction, and a
+    -- pixel off each cell to keep the total even)
     local odd, over = 0, 0
     for _, kind in ipairs({ "boss", "unit" }) do
         for n = 1, 5 do
@@ -9873,7 +9875,8 @@ if savedSimParty then
                 local cw = ns.OverheadCellWidth(kind, n, w)
                 local total = n * cw + (n - 1) * A.gap
                 if total % 2 == 1 then odd = odd + 1 end
-                if total > w - 2 * A.deck[kind] - 2 * A.margin or cw ~= A.cell[kind] then over = over + 1 end
+                local floor = w - 2 * A.deck[kind] - 2 * A.margin
+                if total > floor or floor - total >= 2 * n then over = over + 1 end
             end
         end
     end

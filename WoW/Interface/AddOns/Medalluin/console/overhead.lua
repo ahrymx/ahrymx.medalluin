@@ -126,14 +126,14 @@ local function DeckWidth(kind, n)
     return n * A.cell[kind] + (n - 1) * A.gap + 2 * A.deck[kind] + 2 * A.margin
 end
 
--- The cells share a deck's floor less its margins, each at most A.cell wide:
--- a deck the one under it has widened (a full pet bar under the pet) centres
--- its cells rather than stretching them. The total is kept even so the row is
--- centred on whole pixels. Never under A.cell from Layout: a deck is at least
--- DeckWidth wide.
+-- The cells share a deck's floor less its margins, filling it: a deck the
+-- one under it has widened (three units under two bosses, a full pet bar
+-- under the pet) stretches its cells across. The total is kept even so the
+-- row is centred on whole pixels. Never under A.cell from Layout: a deck is
+-- at least DeckWidth wide.
 local function CellWidth(kind, n, w)
     local floor = w - 2 * A.deck[kind] - 2 * A.margin
-    local cw = math.min(A.cell[kind], math.floor((floor - (n - 1) * A.gap) / n))
+    local cw = math.floor((floor - (n - 1) * A.gap) / n)
     if (n * cw + (n - 1) * A.gap) % 2 == 1 then cw = cw - 1 end
     return cw
 end
@@ -298,11 +298,11 @@ local UNIT_ROW = [=[
     end
     if n == 0 then return end
     local cw, gap, floor = owner:GetAttribute("cell"), owner:GetAttribute("gap"), owner:GetAttribute("floor")
-    -- floor: the drawn deck's width less its sides; 0, no deck was drawn
+    -- floor: the drawn deck's width less its sides, the cells filling it;
+    -- 0, no deck was drawn
     if floor > 0 then
-        local fit = (floor - (n - 1) * gap) / n
-        fit = fit - fit % 1
-        if fit < cw then cw = fit end
+        cw = (floor - (n - 1) * gap) / n
+        cw = cw - cw % 1
     end
     if (n * cw + (n - 1) * gap) % 2 == 1 then cw = cw - 1 end
     local left, top = -(n * cw + (n - 1) * gap) / 2, -owner:GetAttribute("top")
