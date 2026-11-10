@@ -801,7 +801,9 @@ local function Press(_, button)
     local t = cc.target
     if not (f and t and Alive(f, t)) then return end
     local box = f.ScrollBox
-    if box.ScrollToElementData then box:ScrollToElementData(t, nil, true) end
+    -- (elementData, alignment, offset, noInterpolation); a client without
+    -- offset reads the 0 as noInterpolation, truthy all the same
+    if box.ScrollToElementData then box:ScrollToElementData(t, nil, 0, true) end
     local line = box.FindFrame and box:FindFrame(t)
     local click = line and line:GetScript("OnClick")
     if click then click(line, button) end

@@ -4774,7 +4774,14 @@ if ccPass then (function()
     function f.ScrollBox:FindFrame(e)
         for _, fr in ipairs(frames) do if fr.data == e then return fr end end
     end
-    function f.ScrollBox:ScrollToElementData(e) W.scrolled = e end
+    -- the game's (elementData, alignment, offset, noInterpolation): an
+    -- offset not a number fails as its arithmetic does
+    function f.ScrollBox:ScrollToElementData(e, _, offset)
+        if offset ~= nil and type(offset) ~= "number" then
+            error("attempt to perform arithmetic on local 'offset' (a " .. type(offset) .. " value)", 2)
+        end
+        W.scrolled = e
+    end
     f.dataProvider = {
         ForEach = function(_, fn) for _, e in ipairs(W.data) do fn(e) end end,
         Find = function(_, i) return W.data[i] end,
