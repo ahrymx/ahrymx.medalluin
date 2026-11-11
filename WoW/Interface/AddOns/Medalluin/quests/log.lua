@@ -15,7 +15,7 @@
 --   17 ///The Coastal Menace/////////////// 1,250 // v /////// 35s   (untracked)
 --   + Duskwood (5)                                          [eye]
 --   -----------------------------------------------------------------
---   [ Track all | Untrack all ]  [ Drop... ]                  (backpack)
+--   [ Track all | Untrack all | sort ]  [ Drop... ]           (backpack)
 --
 -- A zone folds (remembered, questLogFolded); its eye tracks every quest in
 -- it, or stops tracking them all when they all are: lit when all are
@@ -31,7 +31,12 @@
 -- The columns' headings sort (2026-11-11): a click sorts each zone's
 -- quests by that column, a second reverses it, a third puts back the log's
 -- order; the sorted heading in gold with a chevron (remembered,
--- questLogSort). The zones stay in the log's order.
+-- questLogSort). The zones stay in the log's order, unless the sort
+-- button by Track all orders them: a dialog over it, the game menu's
+-- options' look, offers the tracker's sorts (questLogOrder, 2026-11-11), Level (each zone's quests
+-- by level, the zones by their lowest) or Zone (the one you are in first,
+-- then by name), or the log's own order. A heading's sort still orders
+-- the quests inside each zone.
 local _, ns = ...
 
 local Q = ns.questSource
@@ -161,6 +166,51 @@ local function Sorted(list)
     return list
 end
 
+-- The sort button's orders (the tracker's, quests/tracker.lua), or the
+-- log's own (none).
+local ORDERS = {
+    { false, "Log order", "The zones and their quests as the game lists them." },
+    { "level", "Level", "The lowest quests first, and the zones by their lowest quest." },
+    { "zone", "Zone", "The zone you are in first, then the rest by name." },
+}
+local function Order()
+    local o = ns.db.questLogOrder
+    return (o == "level" or o == "zone") and o or false
+end
+-- the order in use: its word and what it does
+local function OrderOf()
+    for _, o in ipairs(ORDERS) do
+        if o[1] == Order() then return o end
+    end
+end
+
+-- the zones, and their quests, in the order chosen; ties in the log's
+local function Ordered(zones)
+    local order = Order()
+    if not order then return zones end
+    local at = {}
+    for i, z in ipairs(zones) do
+        at[z] = i
+        for j, q in ipairs(z.quests) do at[q] = j end
+        table.sort(z.quests, function(a, b)
+            if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) < (b.level or 0) end
+            return at[a] < at[b]
+        end)
+        z.low = z.quests[1] and z.quests[1].level or 0
+    end
+    local here = GetRealZoneText and GetRealZoneText()
+    table.sort(zones, function(a, b)
+        if order == "zone" then
+            if (a.name == here) ~= (b.name == here) then return a.name == here end
+            if a.name ~= b.name then return a.name < b.name end
+        elseif a.low ~= b.low then
+            return a.low < b.low
+        end
+        return at[a] < at[b]
+    end)
+    return zones
+end
+
 local quests = {}
 local function Lines()
     quests = Q.All()
@@ -168,7 +218,7 @@ local function Lines()
     words = words:match("%S") and words:lower() or nil
     local folded = ns.db.questLogFolded or {}
     local out = {}
-    for _, z in ipairs(Zones(quests)) do
+    for _, z in ipairs(Ordered(Zones(quests))) do
         local list = {}
         for _, q in ipairs(z.quests) do
             if Matches(q, words) then table.insert(list, q) end
@@ -232,6 +282,120 @@ local function Tip(owner, spec)
 end
 
 local function Wheel(delta) log.Scroll(-delta * 3) end
+
+-- ------------------------------------------------------------ the orders
+-- The sort button's dialog: the game menu's options (window/gamemenu.lua,
+-- its look and its joined keys), over the button, a notch down to it. Its
+-- keys are the orders; a pick sorts and the dialog stays, its key lit. A
+-- click anywhere else, the button again, Escape, or the log closing shuts
+-- it.
+local POP_INK = { 0.078, 0.067, 0.047 }
+local POP_W, POP_SEG = 220, 22
+local orders = {}
+log.orders = orders
+
+local function OrdersFrame()
+    if orders.frame then return orders.frame end
+    local catcher = CreateFrame("Button", nil, UIParent)
+    catcher:SetAllPoints(UIParent)
+    catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+    catcher:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    catcher:SetScript("OnClick", function() orders.Close() end)
+    catcher:Hide()
+    local f = CreateFrame("Frame", "MedalluinQuestLogOrders", catcher)
+    f:SetFrameLevel(catcher:GetFrameLevel() + 5)
+    f:SetWidth(POP_W)
+    f:SetClampedToScreen(true)
+    f:EnableMouse(true)
+    local shadow = f:CreateTexture(nil, "BACKGROUND", nil, -8)
+    shadow:SetPoint("TOPLEFT", 4, -6)
+    shadow:SetPoint("BOTTOMRIGHT", 4, -6)
+    shadow:SetColorTexture(0, 0, 0, 0.55)
+    local edge = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+    edge:SetAllPoints()
+    edge:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+    local ink = f:CreateTexture(nil, "BACKGROUND", nil, 3)
+    ink:SetPoint("TOPLEFT", 1, -1)
+    ink:SetPoint("BOTTOMRIGHT", -1, 1)
+    ink:SetColorTexture(POP_INK[1], POP_INK[2], POP_INK[3], 1)
+    -- the notch, down to the button's middle: a gold diamond, its upper
+    -- half the dialog's ink
+    local notch = f:CreateTexture(nil, "BACKGROUND", nil, 2)
+    notch:SetSize(9, 9)
+    notch:SetPoint("CENTER", f, "BOTTOM", 0, 0)
+    notch:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+    local fill = f:CreateTexture(nil, "BACKGROUND", nil, 4)
+    fill:SetSize(7, 7)
+    fill:SetPoint("CENTER", f, "BOTTOM", 0, 1)
+    fill:SetColorTexture(POP_INK[1], POP_INK[2], POP_INK[3], 1)
+    if notch.SetRotation then
+        notch:SetRotation(math.pi / 4)
+        fill:SetRotation(math.pi / 4)
+    end
+    local label = ns.Text(f, 9)
+    label:SetPoint("TOPLEFT", 12, -12)
+    label:SetText("SORT THE ZONES")
+    label:SetTextColor(unpack(DIM))
+    -- the orders, joined keys sharing the width (the game menu's sorts)
+    orders.keys = {}
+    local w, n = POP_W - 24, #ORDERS
+    for i, o in ipairs(ORDERS) do
+        local k = CreateFrame("Button", nil, f)
+        local x0, x1 = math.floor((i - 1) * w / n), math.floor(i * w / n)
+        k:SetPoint("TOPLEFT", 12 + x0, -28)
+        k:SetSize(x1 - x0 + (i < n and 1 or 0), POP_SEG)
+        k:RegisterForClicks("LeftButtonUp")
+        ns.gameMenu.Keyed(k)
+        k.word = ns.Text(k, 11)
+        k.word:SetPoint("CENTER")
+        k.word:SetText(o[2])
+        k.value = o[1]
+        k:SetScript("OnClick", function()
+            ns.db.questLogOrder = o[1]
+            log.Refresh()
+        end)
+        k:HookScript("OnEnter", function(self) Tip(self, { title = o[2], { "hint", o[3] } }) end)
+        k:HookScript("OnLeave", function() GameTooltip:Hide() end)
+        orders.keys[i] = k
+    end
+    f:SetHeight(28 + POP_SEG + 12)
+    orders.frame, orders.catcher = f, catcher
+    if UISpecialFrames then table.insert(UISpecialFrames, "MedalluinQuestLogOrders") end
+    f:SetScript("OnHide", function() orders.Close() end)
+    return f
+end
+
+-- its keys as the order now is: the one in use held, its word lit
+function orders.Mark()
+    if not orders.keys then return end
+    for _, k in ipairs(orders.keys) do
+        k.held = k.value == Order()
+        k.Lit(false)
+        k.word:SetTextColor(unpack(k.held and ns.colors.text or DIM))
+    end
+end
+
+function orders.Open()
+    local f = OrdersFrame()
+    orders.Mark()
+    -- over the sort button, the notch down to its middle
+    local b = foot and foot.byKey.sort
+    f:ClearAllPoints()
+    if b then f:SetPoint("BOTTOM", b, "TOP", 0, 8) else f:SetPoint("CENTER") end
+    orders.catcher:Show()
+    f:Show()
+    if foot then foot:Set("sort", { selected = true, enabled = #quests > 0 }) end
+end
+
+function orders.Close()
+    if not orders.catcher or not orders.catcher:IsShown() then return end
+    orders.catcher:Hide()
+    if foot then foot:Set("sort", { selected = false, enabled = #quests > 0 }) end
+end
+
+function orders.Toggle()
+    if orders.catcher and orders.catcher:IsShown() then orders.Close() else orders.Open() end
+end
 
 -- A row, either kind: a zone's fold or a quest's line; each drawn as it is
 -- filled.
@@ -459,6 +623,9 @@ function log.Refresh()
     if foot then
         foot:Set("untrack", { enabled = #quests > 0 })
         foot:Set("track", { enabled = #quests > 0 })
+        foot:Set("sort", { enabled = #quests > 0,
+            selected = orders.catcher and orders.catcher:IsShown() or false })
+        orders.Mark()
         foot:Set("drop", { enabled = #quests > 0, color = RED })
     end
     if ns.questDrop and ns.questDrop.Refresh then ns.questDrop.Refresh() end
@@ -601,6 +768,11 @@ local function Build(pageBody, _, band)
             UntrackAll(quests)
             log.Refresh()
         end, tip = function() return "Stop tracking every quest." end },
+        { key = "sort", label = "Sort", icon = "sort", group = "track", click = function() orders.Toggle() end,
+            tip = function()
+                local o = OrderOf()
+                return "Sorted: " .. o[2] .. ". " .. o[3] .. " Click: choose another."
+            end },
         { key = "drop", label = "Drop\226\128\166", group = "drop", color = RED, click = function()
             if ns.questDrop then ns.questDrop.Toggle() end
         end, tip = function() return "Pick quests to abandon, and abandon them in one go." end },
@@ -631,6 +803,7 @@ local function Window()
     frame:HookScript("OnHide", function()
         if search then search:ClearFocus() end
         if ns.questDrop then ns.questDrop.Close() end
+        orders.Close()
     end)
     if UISpecialFrames then table.insert(UISpecialFrames, "MedalluinQuestLog") end
     -- the log changed: drawn again at the next frame, while it is open

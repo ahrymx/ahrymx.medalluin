@@ -30,7 +30,10 @@ end
 local function Conditional()
     if not ns.PartyWidgetLayout() then return "hide" end
     if ns.db.simParty then return "[group:raid] hide; show" end
-    return "[group:raid] hide; [group:party] show; hide"
+    -- shown while party1 is there, the test the members' own unit watch
+    -- makes: [group:party] held on in combat after the player left a party
+    -- of four, the box empty but for the player's cell (2026-11-11)
+    return "[group:raid] hide; [@party1,exists] show; hide"
 end
 
 local function Show()
@@ -45,8 +48,9 @@ local function Skin()
     for i = 1, 4 do
         if ns.units["party" .. i]:IsShown() then last = i end
     end
-    if not last then return end             -- no party: the box is hidden
-    if ns.db.partyWidgetPlayer then last = last + 1 end
+    -- no party: the box hides; the player's cell alone until it does
+    if ns.db.partyWidgetPlayer then last = (last or 0) + 1 end
+    if not last then return end
     ns.WidgetSkin(box, { "Party" }, CELL_W, (last - 1) * Step() + UNIT_H)
 end
 

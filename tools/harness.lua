@@ -1058,7 +1058,12 @@ function harnessPick(conditional, holds)
         local conds, value = clause:match("^(.*%])%s*(%S+)$")
         if not conds then return clause end
         local ok = true
-        for c in conds:gmatch("%[(.-)%]") do ok = ok and holds[c] or false end
+        for c in conds:gmatch("%[(.-)%]") do
+            local unit = c:match("^@(%w+),exists$")
+            local held = holds[c]
+            if held == nil and unit and holds == harnessHolds then held = UnitExists(unit) and true end
+            ok = ok and held or false
+        end
         if ok then return value end
     end
 end
@@ -7518,6 +7523,7 @@ if args[2] == "widgets" or args[3] == "widgets" then
     exists.party3 = true
     fire("GROUP_ROSTER_UPDATE")
     watchTick()
+    stateTick()
     widget("party joined in combat", ns.partyWidget)
     do
         local b = ns.units.party3
@@ -7534,12 +7540,26 @@ if args[2] == "widgets" or args[3] == "widgets" then
     exists.party3, exists.partypet3 = nil, nil
     watchTick()
     widget("party left in combat", ns.partyWidget)
-    -- the whole party gone: the box is hidden, its skin left as it was
+    -- the whole party gone (the player left a party of four, 2026-11-11,
+    -- [group:party] held on): the box hides, the skin down to the player
+    local function four(on)
+        for i = 1, 4 do exists["party" .. i] = on end
+        fire("GROUP_ROSTER_UPDATE")
+        watchTick()
+        stateTick()
+    end
+    harnessHolds["group:party"] = true
+    four(true)
+    widget("party of four in combat", ns.partyWidget)
     grouped = false
-    watchTick()
+    four(nil)
     widget("party gone in combat", ns.partyWidget)
+    print("  party gone in combat", "player=" .. tostring(ns.partyWidgetPlayer.shown),
+        "visible=" .. tostring(ns.partyWidgetPlayer:IsVisible()))
+    harnessHolds["group:party"] = nil
     grouped = true
     watchTick()
+    stateTick()
     inCombat = false
     local wasCell = ns.db.editPartyWidget
     ns.SetOption("editPartyWidget", { cell = { w = 160, h = 50 } })
@@ -15655,6 +15675,48 @@ if questLogPass then (function()
         click(cols.quest, "questlog sort title")
         ns.db.questLogSort = false
         QL.Refresh()
+    end
+    -- 3c. the sort button by Track all: its dialog over it (the game
+    -- menu's options), the tracker's orders as joined keys; a pick sorts
+    -- and it stays, the pick held; a click elsewhere shuts it
+    do
+        local O = QL.orders
+        local sortB = QL.foot.byKey.sort
+        local function dialog(tag)
+            local f_ = O.frame
+            local out = {}
+            for _, k in ipairs(O.keys) do
+                table.insert(out, k.word.text .. (k.held and "*" or "") .. "+" .. tostring(k.w))
+            end
+            local p = f_.points.BOTTOM
+            print(tag, "shown=" .. tostring(O.catcher.shown and f_.shown),
+                "at=" .. tostring(p and p[1] == sortB and "sort") .. ":" .. tostring(p and p[2]) .. ","
+                .. tostring(p and p[3]) .. "," .. tostring(p and p[4]), "size=" .. tostring(f_.w) .. "x" .. tostring(f_.h),
+                table.concat(out, " "), "foot=" .. segState(QL.foot))
+        end
+        local function pick(word, tag)
+            for _, k in ipairs(O.keys) do
+                if k.word.text == word then k.scripts.OnClick(k) end
+            end
+            dialog(tag)
+            print(tag, "saved=" .. tostring(ns.db.questLogOrder))
+            rows(tag)
+        end
+        print("questlog order tip", tipOf(sortB))
+        sortB.scripts.OnClick(sortB, "LeftButton")
+        dialog("questlog order open")
+        pick("Level", "questlog order level")
+        print("questlog order tip level", tipOf(sortB))
+        local realZone = GetRealZoneText
+        GetRealZoneText = function() return "Westfall" end
+        pick("Zone", "questlog order zone")
+        GetRealZoneText = realZone
+        O.catcher.scripts.OnClick(O.catcher, "LeftButton")
+        dialog("questlog order elsewhere")
+        sortB.scripts.OnClick(sortB, "LeftButton")
+        pick("Log order", "questlog order log")
+        sortB.scripts.OnClick(sortB, "LeftButton")
+        dialog("questlog order button again")
     end
     -- 4. a zone's eye: some tracked, so a click tracks the rest; all tracked,
     -- so a click stops tracking them all (the eye struck)

@@ -110,6 +110,7 @@ local DEFAULTS = {
     questLog = true,        -- Medalluin's quest log, a window on the right strip, instead of Blizzard's
     questLogFolded = false, -- its zones folded: { [zone] = true } (not on the page)
     questLogSort = false,   -- its sort, by a heading: { key = "lvl"/"title"/"xp"/"item"/"coin", dir = "up"/"down" }
+    questLogOrder = false,  -- its zones' order (its sort button): false (the log's), "level", "zone" (not on the page)
     questDropPlace = false, -- the Drop window's place, size and scale (quests/drop.lua)
     questPagePlace = false, -- a quest's page's, the same (quests/page.lua)
     lfgWindow = true,       -- the LFG / Who window on the chat box, instead of the game's (social/lfg.lua)

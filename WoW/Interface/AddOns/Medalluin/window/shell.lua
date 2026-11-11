@@ -248,7 +248,7 @@ ns.window.Button = Button
 -- wears the box (Face), neighbours share their edge (a pixel's overlap),
 -- and where the group changes the two edges stand a little apart: a
 -- double line, as before the chat's tools. Stretched, the buttons share out the
--- row's width; fit, each is as wide as its word and the row as wide as
+-- row's width (an icon keeps its own, 2026-11-11); fit, each is as wide as its word and the row as wide as
 -- they come to (anchor it by the end it grows from).
 --
 --   local row = ns.window.Segments(parent, { height, fit, size (the
@@ -303,10 +303,20 @@ local function Segments(parent, spec)
         local total = math.floor(self:GetWidth() or 0) - breaks * BREAK + (#shown - 1 - breaks)
         local fit = spec.fit or total < #shown * SEG_MIN
         local widths = {}
+        -- stretched, an icon keeps its own width and the words share the rest
+        local words, icons = 0, 0
+        for _, b in ipairs(shown) do
+            if b.data.icon then icons = icons + (spec.iconSize or 24) + ICON_PAD else words = words + 1 end
+        end
+        local share, k = total - icons, 0
         for i, b in ipairs(shown) do
             local inner = b.data.icon and (spec.iconSize or 24) + ICON_PAD or math.ceil(b.label:GetStringWidth()) + SEG_PAD
-            widths[i] = fit and math.max(SEG_MIN, inner)
-                or math.floor(i * total / #shown) - math.floor((i - 1) * total / #shown)
+            if fit or b.data.icon then
+                widths[i] = fit and math.max(SEG_MIN, inner) or inner
+            else
+                k = k + 1
+                widths[i] = math.floor(k * share / words) - math.floor((k - 1) * share / words)
+            end
         end
         local x = 0
         self.gaps = {}

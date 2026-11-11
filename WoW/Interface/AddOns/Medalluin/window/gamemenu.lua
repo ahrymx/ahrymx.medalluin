@@ -548,6 +548,7 @@ local function Keyed(b)
     b:HookScript("OnEnter", function() b.Lit(true) end)
     b:HookScript("OnLeave", function() b.Lit(false) end)
 end
+menu.Keyed = Keyed
 
 local Popover = {}              -- a section's options, from its gear (below)
 
