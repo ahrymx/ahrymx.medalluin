@@ -37,6 +37,17 @@ local function HealthColor(unit)
     return Muted(c.r, c.g, c.b)
 end
 
+-- There, as the unit watch has it (SecureStateDriver.lua): it exists, or the
+-- game draws it. The layout hid what the watch, every 0.2s, showed again
+-- (2026-11-11: the pet's cell flashing in a Darkmoon Faire vehicle, the pet
+-- drawn but not existing).
+local function Exists(unit)
+    if UnitExists(unit) then return true end
+    if not UnitIsVisible then return false end
+    local ok, vis = pcall(UnitIsVisible, unit)
+    return ok and (ns.IsSecret(vis) or vis) and true or false
+end
+
 local overhead = CreateFrame("Frame", "MedalluinOverhead", UIParent)
 overhead:SetFrameStrata("LOW")
 overhead:SetPoint("TOP", UIParent, "TOP", 0, 0)
@@ -425,7 +436,7 @@ function UpdateUnitStatus(b)
     end
 
     local unit = b.unit
-    if not UnitExists(unit) then return end
+    if not Exists(unit) then return end
 
     local max = UnitHealthMax(unit)
     local cur = UnitHealth(unit)
@@ -693,11 +704,11 @@ local function Present(b, key)
     elseif stub then
         if ns.sim.overhead[b.unit] then ns.SimApply(stub, "overhead", 1, 1) else stub = nil end
     end
-    if not UnitExists(b.unit) and stub then
+    if not Exists(b.unit) and stub then
         Watch(b, stub)
     else
         Watch(b, nil)
-        if not UnitExists(b.unit) then
+        if not Exists(b.unit) then
             b:Hide()
             return false
         end
@@ -722,9 +733,21 @@ local function CommandRow()
     for i, btn in ipairs(stanceButtons) do
         if i <= forms then table.insert(stances, btn) else btn:Hide() end
     end
+    -- a button hidden here while there was no pet bar comes back with one
+    -- (2026-11-11: a shaman possessing the Steam Tonk, its controls gone);
+    -- one Blizzard hides (an empty slot) stays out
     local hasPetBar = PetHasActionBar and PetHasActionBar()
     for _, btn in ipairs(petButtons) do
-        if hasPetBar and btn:IsShown() then table.insert(pets, btn) else btn:Hide() end
+        if hasPetBar and btn.medalluinAway then
+            btn.medalluinAway = nil
+            btn:Show()
+        end
+        if hasPetBar and btn:IsShown() then
+            table.insert(pets, btn)
+        else
+            if not hasPetBar and btn:IsShown() then btn.medalluinAway = true end
+            btn:Hide()
+        end
     end
     Group(stances)
     Group(pets)

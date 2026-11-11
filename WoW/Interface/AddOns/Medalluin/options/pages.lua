@@ -794,8 +794,8 @@ function ns.OptionPages()
             },
         },
         {
-            id = "tray", name = "Left-edge tray", intro = "Shared by every profile.",
-            master = Check("tray", "Left-edge tray",
+            id = "tray", name = "Edge Draw", intro = "Shared by every profile.",
+            master = Check("tray", "Edge Draw",
                 "Touch the screen's left edge with the pointer, near its middle: a rail of tabs slides out, a "
                 .. "tab for each window on the left. A click opens the window, or closes it when it is open (its "
                 .. "tab lit gold). The rail goes a moment after the pointer leaves it; not while the game menu is "
@@ -926,7 +926,7 @@ function ns.OptionCategories()
         { name = "Unit frames",
             items = { "units/general", "units/party", "units/raid", "units/battleground", "units/boss",
                 "units/arena" } },
-        { name = "Interface", scope = "Shared by every profile", items = { "chat", "side", "quests" } },
+        { name = "Interface", scope = "Shared by every profile", items = { "chat", "side", "quests", "tray" } },
         { name = "Windows", note = "Blizzard's windows, reskinned",
             items = { "bags", "bank", "character", "spellbook", "talents", "professions", "questlog", "lfg", "cdm",
                 "cc", "npc" } },

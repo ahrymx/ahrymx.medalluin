@@ -73,6 +73,38 @@ local function Style()
     styling = false
 end
 
+-- A possessed unit or a remote control (the Darkmoon Faire's Steam Tonk, a
+-- channelled "Using Control Console", 2026-11-11) is no vehicle: the game's
+-- way out is the possess bar's cancel, by the chat. The seat is that way out
+-- too, and the possess bar goes.
+local function Possessed()
+    local f = C_ActionBar and C_ActionBar.IsPossessBarVisible or IsPossessBarVisible
+    return f and f() and true or false
+end
+
+-- Blizzard's shows it only while the main bar is up: a vehicle with a skinned
+-- bar (the Darkmoon Faire's) gets the override bar's leave button instead,
+-- whose bar Medalluin's bar 1 stands in for, so there was no way out
+-- (2026-11-11). Here it shows whenever the vehicle can be left, or the
+-- possession cancelled; Blizzard's rule shows it only where this one does.
+local function Leave()
+    if not seat or seat.isInEditMode then return end
+    local want = (CanExitVehicle and CanExitVehicle()) or Possessed()
+    if want and not seat:IsShown() then
+        seat:Show()
+        seat:Enable()
+    elseif not want and seat:IsShown() then
+        seat:Hide()
+    end
+end
+
+-- After Blizzard's click, which lands a flight or leaves a vehicle: a
+-- possession is cancelled, as the possess bar's cancel does
+local function Cancel()
+    if (UnitOnTaxi and UnitOnTaxi("player")) or (CanExitVehicle and CanExitVehicle()) then return end
+    if Possessed() and CancelPetPossess then CancelPetPossess() end
+end
+
 local function Setup()
     if seat then return end
     seat = MainMenuBarVehicleLeaveButton
@@ -98,8 +130,19 @@ local function Setup()
     end)
     seat:HookScript("OnShow", Swap)
     seat:HookScript("OnHide", Swap)
+    seat:HookScript("OnClick", Cancel)
+    if PossessActionBar then ns.OutOfCombat(function() ns.Park(PossessActionBar) end) end
+    -- after Blizzard's pass, whichever this client has
+    if seat.UpdateShownState then hooksecurefunc(seat, "UpdateShownState", Leave)
+    elseif seat.Update then hooksecurefunc(seat, "Update", Leave) end
+    if MainMenuBarVehicleLeaveButton_Update then hooksecurefunc("MainMenuBarVehicleLeaveButton_Update", Leave) end
+    Leave()
     Swap()
 end
 
 -- After strips/bags.lua has placed the backpack (both wait for login).
 ns.On("PLAYER_LOGIN", Setup)
+for _, event in ipairs({ "UPDATE_POSSESS_BAR", "UPDATE_BONUS_ACTIONBAR", "UNIT_PET", "PET_BAR_UPDATE",
+    "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE", "VEHICLE_UPDATE", "PLAYER_ENTERING_WORLD" }) do
+    ns.On(event, Leave)
+end

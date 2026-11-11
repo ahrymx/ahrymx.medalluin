@@ -1204,12 +1204,17 @@ end
 local shapeshiftForms, petBar = 0, false
 function GetNumShapeshiftForms() return shapeshiftForms end
 function PetHasActionBar() return petBar end
+-- a unit the game draws that does not exist (the pet in a vehicle): none
+-- unless a pass says so
+harnessVisible = {}
+function UnitIsVisible(u) return UnitExists(u) or harnessVisible[u] or false end
 local function watchTick()
     watchWalking = true
     local ok, err = pcall(function()
         for f in pairs(watchedFrames) do
-            -- as the game's: a frame shown or hidden only when that changes
-            local want = UnitExists(f.unit) and true or false
+            -- as the game's: a frame shown or hidden only when that changes;
+            -- there if it exists or is drawn (SecureStateDriver.lua)
+            local want = (UnitExists(f.unit) or UnitIsVisible(f.unit)) and true or false
             if f.watched and f.unit and (f.shown and true or false) ~= want then f:SetShown(want) end
         end
     end)
@@ -1646,6 +1651,19 @@ if modern then
             :SetTexCoord(0.140625, 0.859375, 0.140625, 0.859375)
     end
     MainMenuBarVehicleLeaveButton:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
+    -- Blizzard's rule: shown only while the main bar is up (a skinned vehicle
+    -- bar is the override state)
+    harnessCanExit, harnessBarMain = false, true
+    function MainMenuBarVehicleLeaveButton:UpdateShownState()
+        self:SetShown(self.isInEditMode or (harnessCanExit and harnessBarMain))
+    end
+    function CanExitVehicle() return harnessCanExit end
+    -- a possession (the Steam Tonk's control console): the possess bar,
+    -- its cancel
+    harnessPossess, harnessPossessCancels = false, 0
+    function IsPossessBarVisible() return harnessPossess end
+    function CancelPetPossess() harnessPossessCancels = harnessPossessCancels + 1 end
+    PossessActionBar = new("Frame", UIParent, "PossessActionBar")
     MultiBarBottomLeft = new("Frame", UIParent, "MultiBarBottomLeft")
     MultiBarBottomRight = new("Frame", UIParent, "MultiBarBottomRight")
     -- Action bar 7, hidden by default: its buttons made by Blizzard's own
@@ -6674,6 +6692,26 @@ if stripsPass then
             tostring(seat.scale), art(seat:GetNormalTexture()), art(seat:GetHighlightTexture())))
         seat:Hide()
         seatState("left")
+        -- a skinned vehicle (the Darkmoon Faire's): the override state,
+        -- where Blizzard's rule hides it; it shows, as the vehicle can be left
+        harnessCanExit, harnessBarMain = true, false
+        seat:UpdateShownState()
+        seatState("override bar")
+        harnessCanExit = false
+        seat:UpdateShownState()
+        seatState("override bar, left")
+        harnessBarMain = true
+        -- possessed (the Darkmoon Faire's Steam Tonk, 2026-11-11): no vehicle
+        -- to leave, the possession to cancel; the possess bar parked
+        harnessPossess = true
+        for _, f in ipairs(events.UPDATE_POSSESS_BAR or {}) do f.scripts.OnEvent(f, "UPDATE_POSSESS_BAR") end
+        seatState("possessed")
+        if seat.scripts.OnClick then seat.scripts.OnClick(seat, "LeftButton") end
+        print("vehicle possessed, clicked", "cancels=" .. harnessPossessCancels,
+            "possess bar parked=" .. tostring(PossessActionBar.parent ~= UIParent))
+        harnessPossess = false
+        for _, f in ipairs(events.UPDATE_POSSESS_BAR or {}) do f.scripts.OnEvent(f, "UPDATE_POSSESS_BAR") end
+        seatState("possession over")
     else
         print("vehicle", "no leave button")
     end
@@ -10161,6 +10199,14 @@ if savedSimParty then
     for _, f in ipairs(events.UNIT_PET or {}) do f.scripts.OnEvent(f, "UNIT_PET", "player") end
     print("overhead.petArrives", "shown=" .. tostring(ovh.shown))
     rowState("overhead.petArrives.row")
+    -- gone, then back with nothing showing its buttons (2026-11-11: a shaman
+    -- possessing the Steam Tonk, its controls missing from the tray)
+    petBar = false
+    for _, f in ipairs(events.UNIT_PET or {}) do f.scripts.OnEvent(f, "UNIT_PET", "player") end
+    rowState("overhead.petGone.row")
+    petBar = true
+    for _, f in ipairs(events.UNIT_PET or {}) do f.scripts.OnEvent(f, "UNIT_PET", "player") end
+    rowState("overhead.petBack.row")
     petBar = false
     page.settings.simParty:Set(true)
 
@@ -12386,6 +12432,24 @@ if args[2] == "unitrow" or args[3] == "unitrow" then
     exists.targettarget = true
     harnessNextFrame()
     state("ToT back")
+    -- in a vehicle (the Darkmoon Faire's, 2026-11-11) the pet is drawn but
+    -- does not exist: the watch shows its cell every tick, and the layout
+    -- hid it again each time, so it flashed. It stays.
+    local flips = 0
+    pet:HookScript("OnShow", function() flips = flips + 1 end)
+    pet:HookScript("OnHide", function() flips = flips + 1 end)
+    exists.pet, harnessVisible.pet = nil, true
+    fireAll("UNIT_PET", "player")
+    local seen = { tostring(pet.shown) }
+    for _ = 1, 4 do
+        harnessNextFrame()
+        table.insert(seen, tostring(pet.shown))
+    end
+    state("pet drawn, not there")
+    print("unitrow pet drawn, frames", table.concat(seen, " "), "shows and hides=" .. flips)
+    exists.pet, harnessVisible.pet = true, nil
+    harnessNextFrame()
+    state("pet there again")
     -- under a boss: the row's top is the boss deck's foot, not the overhead's
     exists.targettarget = nil
     exists.boss1 = true
