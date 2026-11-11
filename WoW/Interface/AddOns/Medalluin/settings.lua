@@ -126,7 +126,6 @@ local DEFAULTS = {
     cdmDisplay = true,      -- its cooldown and buff icons as medallions over the console (cooldowns/display.lua)
     ccWindow = true,        -- the game's Click Casting window dressed, on the chat box (spells/clickcast.lua)
     gameMenu = "docked",    -- the game menu (Escape): "docked", "medallion" or the game's, "game" (window/gamemenu.lua)
-    gameMenuFolded = false, -- the docked game menu's folded sections, by key ("session" folded until opened)
     gameMenuFriends = "online", -- its friends shown: "online", "all" or "bnet"
     gameMenuGuild = "officers", -- its guild shown: "officers" (the top ranks), "all", or "ranks" (those picked)
     gameMenuGuildRanks = false, -- the ranks picked, by name (a table once one is); the top ranks until then

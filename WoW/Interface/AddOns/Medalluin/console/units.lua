@@ -359,12 +359,22 @@ local function PetHealthColor(pet)
     return Muted(c.r, c.g, c.b)
 end
 
+-- A button's unit watch, registered or let go only when that changes:
+-- registering again rewrites the watch manager's list of frames, and from a
+-- frame's OnShow that runs inside the manager's walk over that very list (as
+-- the overhead's: overhead.lua)
+local function Watched(f, on)
+    if f.watching == on then return end
+    f.watching = on
+    if on then RegisterUnitWatch(f) elseif UnregisterUnitWatch then UnregisterUnitWatch(f) end
+end
+
 local function UpdatePartyPet(pet)
     if not pet then return end
     if ns.db and not ns.PartyPets() then
         pet.stub = nil
         ns.OutOfCombat(function()
-            if UnregisterUnitWatch then UnregisterUnitWatch(pet) end
+            Watched(pet, false)
             if pet:IsShown() then pet:Hide() end
         end)
         return
@@ -375,7 +385,7 @@ local function UpdatePartyPet(pet)
     if UnitExists(unit) then
         pet.stub = nil
         ns.OutOfCombat(function()
-            RegisterUnitWatch(pet)
+            Watched(pet, true)
         end)
         local max = UnitHealthMax(unit)
         local cur = UnitHealth(unit)
@@ -397,7 +407,7 @@ local function UpdatePartyPet(pet)
         local stub = PET_STUBS[unit]
         pet.stub = stub
         ns.OutOfCombat(function()
-            if UnregisterUnitWatch then UnregisterUnitWatch(pet) end
+            Watched(pet, false)
             if not pet:IsShown() then pet:Show() end
         end)
         pet.health:SetMinMaxValues(0, stub.maxHealth)
@@ -411,7 +421,7 @@ local function UpdatePartyPet(pet)
     else
         pet.stub = nil
         ns.OutOfCombat(function()
-            RegisterUnitWatch(pet)
+            Watched(pet, true)
             if pet:IsShown() then pet:Hide() end
         end)
     end
@@ -423,20 +433,20 @@ local function UpdatePartyUnit(b)
     if UnitExists(unit) then
         b.stub = nil
         ns.OutOfCombat(function()
-            RegisterUnitWatch(b)
+            Watched(b, true)
         end)
         UpdateAll(b)
     elseif sim and tonumber(unit:match("%d$")) <= ns.sim.party.count then
         b.stub = STUBS[unit]
         ns.OutOfCombat(function()
-            if UnregisterUnitWatch then UnregisterUnitWatch(b) end
+            Watched(b, false)
             if not b:IsShown() then b:Show() end
         end)
         UpdateAll(b)
     else
         b.stub = nil
         ns.OutOfCombat(function()
-            RegisterUnitWatch(b)
+            Watched(b, true)
             if b:IsShown() then b:Hide() end
         end)
     end
@@ -451,14 +461,14 @@ local unitEvents = {
     UNIT_HEALTH = UpdateHealth,
     UNIT_HEALTH_FREQUENT = UpdateHealth,
     UNIT_MAXHEALTH = UpdateHealth,
-    UNIT_CONNECTION = UpdateState,
+    UNIT_CONNECTION = UpdateAll,
     UNIT_FACTION = UpdateHealth,
     UNIT_FLAGS = UpdateState,
     UNIT_POWER_FREQUENT = UpdatePower,
     UNIT_POWER_UPDATE = UpdatePower,
     UNIT_MAXPOWER = UpdatePower,
     UNIT_DISPLAYPOWER = UpdatePower,
-    UNIT_NAME_UPDATE = UpdateName,
+    UNIT_NAME_UPDATE = UpdateAll,     -- a joiner's name, class and all, as the game learns them
     UNIT_LEVEL = UpdateLevel,
     UNIT_CLASSIFICATION_CHANGED = UpdateLevel,
     PLAYER_ROLES_ASSIGNED = UpdateRole,
@@ -647,8 +657,17 @@ local function Spawn(unit, forWidget)
         b:RegisterEvent("PLAYER_ENTERING_WORLD")
     else
         -- target and party buttons show only while their unit exists
+        b.watching = true
         RegisterUnitWatch(b)
         b:RegisterEvent(unit == "target" and "PLAYER_TARGET_CHANGED" or "GROUP_ROSTER_UPDATE")
+        -- a member the game comes to know, or who comes back in reach: the
+        -- whole button again (UpdatePartyUnit)
+        if unit ~= "target" then
+            for _, e in ipairs({ "PARTY_MEMBER_ENABLE", "PARTY_MEMBER_DISABLE", "UNIT_OTHER_PARTY_CHANGED" }) do
+                pcall(b.RegisterEvent, b, e)
+            end
+            ns.RegisterUnitEvent(b, "UNIT_PHASE", unit)
+        end
     end
     return b
 end
@@ -779,6 +798,7 @@ local function SpawnPet(parentBtn, unit, side)
         UpdatePartyPet(self)
     end)
 
+    pet.watching = true
     RegisterUnitWatch(pet)
     pet:Hide()
     return pet
@@ -1043,6 +1063,20 @@ end
 UpdatePartyFrames()
 ns.UpdatePartyFrames = UpdatePartyFrames
 ns.On("GROUP_ROSTER_UPDATE", UpdatePartyFrames)
+-- A member who joins is shown before the game knows them (no name, class
+-- or health yet), and what follows does not always reach the button as an
+-- event of its own: the party looked at again as the roster settles
+-- (2026-11-11: in combat, a joiner's frame in the Party widget stayed empty
+-- till the fight ended). The last change's looks only.
+local settling = 0
+ns.On("GROUP_ROSTER_UPDATE", function()
+    if not (C_Timer and C_Timer.After) then return end
+    settling = settling + 1
+    local mine = settling
+    for _, t in ipairs({ 0.5, 1.5, 3 }) do
+        C_Timer.After(t, function() if mine == settling then UpdatePartyFrames() end end)
+    end
+end)
 ns.On("PLAYER_ENTERING_WORLD", UpdatePartyFrames)
 ns.On("ADDON_LOADED", UpdatePartyFrames)
 ns.On("PLAYER_ROLES_ASSIGNED", UpdatePartyFrames)

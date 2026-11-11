@@ -7478,6 +7478,35 @@ if args[2] == "widgets" or args[3] == "widgets" then
 
     harnessHolds["group:party"] = grouped
     state("login")
+    -- solo, then in combat one joins (GROUP_ROSTER_UPDATE) and leaves:
+    -- the console's party button follows them, its name and the group art
+    if not grouped then
+        local function member(tag)
+            local b = ns.units.party1
+            print("widgets " .. tag, "shown=" .. tostring(b.shown), "visible=" .. tostring(b:IsVisible()),
+                "name=" .. tostring(b.name.text), "alpha=" .. tostring(b.alpha), "art=" .. art(),
+                "at=" .. at(b, ns.console))
+        end
+        inCombat = true
+        fire("PLAYER_REGEN_DISABLED")
+        grouped, exists.party1 = true, true
+        harnessHolds["group:party"] = true
+        fire("GROUP_ROSTER_UPDATE")
+        stateTick()
+        watchTick()
+        member("joined in combat")
+        grouped, exists.party1 = false, nil
+        harnessHolds["group:party"] = false
+        fire("GROUP_ROSTER_UPDATE")
+        stateTick()
+        watchTick()
+        member("left in combat")
+        inCombat = false
+        fire("PLAYER_REGEN_ENABLED")
+        stateTick()
+        watchTick()
+        member("after combat")
+    end
     HarnessCrowns("  crowns")
     S.partyLayout:Set("widget")
     state("party layout: widget")
@@ -7487,8 +7516,18 @@ if args[2] == "widgets" or args[3] == "widgets" then
     -- editor's taller cell
     inCombat = true
     exists.party3 = true
+    fire("GROUP_ROSTER_UPDATE")
     watchTick()
     widget("party joined in combat", ns.partyWidget)
+    do
+        local b = ns.units.party3
+        local lo, hi = b.health:GetMinMaxValues()
+        print("  party3 joined in combat", "shown=" .. tostring(b.shown), "visible=" .. tostring(b:IsVisible()),
+            "alpha=" .. tostring(b.alpha), "name=" .. tostring(b.name.text), "level=" .. tostring(b.levelText.text),
+            "health=" .. tostring(b.health.value) .. "/" .. tostring(lo) .. "-" .. tostring(hi),
+            "colour=" .. table.concat(b.health.statusColor or b.health.color or {}, ","),
+            "inWidget=" .. tostring(b.inWidget), "parent=" .. tostring(b.parent == ns.partyWidget and "box" or "other"))
+    end
     exists.partypet3 = true
     watchTick()
     widget("party pet in combat", ns.partyWidget)
@@ -17694,25 +17733,37 @@ if gamemenuPass then (function()
         end
     end
     print("gamemenu shortcuts docked", table.concat(rows, " "))
-    -- the docked panel as mockup D2 draws it: band headings (word, note,
-    -- gear, fold), the XP bar, the friends' rows, the guild, the session,
-    -- the hidden sections' chips
+    -- the docked panel as mockup E2 draws it: windows (word, note, gear,
+    -- where, the scroll), the XP bar, the friends' rows, the guild, the
+    -- session, the hidden sections' chips; the panel's children and the
+    -- layer over the windows
+    local function under(f)
+        local out = {}
+        for _, c in ipairs(f.all_ or {}) do
+            table.insert(out, c)
+            if c.kind == "Frame" and not c.word and c.all_ then
+                for _, cc in ipairs(c.all_) do table.insert(out, cc) end
+            end
+        end
+        return out
+    end
     local function docked(tag)
         local heads = {}
         for _, c in ipairs(M.docked.all_ or {}) do
-            if c.word and c.chev and c.shown then
+            if c.word and c.track and c.shown then
                 table.insert(heads, c.word.text .. (c.note.shown and ("(" .. tostring(c.note.text) .. ")") or "")
-                    .. (c.gear.shown and "#" or "") .. (c.key and (M.Folded(c.key) and "+" or "-") or ""))
+                    .. (c.gear.shown and "#" or "") .. "[" .. rect(c) .. "]"
+                    .. (c.thumb.shown and string.format("~%.0f@%.0f", c.thumb.h, -c.thumb.points.TOPRIGHT[4]) or ""))
             end
         end
-        print(tag .. " headings", table.concat(heads, ", "))
+        print(tag .. " windows", table.concat(heads, ", "))
         local people, chips, cards, misc = {}, {}, {}, {}
-        for _, c in ipairs(M.docked.all_ or {}) do
+        for _, c in ipairs(under(M.docked)) do
             if c.shown and c.person then
                 local p = c.person
                 table.insert(people, p.more or (p.name .. "/" .. tostring(p.level) .. "/" .. tostring(p.status) .. "/"
                     .. tostring(p.class) .. "@" .. tostring(p.where) .. (p.rank and ("/" .. p.rank) or "")))
-            elseif c.shown and c.key and c.word and c.edge and not c.chev then
+            elseif c.shown and c.key and c.word and c.edge and not c.track then
                 table.insert(chips, "[" .. tostring(c.word.text) .. "]")
             elseif c.shown and c.value and c.label then
                 table.insert(cards, tostring(c.label.text) .. "=" .. tostring(c.value.text))
@@ -17744,11 +17795,12 @@ if gamemenuPass then (function()
         print(tag .. " options", tostring(P.key), "h=" .. tostring(P.frame.h), table.concat(out, " "),
             "sort=" .. table.concat(segs, "/"), "catcher=" .. tostring(P.catcher.shown))
     end
-    local function gear(word)
+    local function win(word)
         for _, c in ipairs(M.docked.all_ or {}) do
-            if c.word and c.chev and c.shown and c.word.text == word then return c.gear end
+            if c.word and c.track and c.shown and c.word.text == word then return c end
         end
     end
+    local function gear(word) return win(word).gear end
     local function line(word)
         for _, l in ipairs(P.lines or {}) do
             if l.shown and l.word.text == word then return l end
@@ -17817,18 +17869,16 @@ if gamemenuPass then (function()
     local xp = nil
     for _, c in ipairs(M.docked.all_ or {}) do if c.fill and c.rest and c.left then xp = c end end
     print("gamemenu xp", xp and tostring(xp.shown), xp and xp.left.text, xp and xp.right.text)
-    local function head(word)
-        for _, c in ipairs(M.docked.all_ or {}) do
-            if c.word and c.chev and c.shown and c.word.text == word then return c end
+    -- the cards: the game's buttons, their words and the line under them
+    local cardsOf = {}
+    for _, b in ipairs(f.buttons) do
+        local d = M.Deco(b)
+        if d and d.look then
+            table.insert(cardsOf, M.Kind(b, f.closeButton) .. ":" .. d.look .. "=" .. tostring(d.label.text)
+                .. (d.sub.shown and ("/" .. tostring(d.sub.text)) or "") .. (d.dot.shown and "*" or ""))
         end
     end
-    -- folded and opened, kept
-    head("Friends").scripts.OnClick(head("Friends"))
-    docked("gamemenu friends folded")
-    print("gamemenu folded saved", tostring(type(ns.db.gameMenuFolded) == "table" and ns.db.gameMenuFolded.friends))
-    head("Friends").scripts.OnClick(head("Friends"))
-    head("This session").scripts.OnClick(head("This session"))
-    docked("gamemenu session open")
+    print("gamemenu cards", table.concat(cardsOf, " "))
     -- the friends' options: all, by level, then Battle.net
     click(gear("Friends"))
     pop("gamemenu friends gear")
@@ -17877,12 +17927,23 @@ if gamemenuPass then (function()
     end
     print("gamemenu people clicked", table.concat(W.clicked, ","))
     f:Show()
-    -- a short screen: the people cut to the room
+    -- a short screen: the people cut to the room, each list scrolled by
+    -- the wheel (over its window, or over a row in it)
     M.docked.GetHeight = function() return 800 end
     for i = 1, 12 do table.insert(harnessFriends, { name = "F" .. i, level = 10, className = "Mage", area = "X",
         connected = true }) end
     M.Relayout()
     docked("gamemenu short")
+    local fw = win("Friends")
+    fw.scripts.OnMouseWheel(fw, -1)
+    fw.scripts.OnMouseWheel(fw, -1)
+    docked("gamemenu short wheel down")
+    for _, c in ipairs(M.docked.all_ or {}) do
+        if c.shown and c.person and c.win == fw then c.scripts.OnMouseWheel(c, -20) break end
+    end
+    docked("gamemenu short wheel end")
+    fw.scripts.OnMouseWheel(fw, 30)
+    docked("gamemenu short wheel back")
     M.docked.GetHeight = tall
     for _ = 1, 12 do table.remove(harnessFriends) end
     M.Relayout()
