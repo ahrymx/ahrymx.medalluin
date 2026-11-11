@@ -106,6 +106,7 @@ local MODULES = {
     ["side/meter"] = { "side-rate", "Damage, healing and more for each member, from the game's meter." },
     ["side/loot"] = { "side-loot", "What your group looted, boss by boss, with who won each roll." },
     quests = { "quests", "Your tracked quests on the left of the screen, by zone." },
+    tray = { "misc", "A rail on the left edge: a tab to open and close each window there." },
     bags = { "view-bags", "One window for every bag, sorted and searchable." },
     bank = { "currency", "The bank in a window of its own, with the bags' views and search." },
     character = { "character", "Gear, stats, reputation and currency." },
@@ -790,6 +791,25 @@ function ns.OptionPages()
                         "Hidden until the pointer is over the box."),
                     Check("questsMinimalCombat", "Hidden in combat",
                         "Gone in combat, items too, and clicks go through to what is behind it.")),
+            },
+        },
+        {
+            id = "tray", name = "Left-edge tray", intro = "Shared by every profile.",
+            master = Check("tray", "Left-edge tray",
+                "Touch the screen's left edge with the pointer, near its middle: a rail of tabs slides out, a "
+                .. "tab for each window on the left. A click opens the window, or closes it when it is open (its "
+                .. "tab lit gold). The rail goes a moment after the pointer leaves it; not while the game menu is "
+                .. "open.", true),
+            groups = {
+                Group("Tabs",
+                    Check("trayCharacter", "Character", "The character window."),
+                    Check("trayQuests", "Quest tracker",
+                        "Hides or shows the quest tracker, until its tab shows it again; the chat box comes "
+                        .. "down to the chat while it is hidden."),
+                    Check("trayLFG", "Group finder", "The LFG / Who window, while its option is on."),
+                    Check("trayChatLog", "Chat log", "The chat's log, while the chat panel is on."),
+                    Check("trayCdm", "Cooldown Manager", "The game's Cooldown Manager, where the client has one."),
+                    Check("trayCc", "Click Casting", "The game's Click Casting, where the client has it.")),
             },
         },
         {

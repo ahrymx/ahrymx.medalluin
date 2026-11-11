@@ -1931,6 +1931,7 @@ end
 function ColorPickerFrame:GetColorRGB() return unpack(self.rgb) end
 local cursor
 function GetCursorInfo() return cursor end
+function GetCursorPosition() return 500, 400 end
 -- The action slots and what can go in them (bars/skills.lua): a slot holds
 -- { type, id }; the cursor holds what a pickup took. Spells known, items in
 -- the bags and macros are the "skills" pass's to change.
@@ -15553,6 +15554,134 @@ if questPass and not questLogPass then
     frame()
     harnessBeside("quests tips", MedalluinQuests)
     type_("quests.type font gone")
+
+    -- the left-edge tray (strips/tray.lua): out of sight; the pointer at
+    -- the left edge, mid-height, slides it out; its tabs, lit when open; a
+    -- click on the character's opens and closes the window, the tracker's
+    -- hides and shows the tracker (the chat box down with it); the pointer
+    -- away, it goes after a moment; not with the game menu open, nor with
+    -- something on the cursor; the other tabs added
+    do
+        local Y = ns.tray
+        local rail, driver = Y.rail, Y.driver
+        local cx, cy = 600, 384
+        local cursorWas = GetCursorPosition
+        function GetCursorPosition() return cx, cy end
+        local charFrame = _G.CharacterFrame or CreateFrame("Frame", "CharacterFrame", UIParent)
+        charFrame:Hide()
+        local toggleWas = ToggleCharacter
+        function ToggleCharacter(page)
+            table.insert(W.calls, "ToggleCharacter " .. tostring(page))
+            charFrame:SetShown(not charFrame:IsShown())
+        end
+        local reach = {}
+        local reachWas = ns.chat and ns.chat.Reach
+        if ns.chat then ns.chat.Reach = function(up, alpha) table.insert(reach, tostring(up)); reachWas(up, alpha) end end
+        Y.Layout()
+        local function tick(n, dt) for _ = 1, n or 1 do driver.scripts.OnUpdate(driver, dt or 0.05) end end
+        local function state(tag)
+            local tabs = {}
+            for i, tab in ipairs(Y.used) do
+                tabs[i] = tab.key .. (tab.IsOpen() and "*" or "")
+            end
+            local p = rail.points and rail.points.LEFT
+            print(tag, "shown=" .. tostring(rail.shown), "alpha=" .. string.format("%.2f", rail.alpha or 1),
+                "x=" .. tostring(p and p[3]) .. ",y=" .. (p and p[4] and string.format("%.0f", p[4]) or "nil"), "size=" .. tostring(rail.w) .. "x" .. tostring(rail.h),
+                table.concat(tabs, " "), "tracker=" .. tostring(f.shown), "hidden=" .. tostring(ns.db.questsHidden),
+                #W.calls > 0 and table.concat(W.calls, ", ") or "", #reach > 0 and ("reach=" .. table.concat(reach, ",")) or "")
+            W.calls, reach = {}, {}
+        end
+        local function tab(key)
+            for _, b in ipairs({ rail:GetChildren() }) do
+                if b.tab and b.tab.key == key and b.shown then return b end
+            end
+        end
+        local function tip(b)
+            local lines, add = {}, GameTooltip.AddLine
+            GameTooltip.AddLine = function(_, t) table.insert(lines, t) end
+            b.scripts.OnEnter(b)
+            GameTooltip.AddLine = add
+            b.scripts.OnLeave(b)
+            return tostring(GameTooltip.text) .. (#lines > 0 and (" / " .. table.concat(lines, " / ")) or "")
+        end
+        W.calls = {}
+        tick(3)
+        state("tray at rest")
+        cx = 1
+        tick(4)
+        state("tray at the edge")
+        local cb = tab("character")
+        print("tray glyphs", tab("character").glyph.texture:match("[^\\]+$"), tab("quests").glyph.texture:match("[^\\]+$"),
+            "tab=" .. tostring(cb.w) .. "x" .. tostring(cb.h))
+        print("tray tips", tip(cb), tip(tab("quests")))
+        cb.scripts.OnClick(cb)
+        print("tray tip open", tip(cb))
+        tick()
+        state("tray character opened")
+        print("tray character lit", "wash=" .. tostring(cb.wash.shown), "bar=" .. tostring(cb.bar.shown),
+            "glyph=" .. string.format("%.2f,%.2f,%.2f@%.2f", cb.glyph.vertex[1], cb.glyph.vertex[2], cb.glyph.vertex[3],
+            cb.glyph.alpha or 1))
+        -- closed by its key (or Escape): the tab unlit at the next poll
+        charFrame:Hide()
+        tick()
+        print("tray character closed elsewhere", "lit=" .. tostring(cb.lit), "wash=" .. tostring(cb.wash.shown))
+        local qb = tab("quests")
+        qb.scripts.OnClick(qb)
+        tick()
+        state("tray tracker hidden")
+        qb.scripts.OnClick(qb)
+        tick()
+        state("tray tracker shown")
+        -- the pointer away: it stays a moment, then goes
+        cx = 600
+        tick(2)
+        state("tray pointer away, a moment")
+        tick(12)
+        state("tray pointer away")
+        -- the game menu open, or something held: the edge does nothing
+        cx = 1
+        GameMenuFrame = GameMenuFrame or CreateFrame("Frame", "GameMenuFrame", UIParent)
+        GameMenuFrame:Show()
+        tick(6)
+        state("tray with the game menu")
+        GameMenuFrame:Hide()
+        local infoWas = GetCursorInfo
+        function GetCursorInfo() return "item", 6948 end
+        tick(6)
+        state("tray with an item held")
+        GetCursorInfo = infoWas
+        -- it opens where the pointer touches the edge, kept on screen: near
+        -- the top, held under it; low, held over the strip; touched along
+        -- the edge elsewhere, it moves there; on the rail, it stays
+        cx = 600
+        tick(20)
+        cx, cy = 1, 740
+        tick(6)
+        state("tray at the edge, near the top")
+        cy = 5
+        tick(2)
+        state("tray at the edge, by the strip")
+        cy = 500
+        tick(2)
+        state("tray moved along the edge")
+        cy = 384
+        -- every tab on: the rail taller, the tabs in order
+        ns.SetOption("trayLFG", true)
+        ns.SetOption("trayChatLog", true)
+        tick(6)
+        state("tray more tabs")
+        ns.SetOption("trayLFG", false)
+        ns.SetOption("trayChatLog", false)
+        ns.SetOption("trayCharacter", false)
+        ns.SetOption("trayQuests", false)
+        cx = 1
+        tick(20)
+        state("tray no tabs")
+        ns.SetOption("trayCharacter", true)
+        ns.SetOption("trayQuests", true)
+        GetCursorPosition, ToggleCharacter = cursorWas, toggleWas
+        if reachWas then ns.chat.Reach = reachWas end
+    end
 end
 
 -- ------------------------------------------------------------ the quest log

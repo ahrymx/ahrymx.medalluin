@@ -107,6 +107,7 @@ local DEFAULTS = {
     questsFullMouseover = false, questsFullCombat = false,       -- each view hidden until the pointer is
     questsMinimalMouseover = false, questsMinimalCombat = false, -- over it, and in combat
     questsTree = false,     -- objectives on a tree's branches, the finished risen to the top; bulleted otherwise
+    questsHidden = false,   -- hidden by the tray's tab (strips/tray.lua), until shown again (not on the page)
     questLog = true,        -- Medalluin's quest log, a window on the right strip, instead of Blizzard's
     questLogFolded = false, -- its zones folded: { [zone] = true } (not on the page)
     questLogSort = false,   -- its sort, by a heading: { key = "lvl"/"title"/"xp"/"item"/"coin", dir = "up"/"down" }
@@ -114,6 +115,10 @@ local DEFAULTS = {
     questDropPlace = false, -- the Drop window's place, size and scale (quests/drop.lua)
     questPagePlace = false, -- a quest's page's, the same (quests/page.lua)
     lfgWindow = true,       -- the LFG / Who window on the chat box, instead of the game's (social/lfg.lua)
+    tray = true,            -- the left-edge tray: a rail of tabs for the left windows (strips/tray.lua)
+    trayCharacter = true, trayQuests = true,    -- its tabs: the character window, the quest tracker,
+    trayLFG = false, trayChatLog = false,       -- the group finder, the chat's log,
+    trayCdm = false, trayCc = false,            -- the Cooldown Manager, Click Casting
     lfgPage = "browse",     -- its page: browse, list or who (not on the page)
     lfgCategory = false,    -- Browse's category, the game's id (not on the page)
     lfgListed = false,      -- List me's picks: { [activity id] = true } (not on the page)
@@ -536,6 +541,7 @@ local PAGES = {
     talents = "talents", talent = "talents",
     professions = "professions", profession = "professions", prof = "professions", craft = "professions",
     quests = "quests", quest = "quests", tracker = "quests",
+    tray = "tray", edge = "tray",
     questlog = "questlog", log = "questlog",
     lfg = "lfg", who = "lfg", group = "lfg", finder = "lfg",
     npc = "npc", gossip = "npc", vendor = "npc", merchant = "npc",

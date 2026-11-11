@@ -223,6 +223,8 @@ end)
 
 -- The drawer's button (strips/chat.lua) opens and closes it; the window is
 -- no secure frame, so in combat too.
+function ns.ChatLogShown() return W ~= nil and W.window:IsShown() end
+
 function ns.ToggleChatLog()
     if not W then return end
     if not W.Current() then W.Select(page) end

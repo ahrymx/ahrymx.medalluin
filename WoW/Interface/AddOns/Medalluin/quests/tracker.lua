@@ -63,7 +63,9 @@
 --
 -- The data is quests/source.lua's: the game's quest log, and Questie's
 -- when it is there. The tracker hides while the character window stands
--- over it. Blizzard's own quest tracker is hidden while this one is on.
+-- over it, and while the left-edge tray's tab has hidden it (questsHidden,
+-- strips/tray.lua: the chat box comes down to the chat then). Blizzard's
+-- own quest tracker is hidden while this one is on.
 local _, ns = ...
 
 local L = ns.stripLayout
@@ -106,6 +108,8 @@ local dirty
 
 -- ---------------------------------------------------------------- order
 local function Full() return ns.db.questsView ~= "minimal" end
+-- hidden by the tray's tab
+local function Stowed() return ns.db.questsHidden and true or false end
 -- what the view in use hides, each view its own options: "Mouseover" (all of
 -- it until the pointer is over it) and "Combat"
 local function Hides(what) return ns.db[(Full() and "questsFull" or "questsMinimal") .. what] end
@@ -486,7 +490,7 @@ local function Layout()
             frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
         end
     end
-    if chat then chat.Reach(full, frame:GetAlpha()) end
+    if chat then chat.Reach(full and not Stowed(), frame:GetAlpha()) end
     -- the items are secure: hidden in combat by the game's own driver
     if Hides("Combat") then
         RegisterStateDriver(layer, "visibility", "[combat] hide; show")
@@ -758,7 +762,7 @@ local function Build()
             frame:SetAlpha(alpha)
             layer:SetAlpha(alpha)
             -- the chat box's reach for the full view, with it
-            if Full() and ns.chat then ns.chat.Reach(true, alpha) end
+            if Full() and ns.chat then ns.chat.Reach(not Stowed(), alpha) end
         end
     end)
     Q.Listen(function()
@@ -783,8 +787,14 @@ local function Build()
     local function Covered()
         local on = false
         for _, f in ipairs(covers) do on = on or f:IsShown() end
-        frame:SetShown(not on)
+        frame:SetShown(not on and not Stowed())
     end
+    -- the tray's tab: hidden or shown, the chat box down or up with it
+    ns.OnSetting("questsHidden", function()
+        Covered()
+        if Full() and ns.chat then ns.chat.Reach(not Stowed(), frame:GetAlpha()) end
+    end)
+    Covered()                           -- hidden by the tray before this login
     function ns.quests.Cover(f)
         table.insert(covers, f)
         f:HookScript("OnShow", Covered)
