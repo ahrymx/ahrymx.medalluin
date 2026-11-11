@@ -35,8 +35,15 @@ local function Info(i)
     return s
 end
 
+-- A rank's bonus, as last read plainly: in combat it can be a secret (the
+-- defense UnitDefenseSkill gives, 2026-11-11), which cannot be tested, so
+-- the one read before it stands (none until one is)
+local bonus = {}
+
 local function Rank(s)
-    local mod = s.modifier or 0
+    local mod = s.modifier
+    if ns.IsSecret(mod) then mod = bonus[s.skillID] else bonus[s.skillID] = mod end
+    mod = mod or 0
     local text = mod ~= 0 and format("%d |cff40ff40(%+d)|r / %d", s.rank or 0, mod, s.maxRank or 0)
         or format("%d / %d", s.rank or 0, s.maxRank or 0)
     return { min = 0, max = s.maxRank, cur = s.rank, color = BLUE, text = text }

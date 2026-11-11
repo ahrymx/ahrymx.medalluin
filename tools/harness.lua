@@ -11912,6 +11912,15 @@ if characterPass then
         state("skills.tab in combat")
         tabs("skills.tabs")
         rows("skills", "skills")
+        -- in combat defense's bonus is a secret: the one read before stands
+        local defense = UnitDefenseSkill
+        UnitDefenseSkill = function() return 60, secret() end
+        fire("SKILL_LINES_CHANGED")
+        frame()
+        rows("skills.secret bonus", "skills")
+        UnitDefenseSkill = defense
+        fire("SKILL_LINES_CHANGED")
+        frame()
         click("skills", "Defense")
         details("skills.defense", "skills")
         click("skills", "Herbalism")
