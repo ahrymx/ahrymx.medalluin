@@ -17932,9 +17932,11 @@ if gamemenuPass then (function()
         print(tag .. " options", tostring(P.key), "h=" .. tostring(P.frame.h), table.concat(out, " "),
             "sort=" .. table.concat(segs, "/"), "catcher=" .. tostring(P.catcher.shown))
     end
+    -- a window by its title, or by its section's key (the guild's is
+    -- titled by the guild's name)
     local function win(word)
         for _, c in ipairs(M.docked.all_ or {}) do
-            if c.word and c.track and c.shown and c.word.text == word then return c end
+            if c.word and c.track and c.shown and (c.word.text == word or c.key == word:lower()) then return c end
         end
     end
     local function gear(word) return win(word).gear end
@@ -17954,12 +17956,23 @@ if gamemenuPass then (function()
     M.docked.GetHeight = function() return 1100 end
     M.Relayout()
     docked("gamemenu no motd yet")
+    -- no GUILD_MOTD yet: the guild's community's broadcast stands for it
+    C_Club = { GetGuildClubId = function() return 7 end,
+        GetClubInfo = function(id) return id == 7 and { broadcast = "Raid reset Tuesday" } or nil end }
+    fire("PLAYER_GUILD_UPDATE")
+    M.Relayout()
+    docked("gamemenu club motd")
+    C_Club = nil
     fire("GUILD_MOTD", "MC Friday 8pm server")
     docked("gamemenu")
     -- a long message of the day wraps, its box as tall as it takes; the
     -- guild's rows below it move down
     fire("GUILD_MOTD", "Tea and Biscuits are a fitting way to enjoy a small break between raids; bring your own, share the rest")
     docked("gamemenu long motd")
+    -- a secret message (in combat, in game) is shown as it came: it cannot
+    -- be measured, so its box holds two lines
+    fire("GUILD_MOTD", secret())
+    docked("gamemenu secret motd")
     fire("GUILD_MOTD", "MC Friday 8pm server")
     -- the guild's options, from its gear: all of them; then picked, a
     -- check each, the top ranks ticked until one is toggled (Sorrel's
@@ -17981,11 +17994,11 @@ if gamemenuPass then (function()
     click(seg("Rank"))
     docked("gamemenu guild by rank")
     click(line("Message of the day"))
-    click(line("Guild name"))
+    click(line("Name as title"))
     docked("gamemenu guild bare")
     pop("gamemenu guild bare")
     click(line("Message of the day"))
-    click(line("Guild name"))
+    click(line("Name as title"))
     click(seg("Name"))
     -- the gear again shuts them; the catcher too
     click(gear("Guild"))

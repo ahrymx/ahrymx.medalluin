@@ -70,10 +70,10 @@ local DIM = { 0.55, 0.52, 0.45 }
 local RED = { 0.86, 0.27, 0.22 }
 local BLUE = { 0.47, 0.75, 1 }
 local DOCK_W, PAD = 360, 18
-local MOTD_TOP = 19             -- the message under its box's label
+local MOTD_TOP = 20             -- the message under its heading
 local GEAR = 22                 -- a window's gear, on its border
 local WIN_TOP, WIN_PAD, WIN_GAP = 16, 12, 22   -- a window's body under its title, its sides; apart
-local CARD_H, CARD_GAP = 74, 10                -- the game's buttons, as cards two to a row
+local CARD_H, CARD_GAP = 64, 10                -- the game's buttons, as cards two to a row
 local CARD_LOW = 44                            -- a card on a short panel: its glyph beside its words
 local FOOT_H, SQUARE_W = 86, 76                -- the foot: Return to Game, Log Out and Exit either side
 local POP_W = 220               -- a section's options (the gear's popover)
@@ -245,10 +245,10 @@ local function Dress(b)
     d.gild:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.07)
     d.ruleL = b:CreateTexture(nil, "ARTWORK")
     d.ruleL:SetSize(30, 1)
-    d.ruleL:SetPoint("RIGHT", b, "TOP", 0, -40)
+    d.ruleL:SetPoint("RIGHT", b, "TOP", 0, -38)
     d.ruleR = b:CreateTexture(nil, "ARTWORK")
     d.ruleR:SetSize(30, 1)
-    d.ruleR:SetPoint("LEFT", b, "TOP", 0, -40)
+    d.ruleR:SetPoint("LEFT", b, "TOP", 0, -38)
     Fade(d.ruleR, GOLD, 0.7)
     if d.ruleL.SetGradient and CreateColor then
         d.ruleL:SetColorTexture(1, 1, 1, 1)
@@ -327,22 +327,10 @@ end
 
 -- a card's line under its words: what is new or loaded (Hint), what it
 -- opens, the macros held
-local SUBS = { options = "Graphics, sound, keys", shop = "Mounts, pets, tokens", edit = "Move the HUD",
-    support = "Help and bug reports" }
-
-local function Sub(kind)
-    local hint, c = Hint(kind)
-    if hint then return hint, c end
-    if kind == "macros" and GetNumMacros then
-        local consts = Constants and Constants.MacroConsts or {}
-        return format("%d of %d", GetNumMacros() or 0, consts.MAX_ACCOUNT_MACROS or 120), DIM
-    end
-    if SUBS[kind] then return SUBS[kind], DIM end
-end
-
 -- One button drawn as a look: "row", "button", "primary", "key" (its glyph
 -- alone, its words in its tooltip), "wide" (a key with its glyph and few
--- words), "card" (its glyph over its words and a line under them), "square"
+-- words), "card" (its glyph over a rule and its words; what it says more is in
+-- its tooltip, 2026-11-11), "square"
 -- (the foot's Log Out and Exit: the glyph over the words), "return" (the
 -- foot's Return to Game, gold) or "medal" (size, and primary: the leading
 -- one, gold)
@@ -406,27 +394,13 @@ local function Look(b, look, kind, glyph, size, primary)
         d.ruleR:Hide()
         d.glyph:SetSize(22, 22)
         d.glyph:SetPoint("LEFT", 10, 0)
-        local sub, sc = Sub(kind)
-        d.label:SetPoint("LEFT", 40, sub and 7 or 0)
-        if sub then
-            d.sub:SetText(sub)
-            d.sub:SetTextColor(sc[1], sc[2], sc[3])
-            d.sub:SetPoint("TOPLEFT", d.label, "BOTTOMLEFT", 0, -3)
-            d.sub:Show()
-        end
+        d.label:SetPoint("LEFT", 40, 0)
         d.dot:SetShown(Hint(kind) == "new")
     elseif card then
-        -- the glyph at the top, a rule, the words, the line under them
-        d.glyph:SetSize(28, 28)
-        d.glyph:SetPoint("CENTER", b, "TOP", 0, -22)
-        local sub, sc = Sub(kind)
-        d.label:SetPoint("TOP", 0, sub and -47 or -50)
-        if sub then
-            d.sub:SetText(sub)
-            d.sub:SetTextColor(sc[1], sc[2], sc[3])
-            d.sub:SetPoint("TOP", 0, -64)
-            d.sub:Show()
-        end
+        -- the glyph at the top, a rule, the words
+        d.glyph:SetSize(26, 26)
+        d.glyph:SetPoint("CENTER", b, "TOP", 0, -20)
+        d.label:SetPoint("CENTER", b, "TOP", 0, -50)
         d.dot:SetShown(Hint(kind) == "new")
     elseif square then
         d.glyph:SetSize(24, 24)
@@ -904,7 +878,6 @@ local cards = {}                -- the session's cards, pooled
 local social = {}               -- the guild's name and its message box
 local STATUS = { online = { 0.25, 0.75, 0.31 }, afk = { 0.88, 0.69, 0.19 }, dnd = { 0.82, 0.25, 0.19 },
     offline = { 0.45, 0.43, 0.40 } }
-local GUILD_GREEN = { 0.25, 1, 0.25 }
 local started = GetTime and GetTime() or 0
 
 -- a class's token from its name in the game's words (friends give the words)
@@ -1068,8 +1041,11 @@ local function Friends(filter)
         end
         return Ordered(out, ns.db.gameMenuFriendsSort), online
     end
-    if not (C_FriendList and C_FriendList.GetNumFriends) then return out, 0 end
-    for i = 1, C_FriendList.GetNumFriends() or 0 do
+    -- Online and All: the character friends, and the Battle.net friends
+    -- playing WoW, a character each (most friends are Battle.net's; the
+    -- list was empty without them, 2026-11-11)
+    local seen = {}
+    for i = 1, C_FriendList and C_FriendList.GetNumFriends and C_FriendList.GetNumFriends() or 0 do
         local f = C_FriendList.GetFriendInfoByIndex(i)
         local name = f and Clean(f.name)
         if name then
@@ -1079,6 +1055,21 @@ local function Friends(filter)
                     where = f.connected and Clean(f.area) or "offline",
                     status = not f.connected and "offline" or f.afk and "afk" or f.dnd and "dnd" or "online",
                     invite = f.connected and name or nil })
+                seen[name] = true
+            end
+        end
+    end
+    if BNGetNumFriends and C_BattleNet and C_BattleNet.GetFriendAccountInfo then
+        for i = 1, BNGetNumFriends() or 0 do
+            local a = C_BattleNet.GetFriendAccountInfo(i)
+            local g = a and a.gameAccountInfo
+            local name = g and g.isOnline and g.clientProgram == (BNET_CLIENT_WOW or "WoW") and Clean(g.characterName)
+            if name and not seen[name] then
+                seen[name] = true
+                online = online + 1
+                table.insert(out, { name = name, class = ClassFile(Clean(g.className)), level = Clean(g.characterLevel),
+                    where = Clean(g.areaName) or "", status = a.isAFK and "afk" or a.isDND and "dnd" or "online",
+                    bnet = Clean(a.accountName), invite = name })
             end
         end
     end
@@ -1192,35 +1183,50 @@ local function Card(i)
 end
 
 local function Social()
-    if social.name then return social end
+    if social.motd then return social end
     -- over the guild's window
     local layer = CreateFrame("Frame", nil, docked)
     layer:SetAllPoints()
     layer:SetFrameLevel(docked:GetFrameLevel() + 3)
-    social.name = ns.PlainText(layer, 15)
-    social.name:SetTextColor(GUILD_GREEN[1], GUILD_GREEN[2], GUILD_GREEN[3])
+    -- the message of the day (2026-11-11): a part of the guild's window,
+    -- not a box in it: its heading between two rules fading out from it,
+    -- the message under it centred, a rule under that over the people
     local box = CreateFrame("Frame", nil, layer)
     box:SetHeight(36)
-    local ink = box:CreateTexture(nil, "BACKGROUND")
-    ink:SetAllPoints()
-    ink:SetColorTexture(0.051, 0.043, 0.027, 0.75)
-    local bar = box:CreateTexture(nil, "ARTWORK")
-    bar:SetPoint("TOPLEFT")
-    bar:SetPoint("BOTTOMLEFT")
-    bar:SetWidth(2)
-    bar:SetColorTexture(GUILD_GREEN[1], GUILD_GREEN[2], GUILD_GREEN[3], 0.7)
-    box.label = ns.Text(box, 9)
-    box.label:SetPoint("TOPLEFT", 10, -5)
-    box.label:SetTextColor(DIM[1], DIM[2], DIM[3])
+    box.label = ns.Text(box, 10)
+    box.label:SetPoint("TOP", 0, -2)
+    box.label:SetTextColor(GOLD_D[1], GOLD_D[2], GOLD_D[3])
     box.label:SetText("Message of the day")
+    local left = box:CreateTexture(nil, "ARTWORK")
+    left:SetHeight(1)
+    left:SetPoint("LEFT", box, "TOPLEFT", 0, -8)
+    left:SetPoint("RIGHT", box.label, "LEFT", -8, 0)
+    if left.SetGradient and CreateColor then
+        left:SetColorTexture(1, 1, 1, 1)
+        left:SetGradient("HORIZONTAL", CreateColor(GOLD[1], GOLD[2], GOLD[3], 0.05),
+            CreateColor(GOLD[1], GOLD[2], GOLD[3], 0.5))
+    else
+        left:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.3)
+    end
+    local right = box:CreateTexture(nil, "ARTWORK")
+    right:SetHeight(1)
+    right:SetPoint("LEFT", box.label, "RIGHT", 8, 0)
+    right:SetPoint("RIGHT", box, "TOPRIGHT", 0, -8)
+    Fade(right, GOLD, 0.5)
     -- the message wrapped, as many lines as it takes (a guild's message is
     -- at most 128 characters): its width set, so its height is known
-    box.text = ns.PlainText(box, 11)
-    box.text:SetPoint("TOPLEFT", 10, -MOTD_TOP)
-    box.text:SetWidth(DOCK_W - 2 * PAD - 2 * WIN_PAD - 18)
-    box.text:SetJustifyH("LEFT")
+    box.text = ns.PlainText(box, 13)
+    box.text:SetPoint("TOP", 0, -MOTD_TOP)
+    box.text:SetWidth(DOCK_W - 2 * PAD - 2 * WIN_PAD - 8)
+    box.text:SetJustifyH("CENTER")
     box.text:SetJustifyV("TOP")
     box.text:SetWordWrap(true)
+    box.text:SetTextColor(ns.colors.text[1], ns.colors.text[2], ns.colors.text[3])
+    local under = box:CreateTexture(nil, "ARTWORK")
+    under:SetHeight(1)
+    under:SetPoint("BOTTOMLEFT")
+    under:SetPoint("BOTTOMRIGHT")
+    under:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.45)
     social.motd = box
     return social
 end
@@ -1229,16 +1235,21 @@ end
 local function Motd(motd)
     local box = Social().motd
     box.text:SetText(motd)
-    local tall = MOTD_TOP + math.ceil(box.text:GetStringHeight()) + 6
+    -- a secret message is shown as it is, but cannot be measured: two lines
+    local ok, high = pcall(function() return math.ceil(box.text:GetStringHeight()) end)
+    if not ok or ns.IsSecret(high) then high = 34 end
+    local tall = MOTD_TOP + high + 10
     box:SetHeight(tall)
     return tall
 end
 
 local last                      -- the docked panel's last reading: sections, leave, back
 -- The guild's message of the day, as GUILD_MOTD last brought it (at login,
--- and when it changes): GetGuildRosterMOTD from here is a blocked action in
--- game (ADDON_ACTION_BLOCKED, 2026-11-11)
-local guildMotd
+-- and when it changes), kept though it be a secret (shown, never tested);
+-- else the guild's community's broadcast, read on the game's events.
+-- GetGuildRosterMOTD from here is a blocked action in game
+-- (ADDON_ACTION_BLOCKED, 2026-11-11)
+local guildMotd, clubMotd
 local lastRanks = {}            -- the guild's ranks, as the panel last read them (for its options)
 
 -- ------------------------------------------------------------ the options
@@ -1412,7 +1423,7 @@ local function Fill(key)
             ns.db.gameMenuGuildSort or "name", function(v) ns.db.gameMenuGuildSort = v end)
         Line("rule")
         Line("label", "Show also")
-        Line("check", "Guild name", ns.db.gameMenuGuildName ~= false,
+        Line("check", "Name as title", ns.db.gameMenuGuildName ~= false,
             function() ns.db.gameMenuGuildName = ns.db.gameMenuGuildName == false; Again() end)
         Line("check", "Message of the day", ns.db.gameMenuMotd ~= false,
             function() ns.db.gameMenuMotd = ns.db.gameMenuMotd == false; Again() end)
@@ -1599,14 +1610,15 @@ local function Docked(sections, leave, back)
     local members, total, guildOn, ranks = {}, 0, 0, {}
     if inGuild then members, total, guildOn, ranks = Guild(guildMode) end
     lastRanks = ranks
-    local showName = ns.db.gameMenuGuildName ~= false
-    local motd = inGuild and ns.db.gameMenuMotd ~= false and guildMotd or nil
-    if motd == "" then motd = nil end
+    -- the guild's name its window's title (unless its option is off)
+    local showName = ns.db.gameMenuGuildName ~= false and not ns.IsSecret(inGuild)
+    local motd = inGuild and ns.db.gameMenuMotd ~= false and (guildMotd or clubMotd) or nil
+    if motd ~= nil and not ns.IsSecret(motd) and motd == "" then motd = nil end
     local motdTall = motd and Motd(motd) or 0
     local fixF = WIN_TOP + WIN_PAD
-    local fixG = WIN_TOP + (showName and 24 or 0) + (motd and motdTall + 8 or 0) + WIN_PAD
-    -- a short panel: the cards a line each, then the guild's name and
-    -- message left out, till friends and the guild have a row each
+    local fixG = WIN_TOP + (motd and motdTall + 8 or 0) + WIN_PAD
+    -- a short panel: the cards a line each, then the guild's message left
+    -- out, till friends and the guild have a row each
     local showMenu, showOurs = not Hidden("menu") and #items > 0, not Hidden("shortcuts") and #ours > 0
     local function Above(cardH)
         local t = 0
@@ -1621,7 +1633,7 @@ local function Docked(sections, leave, back)
     local cardH = CARD_H
     if y - Above(cardH) - bottom < Least(fixG) then cardH = CARD_LOW end
     if y - Above(cardH) - bottom < Least(fixG) then
-        showName, motd = false, nil
+        motd = nil
         fixG = WIN_TOP + WIN_PAD
     end
     local needF = fixF + math.max(1, #friends) * PERSON
@@ -1682,22 +1694,15 @@ local function Docked(sections, leave, back)
         y = y - tallF - WIN_GAP
     end
 
-    -- the guild: its name, its message, its people
+    -- the guild: its name (the title), its message, its people
     local soc = Social()
-    soc.name:Hide()
     soc.motd:Hide()
     if inGuild then
         n = n + 1
         local word = ({ officers = "Officers", all = "All", ranks = "Ranks" })[guildMode] or "Officers"
-        local h = Win(n, y, tallG, "Guild", format("%s  \194\183  %d / %d", word, guildOn, total), "guild")
+        local note = format("%s  \194\183  %d / %d", word, guildOn, total)
+        local h = Win(n, y, tallG, showName and inGuild or "Guild", note, "guild")
         local top = y - WIN_TOP
-        if showName then
-            soc.name:ClearAllPoints()
-            soc.name:SetPoint("TOPLEFT", PAD + WIN_PAD, top)
-            soc.name:SetText("<" .. inGuild .. ">")
-            soc.name:Show()
-            top = top - 24
-        end
         if motd then
             soc.motd:ClearAllPoints()
             soc.motd:SetPoint("TOPLEFT", PAD + WIN_PAD, top)
@@ -1976,7 +1981,23 @@ ns.On("PLAYER_LOGIN", Start)
 for _, e in ipairs({ "FRIENDLIST_UPDATE", "BN_FRIEND_INFO_CHANGED", "GUILD_ROSTER_UPDATE", "PLAYER_MONEY" }) do
     ns.On(e, function() Relayout() end)
 end
+-- the friends as the server has them, asked for once at login (as the
+-- game's friends frame does), so the list is there before it is opened
+ns.On("PLAYER_LOGIN", function()
+    if C_FriendList and C_FriendList.ShowFriends then pcall(C_FriendList.ShowFriends) end
+end)
 ns.On("GUILD_MOTD", function(_, message)
-    guildMotd = Clean(message)
+    guildMotd = message
     Relayout()
 end)
+-- the guild's community's broadcast: the same message, where the client
+-- has communities
+local function Club()
+    if not (C_Club and C_Club.GetGuildClubId and C_Club.GetClubInfo) then return end
+    local ok, id = pcall(C_Club.GetGuildClubId)
+    local info = ok and id and C_Club.GetClubInfo(id)
+    clubMotd = info and info.broadcast or nil
+end
+for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_GUILD_UPDATE", "GUILD_ROSTER_UPDATE", "CLUB_UPDATED" }) do
+    ns.On(e, function() pcall(Club) end)
+end
