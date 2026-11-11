@@ -17685,26 +17685,26 @@ if gamemenuPass then (function()
         end
     end
     print("gamemenu shortcuts docked", table.concat(rows, " "))
-    -- the docked panel as mockup C2c draws it: headings (word, note, fold),
-    -- the XP bar, the friends' pills and rows, the guild, the session
+    -- the docked panel as mockup D2 draws it: band headings (word, note,
+    -- gear, fold), the XP bar, the friends' rows, the guild, the session,
+    -- the hidden sections' chips
     local function docked(tag)
         local heads = {}
         for _, c in ipairs(M.docked.all_ or {}) do
             if c.word and c.chev and c.shown then
                 table.insert(heads, c.word.text .. (c.note.shown and ("(" .. tostring(c.note.text) .. ")") or "")
-                    .. (c.key and (M.Folded(c.key) and "+" or "-") or ""))
+                    .. (c.gear.shown and "#" or "") .. (c.key and (M.Folded(c.key) and "+" or "-") or ""))
             end
         end
         print(tag .. " headings", table.concat(heads, ", "))
-        local people, pills, cards, misc = {}, {}, {}, {}
+        local people, chips, cards, misc = {}, {}, {}, {}
         for _, c in ipairs(M.docked.all_ or {}) do
             if c.shown and c.person then
                 local p = c.person
                 table.insert(people, p.more or (p.name .. "/" .. tostring(p.level) .. "/" .. tostring(p.status) .. "/"
                     .. tostring(p.class) .. "@" .. tostring(p.where) .. (p.rank and ("/" .. p.rank) or "")))
-            elseif c.shown and (c.filter or c.rank) and c.edge then
-                local e = c.edge.color or {}
-                table.insert(pills, (c.filter or ("[" .. c.rank .. "]")) .. (e[1] and e[1] > 0.9 and "*" or ""))
+            elseif c.shown and c.key and c.word and c.edge and not c.chev then
+                table.insert(chips, "[" .. tostring(c.word.text) .. "]")
             elseif c.shown and c.value and c.label then
                 table.insert(cards, tostring(c.label.text) .. "=" .. tostring(c.value.text))
             elseif c.shown and c.kind == "FontString" and c.text and c.text:sub(1, 1) == "<" then
@@ -17714,8 +17714,43 @@ if gamemenuPass then (function()
             end
         end
         print(tag .. " people", #people, table.concat(people, " "))
-        print(tag .. " pills", table.concat(pills, " "), "cards", table.concat(cards, " "), table.concat(misc, " | "))
+        print(tag .. " hidden", table.concat(chips, " "), "cards", table.concat(cards, " "), table.concat(misc, " | "))
     end
+    -- a section's options, as they are open: their lines and marks
+    local P = M.Popover
+    local function pop(tag)
+        if not (P.frame and P.frame.shown) then return print(tag .. " options", "shut") end
+        local out = {}
+        for _, l in ipairs(P.lines) do
+            if l.shown then
+                local w = l.word.shown and l.word.text or ""
+                table.insert(out, l.kind == "label" and (w .. ":") or l.kind == "rule" and "|"
+                    or (l.kind == "radio" or l.kind == "check") and ((l.on and "(x)" or "( )") .. w) or w)
+            end
+        end
+        local segs = {}
+        for _, k in ipairs(P.segs) do
+            if k.shown then table.insert(segs, k.word.text .. (k.held and "*" or "")) end
+        end
+        print(tag .. " options", tostring(P.key), "h=" .. tostring(P.frame.h), table.concat(out, " "),
+            "sort=" .. table.concat(segs, "/"), "catcher=" .. tostring(P.catcher.shown))
+    end
+    local function gear(word)
+        for _, c in ipairs(M.docked.all_ or {}) do
+            if c.word and c.chev and c.shown and c.word.text == word then return c.gear end
+        end
+    end
+    local function line(word)
+        for _, l in ipairs(P.lines or {}) do
+            if l.shown and l.word.text == word then return l end
+        end
+    end
+    local function seg(word)
+        for _, k in ipairs(P.segs or {}) do
+            if k.shown and k.word.text == word then return k end
+        end
+    end
+    local function click(b) b.scripts.OnClick(b) end
     -- a 1080p screen's panel (the harness's is 768)
     local tall = M.docked.GetHeight
     M.docked.GetHeight = function() return 1100 end
@@ -17728,30 +17763,46 @@ if gamemenuPass then (function()
     fire("GUILD_MOTD", "Tea and Biscuits are a fitting way to enjoy a small break between raids; bring your own, share the rest")
     docked("gamemenu long motd")
     fire("GUILD_MOTD", "MC Friday 8pm server")
-    -- the guild's ranks: all of them; then picked, a chip each, the top
-    -- ranks lit until one is toggled (Sorrel's Member added, the Raid
-    -- Officer taken off)
-    local function pill(word)            -- the last of that word: the guild's All, not the friends'
-        local found
-        for _, c in ipairs(M.docked.all_ or {}) do
-            if c.shown and c.word and c.word.text == word and c.choose then found = c end
-        end
-        return found
-    end
-    pill("All").scripts.OnClick(pill("All"))
+    -- the guild's options, from its gear: all of them; then picked, a
+    -- check each, the top ranks ticked until one is toggled (Sorrel's
+    -- Member added, the Raid Officer taken off); sorted by rank; the
+    -- message of the day left out, then back
+    pop("gamemenu before")
+    click(gear("Guild"))
+    pop("gamemenu guild gear")
+    click(line("All"))
     docked("gamemenu guild all")
-    pill("Ranks").scripts.OnClick(pill("Ranks"))
+    pop("gamemenu guild all")
+    click(line("Ranks"))
     docked("gamemenu guild ranks")
-    pill("Member").scripts.OnClick(pill("Member"))
-    pill("Raid Officer").scripts.OnClick(pill("Raid Officer"))
+    pop("gamemenu guild ranks")
+    click(line("Member"))
+    click(line("Raid Officer"))
     docked("gamemenu guild picked")
+    pop("gamemenu guild picked")
+    click(seg("Rank"))
+    docked("gamemenu guild by rank")
+    click(line("Message of the day"))
+    click(line("Guild name"))
+    docked("gamemenu guild bare")
+    pop("gamemenu guild bare")
+    click(line("Message of the day"))
+    click(line("Guild name"))
+    click(seg("Name"))
+    -- the gear again shuts them; the catcher too
+    click(gear("Guild"))
+    pop("gamemenu gear again")
+    click(gear("Guild"))
+    click(P.catcher)
+    pop("gamemenu catcher")
     print("gamemenu guild saved", tostring(ns.db.gameMenuGuild), (function()
         local out = {}
         for k in pairs(ns.db.gameMenuGuildRanks or {}) do table.insert(out, k) end
         table.sort(out)
         return table.concat(out, ",")
     end)())
-    pill("Officers").scripts.OnClick(pill("Officers"))
+    ns.db.gameMenuGuild = "officers"
+    M.Relayout()
     docked("gamemenu guild officers")
     print("gamemenu asked", tostring(W.asked))
     local xp = nil
@@ -17769,17 +17820,42 @@ if gamemenuPass then (function()
     head("Friends").scripts.OnClick(head("Friends"))
     head("This session").scripts.OnClick(head("This session"))
     docked("gamemenu session open")
-    -- the pills: all, then Battle.net
-    for _, c in ipairs(M.docked.all_ or {}) do
-        if c.shown and c.filter == "all" then c.scripts.OnClick(c) end
-    end
+    -- the friends' options: all, by level, then Battle.net
+    click(gear("Friends"))
+    pop("gamemenu friends gear")
+    click(line("All"))
     docked("gamemenu all friends")
-    for _, c in ipairs(M.docked.all_ or {}) do
-        if c.shown and c.filter == "bnet" then c.scripts.OnClick(c) end
-    end
+    click(seg("Level"))
+    docked("gamemenu friends by level")
+    click(seg("Zone"))
+    docked("gamemenu friends by zone")
+    click(seg("Name"))
+    if line("Battle.net") then click(line("Battle.net")) end
     docked("gamemenu bnet")
-    ns.db.gameMenuFriends = "online"
-    M.Relayout()
+    pop("gamemenu bnet")
+    click(line("Online"))
+    -- hidden: the friends gone, a chip over Leave; the chip brings them back
+    click(line("Hide Friends"))
+    pop("gamemenu hid friends")
+    docked("gamemenu friends hidden")
+    print("gamemenu hidden saved", tostring(type(ns.db.gameMenuHidden) == "table" and ns.db.gameMenuHidden.friends))
+    click(gear("Game menu"))
+    pop("gamemenu menu gear")
+    click(line("Hide Game menu"))
+    docked("gamemenu menu hidden")
+    for _, c in ipairs(M.docked.all_ or {}) do
+        if c.shown and c.key and c.word and c.edge and not c.chev then click(c) end
+    end
+    for _, c in ipairs(M.docked.all_ or {}) do
+        if c.shown and c.key and c.word and c.edge and not c.chev then click(c) end
+    end
+    docked("gamemenu shown again")
+    -- the menu shut with the options open: they shut too
+    click(gear("This session"))
+    pop("gamemenu session gear")
+    M.holder:Hide()
+    pop("gamemenu escaped")
+    M.holder:Show()
     -- a row under the mouse: whisper and invite; a click on it whispers
     for _, c in ipairs(M.docked.all_ or {}) do
         if c.shown and c.person and c.person.name == "Thalen" then
