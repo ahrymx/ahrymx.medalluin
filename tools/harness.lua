@@ -1315,6 +1315,9 @@ function ClearOverrideBindings(owner)
 end
 local modsDown = {}
 function IsAltKeyDown() return modsDown.ALT end
+-- the mouse's buttons held: none unless a pass says so
+harnessButtonsDown = {}
+function IsMouseButtonDown(b) return harnessButtonsDown[b or "LeftButton"] and true or false end
 function IsControlKeyDown() return modsDown.CTRL end
 function IsShiftKeyDown() return modsDown.SHIFT end
 function hooksecurefunc(t, k, f)
@@ -12591,6 +12594,167 @@ if args[2] == "unitrow" or args[3] == "unitrow" then
     ns.OverheadFadeIn = fadeIn
     ns.UpdateOverhead()
     state("after the runaway")
+end
+
+-- Detached overhead cells (mockup D3, 2026-11-11): alt+drag a cell off the
+-- overhead to stand on its own; the pet takes its bar, docked under it;
+-- alt+drag back onto the unit deck to rejoin the row.
+if args[2] == "detach" or args[3] == "detach" then
+    local function fireAll(e, ...)
+        for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
+    end
+    inCombat = false
+    fireAll("PLAYER_REGEN_ENABLED")
+    page.settings.simParty:Set(false)
+    page.settings.bossFrames:Set("vertical")
+    local exists = { pet = true, focus = true, targettarget = true }
+    local realExists = UnitExists
+    function UnitExists(u) return exists[u] or realExists(u) end
+    petBar = true
+    for i = 1, 10 do _G["PetActionButton" .. i].shown = i <= 7 end
+    local cx, cy = 0, 0
+    function GetCursorPosition() return cx, cy end
+    -- a screen the harness's edges agree with (they count from a 1080-high
+    -- foot), so a holder's saved top-left reads back where it was left
+    local keepW, keepH, keepFixed = UIParent.w, UIParent.h, UIParent.fixed
+    UIParent.w, UIParent.h, UIParent.fixed = 1920, 1080, { 0, 0, 1920, 1080 }
+    ns.PlaceOverhead()
+    local U = ns.overheadUnits
+    local pet, focus, tot = U.pet, U.focus, U.targettarget
+    local dock, zone = ns.overheadDock, ns.overheadZone
+    local function r(v) return v and math.floor(v + 0.5) or "-" end
+    local function state(tag)
+        local row = {}
+        for _, b in ipairs({ pet, focus, tot }) do
+            if b.shown and b.parent == ns.overhead then table.insert(row, b.unit .. "(w" .. b.w .. ")") end
+        end
+        local tray, docked = 0, 0
+        for i = 1, 10 do
+            local btn = _G["PetActionButton" .. i]
+            if btn.shown and btn.parent == ns.overhead then tray = tray + 1 end
+            if btn.parent == dock then docked = docked + 1 end
+        end
+        local off = {}
+        for _, b in ipairs({ pet, focus, tot }) do
+            if b.parent ~= ns.overhead then
+                local k = "detach" .. b.detach
+                table.insert(off, string.format("%s@%s,%s(w%s%s%s)", b.unit, r(ns.db[k .. "X"]), r(ns.db[k .. "Y"]), r(b.w),
+                    b.shown and "" or ",hidden", b.shadow.shown and ",shadow" or ""))
+            end
+        end
+        print("detach " .. tag, "row=" .. table.concat(row, " "), "tray pet=" .. tray,
+            "dock=" .. docked .. (dock.shown and ("(w" .. r(dock.w) .. ")") or "(off)"),
+            "off=" .. table.concat(off, " "),
+            "saved=" .. tostring(ns.db.detachPet) .. "," .. tostring(ns.db.detachFocus) .. "," .. tostring(ns.db.detachToT),
+            "rowCells=" .. tostring(ns.overheadUnitRow:GetAttribute("cells")))
+    end
+    -- the cursor over a frame's centre, in screen pixels
+    local function over(f)
+        local s = f:GetEffectiveScale()
+        cx, cy = (f:GetLeft() + f:GetRight()) / 2 * s, (f:GetTop() + f:GetBottom()) / 2 * s
+    end
+    -- held, moved, let go; the game does not tell the cell its drag ended
+    -- (it changed hands under the pointer): the button's release is the drop
+    local byDragStop = false
+    local function drag(b, alt, dropAt, onZone)
+        modsDown.ALT = alt
+        harnessButtonsDown.LeftButton = true
+        local from = b.parent
+        b.scripts.OnDragStart(b, "LeftButton")
+        local lifted = zone.shown
+        if onZone then over(zone) else cx, cy = 50, 50 end
+        local w = ns.overheadDragWatch
+        local function tick() if w.shown and w.scripts.OnUpdate then w.scripts.OnUpdate(w, 0) end end
+        tick()
+        local lit = zone.shown and zone.alpha
+        local kept = b.parent == from
+        harnessDropAt = dropAt
+        if byDragStop then
+            b.scripts.OnDragStop(b, "LeftButton")
+            harnessButtonsDown.LeftButton = nil
+        else
+            harnessButtonsDown.LeftButton = nil
+            tick()
+        end
+        local stuck = b.isMoving or false
+        harnessDropAt = nil
+        modsDown.ALT = nil
+        if alt then
+            print("detach  let go", b.unit, "stuck=" .. tostring(stuck), "zone=" .. tostring(zone.shown),
+                "same parent while held=" .. tostring(kept), byDragStop and "by its drag-stop" or "by the button")
+        end
+        return lifted, lit
+    end
+
+    ns.UpdateOverhead()
+    state("attached")
+    print("detach alt-click", tostring(pet:GetAttribute("alt-type1")), "drag=" .. tostring(pet.drag and pet.drag[1]))
+    -- off without Alt: nothing
+    local lifted = drag(pet, false, { "TOPLEFT", "BOTTOMLEFT", 100, 500 })
+    state("dragged without alt, zone=" .. tostring(lifted))
+    -- the pet off, left low on the left
+    local _, lit = drag(pet, true, { "TOPLEFT", "BOTTOMLEFT", 100, 500 })
+    state("pet off, zone lit=" .. tostring(lit))
+    do
+        local cellL, cellR = pet:GetLeft(), pet:GetRight()
+        local dl, dr = dock:GetLeft(), dock:GetRight()
+        print("detach dock", "centred=" .. tostring(math.abs((cellL + cellR) - (dl + dr)) < 0.01),
+            "gap=" .. tostring(r((pet:GetBottom() - dock:GetTop()) / pet:GetEffectiveScale())),
+            "brackets=" .. tostring(dock.brackets[1].shown ~= false and dock.brackets[2].shown ~= false),
+            "petW=" .. r(pet.w) .. " dockW=" .. r(dock.w))
+    end
+    -- moved again, let go by the game's own drag-stop: the saved place follows
+    byDragStop = true
+    drag(pet, true, { "TOPLEFT", "BOTTOMLEFT", 300, 600 })
+    byDragStop = false
+    state("pet moved")
+    -- in combat: no drag; the pet goes and comes with its unit, the dock
+    -- with it; the target of target turning up keeps the row's own places
+    inCombat = true
+    fireAll("PLAYER_REGEN_DISABLED")
+    drag(pet, true, { "TOPLEFT", "BOTTOMLEFT", 600, 300 })
+    state("combat drag refused")
+    exists.pet = nil
+    harnessNextFrame()
+    print("detach pet gone in combat", "shown=" .. tostring(pet.shown), "dock visible=" .. tostring(dock:IsVisible()),
+        "button visible=" .. tostring(PetActionButton1:IsVisible()))
+    exists.targettarget = nil
+    harnessNextFrame()
+    exists.targettarget = true
+    harnessNextFrame()
+    state("ToT back in combat")
+    exists.pet = true
+    harnessNextFrame()
+    inCombat = false
+    fireAll("PLAYER_REGEN_ENABLED")
+    state("after combat")
+    -- back onto the overhead
+    lifted, lit = drag(pet, true, nil, true)
+    state("pet back, zone=" .. tostring(lifted) .. " lit=" .. tostring(lit))
+    -- the focus off alone: a key, no dock
+    drag(focus, true, { "TOPLEFT", "BOTTOMLEFT", 800, 500 })
+    state("focus off")
+    -- the page's check puts it back; ticked, it goes to where it was
+    page.settings.detachFocus:Set(false)
+    state("focus check off")
+    page.settings.detachFocus:Set(true)
+    state("focus check on")
+    -- every cell off: the overhead keeps only the tray
+    drag(pet, true, { "TOPLEFT", "BOTTOMLEFT", 100, 500 })
+    drag(tot, true, { "TOPLEFT", "BOTTOMLEFT", 500, 300 })
+    state("all off")
+    print("detach overhead", "shown=" .. tostring(ns.overhead.shown), "holder alpha=" .. tostring(MedalluinDetachedPet.alpha))
+    page.settings.overheadAlpha:Set(0.5)
+    print("detach opacity", "holder alpha=" .. tostring(MedalluinDetachedPet.alpha))
+    page.settings.overheadAlpha:Set(1)
+    -- the pet frame switched off while detached: gone, its buttons to the tray
+    page.settings.topPet:Set(false)
+    state("pet frame off")
+    page.settings.topPet:Set(true)
+    for _, k in ipairs({ "detachPet", "detachFocus", "detachToT" }) do page.settings[k]:Set(false) end
+    state("all back")
+    UIParent.w, UIParent.h, UIParent.fixed = keepW, keepH, keepFixed
+    ns.PlaceOverhead()
 end
 
 -- ------------------------------------------------------------ the spellbook

@@ -305,6 +305,13 @@ local totUnit = CreateCell("targettarget", "unit", "targettarget")
 -- last cell goes. The plates follow on the next frame (CombatPlates): they
 -- are textures, free in combat.
 local unitCells = { petUnit, focusUnit, totUnit }
+-- each cell's switch on the Overhead page, and its name in the detach
+-- settings (console/overhead.lua's detached cells)
+for i, b in ipairs(unitCells) do
+    b.detachOrder = i
+    b.switch = ({ "topPet", "topFocus", "topToT" })[i]
+    b.detach = ({ "Pet", "Focus", "ToT" })[i]
+end
 -- The header is the cells' anchor in combat: a restricted snippet may only
 -- anchor to a protected frame, and the overhead is not one (2026-11-02: the
 -- cells were anchored to it, refused, and vanished). It sits on the
@@ -318,13 +325,15 @@ unitRow:SetAttribute("floor", 0)
 unitRow:SetAttribute("top", A.cellTop)
 unitRow:SetAttribute("icons", 0)
 unitRow:SetAttribute("unitDeck", A.deck.unit)
+-- the cells on the row, not detached (Layout keeps cell1.. to this count)
+unitRow:SetAttribute("cells", 3)
 ns.overheadUnitRow = unitRow
 -- Restricted code has no math library; everything is worked out before a
 -- cell is touched, and each keeps its point until the new one is set.
 local UNIT_ROW = [=[
     if not PlayerInCombat() then return end
     local cells, n = newtable(), 0
-    for i = 1, 3 do
+    for i = 1, owner:GetAttribute("cells") do
         local c = owner:GetFrameRef("cell" .. i)
         if c and c:IsShown() then
             n = n + 1
@@ -719,7 +728,7 @@ end
 
 -- Which command icons show, in order: stances in use, the pet bar's, the
 -- totem bar's; a separator comes before each group but the first.
-local function CommandRow()
+local function CommandRow(petAway)
     -- real buttons only, simulating or not: an invented stance or pet slot is
     -- an empty, invisible button that still takes its place in the row
     local row, breaks = {}, {}
@@ -750,9 +759,9 @@ local function CommandRow()
         end
     end
     Group(stances)
-    Group(pets)
+    if not petAway then Group(pets) end
     Group(TotemRow())
-    return row, #stances, breaks
+    return row, #stances, breaks, pets
 end
 
 -- The decks the last layout drew, by kind: their widths (nil, not drawn).
@@ -772,7 +781,7 @@ local function CombatPlates()
     if not overhead:IsShown() then return end
     local n = 0
     for _, b in ipairs(unitCells) do
-        if b:IsShown() then n = n + 1 end
+        if b:IsShown() and not ns.OverheadOff(b) then n = n + 1 end
     end
     local stack = {}
     if drawn.boss then table.insert(stack, { kind = "boss", w = drawn.boss }) end
@@ -789,6 +798,296 @@ local function CombatPlates()
             decks[slot]:Clear()
         end
     end
+end
+
+-- ------------------------------------------------------------ detached cells
+-- A unit cell alt+dragged off the overhead stands on its own (mockup D3,
+-- 2026-11-11: the bare key with a shadow), where it was left; alt+dragged
+-- back onto the overhead's unit deck it rejoins the row in its place. The
+-- pet takes its bar with it, docked under it on a strip of its own, held on
+-- by two brackets. Kept per profile (detach<Unit>, detach<Unit>X/Y).
+--
+-- A detached cell hangs from a holder of its own on UIParent, not from the
+-- overhead, which fades and hides when it is empty. The cells are secure:
+-- they change hands only out of combat, and a drag is refused in combat. In
+-- combat the unit watch still shows and hides each where it stands, and the
+-- dock, a child of the pet's cell, goes with it. The row's combat snippet
+-- (unitRow) walks only the cells still on it.
+local DOCK_PAD, BRACKET = 4, 7
+local holders = {}
+local dragging              -- the cell being dragged, nil when none
+
+-- Off the row: detached, or on its way off
+function ns.OverheadOff(b)
+    if not b.detach then return false end
+    return dragging == b or (ns.db and ns.db["detach" .. b.detach]) and true or false
+end
+
+local function Alpha()
+    local v = tonumber(ns.db and ns.db.overheadAlpha) or 1
+    return math.max(0, math.min(1, v))
+end
+
+local function Holder(b)
+    local h = holders[b]
+    if h then return h end
+    h = CreateFrame("Frame", "MedalluinDetached" .. b.detach, UIParent)
+    h:SetFrameStrata(overhead:GetFrameStrata())
+    h:SetMovable(true)
+    h:SetClampedToScreen(true)
+    h:Hide()
+    holders[b] = h
+    return h
+end
+
+-- the shadow a detached key casts, outside its edge
+for _, b in ipairs(unitCells) do
+    b.shadow = b:CreateTexture(nil, "BACKGROUND", nil, -8)
+    b.shadow:SetColorTexture(0, 0, 0, 0.5)
+    b.shadow:SetPoint("TOPLEFT", -3, 3)
+    b.shadow:SetPoint("BOTTOMRIGHT", 3, -3)
+    b.shadow:Hide()
+end
+
+-- The pet's dock: a key under its cell, the bar's icons in its dark
+-- channel, two gold brackets from the cell's foot. A child of the cell, so
+-- the unit watch hides it with the pet, in combat too.
+local dock = CreateFrame("Frame", nil, petUnit)
+dock:SetPoint("TOP", petUnit, "BOTTOM", 0, -BRACKET)
+dock:Hide()
+do
+    local shadow = dock:CreateTexture(nil, "BACKGROUND", nil, -8)
+    shadow:SetColorTexture(0, 0, 0, 0.5)
+    shadow:SetPoint("TOPLEFT", -3, 3)
+    shadow:SetPoint("BOTTOMRIGHT", 3, -3)
+    local e = A.cellEdge
+    local edge = dock:CreateTexture(nil, "BACKGROUND", nil, 0)
+    edge:SetAllPoints()
+    edge:SetColorTexture(unpack(A.edge))
+    local well = dock:CreateTexture(nil, "BACKGROUND", nil, 1)
+    well:SetPoint("TOPLEFT", e, -e)
+    well:SetPoint("BOTTOMRIGHT", -e, e)
+    if well.SetGradient and CreateColor then
+        well:SetColorTexture(1, 1, 1, 1)
+        well:SetGradient("VERTICAL", CreateColor(KEY_FOOT[1], KEY_FOOT[2], KEY_FOOT[3], 1),
+            CreateColor(KEY_TOP[1], KEY_TOP[2], KEY_TOP[3], 1))
+    else
+        well:SetColorTexture(KEY_TOP[1], KEY_TOP[2], KEY_TOP[3], 1)
+    end
+    local channel = dock:CreateTexture(nil, "BACKGROUND", nil, 2)
+    channel:SetColorTexture(0.051, 0.043, 0.027, 0.65)
+    channel:SetPoint("TOPLEFT", e, -e)
+    channel:SetPoint("BOTTOMRIGHT", -e, e)
+    dock.brackets = {}
+    for i, side in ipairs({ "LEFT", "RIGHT" }) do
+        local br = dock:CreateTexture(nil, "BACKGROUND", nil, 3)
+        br:SetColorTexture(unpack(A.edge))
+        br:SetSize(8, BRACKET + 2)
+        br:SetPoint("BOTTOM" .. side, dock, "TOP" .. side, (i == 1 and 14 or -14), -1)
+        local rivet = dock:CreateTexture(nil, "ARTWORK")
+        rivet:SetColorTexture(GOLD_B[1], GOLD_B[2], GOLD_B[3], 1)
+        rivet:SetSize(2, 2)
+        rivet:SetPoint("CENTER", br)
+        dock.brackets[i] = br
+    end
+end
+ns.overheadDock = dock
+
+-- A cell back on the overhead, and the pet's buttons back in the tray.
+local function Unmount(b)
+    if b:GetParent() ~= overhead then
+        b:SetParent(overhead)
+        b:SetFrameLevel(LEVELS.cells)
+    end
+    b.shadow:Hide()
+    Holder(b):Hide()
+end
+
+-- Where a holder stands: where it was left, else under the overhead's
+-- centre, a row apart for each, in the holder's own units.
+local function Place(b, h, w)
+    local x, y = ns.db["detach" .. b.detach .. "X"], ns.db["detach" .. b.detach .. "Y"]
+    if not (tonumber(x) and tonumber(y)) then
+        local k = h:GetScale()
+        local order = b.detachOrder - 1
+        x = (UIParent:GetWidth() or 1024) / k / 2 - w / 2
+        y = (UIParent:GetHeight() or 768) / k - 160 - order * 60
+    end
+    h:ClearAllPoints()
+    h:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
+end
+
+local function Mount(b, w)
+    local h = Holder(b)
+    h:SetScale(overhead:GetScale())
+    h:SetAlpha(Alpha())
+    h:SetSize(w, b:GetHeight())
+    if dragging ~= b then Place(b, h, w) end
+    if b:GetParent() ~= h then b:SetParent(h) end
+    b:SetFrameLevel(h:GetFrameLevel() + 1)
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", h, "TOPLEFT")
+    b:SetWidth(w)
+    b.shadow:Show()
+    h:Show()
+end
+
+-- The pet's bar in the dock, centred under a cell at least as wide as it;
+-- nil: the pet's buttons back to the overhead, for the tray.
+local function Dock(pets)
+    local n = pets and #pets or 0
+    local docked = {}
+    for i = 1, n do docked[pets[i]] = true end
+    for _, btn in ipairs(petButtons) do
+        if btn:GetParent() == dock and not docked[btn] then
+            btn:SetParent(overhead)
+            btn:SetFrameLevel(LEVELS.buttons)
+        end
+    end
+    if n == 0 then
+        dock:Hide()
+        return A.cell.unit
+    end
+    local step = A.icon + A.iconGap
+    local bw = n * step - A.iconGap
+    dock:SetSize(bw + 2 * DOCK_PAD, A.icon + 2 * DOCK_PAD)
+    for i, btn in ipairs(pets) do
+        if btn:GetParent() ~= dock then btn:SetParent(dock) end
+        btn:SetFrameLevel(dock:GetFrameLevel() + 2)
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", dock, "TOPLEFT", DOCK_PAD + (i - 1) * step, -DOCK_PAD)
+        btn:Show()
+    end
+    dock:Show()
+    return math.max(A.cell.unit, bw + 2 * DOCK_PAD)
+end
+
+-- The drop zone: the overhead's unit deck, or where one would hang; lit
+-- while a dragged cell is over it.
+local zone = CreateFrame("Frame", nil, UIParent)
+zone:SetFrameStrata("HIGH")
+zone:Hide()
+do
+    local fill = zone:CreateTexture(nil, "BACKGROUND")
+    fill:SetAllPoints()
+    fill:SetColorTexture(0.769, 0.647, 0.341, 0.28)
+    zone.edges = {}
+    for i, pts in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" },
+        { "TOPLEFT", "BOTTOMLEFT" }, { "TOPRIGHT", "BOTTOMRIGHT" } }) do
+        local t = zone:CreateTexture(nil, "ARTWORK")
+        t:SetColorTexture(GOLD_B[1], GOLD_B[2], GOLD_B[3], 1)
+        t:SetPoint(pts[1])
+        t:SetPoint(pts[2])
+        if i <= 2 then t:SetHeight(2) else t:SetWidth(2) end
+        zone.edges[i] = t
+    end
+end
+ns.overheadZone = zone
+local zoneAt = { y = 0, w = 0 }
+
+local function OverZone()
+    local x, y = GetCursorPosition()
+    local s = zone:GetEffectiveScale()
+    x, y = x / s, y / s
+    local l, r, t, b = zone:GetLeft(), zone:GetRight(), zone:GetTop(), zone:GetBottom()
+    if not (l and r and t and b) then return false end
+    return x >= l - 12 and x <= r + 12 and y <= t + 12 and y >= b - 12
+end
+
+local function ShowZone()
+    zone:SetScale(overhead:GetScale())
+    zone:ClearAllPoints()
+    zone:SetPoint("TOP", overhead, "TOP", 0, -zoneAt.y)
+    zone:SetSize(zoneAt.w, A.deck.unit)
+    zone:Show()
+end
+
+-- what Layout tells it: the detached on their holders, the pet's dock, and
+-- where the unit deck hangs: under the boss deck if there is one, as wide as
+-- it is drawn (nil: none, a cell's)
+function ns.OverheadDetached(pets, underBosses, unitW)
+    for _, b in ipairs(unitCells) do
+        if b == dragging then
+            -- under the pointer: left where it is until the drop; the pet's
+            -- bar into the dock, which it carries
+            if b == petUnit then Dock(pets) end
+        elseif ns.OverheadOff(b) and ns.db[b.switch] ~= false then
+            Mount(b, b == petUnit and Dock(pets) or A.cell.unit)
+        else
+            if b == petUnit then Dock(nil) end
+            Unmount(b)
+        end
+    end
+    zoneAt.y = underBosses and A.deck.boss or 0
+    zoneAt.w = unitW or DeckWidth("unit", 1)
+end
+
+-- The drag moves the cell itself, from wherever it hangs, and it changes
+-- hands (onto its holder, or back onto the overhead) only once it is let go:
+-- handed over under the pointer, the game stopped telling it the drag was
+-- over, and it stuck to the pointer until a reload (2026-11-11). The drop is
+-- the cell's OnDragStop, or else the button found let go by the watcher.
+local watcher = CreateFrame("Frame")
+watcher:Hide()
+ns.overheadDragWatch = watcher
+
+local function Drop(b)
+    if dragging ~= b then return end
+    b:StopMovingOrSizing()
+    if b.SetUserPlaced then b:SetUserPlaced(false) end     -- not the game's to remember
+    dragging = nil
+    watcher:Hide()
+    local back = OverZone()
+    zone:Hide()
+    local key = "detach" .. b.detach
+    if not back then
+        -- the cell's own units are its holder's: both the overhead's scale
+        ns.db[key .. "X"], ns.db[key .. "Y"] = b:GetLeft(), b:GetTop()
+    end
+    if (ns.db[key] and true or false) == not back then
+        UpdateOverhead()
+    else
+        ns.SetOption(key, not back)
+    end
+end
+
+watcher:SetScript("OnUpdate", function()
+    local b = dragging
+    if not b then watcher:Hide() return end
+    if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+        Drop(b)
+        return
+    end
+    zone:SetAlpha(OverZone() and 1 or 0.35)
+end)
+
+local function Lift(b)
+    if dragging or InCombatLockdown() or not IsAltKeyDown() then return end
+    dragging = b
+    b:StartMoving()
+    -- the row closes up behind it (Layout leaves the dragged cell alone)
+    UpdateOverhead()
+    ShowZone()
+    zone:SetAlpha(0.35)
+    watcher:Show()
+end
+
+for _, b in ipairs(unitCells) do
+    b:SetMovable(true)
+    b:RegisterForDrag("LeftButton")
+    -- an Alt release is the drop, not a click on the unit
+    b:SetAttribute("alt-type1", "none")
+    b:SetScript("OnDragStart", Lift)
+    b:SetScript("OnDragStop", Drop)
+end
+-- a fight starting mid-drag: let go where it is, while that is still allowed
+ns.On("PLAYER_REGEN_DISABLED", function() if dragging then Drop(dragging) end end)
+ns.On("UI_SCALE_CHANGED", function() if UpdateOverhead then UpdateOverhead() end end)
+ns.OnSetting("overheadAlpha", function()
+    for _, h in pairs(holders) do h:SetAlpha(Alpha()) end
+end)
+for _, b in ipairs(unitCells) do
+    ns.OnSetting("detach" .. b.detach, function() UpdateOverhead() end)
 end
 
 local finishing = false     -- the pass after a fade out, that clears and hides
@@ -809,13 +1108,22 @@ local function Layout()
             table.insert(bosses, bossUnits[i])
         end
     end
-    local units = {}
-    if Present(petUnit, "topPet") then table.insert(units, petUnit) end
-    if Present(focusUnit, "topFocus") then table.insert(units, focusUnit) end
-    if Present(totUnit, "topToT") then table.insert(units, totUnit) end
+    local units, attached = {}, 0
+    for _, b in ipairs(unitCells) do
+        local on = Present(b, b.switch)
+        if not ns.OverheadOff(b) then
+            if on then table.insert(units, b) end
+            if ns.db[b.switch] ~= false then
+                attached = attached + 1
+                unitRow:SetFrameRef("cell" .. attached, b)
+            end
+        end
+    end
+    unitRow:SetAttribute("cells", attached)
 
     -- the command row first: it is the bottom deck, and decks grow from it
-    local row, stances, breaks = CommandRow()
+    local petAway = ns.OverheadOff(petUnit) and ns.db.topPet ~= false
+    local row, stances, breaks, pets = CommandRow(petAway)
     local rowW, sep = RowWidth(#row, breaks)
 
     -- the decks, top down; bottom up, a deck grows when the one under it
@@ -825,6 +1133,11 @@ local function Layout()
     if #units > 0 then table.insert(stack, { kind = "unit", cells = units, w = DeckWidth("unit", #units) }) end
     if #row > 0 then table.insert(stack, { kind = "tray", w = rowW + 2 * A.deck.tray + 2 * A.margin }) end
     Widen(stack)
+    -- the detached on their holders, the pet's bar in its dock; before an
+    -- emptied overhead fades, so they do not fade with it
+    local unitW
+    for _, d in ipairs(stack) do if d.kind == "unit" then unitW = d.w end end
+    ns.OverheadDetached(petAway and pets or nil, #bosses > 0, unitW)
 
     -- emptied: the plate stays as it was while it fades out (console/fade.lua),
     -- then this runs again to clear it and hide
@@ -890,6 +1203,7 @@ local function Layout()
     unitRow:SetAttribute("top", rowTop or y + A.cellTop)
     -- bosses past the count, hidden but still watched
     for i = #bosses + 1, 5 do bossUnits[i]:Hide() end
+
     ns.overheadRow, ns.overheadRowStances = row, stances
 
     overhead:SetSize(math.max(widest, 1), math.max(y, 1))

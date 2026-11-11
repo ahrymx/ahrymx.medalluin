@@ -166,6 +166,12 @@ local DEFAULTS = {
     topFocus = true,        -- focus unit frame on the middle tier
     topToT = true,          -- target of target frame on the middle tier
     topPetBar = true,       -- pet action bar on the bottom tier
+    -- an overhead unit frame alt+dragged off it, where it was left: its
+    -- holder's top-left from the screen's bottom-left, in the holder's units
+    -- (console/overhead.lua; false: not placed yet)
+    detachPet = false, detachFocus = false, detachToT = false,
+    detachPetX = false, detachPetY = false, detachFocusX = false, detachFocusY = false,
+    detachToTX = false, detachToTY = false,
     topStances = true,      -- stance bar on the bottom tier
     topTotems = true,       -- totem bar on the bottom tier (Forever's)
     auraGlow = true,        -- border glow for dispellable debuffs
@@ -258,6 +264,8 @@ for _, key in ipairs({
     "partyPets", "partyLayout", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss", "bossMine",
     "editUnit", "editParty",
     "overhead", "bossFrames", "topPet", "topFocus", "topToT", "topPetBar", "topStances", "topTotems",
+    "detachPet", "detachFocus", "detachToT", "detachPetX", "detachPetY", "detachFocusX", "detachFocusY",
+    "detachToTX", "detachToTY",
     "xpCast", "repCast",
 }) do PER_PROFILE[key] = true end
 ns.PER_PROFILE = PER_PROFILE
