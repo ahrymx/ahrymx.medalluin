@@ -1329,8 +1329,18 @@ function UnitCastingInfo(u)
     if casting and u == castUnit then return "Frostbolt", nil, nil, 99000, 101000, false, 7 end
 end
 function SetPortraitTexture(t, u) t.portrait = u end
-function GetContainerNumSlots(bag) return bag == 0 and 16 or 14 end
-function GetContainerNumFreeSlots(bag) return bag == 0 and 4 or 8, 0 end
+-- the strips' bag ring reads these; its checks set harnessBags (free slots, of
+-- the backpack's 16 and four bags of 14; or none at all)
+harnessBags = {}
+function GetContainerNumSlots(bag)
+    if harnessBags.none then return 0 end
+    return bag == 0 and 16 or 14
+end
+function GetContainerNumFreeSlots(bag)
+    local free = harnessBags.free
+    if free then return bag == 0 and math.min(free, 16) or math.max(0, free - 16) / 4, 0 end
+    return bag == 0 and 4 or 8, 0
+end
 function GetInventoryItemDurability(i) if i == 5 then return 30, 100 end end
 function GameTime_GetTime() return "11:39" end
 function UnitChannelInfo() end
@@ -4234,6 +4244,37 @@ if gamemenuPass then (function()
     C_AddOns = C_AddOns or {}
     C_AddOns.GetNumAddOns = function() return 3 end
     C_AddOns.IsAddOnLoaded = function(i) return i ~= 2 end
+    -- the docked menu's people (mockup C2c): friends, a Battle.net one, the guild
+    function GetGuildInfo(u) if u == "player" then return "Decimation", "Member", 3 end end
+    function IsInGuild() return true end
+    function GetGuildRosterMOTD() return "MC Friday 8pm server" end
+    -- name, level, rank, zone, online, status, class
+    harnessGuild = { { "Aldren-Realm", 60, "Officer", "Blackrock Depths", true, 0, "WARRIOR" },
+        { "Sorrel-Realm", 44, "Member", "Tanaris", true, 1, "DRUID" },
+        { "Gone-Realm", 30, "Member", "", false, 0, "MAGE" },
+        { UnitName("player") .. "-Realm", 24, "Member", "Westfall", true, 0, "MAGE" } }
+    function GetGuildRosterInfo(i)
+        local m = harnessGuild[i]
+        return m[1], m[3], 1, m[2], m[7], m[4], "", "", m[5], m[6], m[7]
+    end
+    harnessFriends = { { name = "Thalen", level = 60, className = "Mage", area = "Shattrath", connected = true },
+        { name = "Ylla", level = 27, className = "Rogue", area = "Duskwood", connected = true, dnd = true },
+        { name = "Old", level = 12, className = "Priest", connected = false } }
+    LOCALIZED_CLASS_NAMES_MALE = { MAGE = "Mage", ROGUE = "Rogue", PRIEST = "Priest", WARRIOR = "Warrior",
+        DRUID = "Druid", HUNTER = "Hunter" }
+    function GetNetStats() return 0, 0, 42, 48 end
+    function BNGetNumFriends() return 1 end
+    C_BattleNet = { GetFriendAccountInfo = function()
+        return { accountName = "Kes#1", isAFK = true, gameAccountInfo = { isOnline = true, clientProgram = "WoW",
+            characterName = "Kestrel", characterLevel = 60, className = "Hunter", areaName = "Orgrimmar" } }
+    end }
+    function ChatFrame_SendTell(n) table.insert(W.clicked, "tell " .. n) end
+    function ChatFrame_SendBNetTell(n) table.insert(W.clicked, "bntell " .. n) end
+    C_PartyInfo = C_PartyInfo or {}
+    C_PartyInfo.InviteUnit = function(n) table.insert(W.clicked, "invite " .. n) end
+    C_FriendList.ShowFriends = function() W.asked = (W.asked or "") .. "friends," end
+    C_GuildInfo = C_GuildInfo or {}
+    C_GuildInfo.GuildRoster = function() W.asked = (W.asked or "") .. "guild," end
 end)() end
 
 if cdmPass or ccPass then (function()
@@ -6672,6 +6713,74 @@ if stripsPass then
     ns.repBar.hit.scripts.OnEnter(ns.repBar.hit)
     print("rep tip", table.concat(lines, " | "), tipSpec())
     GameTooltip.SetText, GameTooltip.AddLine, GameTooltip.AddDoubleLine = set, add, double
+
+    -- the medallions' rings (mockup A): the arc's atlas frame and colour,
+    -- flipped on the right; their numbers in the medallions' tooltips
+    local function fire(e, ...)
+        for _, f in ipairs(events[e] or {}) do
+            if f.scripts.OnEvent then f.scripts.OnEvent(f, e, ...) end
+        end
+    end
+    local function ring(tag, side)
+        local arc, track
+        for _, f in ipairs(all) do
+            if f.kind == "Texture" and f.parent == ns.strips[side].art and tostring(f.texture):match("ring%-arc$") then arc = f end
+            if f.kind == "Texture" and f.parent == ns.strips[side].art and tostring(f.texture):match("ring%-track$") then track = f end
+        end
+        local c = arc.coords or {}
+        local v = arc.vertex or {}
+        screen(tag, arc, string.format("shown=%s coords=%.3f,%.3f,%.3f,%.3f colour=%.2f,%.2f,%.2f track=%s",
+            tostring(arc.shown), c[1] or -1, c[2] or -1, c[3] or -1, c[4] or -1, v[1] or -1, v[2] or -1, v[3] or -1,
+            tostring(track.coords and table.concat(track.coords, ","))))
+    end
+    local function tip(tag, b)
+        b.scripts.OnEnter(b)
+        print(tag, tipSpec())
+    end
+    ring("ring durability", -1)
+    tip("ring durability tip", CharacterMicroButton)
+    ring("ring bags", 1)
+    tip("ring bags tip", MainMenuBarBackpackButton)
+    -- 72 slots: from nearly empty (green) to full (red), then no bags
+    for _, free in ipairs({ 60, 30, 13, 3, 0 }) do
+        harnessBags.free = free
+        fire("BAG_UPDATE", 0)
+        ring("ring bags free=" .. free, 1)
+    end
+    tip("ring bags full tip", MainMenuBarBackpackButton)
+    harnessBags.none = true
+    fire("BAG_UPDATE", 0)
+    ring("ring bags none", 1)
+    harnessBags.free, harnessBags.none = nil, nil
+    fire("BAG_UPDATE", 0)
+    local said = {}
+
+    -- the right strip's shortcuts: those something answers, from the
+    -- medallion outward, the clock last and wider; a click runs one
+    local sh = ns.stripShortcuts
+    local function row(tag)
+        local out = {}
+        for _, b in ipairs(sh.keys) do
+            if b.shown then table.insert(out, b.shortcut[2]) end
+        end
+        print(tag, table.concat(out, ", "))
+        for _, b in ipairs(sh.keys) do if b.shown then screen(tag .. " key", b, b.shortcut[2]) end end
+        screen(tag .. " clock", sh.clock)
+    end
+    row("shortcuts load")
+    local hadMacro = SlashCmdList.MACRO
+    SlashCmdList.MACRO = function(msg) table.insert(said, "/macro " .. tostring(msg)) end
+    SLASH_MACRO1 = "/macro"
+    ToggleFriendsFrame = ToggleFriendsFrame or function(i) table.insert(said, "ToggleFriendsFrame " .. i) end
+    ToggleGuildFrame = ToggleGuildFrame or function() table.insert(said, "ToggleGuildFrame") end
+    sh.Arrange()
+    row("shortcuts world")
+    said = {}
+    for _, b in ipairs(sh.keys) do
+        if b.shown then b.scripts.OnClick(b) end
+    end
+    print("shortcut clicks", table.concat(said, ", "))
+    SlashCmdList.MACRO, SLASH_MACRO1 = hadMacro, nil
 
     -- the chat panel: the art, where the messages and the edit box go, and
     -- Blizzard's art hidden on a docked window and kept hidden
@@ -17530,21 +17639,96 @@ if gamemenuPass then (function()
     local rows = {}
     -- ours are made on the holder and moved: found there
     for _, c in ipairs(M.holder.all_ or {}) do
-        if c.kind == "Button" and c.parent == M.docked and c.shown and not c.layoutIndex then
-            local hint
-            for _, r in ipairs({ c:GetRegions() }) do
-                if r.kind == "FontString" and r.shown and r.text and r.text:sub(1, 1) == "/" then hint = r.text end
-            end
-            table.insert(rows, tostring(M.Words(c)) .. "(" .. tostring(hint) .. ")[" .. rect(c) .. "]"
+        if c.kind == "Button" and c.parent == M.docked and c.shown and not c.layoutIndex and M.Command(c) then
+            table.insert(rows, tostring(M.Words(c)) .. "(" .. tostring(M.Command(c)) .. ")[" .. rect(c) .. "]"
                 .. " own=" .. tostring(c:GetText()))
         end
     end
     print("gamemenu shortcuts docked", table.concat(rows, " "))
-    local heads = {}
-    for _, c in ipairs(M.docked.all_ or {}) do
-        if c.kind == "Frame" and c.word and c.shown then table.insert(heads, c.word.text) end
+    -- the docked panel as mockup C2c draws it: headings (word, note, fold),
+    -- the XP bar, the friends' pills and rows, the guild, the session
+    local function docked(tag)
+        local heads = {}
+        for _, c in ipairs(M.docked.all_ or {}) do
+            if c.word and c.chev and c.shown then
+                table.insert(heads, c.word.text .. (c.note.shown and ("(" .. tostring(c.note.text) .. ")") or "")
+                    .. (c.key and (M.Folded(c.key) and "+" or "-") or ""))
+            end
+        end
+        print(tag .. " headings", table.concat(heads, ", "))
+        local people, pills, cards, misc = {}, {}, {}, {}
+        for _, c in ipairs(M.docked.all_ or {}) do
+            if c.shown and c.person then
+                local p = c.person
+                table.insert(people, p.more or (p.name .. "/" .. tostring(p.level) .. "/" .. tostring(p.status) .. "/"
+                    .. tostring(p.class) .. "@" .. tostring(p.where) .. (p.rank and ("/" .. p.rank) or "")))
+            elseif c.shown and c.filter then
+                local e = c.edge.color or {}
+                table.insert(pills, c.filter .. (e[1] and e[1] > 0.9 and "*" or ""))
+            elseif c.shown and c.value and c.label then
+                table.insert(cards, tostring(c.label.text) .. "=" .. tostring(c.value.text))
+            elseif c.shown and c.kind == "FontString" and c.text and c.text:sub(1, 1) == "<" then
+                table.insert(misc, "guild " .. c.text)
+            elseif c.shown and c.text and c.label and c.label.text == "Message of the day" then
+                table.insert(misc, "motd " .. tostring(c.text.text))
+            end
+        end
+        print(tag .. " people", #people, table.concat(people, " "))
+        print(tag .. " pills", table.concat(pills, " "), "cards", table.concat(cards, " "), table.concat(misc, " | "))
     end
-    print("gamemenu headings", table.concat(heads, ", "))
+    -- a 1080p screen's panel (the harness's is 768)
+    local tall = M.docked.GetHeight
+    M.docked.GetHeight = function() return 1100 end
+    M.Relayout()
+    docked("gamemenu")
+    print("gamemenu asked", tostring(W.asked))
+    local xp = nil
+    for _, c in ipairs(M.docked.all_ or {}) do if c.fill and c.rest and c.left then xp = c end end
+    print("gamemenu xp", xp and tostring(xp.shown), xp and xp.left.text, xp and xp.right.text)
+    local function head(word)
+        for _, c in ipairs(M.docked.all_ or {}) do
+            if c.word and c.chev and c.shown and c.word.text == word then return c end
+        end
+    end
+    -- folded and opened, kept
+    head("Friends").scripts.OnClick(head("Friends"))
+    docked("gamemenu friends folded")
+    print("gamemenu folded saved", tostring(type(ns.db.gameMenuFolded) == "table" and ns.db.gameMenuFolded.friends))
+    head("Friends").scripts.OnClick(head("Friends"))
+    head("This session").scripts.OnClick(head("This session"))
+    docked("gamemenu session open")
+    -- the pills: all, then Battle.net
+    for _, c in ipairs(M.docked.all_ or {}) do
+        if c.shown and c.filter == "all" then c.scripts.OnClick(c) end
+    end
+    docked("gamemenu all friends")
+    for _, c in ipairs(M.docked.all_ or {}) do
+        if c.shown and c.filter == "bnet" then c.scripts.OnClick(c) end
+    end
+    docked("gamemenu bnet")
+    ns.db.gameMenuFriends = "online"
+    M.Relayout()
+    -- a row under the mouse: whisper and invite; a click on it whispers
+    for _, c in ipairs(M.docked.all_ or {}) do
+        if c.shown and c.person and c.person.name == "Thalen" then
+            c.scripts.OnEnter(c)
+            print("gamemenu row lit", "where=" .. tostring(c.where.shown), "whisper=" .. tostring(c.whisper.shown),
+                "invite=" .. tostring(c.invite.shown))
+            c.invite.scripts.OnClick(c.invite)
+            c.whisper.scripts.OnClick(c.whisper)
+        end
+    end
+    print("gamemenu people clicked", table.concat(W.clicked, ","))
+    f:Show()
+    -- a short screen: the people cut to the room
+    M.docked.GetHeight = function() return 800 end
+    for i = 1, 12 do table.insert(harnessFriends, { name = "F" .. i, level = 10, className = "Mage", area = "X",
+        connected = true }) end
+    M.Relayout()
+    docked("gamemenu short")
+    M.docked.GetHeight = tall
+    for _ = 1, 12 do table.remove(harnessFriends) end
+    M.Relayout()
     print("gamemenu who", M.docked and "docked=" .. tostring(M.docked.shown), "ring=" .. tostring(M.ring.shown))
     -- the dress: Blizzard's words hidden, ours drawn
     local opts = f.buttons[1]

@@ -7,7 +7,7 @@ ns.overheadArt = {
     deck = { boss = 34, unit = 30, tray = 30 },
     cell = { boss = 168, unit = 200 },
     col = { boss = 20, unit = 18 },
-    cellTop = 0, cellBottom = 0, cellEdge = 2,
+    cellTop = 4, cellBottom = 4, cellEdge = 2, channel = 2,
     gap = 4, margin = 4, ledge = 10, power = 4,
     icon = 22, iconGap = 2, iconSep = 8, trayTop = 3,
     edge = { 0.541, 0.439, 0.204 },
@@ -35,8 +35,8 @@ ns.overheadPieces = {
 
 -- each unit's icon column, chip and glyph, the same way
 ns.overheadChips = {
-    boss = { file = "icon-skull", w = 20, h = 30, tw = 32, th = 32 },
-    pet = { file = "icon-paw", w = 18, h = 26, tw = 32, th = 32 },
-    focus = { file = "icon-target", w = 18, h = 26, tw = 32, th = 32 },
-    targettarget = { file = "icon-friend", w = 18, h = 26, tw = 32, th = 32 },
+    boss = { file = "icon-skull", w = 20, h = 22, tw = 32, th = 32 },
+    pet = { file = "icon-paw", w = 18, h = 18, tw = 32, th = 32 },
+    focus = { file = "icon-target", w = 18, h = 18, tw = 32, th = 32 },
+    targettarget = { file = "icon-friend", w = 18, h = 18, tw = 32, th = 32 },
 }

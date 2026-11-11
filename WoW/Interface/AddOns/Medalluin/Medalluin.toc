@@ -52,6 +52,7 @@ strips\frame.lua
 strips\micro.lua
 strips\bags.lua
 strips\vehicle.lua
+strips\rings.lua
 strips\status.lua
 strips\buffs.lua
 strips\chat.lua

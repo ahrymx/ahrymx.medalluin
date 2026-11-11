@@ -34,6 +34,7 @@ for _, side in ipairs({ -1, 1 }) do
     local tex = artFrame:CreateTexture(nil, "ARTWORK")
     tex:SetAllPoints()
     tex:SetTexture(ns.media .. "strip")
+    f.art = artFrame
     local u, v = art.width / art.texWidth, art.height / art.texHeight
     if side < 0 then tex:SetTexCoord(0, u, 0, v) else tex:SetTexCoord(u, 0, 0, v) end
 
@@ -54,15 +55,27 @@ local well = ns.stripWindows.well
 ns.stripWell = { x = (well[1] + well[2]) / 2, y = (well[3] + well[4]) / 2, size = well[2] - well[1] }
 ns.stripRow = art.height - L.stripHeight / 2 + L.glyphDrop
 
--- The strip's row as joined cells, as a window's tabs (window/shell.lua):
--- from 5 short of the medallion's ring (as a window's flush band) to the
--- strip's top inner corner, the row's full height, its top edge the
--- strip's, each cell boxed in dark gold over the strip's own brown and
--- neighbours sharing an edge.
+-- The strip's row as keys (2026-11-10, mockup B of /workspace/strips-mockups.png;
+-- were joined boxed cells): a dark channel sunk in the strip from 2 short
+-- of `from` (5 short of the medallion's ring, as a window's flush band) to
+-- 2 short of the strip's top inner corner, KEY.channel tall; in it, raised
+-- keys KEY.gap apart, KEY.inset inside the channel, each a brown well
+-- lighter at its top, a dark gold edge (gold under the mouse) and a lit
+-- lip along its top.
 local GOLD_D = { 0.541, 0.439, 0.204 }
+local GOLD = { 0.769, 0.647, 0.341 }
+local KEY = { channel = 26, inset = 3, gap = 3, top = { 0.341, 0.286, 0.165 }, bottom = { 0.141, 0.114, 0.055 } }
 local cells = { from = ns.stripWell.x + L.ringRadius + 5, to = L.length,
     y = art.height - L.stripHeight / 2, height = L.stripHeight }
 ns.stripCells = cells
+
+for _, side in ipairs({ -1, 1 }) do
+    local strip = ns.strips[side]
+    local channel = strip.art:CreateTexture(nil, "OVERLAY")
+    channel:SetColorTexture(0.051, 0.043, 0.027, 0.65)
+    ns.OnStrip(channel, side, (cells.from + cells.to) / 2 - 2, cells.y, cells.to - cells.from, KEY.channel)
+    strip.channel = channel
+end
 
 local function Edges(b)
     local out = {}
@@ -78,28 +91,56 @@ local function Edges(b)
     return out
 end
 
--- A cell's box on b (its own textures, under whatever b draws): its four
--- edges, a glow under the mouse.
+local function Lit(b, on)
+    local c = on and GOLD or GOLD_D
+    for _, t in ipairs(b.cell.edge) do t:SetColorTexture(c[1], c[2], c[3], 1) end
+end
+
+-- A key on b (its own textures, under whatever b draws): its well, edges
+-- and lip, a glow and a gold edge under the mouse.
 function ns.StripCell(b)
+    local fill = b:CreateTexture(nil, "BACKGROUND", nil, 0)
+    fill:SetPoint("TOPLEFT", 1, -1)
+    fill:SetPoint("BOTTOMRIGHT", -1, 1)
+    local t, f = KEY.top, KEY.bottom
+    if fill.SetGradient and CreateColor then
+        fill:SetColorTexture(1, 1, 1, 1)
+        fill:SetGradient("VERTICAL", CreateColor(f[1], f[2], f[3], 1), CreateColor(t[1], t[2], t[3], 1))
+    else
+        fill:SetColorTexture((t[1] + f[1]) / 2, (t[2] + f[2]) / 2, (t[3] + f[3]) / 2, 1)
+    end
     local edge = Edges(b)
+    local lip = b:CreateTexture(nil, "BACKGROUND", nil, 2)
+    lip:SetColorTexture(1, 0.95, 0.78, 0.22)
+    lip:SetPoint("TOPLEFT", 3, -2)
+    lip:SetPoint("TOPRIGHT", -3, -2)
+    lip:SetHeight(1)
     local glow = b:CreateTexture(nil, "HIGHLIGHT")
     glow:SetPoint("TOPLEFT", 1, -1)
     glow:SetPoint("BOTTOMRIGHT", -1, 1)
     glow:SetColorTexture(1, 1, 1, 0.08)
-    b.cell = { edge = edge, glow = glow }
+    b.cell = { fill = fill, edge = edge, lip = lip, glow = glow }
+    b:HookScript("OnEnter", function(self) Lit(self, true) end)
+    b:HookScript("OnLeave", function(self) Lit(self, false) end)
 end
 
--- Lay the frames out along the side's row, from the medallion outward
--- (inward, toward the console), sharing the row's width.
+-- Lay the keys out along the side's channel, from the medallion outward
+-- (inward, toward the console), sharing its width less their gaps; a key
+-- with a share (default 1) takes that many parts of it.
 function ns.StripCells(side, list)
     local n = #list
     if n == 0 then return end
-    local total = cells.to - cells.from + (n - 1)       -- the shared edges given back
-    local x = cells.from
-    for i, f in ipairs(list) do
-        local w = math.floor(i * total / n) - math.floor((i - 1) * total / n)
-        ns.OnStrip(f, side, x + w / 2, cells.y, w, cells.height)
-        x = x + w - 1
+    local x = cells.from - 2 + KEY.inset                 -- the channel's start, inset
+    local total = cells.to - cells.from - 2 * KEY.inset - (n - 1) * KEY.gap
+    local h = KEY.channel - 2 * KEY.inset
+    local parts, upto = 0, 0
+    for _, f in ipairs(list) do parts = parts + (f.share or 1) end
+    for _, f in ipairs(list) do
+        local before = upto
+        upto = upto + (f.share or 1)
+        local w = math.floor(upto * total / parts) - math.floor(before * total / parts)
+        ns.OnStrip(f, side, x + w / 2, cells.y, w, h)
+        x = x + w + KEY.gap
     end
 end
 

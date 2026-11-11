@@ -147,6 +147,11 @@ read_globals = {
     "QuestMapFrame_Hide", "SelectQuestLogEntry", "SetAbandonQuest", "SetCVar", "SetOverrideBinding", "WorldMapFrame",
     -- the LFG / Who window (social/)
     "C_LFGList", "PVEFrame", "GroupFinderFrame", "LFGParentFrame", "WhoFrame", "FriendsFrame", "ChatFrame_SendTell",
+    -- the game menu's friends, guild and session (window/gamemenu.lua)
+    "LOCALIZED_CLASS_NAMES_MALE", "LOCALIZED_CLASS_NAMES_FEMALE", "ChatFrame_SendBNetTell", "BNGetNumFriends",
+    "C_BattleNet", "BNET_CLIENT_WOW", "GetNetStats", "ToggleClickBindingFrame", "BACKPACK_TOOLTIP", "CHARACTER_BUTTON", "FRIENDS", "ToggleFriendsFrame",
+    "GUILD", "ToggleGuildFrame", "IsInGuild", "GetGuildRosterMOTD", "C_GuildInfo", "GuildRoster",
+    "Ambiguate",
     "C_PartyInfo", "InviteUnit", "GetQuestDifficultyColor", "GetZoneText",
     -- the Cooldown Manager (cooldowns/)
     "ClickBindingFrame", "InClickBindingMode", "C_ClickBindings", "ScrollUtil", "EventRegistry",

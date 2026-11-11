@@ -143,7 +143,9 @@ local function Glyph(btn, kind)
     glow:SetTexture(ns.media .. "strips\\" .. kind)
     glow:SetBlendMode("ADD")
     glow:SetAlpha(0.45)
-    Skin(btn, tex, glow, L.glyphTex, true)
+    -- 26 of the art's 32: its 20-pixel figure 16 high, clear of the key's
+    -- 20-pixel well (ns.StripCells)
+    Skin(btn, tex, glow, L.glyphTex - 6, true)
 end
 
 local portrait, queueEye

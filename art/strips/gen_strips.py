@@ -595,6 +595,8 @@ def layer3():
     part("leave", leave(), size=64)
     # the mailbox's portrait in the NPC box's head
     part("mailbox", mailbox(), size=64)
+    # the gauges round the medallions
+    rings()
     # the numbers code needs that the art cannot show (screen px, 1080p)
     import json
     with open(os.path.join(parts, "layout.json"), "w") as f:
@@ -608,6 +610,68 @@ def layer3():
                    # the stats run between these, from the screen edge
                    "statsFrom": MED_R + 10 + MED_R + 18, "statsTo": LENGTH - 4}, f, indent=1)
     print(parts, len(os.listdir(parts)), "parts")
+
+
+# ------------------------------------------------------------------- rings
+# The gauges round the medallions (2026-11-10, mockup A of
+# /workspace/rings-mockups.png): durability round the portrait, the bags
+# round the backpack. An arc on the medallion's border (its band, from the
+# well's edge to the rim, over the gold line), from 7 o'clock clockwise
+# round to 5, on a dark track all the way round; the value's arc white (code tints
+# it) in an atlas of RING_STEPS frames, 8 to a row. Drawn for the left
+# strip; the right flips them. A box of RING_BOX art px, at 2x.
+RING_R, RING_W, RING_A0, RING_SPAN, RING_STEPS, RING_BOX = MED_R - 1.6, 4.8, 210, 300, 32, 64
+RING_INSET = 5                # the value's arc this many degrees in from each stop, its round cap clear of it
+
+
+def ring_path(c, r, a0, a1):
+    """An arc, angles clockwise from the top."""
+    def p(a):
+        t = math.radians(a - 90)
+        return c + r * math.cos(t), c + r * math.sin(t)
+    x0, y0 = p(a0)
+    x1, y1 = p(a1)
+    large = 1 if a1 - a0 > 180 else 0
+    return f"M{x0:.3f},{y0:.3f} A{r},{r} 0 {large},1 {x1:.3f},{y1:.3f}"
+
+
+def ring_svg(inner, w, h):
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w * 2}" height="{h * 2}" viewBox="0 0 {w} {h}">'
+            f'{inner}</svg>')
+
+
+def rings():
+    """assets/strips/ring-track.png and ring-arc.png (the atlas)."""
+    parts = os.path.join(ROOT, "assets", "strips")
+    os.makedirs(parts, exist_ok=True)
+    c, b = RING_BOX / 2, RING_BOX
+
+    def render(name, doc):
+        subprocess.run(["rsvg-convert", "-o", os.path.join(parts, name + ".png")], input=doc.encode(), check=True)
+
+    # the track all the way round (no sliver of the gold border between the
+    # arc's ends), the gap under it a muted brown, closed off at each end
+    # of the gauge by a gold stop across the band
+    a1 = RING_A0 + RING_SPAN
+    track = (f'<circle cx="{c}" cy="{c}" r="{RING_R}" fill="none" stroke="#0b0906" stroke-width="{RING_W}"/>'
+             f'<path d="{ring_path(c, RING_R, a1, RING_A0 + 360)}" fill="none" stroke="#3a2f17" '
+             f'stroke-width="{RING_W}"/>')
+    for a in (RING_A0, a1):
+        t = math.radians(a - 90)
+        r0, r1 = RING_R - RING_W / 2, RING_R + RING_W / 2
+        track += (f'<line x1="{c + r0 * math.cos(t):.3f}" y1="{c + r0 * math.sin(t):.3f}" '
+                  f'x2="{c + r1 * math.cos(t):.3f}" y2="{c + r1 * math.sin(t):.3f}" '
+                  f'stroke="{GOLD}" stroke-width="1.8"/>')
+    render("ring-track", ring_svg(track, b, b))
+    cols = 8
+    rows = RING_STEPS // cols
+    body = ""
+    for k in range(1, RING_STEPS + 1):
+        x, y = (k - 1) % cols * b, (k - 1) // cols * b
+        body += (f'<path transform="translate({x},{y})" d="{ring_path(c, RING_R, RING_A0 + RING_INSET, RING_A0 + RING_INSET + (RING_SPAN - 2 * RING_INSET) * k / RING_STEPS)}" '
+                 f'fill="none" stroke="#ffffff" stroke-width="{RING_W - 1.6}" stroke-linecap="round"/>')
+    render("ring-arc", ring_svg(body, cols * b, rows * b))
+    print(parts, "ring-track ring-arc")
 
 
 # ------------------------------------------------------------------- chat
@@ -751,6 +815,8 @@ if __name__ == "__main__":
         gate_part()
     elif sys.argv[1:2] == ["stripes"]:
         stripes()
+    elif sys.argv[1:2] == ["rings"]:
+        rings()
     elif sys.argv[1:2] == ["mailbox"]:
         mailbox_part()
     else:

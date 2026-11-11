@@ -57,16 +57,18 @@ MEDIA = os.path.join(ADDON, "media", "overhead")
 LUA = os.path.join(ADDON, "console", "overhead_art.lua")
 
 GOLD, GOLD_D, INK, TEXT, DIM = "#c4a557", "#8a7034", "#121110", "#f2ead2", "#b3a88c"
+GOLD_B = "#e8c96e"                # the keys' percentages
 NAVY_TOP, NAVY_BOTTOM = "#2f2713", "#483c1f"   # the plate's gradient, fixed to screen y 0..64
 
 # ----------------------------------------------------------------- geometry (design pixels, 1080 high)
 DECK = {"boss": 34, "unit": 30, "tray": 30}   # deck heights
 CELL = {"boss": 168, "unit": 200} # a cell's least width; cells stretch to fill a grown deck
 COL = {"boss": 20, "unit": 18}    # the icon column, inside the cell's edge
-CELL_TOP, CELL_BOTTOM = 0, 0      # a cell's top below its deck's top; its bottom above the deck's floor
-                                  # (2026-11-10: flush, were 3 and 7)
+CELL_TOP, CELL_BOTTOM = 4, 4      # a cell's top below its deck's top; its bottom above the deck's floor
+                                  # (2026-11-10: keys in a channel, mockup C; were flush, before that 3 and 7)
+CHANNEL = 2                       # a deck's dark channel: in from its top, floor and the floor's corners
 CELL_EDGE = 2                     # a cell's gold edge and its chip's divider (2026-11-10, was 1)
-GAP = 4                           # between cells: the plate shows through
+GAP = 4                           # between keys: the channel shows through (even, so a row of two centres on whole pixels)
 MARGIN = 4                        # floor beyond the outer cells, each side
 LEDGE = 10                        # a lower deck's top corner, in from the floor above it
 POWER = 4                         # the power strip under health
@@ -250,6 +252,8 @@ def defs():
             '</linearGradient>'
             '<linearGradient id="chip" x1="0" y1="0" x2="0" y2="1">'
             '<stop offset="0" stop-color="#3b3017"/><stop offset="1" stop-color="#251e0e"/></linearGradient>'
+            '<linearGradient id="key" x1="0" y1="0" x2="0" y2="1">'
+            '<stop offset="0" stop-color="#57492a"/><stop offset="1" stop-color="#241d0e"/></linearGradient>'
             '<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">'
             '<stop offset="0" stop-color="#f0d488"/><stop offset="1" stop-color="#a8823a"/></linearGradient>'
             + "".join(f'<linearGradient id="ic{i}" x1="0" y1="0" x2="1" y2="1">'
@@ -295,26 +299,29 @@ def text(x, y, s, anchor="start", size=10, fill=TEXT):
 
 
 def cell_svg(who, rect, data):
-    """The cell as the Lua builds it: a CELL_EDGE gold edge, the chip, a gold
-    divider as wide, then health over one ink row over power, in the window."""
+    """The cell as the Lua builds it, a key (mockup C): a CELL_EDGE gold edge
+    round a brown well lit along its top, the chip, then a sunk trough with
+    health over one ink row over power, the percentage in gold."""
     l, t, r, b = rect
     kind = WHO[who][1]
     name, frac, hp, pw = data
     e = CELL_EDGE
-    bx, br = l + e + COL[kind] + e, r - e
-    ht, hb = t + e, b - e - POWER - 1
+    bx, br = l + e + COL[kind] + 2, r - e - 1
+    ht, hb = t + e + 1, b - e - 1 - POWER - 1
     w = br - bx
     cid = f"n{l}_{t}"
     return "".join([
         f'<rect x="{l}" y="{t}" width="{r - l}" height="{b - t}" fill="{GOLD_D}"/>',
-        f'<rect x="{l + e}" y="{t + e}" width="{r - l - 2 * e}" height="{b - t - 2 * e}" fill="{INK}"/>',
+        f'<rect x="{l + e}" y="{t + e}" width="{r - l - 2 * e}" height="{b - t - 2 * e}" fill="url(#key)"/>',
+        f'<rect x="{l + e + 1}" y="{t + e}" width="{r - l - 2 * e - 2}" height="1" fill="#fff3c8" opacity="0.22"/>',
         chip_svg(who, l + e, t + e),
+        f'<rect x="{bx}" y="{t + e}" width="{r - e - bx}" height="{b - t - 2 * e}" fill="#0b0906"/>',
         f'<rect x="{bx:.2f}" y="{ht}" width="{w * frac:.2f}" height="{hb - ht}" fill="{hp}"/>',
         f'<rect x="{bx:.2f}" y="{ht}" width="{w * frac:.2f}" height="{(hb - ht) / 2:.2f}" fill="#fff" opacity="0.08"/>',
-        f'<rect x="{bx}" y="{b - e - POWER}" width="{w * 0.7:.2f}" height="{POWER}" fill="{pw}"/>',
+        f'<rect x="{bx}" y="{b - e - 1 - POWER}" width="{w * 0.7:.2f}" height="{POWER}" fill="{pw}"/>',
         f'<clipPath id="{cid}"><rect x="{bx}" y="{t}" width="{w - 34}" height="{b - t}"/></clipPath>',
         f'<g clip-path="url(#{cid})">{text(bx + 4, (ht + hb) / 2 + 3.6, name)}</g>',
-        text(br - 4, (ht + hb) / 2 + 3.6, f"{round(frac * 100)}%", "end", fill=DIM),
+        text(br - 4, (ht + hb) / 2 + 3.6, f"{round(frac * 100)}%", "end", fill=GOLD_B),
     ])
 
 
@@ -355,6 +362,10 @@ def gold_edge(x, y):
 def scene(cx, bosses, units, stances=0, pets=0):
     decks = stack(bosses, len(units), stances, pets)
     body = [plate_svg(cx, decks)]
+    for kind, n, y, half in decks:      # the channels
+        h, c = DECK[kind], CHANNEL
+        body.append(f'<rect x="{cx - half + h + c}" y="{y + c}" width="{2 * (half - h - c)}" height="{h - 2 * c}" '
+                    f'rx="2" fill="#0d0b07" opacity="0.65"/>')
     for kind, n, y, half in decks:
         if kind == "tray":
             body.append(command_row(cx, y, stances, pets))
@@ -585,7 +596,7 @@ ns.overheadArt = {{
     deck = {{ boss = {DECK["boss"]}, unit = {DECK["unit"]}, tray = {DECK["tray"]} }},
     cell = {{ boss = {CELL["boss"]}, unit = {CELL["unit"]} }},
     col = {{ boss = {COL["boss"]}, unit = {COL["unit"]} }},
-    cellTop = {CELL_TOP}, cellBottom = {CELL_BOTTOM}, cellEdge = {CELL_EDGE},
+    cellTop = {CELL_TOP}, cellBottom = {CELL_BOTTOM}, cellEdge = {CELL_EDGE}, channel = {CHANNEL},
     gap = {GAP}, margin = {MARGIN}, ledge = {LEDGE}, power = {POWER},
     icon = {ICON}, iconGap = {ICON_GAP}, iconSep = {ICON_SEP}, trayTop = {TRAY_TOP},
     edge = {{ {rgb(GOLD_D)} }},

@@ -14,6 +14,8 @@ local _, ns = ...
 local C = ns.colors
 local A, PIECES, CHIPS = ns.overheadArt, ns.overheadPieces, ns.overheadChips
 local MEDIA = ns.media .. "overhead\\"
+local KEY_TOP, KEY_FOOT = { 0.341, 0.286, 0.165 }, { 0.141, 0.114, 0.055 }   -- a key's well, as the strips'
+local GOLD_B = { 0.910, 0.788, 0.431 }                                        -- the percentage
 
 local function Muted(r, g, b)
     return r * ns.mute, g * ns.mute, b * ns.mute
@@ -94,6 +96,10 @@ local function DeckSlot(slot)
     d.left = plate:CreateTexture(nil, "ARTWORK", nil, slot)
     d.right = plate:CreateTexture(nil, "ARTWORK", nil, slot)
     d.mid = plate:CreateTexture(nil, "ARTWORK", nil, slot)
+    -- the dark channel the deck's keys sit in (mockup C, 2026-11-10): in by
+    -- A.channel from its top, its floor and the floor's corners
+    d.channel = plate:CreateTexture(nil, "OVERLAY", nil, slot)
+    d.channel:SetColorTexture(0.051, 0.043, 0.027, 0.65)
     function d:Place(kind, y, half)
         local name = kind .. "-" .. y
         local wing = PIECES[name .. "-wing"]
@@ -107,12 +113,17 @@ local function DeckSlot(slot)
         self.mid:ClearAllPoints()
         self.mid:SetPoint("TOPLEFT", self.left, "TOPRIGHT")
         self.mid:SetPoint("BOTTOMRIGHT", self.right, "BOTTOMLEFT")
+        local h, c = A.deck[kind], A.channel
+        self.channel:ClearAllPoints()
+        self.channel:SetPoint("TOPLEFT", overhead, "TOP", -(half - h - c), -(y + c))
+        self.channel:SetSize(2 * (half - h - c), h - 2 * c)
+        self.channel:Show()
         self.kind, self.y, self.half, self.shown = kind, y, half, true
         self.left:Show(); self.right:Show(); self.mid:Show()
     end
     function d:Clear()
         self.shown = false
-        self.left:Hide(); self.right:Hide(); self.mid:Hide()
+        self.left:Hide(); self.right:Hide(); self.mid:Hide(); self.channel:Hide()
     end
     d:Clear()
     return d
@@ -164,17 +175,30 @@ local function CreateCell(unit, kind, chip)
     b:RegisterForClicks("AnyUp")
     b:SetSize(A.cell[kind], A.deck[kind] - A.cellTop - A.cellBottom)
 
-    -- the gold edge, and the ink well A.cellEdge inside it
+    -- a key (mockup C, 2026-11-10, as the strips' keys): the gold edge, a
+    -- brown well A.cellEdge inside it, lighter at its top, and a lit lip
     local e = A.cellEdge
     local edge = b:CreateTexture(nil, "BACKGROUND", nil, 0)
     edge:SetAllPoints()
     edge:SetColorTexture(unpack(A.edge))
-    local ink = b:CreateTexture(nil, "BACKGROUND", nil, 1)
-    ink:SetPoint("TOPLEFT", e, -e)
-    ink:SetPoint("BOTTOMRIGHT", -e, e)
-    ink:SetColorTexture(unpack(C.ink))
+    local well = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+    well:SetPoint("TOPLEFT", e, -e)
+    well:SetPoint("BOTTOMRIGHT", -e, e)
+    if well.SetGradient and CreateColor then
+        well:SetColorTexture(1, 1, 1, 1)
+        well:SetGradient("VERTICAL", CreateColor(KEY_FOOT[1], KEY_FOOT[2], KEY_FOOT[3], 1),
+            CreateColor(KEY_TOP[1], KEY_TOP[2], KEY_TOP[3], 1))
+    else
+        well:SetColorTexture((KEY_TOP[1] + KEY_FOOT[1]) / 2, (KEY_TOP[2] + KEY_FOOT[2]) / 2,
+            (KEY_TOP[3] + KEY_FOOT[3]) / 2, 1)
+    end
+    local lip = b:CreateTexture(nil, "BACKGROUND", nil, 2)
+    lip:SetColorTexture(1, 0.95, 0.78, 0.22)
+    lip:SetPoint("TOPLEFT", e + 1, -e)
+    lip:SetPoint("TOPRIGHT", -e - 1, -e)
+    lip:SetHeight(1)
 
-    -- the icon column on the left: chip and glyph, then the gold divider
+    -- the icon column on the left: chip and glyph, on the key
     local c = CHIPS[chip]
     local icon = b:CreateTexture(nil, "ARTWORK")
     icon:SetTexture(MEDIA .. c.file)
@@ -182,20 +206,29 @@ local function CreateCell(unit, kind, chip)
     icon:SetSize(c.w, c.h)
     icon:SetPoint("TOPLEFT", e, -e)
     b.chip = icon
-    local divider = b:CreateTexture(nil, "ARTWORK")
-    divider:SetColorTexture(unpack(A.edge))
-    divider:SetWidth(e)
-    divider:SetPoint("TOPLEFT", icon, "TOPRIGHT")
-    divider:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT")
 
-    -- the window: health, one ink row, power
+    -- the trough, sunk in the key: health, one ink row, power, in the window
+    -- a pixel inside it
+    local trough = b:CreateTexture(nil, "BACKGROUND", nil, 3)
+    trough:SetColorTexture(0.043, 0.035, 0.024, 1)
+    trough:SetPoint("TOPLEFT", e + c.w + 2, -e)
+    trough:SetPoint("BOTTOMRIGHT", -e, e)
     local window = CreateFrame("Frame", nil, b)
-    window:SetPoint("TOPLEFT", e + c.w + e, -e)
-    window:SetPoint("BOTTOMRIGHT", -e, e)
+    window:SetPoint("TOPLEFT", e + c.w + 3, -e - 1)
+    window:SetPoint("BOTTOMRIGHT", -e - 1, e + 1)
     local health = CreateFrame("StatusBar", nil, window)
     health:SetPoint("TOPLEFT")
     health:SetPoint("BOTTOMRIGHT", 0, A.power + 1)
     health:SetStatusBarTexture(ns.bar)
+    -- a gloss over the health, light at its top
+    local gloss = health:CreateTexture(nil, "OVERLAY")
+    gloss:SetAllPoints(health:GetStatusBarTexture())
+    if gloss.SetGradient and CreateColor then
+        gloss:SetColorTexture(1, 1, 1, 1)
+        gloss:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.18), CreateColor(1, 1, 1, 0.20))
+    else
+        gloss:SetColorTexture(1, 1, 1, 0)
+    end
     b.health = health
     local power = CreateFrame("StatusBar", nil, window)
     power:SetPoint("BOTTOMLEFT")
@@ -210,7 +243,7 @@ local function CreateCell(unit, kind, chip)
     b.value = ns.Text(text, 10)
     b.value:SetPoint("RIGHT", text, "RIGHT", -4, 0)
     b.value:SetJustifyH("RIGHT")
-    b.value:SetTextColor(unpack(C.dim))
+    b.value:SetTextColor(unpack(GOLD_B))
     b.name = ns.Text(text, 10)
     b.name:SetPoint("LEFT", text, "LEFT", 4, 0)
     b.name:SetPoint("RIGHT", b.value, "LEFT", -4, 0)   -- a long name stops short of the value
@@ -234,8 +267,8 @@ local bossUnits = {}
 for i = 1, 5 do
     local b = CreateCell("boss" .. i, "boss", "boss")
     -- your debuffs at the health's right end (Unit Frames > Boss; auras.lua),
-    -- four pixels short of its height
-    ns.AttachAuras(b, "overhead", A.deck.boss - A.cellTop - A.cellBottom - 2 * A.cellEdge - A.power - 1 - 4)
+    -- two pixels short of its height
+    ns.AttachAuras(b, "overhead", A.deck.boss - A.cellTop - A.cellBottom - 2 * A.cellEdge - 2 - A.power - 1 - 2)
     ns.RegisterUnitEvent(b, "UNIT_AURA", b.unit)
     -- the unit watch shows it in combat, with no word to the layout
     b:HookScript("OnShow", ns.UpdateUnitAuras)
