@@ -119,6 +119,7 @@ local DEFAULTS = {
     trayCharacter = true, trayQuests = true,    -- its tabs: the character window, the quest tracker,
     trayLFG = false, trayChatLog = false,       -- the group finder, the chat's log,
     trayCdm = false, trayCc = false,            -- the Cooldown Manager, Click Casting
+    trayDelay = 0.15,       -- how long the pointer rests at the edge before the rail comes (0: at once)
     lfgPage = "browse",     -- its page: browse, list or who (not on the page)
     lfgCategory = false,    -- Browse's category, the game's id (not on the page)
     lfgListed = false,      -- List me's picks: { [activity id] = true } (not on the page)

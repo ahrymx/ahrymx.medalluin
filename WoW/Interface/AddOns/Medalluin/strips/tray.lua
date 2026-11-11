@@ -265,6 +265,7 @@ end
 
 -- ------------------------------------------------------------ the reveal
 local out, wanted, since, last = 0, false, 0, 0   -- slid out (0..1), wanted, time since wanted went, poll
+local waited = 0                        -- how long the pointer has asked while it was not out yet
 
 local function Blocked()
     return (GameMenuFrame and GameMenuFrame:IsShown()) or (GetCursorInfo and GetCursorInfo() ~= nil) or false
@@ -310,9 +311,17 @@ local function Tick(_, elapsed)
         local was = at
         local asked = Asked()
         if at ~= was then Place() end
-        if asked then
-            wanted, since = true, 0
-        elseif wanted then
+        if asked and not wanted then
+            -- held at the edge as long as Time to appear asks first; back
+            -- at once if it has not gone yet
+            waited = waited + last
+            if out > 0 or waited >= (tonumber(ns.db.trayDelay) or 0) then wanted, since = true, 0 end
+        elseif asked then
+            since = 0
+        else
+            waited = 0
+        end
+        if not asked and wanted then
             since = since + last
             if since >= LINGER then wanted = false end
         end

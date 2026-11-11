@@ -809,6 +809,10 @@ function ns.OptionPages()
                 .. "tab lit gold). The rail goes a moment after the pointer leaves it; not while the game menu is "
                 .. "open.", true),
             groups = {
+                Group("Appearing",
+                    Seconds("trayDelay", "Time to appear",
+                        "How long the pointer rests at the edge before the rail comes out: a pass along the edge "
+                        .. "on the way somewhere else does not bring it.")),
                 Group("Tabs",
                     Check("trayCharacter", "Character", "The character window."),
                     Check("trayQuests", "Quest tracker",

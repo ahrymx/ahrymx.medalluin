@@ -15847,7 +15847,7 @@ if questPass and not questLogPass then
         tick(3)
         state("tray at rest")
         cx = 1
-        tick(4)
+        tick(6)                 -- Time to appear (0.15s by default), then the slide
         state("tray at the edge")
         local cb = tab("character")
         print("tray glyphs", tab("character").glyph.texture:match("[^\\]+$"), tab("quests").glyph.texture:match("[^\\]+$"),
@@ -15877,6 +15877,28 @@ if questPass and not questLogPass then
         state("tray pointer away, a moment")
         tick(12)
         state("tray pointer away")
+        -- Time to appear: held at the edge that long first; a pass along it
+        -- brings nothing, and the rail on its way out comes back at once
+        ns.SetOption("trayDelay", 0.5)
+        cx = 1
+        tick(4)
+        state("tray delay, at the edge 0.2s")
+        cx = 600
+        tick(2)
+        cx = 1
+        tick(4)
+        state("tray delay, passed by and back 0.2s")
+        tick(10)
+        state("tray delay, at the edge 0.7s")
+        cx = 600
+        tick(9)
+        state("tray delay, going")
+        cx = 1
+        tick(1)
+        state("tray delay, on its way out, back")
+        cx = 600
+        tick(30)
+        ns.SetOption("trayDelay", 0.15)
         -- the game menu open, or something held: the edge does nothing
         cx = 1
         GameMenuFrame = GameMenuFrame or CreateFrame("Frame", "GameMenuFrame", UIParent)
