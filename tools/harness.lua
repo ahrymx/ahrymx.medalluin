@@ -568,7 +568,14 @@ function Region:SetDesaturated(d) self.desaturated = d end
 function Region:CreateMaskTexture() return new("MaskTexture", self) end
 local mouseOver = false
 -- true: the pointer is over everything; a region: over that one only
-function Region:IsMouseOver() return mouseOver == true or mouseOver == self end
+-- { beside = f }: the pointer pushed against the screen's left edge, just
+-- outside f, flush with it: over it only for a check reaching past its left
+function Region:IsMouseOver(_, _, left)
+    if type(mouseOver) == "table" and mouseOver.beside then
+        return mouseOver.beside == self and (left or 0) < 0
+    end
+    return mouseOver == true or mouseOver == self
+end
 function Region:IsObjectType(t) return self.kind == t or t == "Button" and self.kind == "CheckButton" end
 function Region:IsProtected() return false end
 function Region:LockHighlight() self.highlightLocked = true end
@@ -15631,6 +15638,10 @@ if questPass and not questLogPass then
     print("quests.hide relaid", string.format("reach=%.2f", ns.chat.reach:GetAlpha()))
     mouseOver = f
     hidden("quests.hide mouseover over")
+    -- the pointer against the screen's edge, beside the tracker (2026-11-11:
+    -- it hid there): still over it
+    mouseOver = { beside = f }
+    hidden("quests.hide mouseover at the screen's edge")
     mouseOver = false
     ns.SetOption("questsFullMouseover", false)
     ns.SetOption("questsFullCombat", true)

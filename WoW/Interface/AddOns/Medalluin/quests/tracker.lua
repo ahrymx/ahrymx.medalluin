@@ -114,6 +114,13 @@ local function Stowed() return ns.db.questsHidden and true or false end
 -- it until the pointer is over it) and "Combat"
 local function Hides(what) return ns.db[(Full() and "questsFull" or "questsMinimal") .. what] end
 
+-- the pointer over the tracker, for Only on mouseover: a few pixels past its
+-- left and top too, so the pointer pushed against the screen's edge, beside
+-- a tracker flush with it, still counts (2026-11-11: the game held it just
+-- outside, and the tracker hid there)
+local EDGE = 4
+local function Over() return frame:IsMouseOver(EDGE, 0, -EDGE, 0) end
+
 -- the titles' font and the objectives': { path, size }
 local function Font(which)
     return { ns.FontPath(ns.db["quests" .. which .. "Font"]), ns.db["quests" .. which .. "Size"] or 12 }
@@ -756,7 +763,7 @@ local function Build()
         -- then, or until the pointer is over it (the items with it)
         local away = Hides("Combat") and InCombatLockdown()
         Touch(not away)
-        want, now = (away or Hides("Mouseover") and not frame:IsMouseOver()) and 0 or 1, frame:GetAlpha()
+        want, now = (away or Hides("Mouseover") and not Over()) and 0 or 1, frame:GetAlpha()
         if now ~= want then
             local alpha = Ease(now, want, elapsed)
             frame:SetAlpha(alpha)
