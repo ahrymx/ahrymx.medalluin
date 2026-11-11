@@ -440,9 +440,9 @@ function UpdateUnitStatus(b)
     elseif UnitIsDeadOrGhost(unit) then
         b.value:SetText(DEAD)
     else
-        local pct = (not ns.IsSecret(cur) and not ns.IsSecret(max) and max > 0)
-            and math.floor(cur / max * 100 + 0.5) or 100
-        b.value:SetFormattedText("%d%%", pct)
+        -- through the curve when health is secret (it read 100% in combat
+        -- before, 2026-11-11): a secret percentage formats as any other
+        b.value:SetFormattedText("%.0f%%", ns.HealthPercent(unit, cur, max))
     end
 
     local pMax = UnitPowerMax(unit)

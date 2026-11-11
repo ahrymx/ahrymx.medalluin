@@ -19,7 +19,9 @@
 --   |  . Thalen 60       Shattrath   |   in class colour, level, where; under
 --   | ---* Guild *------ 12 / 87  v  |   the mouse Whisper and Invite
 --   | <Guild>  [message of the day]  |
---   |  . Aldren 60 Officer  Tanaris  |
+--   | (Officers) (All) (Ranks)       |   which ranks are listed; Ranks:
+--   | [Guild Master] [Officer] [..]  |   a chip each, picked ones lit
+--   |  . Aldren 60 Officer  Tanaris  |   (the top ranks, until chosen)
 --   | ---* This session *-- 1,284g > |   folded until opened: gold, session,
 --   |                                |   latency
 --   | ---* Leave *------------------ |
@@ -65,6 +67,8 @@ local DIM = { 0.55, 0.52, 0.45 }
 local RED = { 0.86, 0.27, 0.22 }
 local BLUE = { 0.47, 0.75, 1 }
 local DOCK_W, PAD = 360, 18
+local MOTD_TOP = 19             -- the message under its box's label
+local CHIP = 20                 -- a rank chip's height (the guild's Ranks pill)
 local LEAVE, BACK = 32, 38
 local MEDAL, BACK_MEDAL = 48, 58           -- a medallion's size; Return to Game's
 local REACH = 0.30                          -- the ring's radius, of the screen's height
@@ -839,14 +843,45 @@ end
 menu.Friends = Friends
 
 -- the guild's online members, but you; and how many it has
-local function Guild()
-    local out, total = {}, GetNumGuildMembers and GetNumGuildMembers() or 0
+-- Which of the guild are listed (2026-11-11), by ns.db.gameMenuGuild:
+-- "officers", its top ranks (the leader, rank 0, the rank under it, and
+-- any rank named an officer's); "all"; or "ranks", those picked by name in
+-- ns.db.gameMenuGuildRanks (by name: a rank's index moves when ranks are
+-- added), the top ranks until any is picked. The rest are counted, not
+-- listed.
+local function Top(rank, index)
+    if type(index) == "number" and index <= 1 then return true end
+    return type(rank) == "string" and rank:lower():find("officer", 1, true) ~= nil
+end
+
+local function Picked(rank, index)
+    local picked = ns.db.gameMenuGuildRanks
+    if type(picked) ~= "table" then return Top(rank, index) end
+    return picked[rank] == true
+end
+
+local function Wanted(mode, rank, index)
+    if mode == "all" then return true end
+    if mode == "ranks" then return Picked(rank, index) end
+    return Top(rank, index)
+end
+
+-- the members listed, the roster's size, how many are online, and the
+-- guild's ranks ({ index, name }, in order) as the roster names them
+local function Guild(mode)
+    local out, total, on = {}, GetNumGuildMembers and GetNumGuildMembers() or 0, 0
     local me = UnitName("player")
+    local seen, ranks = {}, {}
     for i = 1, total do
-        local name, rank, _, level, _, zone, _, _, online, status, class = GetGuildRosterInfo(i)
-        name = Clean(name)
+        local name, rank, index, level, _, zone, _, _, online, status, class = GetGuildRosterInfo(i)
+        name, rank, index = Clean(name), Clean(rank), Clean(index)
+        if type(rank) == "string" and not seen[rank] then
+            seen[rank] = true
+            table.insert(ranks, { index = type(index) == "number" and index or 99, name = rank })
+        end
         local short = name and (Ambiguate and Ambiguate(name, "guild") or name:match("^[^-]+"))
-        if short and online and short ~= me then
+        if online then on = on + 1 end
+        if short and online and short ~= me and Wanted(mode, rank, index) then
             table.insert(out, { name = short, rank = Clean(rank), level = Clean(level), where = Clean(zone) or "",
                 class = Clean(class),
                 status = (status == 1 or status == "<AFK>") and "afk" or (status == 2 or status == "<DND>") and "dnd"
@@ -854,9 +889,23 @@ local function Guild()
         end
     end
     table.sort(out, function(a, b) return a.name < b.name end)
-    return out, total
+    table.sort(ranks, function(a, b) return a.index < b.index end)
+    return out, total, on, ranks
 end
 menu.Guild = Guild
+
+-- A rank chip toggled: the picks begin from what was shown (the top ranks)
+local function Pick(rank, ranks)
+    local picked = ns.db.gameMenuGuildRanks
+    if type(picked) ~= "table" then
+        picked = {}
+        for _, r in ipairs(ranks) do
+            if Top(r.name, r.index) then picked[r.name] = true end
+        end
+        ns.db.gameMenuGuildRanks = picked
+    end
+    picked[rank.name] = not picked[rank.name] or nil
+end
 
 local function Money(m)
     local g, sv = math.floor(m / 10000), math.floor(m / 100) % 100
@@ -890,7 +939,7 @@ local function Pill(i)
     p.word = ns.Text(p, 11)
     p.word:SetPoint("CENTER")
     p:SetScript("OnClick", function(self)
-        ns.db.gameMenuFriends = self.filter
+        self.choose(self)
         if Relayout then Relayout() end
     end)
     pills[i] = p
@@ -936,16 +985,32 @@ local function Social()
     box.label:SetPoint("TOPLEFT", 10, -5)
     box.label:SetTextColor(DIM[1], DIM[2], DIM[3])
     box.label:SetText("Message of the day")
+    -- the message wrapped, as many lines as it takes (a guild's message is
+    -- at most 128 characters): its width set, so its height is known
     box.text = ns.PlainText(box, 11)
-    box.text:SetPoint("BOTTOMLEFT", 10, 5)
-    box.text:SetPoint("RIGHT", -8, 0)
+    box.text:SetPoint("TOPLEFT", 10, -MOTD_TOP)
+    box.text:SetWidth(DOCK_W - 2 * PAD - 18)
     box.text:SetJustifyH("LEFT")
-    box.text:SetWordWrap(false)
+    box.text:SetJustifyV("TOP")
+    box.text:SetWordWrap(true)
     social.motd = box
     return social
 end
 
+-- The message of the day's box, fitted to it; its height.
+local function Motd(motd)
+    local box = Social().motd
+    box.text:SetText(motd)
+    local tall = MOTD_TOP + math.ceil(box.text:GetStringHeight()) + 6
+    box:SetHeight(tall)
+    return tall
+end
+
 local last                      -- the docked panel's last reading: sections, leave, back
+-- The guild's message of the day, as GUILD_MOTD last brought it (at login,
+-- and when it changes): GetGuildRosterMOTD from here is a blocked action in
+-- game (ADDON_ACTION_BLOCKED, 2026-11-11)
+local guildMotd
 
 local function Docked(sections, leave, back)
     last = { sections, leave, back }
@@ -1008,13 +1073,17 @@ local function Docked(sections, leave, back)
     if filter == "bnet" and not BNGetNumFriends then filter = "online" end
     local friends, online = Friends(filter)
     local inGuild = (not IsInGuild or IsInGuild()) and GetGuildInfo and GetGuildInfo("player")
-    local members, total = {}, 0
-    if inGuild then members, total = Guild() end
-    local motd = inGuild and GetGuildRosterMOTD and Clean(GetGuildRosterMOTD()) or nil
+    local guildMode = ns.db.gameMenuGuild or "officers"
+    local members, total, guildOn, ranks = {}, 0, 0, {}
+    if inGuild then members, total, guildOn, ranks = Guild(guildMode) end
+    local chipRows = guildMode == "ranks" and math.ceil(#ranks / 3) or 0
+    local motd = inGuild and guildMotd or nil
     if motd == "" then motd = nil end
     local sessionTall = HEAD + (Folded("session") and 0 or 50)
     local friendsFixed = HEAD + (Folded("friends") and 0 or 28)
-    local guildFixed = inGuild and HEAD + (Folded("guild") and 0 or (22 + (motd and 42 or 0))) or 0
+    local motdTall = motd and Motd(motd) or 0
+    local guildFixed = inGuild and HEAD + (Folded("guild") and 0
+        or (22 + (motd and motdTall + 6 or 0) + 28 + chipRows * (CHIP + 4))) or 0
     local room = math.floor((y - floor - sessionTall - friendsFixed - guildFixed - 14 * 3) / PERSON)
     local wantF = Folded("friends") and 0 or #friends
     local wantG = (inGuild and not Folded("guild")) and #members or 0
@@ -1039,33 +1108,43 @@ local function Docked(sections, leave, back)
         end
     end
 
+    -- the filter pills (friends', the guild's) and the rank chips: pooled,
+    -- the next one at x, y, wide by high
+    local np = 0
+    local function Choice(x, wide, high, word, on, choose)
+        np = np + 1
+        local p = Pill(np)
+        p:SetSize(wide, high)
+        p:ClearAllPoints()
+        p:SetPoint("TOPLEFT", x, y)
+        local e = on and GOLD or GOLD_D
+        p.edge:SetColorTexture(e[1], e[2], e[3], 1)
+        p.fill:SetColorTexture(on and 0.23 or 0.051, on and 0.18 or 0.043, on and 0.08 or 0.027, 1)
+        p.word:SetText(word)
+        p.word:SetTextColor(unpack(on and ns.colors.text or DIM))
+        p.choose = choose
+        p:Show()
+        return p
+    end
+    local function Pills(kinds, current, save)
+        for i, k in ipairs(kinds) do
+            local p = Choice(PAD + (i - 1) * 102, 96, 20, k[2], current == k[1], function(self) save(self.filter) end)
+            p.filter, p.rank = k[1], nil
+        end
+        y = y - 28
+    end
+
     -- friends
     n = n + 1
     Head(n, y, "Friends", format("%d online", online), "friends")
     y = y - HEAD
-    local np = 0
     if not Folded("friends") then
         local kinds = { { "online", "Online" }, { "all", "All" } }
         if BNGetNumFriends then table.insert(kinds, { "bnet", "Battle.net" }) end
-        for i, k in ipairs(kinds) do
-            local p = Pill(i)
-            np = i
-            p.filter = k[1]
-            p:ClearAllPoints()
-            p:SetPoint("TOPLEFT", PAD + (i - 1) * 102, y)
-            local on = filter == k[1]
-            local e = on and GOLD or GOLD_D
-            p.edge:SetColorTexture(e[1], e[2], e[3], 1)
-            p.fill:SetColorTexture(on and 0.23 or 0.051, on and 0.18 or 0.043, on and 0.08 or 0.027, 1)
-            p.word:SetText(k[2])
-            p.word:SetTextColor(unpack(on and ns.colors.text or DIM))
-            p:Show()
-        end
-        y = y - 28
+        Pills(kinds, filter, function(f) ns.db.gameMenuFriends = f end)
         People(friends, giveF)
         y = y - 14
     end
-    for i = np + 1, #pills do pills[i]:Hide() end
 
     -- the guild
     local soc = Social()
@@ -1073,7 +1152,7 @@ local function Docked(sections, leave, back)
     soc.motd:Hide()
     if inGuild then
         n = n + 1
-        Head(n, y, "Guild", format("%d / %d", #members + 1, total), "guild")
+        Head(n, y, "Guild", format("%d / %d", guildOn, total), "guild")
         y = y - HEAD
         if not Folded("guild") then
             soc.name:ClearAllPoints()
@@ -1085,15 +1164,29 @@ local function Docked(sections, leave, back)
                 soc.motd:ClearAllPoints()
                 soc.motd:SetPoint("TOPLEFT", PAD, y)
                 soc.motd:SetPoint("TOPRIGHT", -PAD, y)
-                soc.motd.text:SetText(motd)
                 soc.motd:Show()
-                y = y - 42
+                y = y - motdTall - 6
+            end
+            Pills({ { "officers", "Officers" }, { "all", "All" }, { "ranks", "Ranks" } }, guildMode,
+                function(f) ns.db.gameMenuGuild = f end)
+            -- picking ranks: a chip each, three to a row, lit when listed
+            if guildMode == "ranks" then
+                local chip = math.floor((DOCK_W - 2 * PAD - 2 * 6) / 3)
+                for i, r in ipairs(ranks) do
+                    local col = (i - 1) % 3
+                    local p = Choice(PAD + col * (chip + 6), chip, CHIP, r.name, Picked(r.name, r.index),
+                        function() Pick(r, ranks) end)
+                    p.filter = nil
+                    p.rank = r.name
+                    if col == 2 or i == #ranks then y = y - CHIP - 4 end
+                end
             end
             People(members, giveG)
             y = y - 14
         end
     end
     for i = used + 1, #rows do rows[i]:Hide() end
+    for i = np + 1, #pills do pills[i]:Hide() end
 
     -- this session
     n = n + 1
@@ -1339,3 +1432,7 @@ ns.On("PLAYER_LOGIN", Start)
 for _, e in ipairs({ "FRIENDLIST_UPDATE", "BN_FRIEND_INFO_CHANGED", "GUILD_ROSTER_UPDATE", "PLAYER_MONEY" }) do
     ns.On(e, function() Relayout() end)
 end
+ns.On("GUILD_MOTD", function(_, message)
+    guildMotd = Clean(message)
+    Relayout()
+end)

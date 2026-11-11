@@ -28,6 +28,10 @@
 -- click tracks it or stops. The search keeps the quests whose title has
 -- the words, folded zones too. Track all stops at the game's limit.
 -- Drop opens the window that abandons quests (quests/drop.lua).
+-- The columns' headings sort (2026-11-11): a click sorts each zone's
+-- quests by that column, a second reverses it, a third puts back the log's
+-- order; the sorted heading in gold with a chevron (remembered,
+-- questLogSort). The zones stay in the log's order.
 local _, ns = ...
 
 local Q = ns.questSource
@@ -110,6 +114,53 @@ local function Matches(q, words)
     return true
 end
 
+-- The sorts: each column's value, and which way it runs first (the most
+-- worth first; the level and title from the low end).
+local SORTS = {
+    lvl = { word = "level", first = "up", value = function(q) return q.level or 0 end },
+    title = { word = "title", first = "up", value = function(q) return (q.title or ""):lower() end },
+    xp = { word = "XP", first = "down", value = function(q) return (q.rewards or {}).xp or 0 end },
+    item = { word = "item", first = "down", value = function(q) return (q.rewards or {}).items and 1 or 0 end },
+    coin = { word = "coin", first = "down", value = function(q) return (q.rewards or {}).money or 0 end },
+}
+
+-- the sort in use: its key and "up" or "down"; nil, the log's order
+local function Sorting()
+    local s = ns.db.questLogSort
+    if type(s) == "table" and SORTS[s.key] then return s.key, s.dir == "down" and "down" or "up" end
+end
+
+-- a heading clicked: its sort, reversed, then none
+local function SortBy(key)
+    local now, dir = Sorting()
+    if now ~= key then
+        ns.db.questLogSort = { key = key, dir = SORTS[key].first }
+    elseif dir == SORTS[key].first then
+        ns.db.questLogSort = { key = key, dir = dir == "up" and "down" or "up" }
+    else
+        ns.db.questLogSort = false
+    end
+    log.Refresh()
+end
+log.SortBy = SortBy
+
+-- a zone's quests in the sort's order; ties, and no sort, in the log's
+local function Sorted(list)
+    local key, dir = Sorting()
+    if not key then return list end
+    local value, at = SORTS[key].value, {}
+    for i, q in ipairs(list) do at[q] = i end
+    table.sort(list, function(a, b)
+        local va, vb = value(a), value(b)
+        if va ~= vb then
+            if dir == "down" then return va > vb end
+            return va < vb
+        end
+        return at[a] < at[b]
+    end)
+    return list
+end
+
 local quests = {}
 local function Lines()
     quests = Q.All()
@@ -122,6 +173,7 @@ local function Lines()
         for _, q in ipairs(z.quests) do
             if Matches(q, words) then table.insert(list, q) end
         end
+        Sorted(list)
         if #list > 0 then
             table.insert(out, { zone = z })
             if words or not folded[z.name] then
@@ -393,6 +445,13 @@ function log.Refresh()
         shown = shown + 1
     end
     for i = used + 1, #rows do rows[i]:Hide() end
+    local key, dir = Sorting()
+    for _, h in ipairs(columns.heads) do
+        local on = h.key == key
+        h.text:SetTextColor(unpack(on and GOLD or DIM))
+        h.chev:SetShown(on)
+        if on then h.chev:SetTexture(ns.media .. "strips\\chevron-" .. dir) end
+    end
     empty:SetShown(#lines == 0)
     empty:SetText((search and search:GetText() or ""):match("%S") and "No quest has those words."
         or "Your quest log is empty.")
@@ -465,18 +524,48 @@ local function Build(pageBody, _, band)
     columns:SetHeight(COLUMNS)
     columns:SetPoint("TOPLEFT", GUTTER, -(HEAD + 4))
     columns:SetPoint("TOPRIGHT", 0, -(HEAD + 4))
-    local function Heading(text, point, x)
-        local t = ns.Text(columns, 11)
+    -- each heading a button that sorts by its column; the chevron beside
+    -- the sorted one's words, up or down
+    local function Heading(key, text, point, x)
+        local b = CreateFrame("Button", nil, columns)
+        b:SetHeight(COLUMNS)
+        local t = ns.Text(b, 11)
         t:SetTextColor(unpack(DIM))
         t:SetText(text)
-        t:SetPoint(point, columns, point == "CENTER" and "RIGHT" or point, x, 0)
-        return t
+        t:SetPoint("CENTER")
+        b:SetWidth(t:GetStringWidth() + 6)
+        b:SetPoint(point, columns, point == "CENTER" and "RIGHT" or point, x - (point == "RIGHT" and 0 or 3), 0)
+        b.text, b.key = t, key
+        b.chev = b:CreateTexture(nil, "ARTWORK")
+        b.chev:SetSize(10, 10)
+        b.chev:SetPoint(point == "RIGHT" and "RIGHT" or "LEFT", t, point == "RIGHT" and "LEFT" or "RIGHT",
+            point == "RIGHT" and -2 or 2, 0)
+        b.chev:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+        b.chev:Hide()
+        local lit = b:CreateTexture(nil, "HIGHLIGHT")
+        lit:SetAllPoints()
+        lit:SetColorTexture(1, 1, 1, 0.06)
+        b:SetScript("OnClick", function(self)
+            SortBy(key)
+            if GameTooltip:IsOwned(self) then self:GetScript("OnEnter")(self) end
+        end)
+        b:SetScript("OnEnter", function(self)
+            local now, dir = Sorting()
+            local word = SORTS[key].word
+            local hint = now ~= key and "Click: sort each zone's quests by " .. word .. "."
+                or dir == SORTS[key].first and "Click: the other way round."
+                or "Click: back to the log's order."
+            Tip(self, { title = "Sort by " .. word, { "hint", hint } })
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return b
     end
-    columns.lvl = Heading("Lvl", "LEFT", 4)
-    columns.quest = Heading("Quest", "LEFT", TITLE)
-    columns.xp = Heading("XP", "RIGHT", -AT_XP)
-    columns.item = Heading("Item", "CENTER", -AT_ITEM)
-    columns.coin = Heading("Coin", "RIGHT", -AT_COIN)
+    columns.lvl = Heading("lvl", "Lvl", "LEFT", 4)
+    columns.quest = Heading("title", "Quest", "LEFT", TITLE)
+    columns.xp = Heading("xp", "XP", "RIGHT", -AT_XP)
+    columns.item = Heading("item", "Item", "CENTER", -AT_ITEM)
+    columns.coin = Heading("coin", "Coin", "RIGHT", -AT_COIN)
+    columns.heads = { columns.lvl, columns.quest, columns.xp, columns.item, columns.coin }
     local under = columns:CreateTexture(nil, "ARTWORK")
     under:SetHeight(1)
     under:SetPoint("BOTTOMLEFT")
@@ -520,6 +609,7 @@ local function Build(pageBody, _, band)
     foot:SetPoint("TOPRIGHT")
 
     log.search, log.foot, log.body, log.rows, log.count, log.foldAll = search, foot, body, rows, count, foldAll
+    log.columns = columns
 end
 
 local function Window()

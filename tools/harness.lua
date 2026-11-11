@@ -468,7 +468,7 @@ resolve = function(f)
     if f.all then f.rect = resolve(f.all); return f.rect end
     local L, T, R, B
     local k = scaleOf(f)
-    local w, h = f.w * k, f.h * k
+    local w, h = (f.w or 0) * k, (f.h or 0) * k   -- a frame sized by its anchors alone has no size of its own
     for p, a in pairs(f.points) do
         local ax, ay = anchor(resolve(a[1]), a[2])
         ax, ay = ax + a[3] * k, ay - a[4] * k
@@ -4247,15 +4247,19 @@ if gamemenuPass then (function()
     -- the docked menu's people (mockup C2c): friends, a Battle.net one, the guild
     function GetGuildInfo(u) if u == "player" then return "Decimation", "Member", 3 end end
     function IsInGuild() return true end
-    function GetGuildRosterMOTD() return "MC Friday 8pm server" end
-    -- name, level, rank, zone, online, status, class
-    harnessGuild = { { "Aldren-Realm", 60, "Officer", "Blackrock Depths", true, 0, "WARRIOR" },
-        { "Sorrel-Realm", 44, "Member", "Tanaris", true, 1, "DRUID" },
-        { "Gone-Realm", 30, "Member", "", false, 0, "MAGE" },
-        { UnitName("player") .. "-Realm", 24, "Member", "Westfall", true, 0, "MAGE" } }
+    -- the message of the day comes by GUILD_MOTD: asking for it is blocked in game
+    function GetGuildRosterMOTD() error("GetGuildRosterMOTD: blocked (ADDON_ACTION_BLOCKED)", 2) end
+    -- name, level, rank, zone, online, status, class, rank index; the menu
+    -- lists only the top ranks (0, 1, or named an officer's)
+    harnessGuild = { { "Aldren-Realm", 60, "Officer", "Blackrock Depths", true, 0, "WARRIOR", 1 },
+        { "Sorrel-Realm", 44, "Member", "Tanaris", true, 1, "DRUID", 3 },
+        { "Gone-Realm", 30, "Officer", "", false, 0, "MAGE", 1 },
+        { "Vela-Realm", 52, "Guild Master", "Orgrimmar", true, 2, "HUNTER", 0 },
+        { "Brin-Realm", 38, "Raid Officer", "Ironforge", true, 0, "ROGUE", 2 },
+        { UnitName("player") .. "-Realm", 24, "Member", "Westfall", true, 0, "MAGE", 3 } }
     function GetGuildRosterInfo(i)
         local m = harnessGuild[i]
-        return m[1], m[3], 1, m[2], m[7], m[4], "", "", m[5], m[6], m[7]
+        return m[1], m[3], m[8], m[2], m[7], m[4], "", "", m[5], m[6], m[7]
     end
     harnessFriends = { { name = "Thalen", level = 60, className = "Mage", area = "Shattrath", connected = true },
         { name = "Ylla", level = 27, className = "Rogue", area = "Duskwood", connected = true, dnd = true },
@@ -6849,9 +6853,13 @@ if stripsPass then
                 table.insert(own, string.format("%g", t:GetAlpha()))
             end
             if b.shown then
-                screen("  " .. n, b, string.format("glyph=%s %s art=%s drawer=%s",
+                -- the glyph's middle: in line with the others' (the toast's held
+                -- in its slot, wherever Blizzard's stack leaves the button)
+                local gr = g and resolve(g)
+                screen("  " .. n, b, string.format("glyph=%s %s art=%s drawer=%s glyph@%s",
                     g and g.texture:match("[^\\]+$") or "-", g and string.format("%.1fx%.1f", g.w, g.h) or "",
-                    table.concat(own, ","), tostring(b.parent == chat.drawer)))
+                    table.concat(own, ","), tostring(b.parent == chat.drawer),
+                    gr and string.format("%.1f,%.1f", (gr[1] + gr[3]) / 2, (gr[2] + gr[4]) / 2) or "-"))
             else
                 print("  " .. n, "hidden")
             end
@@ -15568,6 +15576,38 @@ if questLogPass then (function()
     rows("questlog all folded")
     QL.foldAll.scripts.OnClick(QL.foldAll)
     rows("questlog all open")
+    -- 3b. the headings sort each zone's quests: XP, most first; reversed;
+    -- back to the log's order; the level, low first; the gold chevron on
+    -- the sorted heading, its tip saying what the next click does
+    do
+        local cols = QL.columns
+        local function heads()
+            local out = {}
+            for _, h in ipairs(cols.heads) do
+                table.insert(out, h.text.text .. (h.chev.shown and ("^" .. tostring(h.chev.texture):match("chevron%-(%a+)")) or "")
+                    .. (h.text.textColor and h.text.textColor[1] > 0.9 and "*" or ""))
+            end
+            return table.concat(out, " ")
+        end
+        local function click(h, tag)
+            h.scripts.OnClick(h)
+            print(tag .. " heads", heads(), "saved=" .. (ns.db.questLogSort and (ns.db.questLogSort.key .. "/"
+                .. ns.db.questLogSort.dir) or "false"))
+            rows(tag)
+        end
+        print("questlog sort tip", tipOf(cols.xp))
+        click(cols.xp, "questlog sort xp")
+        print("questlog sort tip sorted", tipOf(cols.xp))
+        click(cols.xp, "questlog sort xp reversed")
+        print("questlog sort tip reversed", tipOf(cols.xp))
+        click(cols.xp, "questlog sort none")
+        click(cols.lvl, "questlog sort level")
+        click(cols.coin, "questlog sort coin")
+        click(cols.item, "questlog sort item")
+        click(cols.quest, "questlog sort title")
+        ns.db.questLogSort = false
+        QL.Refresh()
+    end
     -- 4. a zone's eye: some tracked, so a click tracks the rest; all tracked,
     -- so a click stops tracking them all (the eye struck)
     W.calls = {}
@@ -17662,15 +17702,15 @@ if gamemenuPass then (function()
                 local p = c.person
                 table.insert(people, p.more or (p.name .. "/" .. tostring(p.level) .. "/" .. tostring(p.status) .. "/"
                     .. tostring(p.class) .. "@" .. tostring(p.where) .. (p.rank and ("/" .. p.rank) or "")))
-            elseif c.shown and c.filter then
+            elseif c.shown and (c.filter or c.rank) and c.edge then
                 local e = c.edge.color or {}
-                table.insert(pills, c.filter .. (e[1] and e[1] > 0.9 and "*" or ""))
+                table.insert(pills, (c.filter or ("[" .. c.rank .. "]")) .. (e[1] and e[1] > 0.9 and "*" or ""))
             elseif c.shown and c.value and c.label then
                 table.insert(cards, tostring(c.label.text) .. "=" .. tostring(c.value.text))
             elseif c.shown and c.kind == "FontString" and c.text and c.text:sub(1, 1) == "<" then
                 table.insert(misc, "guild " .. c.text)
             elseif c.shown and c.text and c.label and c.label.text == "Message of the day" then
-                table.insert(misc, "motd " .. tostring(c.text.text))
+                table.insert(misc, "motd " .. tostring(c.text.text) .. " h=" .. tostring(c.h))
             end
         end
         print(tag .. " people", #people, table.concat(people, " "))
@@ -17680,7 +17720,39 @@ if gamemenuPass then (function()
     local tall = M.docked.GetHeight
     M.docked.GetHeight = function() return 1100 end
     M.Relayout()
+    docked("gamemenu no motd yet")
+    fire("GUILD_MOTD", "MC Friday 8pm server")
     docked("gamemenu")
+    -- a long message of the day wraps, its box as tall as it takes; the
+    -- guild's rows below it move down
+    fire("GUILD_MOTD", "Tea and Biscuits are a fitting way to enjoy a small break between raids; bring your own, share the rest")
+    docked("gamemenu long motd")
+    fire("GUILD_MOTD", "MC Friday 8pm server")
+    -- the guild's ranks: all of them; then picked, a chip each, the top
+    -- ranks lit until one is toggled (Sorrel's Member added, the Raid
+    -- Officer taken off)
+    local function pill(word)            -- the last of that word: the guild's All, not the friends'
+        local found
+        for _, c in ipairs(M.docked.all_ or {}) do
+            if c.shown and c.word and c.word.text == word and c.choose then found = c end
+        end
+        return found
+    end
+    pill("All").scripts.OnClick(pill("All"))
+    docked("gamemenu guild all")
+    pill("Ranks").scripts.OnClick(pill("Ranks"))
+    docked("gamemenu guild ranks")
+    pill("Member").scripts.OnClick(pill("Member"))
+    pill("Raid Officer").scripts.OnClick(pill("Raid Officer"))
+    docked("gamemenu guild picked")
+    print("gamemenu guild saved", tostring(ns.db.gameMenuGuild), (function()
+        local out = {}
+        for k in pairs(ns.db.gameMenuGuildRanks or {}) do table.insert(out, k) end
+        table.sort(out)
+        return table.concat(out, ",")
+    end)())
+    pill("Officers").scripts.OnClick(pill("Officers"))
+    docked("gamemenu guild officers")
     print("gamemenu asked", tostring(W.asked))
     local xp = nil
     for _, c in ipairs(M.docked.all_ or {}) do if c.fill and c.rest and c.left then xp = c end end

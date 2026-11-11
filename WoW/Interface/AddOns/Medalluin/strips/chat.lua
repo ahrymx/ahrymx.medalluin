@@ -183,6 +183,14 @@ local function Row()
                 if select(2, b:GetPoint(1)) ~= ChatAlertFrame then
                     Put(b, "BOTTOMLEFT", ChatAlertFrame, "TOPLEFT", 0, 0)
                 end
+                -- and its glyph held in the slot itself, in line with the
+                -- others, wherever the stack leaves the button (it sat a
+                -- pixel or two low in game, 2026-11-11)
+                local g = b.medalluinGlyph
+                if g then
+                    g:ClearAllPoints()
+                    g:SetPoint("CENTER", tray, "LEFT", 1 + (i - 1) * BOX + BOX / 2, 0)
+                end
             else
                 Put(b, "LEFT", tray, "LEFT", 1 + (i - 1) * BOX, 0)
             end

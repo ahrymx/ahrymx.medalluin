@@ -48,6 +48,7 @@ local function HealthPercent(unit, cur, max)
     if percentCurve then return UnitHealthPercent(unit, false, percentCurve) end
     return (max and max > 0) and math.floor(cur / max * 100 + 0.5) or 0
 end
+ns.HealthPercent = HealthPercent         -- the overhead's cells (console/overhead.lua) too
 
 local function PowerPercent(unit, cur, max)
     if not ns.IsSecret(cur) and not ns.IsSecret(max) then
