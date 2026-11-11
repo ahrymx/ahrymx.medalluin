@@ -175,6 +175,15 @@ function Q.All()
     return out
 end
 
+-- Every quest in the log, each as Read's, with tracked: All's without the
+-- rewards, which select each quest in turn (the side panel's Zone tab,
+-- strips/zone.lua, reads it on every change).
+function Q.Log()
+    local out = Walk(function() return true end)
+    for _, q in ipairs(out) do q.tracked = Tracked(q.id) end
+    return out
+end
+
 -- A quest's page: { text, goal (the objectives' summary), given, chosen },
 -- each reward item { name, icon, count, quality, link, index, type }. Kept
 -- as the rewards are: selecting a quest may tell the log it changed, and

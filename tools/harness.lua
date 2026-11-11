@@ -60,7 +60,12 @@ end
 local grouped = args[1] == "group"
 local stripsPass = args[2] == "strips"
 local barPass = args[2] == "bar"
-local sidePass = args[2] == "side"
+local sidePass = args[2] == "side" or args[2] == "zone" or args[3] == "zone"
+-- "zone" (alone: the Medallion; after "light": the Central Console, whose
+-- map moves) plays the side panel's Zone tab (strips/zone.lua): the minimap
+-- lent into its well and given back, its place left empty, this zone's
+-- quests, and the column.
+zonePass = args[2] == "zone" or args[3] == "zone"   -- a global: the main chunk is at its local limit
 local savedNoSide = args[3] == "noside"
 local bagsPass = args[2] == "bags"
 local savedNoBags = args[3] == "nobags"
@@ -5901,6 +5906,153 @@ if sidePass then
     local function fire(e, ...)
         for _, f in ipairs(events[e] or {}) do f.scripts.OnEvent(f, e, ...) end
     end
+    if zonePass then
+        -- a log of two zones, the second the one you are in; one quest in
+        -- the first that the game marks on this map anyway
+        local function o(text, done) return { text = text, finished = done or false } end
+        local log = {
+            { title = "Elwynn Forest", isHeader = true },
+            { title = "A Threat Within", level = 5, questID = 101, objectives = { o("Speak to Marshal") } },
+            { title = "Marked Here", level = 9, questID = 102, objectives = { o("Kobold: 2/8") } },
+            { title = "Duskwood", isHeader = true },
+            { title = "The Night Watch", level = 24, questID = 201,
+                objectives = { o("Skeletal Fiend slain: 4/15"), o("Skeletal Horror slain: 9/15") } },
+            { title = "Worgen in the Woods", level = 25, questID = 202, complete = true,
+                objectives = { o("Nightbane Shadow Weaver: 6/6", true) } },
+            { title = "Look To The Stars", level = 22, questID = 203, objectives = { o("Find the telescope") } },
+            { title = "A Hidden One", level = 22, questID = 204, isHidden = true, objectives = {} },
+        }
+        local watched = { [201] = true }
+        local function byId(id)
+            for _, e in ipairs(log) do if e.questID == id then return e end end
+        end
+        C_QuestLog = {
+            GetNumQuestLogEntries = function() return #log end,
+            GetInfo = function(i) return log[i] end,
+            IsComplete = function(id) return byId(id).complete or false end,
+            IsFailed = function() return false end,
+            GetQuestObjectives = function(id) return byId(id).objectives end,
+            GetQuestWatchType = function(id) return watched[id] and 0 or nil end,
+            AddQuestWatch = function(id) watched[id] = true end,
+            RemoveQuestWatch = function(id) watched[id] = nil end,
+            GetMaxNumQuestsCanWatch = function() return 25 end,
+            GetNumQuestWatches = function()
+                local n = 0
+                for _ in pairs(watched) do n = n + 1 end
+                return n
+            end,
+            GetQuestsOnMap = function() return { { questID = 102 } } end,
+        }
+        function GetRealZoneText() return "Duskwood" end
+        function GetSubZoneText() return "Darkshire" end
+        C_Map = C_Map or {}
+        C_Map.GetBestMapForUnit = function() return 47 end
+        C_Map.GetMapInfo = function() return { name = "Duskwood" } end
+        C_Map.GetPlayerMapPosition = function()
+            return { GetXY = function() return 0.734, 0.441 end }
+        end
+        local zoom = 0
+        function Minimap:GetZoom() return zoom end
+        function Minimap:SetZoom(z) zoom = z end
+        local views = {}
+        for _, v in ipairs(side.views) do views[v.key] = v end
+        local z = views.zone
+        local clip, hole = _G.MedalluinMinimapClip, _G.MedalluinMinimapEmpty
+        local function where(tag)
+            local pt = Minimap.points.CENTER
+            local to = pt and pt[1]
+            local name = to and (to.name or (to == ns.console and "console") or tostring(to)) or "none"
+            print("zone map " .. tag, string.format("clip in=%s map at=%s size=%.0fx%.0f mask=%s strata=%s "
+                .. "above the well=%s", tostring(clip.parent and (clip.parent.name or
+                (clip.parent == ns.console and "console")) or "?"), name, Minimap.w, Minimap.h,
+                tostring(Minimap.mask):match("[^\\]+$"), tostring(Minimap.strata),
+                tostring(Minimap.level > (_G.MedalluinZoneMap.level or 0))))
+            local dark
+            for _, r in ipairs(hole.all_ or {}) do if r.kind == "Texture" then dark = r end end
+            print("zone empty " .. tag, "shown=" .. tostring(hole.shown), string.format("size=%.0fx%.0f dark=%.0f",
+                hole.w or 0, hole.h or 0, dark and dark.w or 0), "colour=" .. (dark and dark.color and
+                table.concat(dark.color, ",") or "none"))
+        end
+        local function rows(tag)
+            local list = select(2, z.body:GetChildren())
+            print("zone head " .. tag, tostring(list.all_[1].text), tostring(list.all_[2].text))
+            for _, r in ipairs(list.all_) do
+                if r.kind == "Button" and r.shown then
+                    print("", string.format("%s%s|%s|%s%s%s h=%d", r.fold.text or "", r.line.objective and "  " or "",
+                        tostring(r.text.text), tostring(r.count.text), r.eye.shown and " eye" or "",
+                        r.tick.shown and " tick" or "", r.h))
+                end
+            end
+        end
+        local function row(i)
+            local list = select(2, z.body:GetChildren())
+            local n = 0
+            for _, r in ipairs(list.all_) do
+                if r.kind == "Button" and r.shown then
+                    n = n + 1
+                    if n == i then return r end
+                end
+            end
+        end
+        local function pick(v) v.tab.scripts.OnClick(v.tab) end
+        where("at login")
+        pick(z)
+        where("tab picked")
+        rows("tab picked")
+        print("zone column", z.column.shown and "shown" or "hidden")
+        -- the key does not take it back while it is lent; nor the corner's triggers
+        ns.ToggleMinimap()
+        print("zone key", "pin=" .. tostring(ns.MinimapPinned()))
+        fire("PLAYER_REGEN_DISABLED")
+        fire("PLAYER_TARGET_CHANGED")
+        where("in combat")
+        fire("PLAYER_REGEN_ENABLED")
+        if ns.MinimapMoves() then
+            -- the corner's turn (the rule's combat trigger) moves the empty place, not the map
+            ns.db.minimapAuto, ns.db.minimapAutoCombat = true, true
+            fire("PLAYER_REGEN_DISABLED")
+            where("corner's turn")
+            print("zone corner", "bezel=" .. tostring(ns.minimapBezel.shown),
+                "grip visible=" .. tostring(ns.minimapGrip:IsVisible()), "empty shown=" .. tostring(hole.shown))
+            fire("PLAYER_REGEN_ENABLED")
+            where("console's turn")
+        end
+        -- a click opens a quest's objectives; again, closes them
+        row(1).scripts.OnClick(row(1), "LeftButton")
+        rows("opened")
+        row(1).scripts.OnClick(row(1), "LeftButton")
+        -- shift-click tracks
+        modsDown.SHIFT = true
+        row(2).scripts.OnClick(row(2), "LeftButton")
+        modsDown.SHIFT = false
+        rows("shift-click")
+        -- the column: zoom in twice, out once; the foot tracks the zone, then untracks it
+        z.paint[1].scripts.OnClick(z.paint[1], "LeftButton")
+        z.paint[1].scripts.OnClick(z.paint[1], "LeftButton")
+        z.paint[2].scripts.OnClick(z.paint[2], "LeftButton")
+        print("zone zoom", zoom)
+        local foot = z.paint[#z.paint]
+        foot.scripts.OnClick(foot, "LeftButton")
+        print("zone foot", "lit=" .. tostring(foot.mark.shown), "watched 201-203=" .. tostring(watched[201])
+            .. "," .. tostring(watched[202]) .. "," .. tostring(watched[203]) .. "," .. tostring(watched[102]))
+        foot.scripts.OnClick(foot, "LeftButton")
+        print("zone foot again", "lit=" .. tostring(foot.mark.shown), "watched=" .. tostring(next(watched)))
+        -- another tab gives it back; the panel hidden does too
+        pick(views.loot)
+        where("loot picked")
+        pick(z)
+        where("zone again")
+        side.panel:Hide()
+        z.body.scripts.OnHide(z.body)
+        where("panel hidden")
+        side.panel:Show()
+        z.body.scripts.OnShow(z.body)
+        where("panel shown")
+        -- the option off takes the tab away, and the map with it
+        ns.SetOption("sideZone", false)
+        where("tab off")
+        return
+    end
     local p = side.panel
     local ink = side.dress.ink.gradient
     screen("sidePanel", p, string.format("strata=%s ink=%s %.2f>%.2f rule=%s", tostring(p.strata), ink[1],
@@ -6522,6 +6674,7 @@ if sidePass then
     end
 
     -- the tabs come and go with their options; none, no panel
+    page.settings.sideZone:Set(false)
     page.settings.sideMeter:Set(false)
     tabs()
     page.settings.sideLoot:Set(false)
@@ -6532,6 +6685,8 @@ if sidePass then
     tabs()
     page.settings.sideLoot:Set(true)
     page.settings.sideAuras:Set(true)
+    tabs()
+    page.settings.sideZone:Set(true)
     tabs()
     SlashCmdList.MDLUI("meter")
     print("/mdlui meter opens", tostring(page.opened))

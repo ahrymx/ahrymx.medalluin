@@ -69,6 +69,7 @@ local DEFAULTS = {
     sideAuras = true,       -- its Auras tab
     sideMeter = true,       -- its Meter tab
     sideLoot = true,        -- its Loot tab
+    sideZone = true,        -- its Zone tab: the minimap and this zone's quests
     sideTab = "meter",      -- the tab last shown (not on the page: the tabs set it)
     meterColumns = 1,       -- 2 shows a second list beside the first
     meterLeft = "damage",   -- what the first list shows: see METER_METRICS

@@ -192,6 +192,37 @@ def g_quality(cx, cy):        # loot: least quality shown
             f'stroke="url(#gold)" stroke-width="1"/>')
 
 
+def g_zoom(cx, cy, more):    # zone: the minimap zoomed in (+) or out (-)
+    # bars, not strokes: a gradient stroke on a flat line has no box to fill
+    bars = f'<rect x="{cx - 5}" y="{cy - 2.4}" width="7" height="1.8" fill="url(#gold)"/>'
+    if more:
+        bars += f'<rect x="{cx - 2.4}" y="{cy - 5}" width="1.8" height="7" fill="url(#gold)"/>'
+    return (f'<circle cx="{cx - 1.5}" cy="{cy - 1.5}" r="5.6" fill="none" stroke="url(#gold)" stroke-width="1.8"/>'
+            f'<path d="M{cx + 2.6},{cy + 2.6} L{cx + 7},{cy + 7}" stroke="url(#gold)" stroke-width="2.6" '
+            f'stroke-linecap="round"/>' + bars)
+
+
+def g_tracking(cx, cy):       # zone: the minimap's tracking, a sight on a dot
+    ticks = (f'M{cx},{cy - 8} L{cx},{cy - 4} M{cx},{cy + 4} L{cx},{cy + 8} '
+             f'M{cx - 8},{cy} L{cx - 4},{cy} M{cx + 4},{cy} L{cx + 8},{cy}')
+    return (f'<circle cx="{cx}" cy="{cy}" r="6" fill="none" stroke="url(#gold)" stroke-width="1.6"/>'
+            f'<path d="{ticks}" stroke="url(#gold)" stroke-width="1.8" stroke-linecap="round"/>'
+            f'<circle cx="{cx}" cy="{cy}" r="1.8" fill="url(#gold)"/>')
+
+
+def g_worldmap(cx, cy):       # zone: the world map, a folded map
+    return (f'<path transform="translate({cx - 8},{cy - 8}) scale(0.8)" '
+            f'd="M1,4 L7,2 L13,4 L19,2 L19,16 L13,18 L7,16 L1,18 Z M7,2.5 L7,15.5 M13,4.5 L13,17.5" '
+            f'fill="url(#gold)" stroke="#2a1e08" stroke-width="0.75"/>')
+
+
+def g_trackall(cx, cy):       # zone: every quest here tracked, an open eye
+    return (f'<path transform="translate({cx - 8},{cy - 8}) scale(0.8)" fill-rule="evenodd" '
+            f'd="M0.8,10 C4.5,3.5 15.5,3.5 19.2,10 C15.5,16.5 4.5,16.5 0.8,10 Z '
+            f'M3.6,10 C6.8,14.2 13.2,14.2 16.4,10 C13.2,5.8 6.8,5.8 3.6,10 Z '
+            f'M7,10 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 Z" fill="url(#gold)" stroke="#2a1e08" stroke-width="0.75"/>')
+
+
 def column(side, glyphs):
     """The column's buttons, top down; the last one sits at the foot."""
     cx = column_x(side)
@@ -556,6 +587,11 @@ def parts():
         "side-group": g_people(c, c, True),
         "side-quality": white,
         "side-timeless": g_timeless(c, c),
+        "side-zoom-in": g_zoom(c, c, True),
+        "side-zoom-out": g_zoom(c, c, False),
+        "side-tracking": g_tracking(c, c),
+        "side-worldmap": g_worldmap(c, c),
+        "side-trackall": g_trackall(c, c),
     }
     for name, inner in pieces.items():
         doc = S.svg(inner).replace(f'width="{W}" height="{H}"', 'width="32" height="32"')

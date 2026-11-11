@@ -26,6 +26,7 @@ local AREA_FADE_IN, AREA_FADE_OUT = 0.5, 1      -- seconds it takes to come and 
 --      trigger ticked on Console > Minimap: combat, a target, skyriding
 local inCombat = UnitAffectingCombat and UnitAffectingCombat("player") or false
 local pin                                   -- nil, "corner" or "console"
+local lent                                  -- the side panel's Zone tab's well, while it has the map
 local held                                  -- the load's pin: rule 3's answer when it was set
 
 function ns.MinimapMoves()
@@ -58,6 +59,12 @@ function ns.ToggleMinimap()
     if not ns.MinimapMoves() then
         if UIErrorsFrame then
             UIErrorsFrame:AddMessage("Medalluin: only the Central Console profile's minimap moves.", 1, 0.82, 0)
+        end
+        return
+    end
+    if lent then
+        if UIErrorsFrame then
+            UIErrorsFrame:AddMessage("Medalluin: the minimap is in the side panel's Zone tab.", 1, 0.82, 0)
         end
         return
     end
@@ -111,24 +118,41 @@ ns.On("PLAYER_LOGIN", function()
     Minimap:SetFrameStrata(console:GetFrameStrata())
     Minimap:SetFrameLevel(ns.levels.bars)
     Minimap:SetScale(1)
+    -- the square's side and the mask for w x h shown (or always square)
+    local function Shape(w, h, always)
+        local side = math.max(w, h)
+        if always then return side, square end
+        if not (mmCfg and mmCfg.square) then return side, round end
+        if w ~= h and mmCfg.bayMask then return side, ns.media .. mmCfg.bayMask end
+        return side, square
+    end
     -- w x h shown, from a square as big as the longer side; what the mask
     -- hides takes no clicks, pings or the wheel either
-    local function Fit(w, h)
-        local side = math.max(w, h)
+    local function Fit(w, h, always)
+        local side, mask = Shape(w, h, always)
         Minimap:SetSize(side, side)
         clip:SetSize(w, h)
         Minimap:SetHitRectInsets((side - w) / 2, (side - w) / 2, (side - h) / 2, (side - h) / 2)
-        if not (mmCfg and mmCfg.square) then
-            Minimap:SetMaskTexture(round)
-        elseif w ~= h and mmCfg.bayMask then
-            Minimap:SetMaskTexture(ns.media .. mmCfg.bayMask)
-        else
-            Minimap:SetMaskTexture(square)
-        end
+        Minimap:SetMaskTexture(mask)
     end
-    Minimap:ClearAllPoints()
-    Minimap:SetPoint("CENTER", console, "TOP", 0, -(top + bottom) / 2)
-    Fit(size, mmCfg and mmCfg.square and (bottom - top) or size)
+
+    -- While the side panel's Zone tab has the map (strips/zone.lua), its
+    -- place here stands empty: black, in the shape the map shows there.
+    -- (Something else is to fill it later.)
+    local hole = CreateFrame("Frame", "MedalluinMinimapEmpty", console)
+    hole:SetFrameLevel(clip:GetFrameLevel())
+    hole:SetClipsChildren(true)
+    local dark = hole:CreateTexture(nil, "BACKGROUND")
+    dark:SetPoint("CENTER")
+    dark:SetColorTexture(0, 0, 0, 1)
+    local darkMask
+    if hole.CreateMaskTexture and dark.AddMaskTexture then
+        darkMask = hole:CreateMaskTexture()
+        darkMask:SetAllPoints(dark)
+        dark:AddMaskTexture(darkMask)
+    end
+    hole:Hide()
+    ns.minimapEmpty = hole
     -- The client rings the quest, bonus-objective and dig-site areas at a
     -- round minimap's edge, where the area runs off the map: on the square
     -- map that ring sits inside the square, a hatched circle round the
@@ -143,6 +167,45 @@ ns.On("PLAYER_LOGIN", function()
     end
 
     local area                              -- the area's name over the hovered map, below
+
+    -- The map at its place, w x h shown, centred on (to, rel, x, y); or,
+    -- while it is lent, the empty place there and the map in the well,
+    -- square and as big as the well, on the well's strata and above it.
+    local function Place(to, rel, x, y, w, h)
+        Minimap:ClearAllPoints()
+        if not lent then
+            hole:Hide()
+            clip:SetParent(console)
+            clip:SetFrameStrata(console:GetFrameStrata())
+            clip:SetFrameLevel(math.max(0, ns.levels.bars - 1))
+            Minimap:SetFrameStrata(console:GetFrameStrata())
+            Minimap:SetFrameLevel(ns.levels.bars)
+            Minimap:SetPoint("CENTER", to, rel, x, y)
+            Fit(w, h)
+            return
+        end
+        local side, mask = Shape(w, h)
+        hole:ClearAllPoints()
+        hole:SetPoint("CENTER", to, rel, x, y)
+        hole:SetSize(w, h)
+        dark:SetSize(side, side)
+        if darkMask then darkMask:SetTexture(mask, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE") end
+        hole:Show()
+        clip:SetParent(lent)
+        clip:SetFrameStrata(lent:GetFrameStrata())
+        clip:SetFrameLevel(lent:GetFrameLevel() + 1)
+        Minimap:SetFrameStrata(lent:GetFrameStrata())
+        Minimap:SetFrameLevel(lent:GetFrameLevel() + 2)
+        Minimap:SetPoint("CENTER", lent, "CENTER")
+        local s = math.min(lent:GetWidth(), lent:GetHeight())
+        Fit(s, s, true)
+        if area then area:Hide() end
+    end
+    -- the profiles whose map stays in the ring; the moving one's is below
+    local function Locate()
+        Place(console, "TOP", 0, -(top + bottom) / 2, size, mmCfg and mmCfg.square and (bottom - top) or size)
+    end
+    Locate()
     if mmCfg and mmCfg.relocate then
         local bezel = CreateFrame("Frame", "MedalluinMinimapBezel", console)
         bezel:SetFrameLevel(ns.levels.art)
@@ -210,17 +273,19 @@ ns.On("PLAYER_LOGIN", function()
             local h = rBottom - rTop
             local corner = ns.MinimapInCorner()
             local inner = Corner()
-            if Minimap.SetIgnoreParentAlpha then Minimap:SetIgnoreParentAlpha(corner) end
-            Minimap:ClearAllPoints()
+            if Minimap.SetIgnoreParentAlpha then Minimap:SetIgnoreParentAlpha(corner and not lent) end
+            if hole.SetIgnoreParentAlpha then hole:SetIgnoreParentAlpha(corner) end
             if corner then
-                Minimap:SetPoint("CENTER", bezel, "CENTER", 0, 0)
-                Fit(inner, inner)
-                bezel:Show()
+                Place(bezel, "CENTER", 0, 0, inner, inner)
+                -- the corner is the map's alone: while the side panel has
+                -- it, the corner goes too (its grip with it), nothing left
+                -- empty there
+                if lent then hole:Hide() end
+                bezel:SetShown(not lent)
                 Name()
                 if area then area:Hide() end
             else
-                Minimap:SetPoint("CENTER", console, "TOP", 0, -(rTop + rBottom) / 2)
-                Fit(w, h)
+                Place(console, "TOP", 0, -(rTop + rBottom) / 2, w, h)
                 bezel:Hide()
             end
             if ns.UpdateConsoleArt then ns.UpdateConsoleArt() end
@@ -228,6 +293,7 @@ ns.On("PLAYER_LOGIN", function()
         end
         ns.UpdateMinimapLocation = UpdateLocation
         ns.PlaceMinimap = UpdateLocation
+        Locate = UpdateLocation
         for _, key in ipairs({ "minimapAuto", "minimapAutoCombat", "minimapAutoTarget", "minimapAutoSkyriding",
             "minimapScale", "minimapX", "minimapY", "consoleScale" }) do
             ns.OnSetting(key, UpdateLocation)
@@ -307,7 +373,7 @@ ns.On("PLAYER_LOGIN", function()
     -- is naught again whenever it has hidden.
     local shownFor = 0
     Minimap:HookScript("OnEnter", function()
-        if area:IsShown() or ns.MinimapInCorner() then return end
+        if area:IsShown() or lent or ns.MinimapInCorner() then return end
         ShowArea()
         area:SetAlpha(0)
         area:Show()
@@ -346,4 +412,12 @@ ns.On("PLAYER_LOGIN", function()
         end
     end
     ns.Kill(MinimapCluster)
+
+    -- The side panel's Zone tab takes the map into its well (a frame), and
+    -- gives it back (nil). The well clips the pins, as the clip here does.
+    function ns.LendMinimap(to)
+        if to == lent then return end
+        lent = to
+        Locate()
+    end
 end)

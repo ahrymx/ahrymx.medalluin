@@ -612,8 +612,16 @@ function ns.OptionPages()
                 {
                     id = "general", name = "General", intro = "Shared by every profile.",
                     master = Check("side", "Side panel",
-                        "The chat panel's mirror on the right strip, over the stats, with an Auras tab, a Meter tab "
-                        .. "and a Loot tab. Untick it to keep the right corner clear, or to use a meter addon.", true),
+                        "The chat panel's mirror on the right strip, over the stats, with a Zone tab, an Auras "
+                        .. "tab, a Meter tab and a Loot tab. Untick it to keep the right corner clear, or to use "
+                        .. "a meter addon.", true),
+                    groups = {},
+                },
+                {
+                    id = "zone", name = "Zone", intro = "Shared by every profile.",
+                    master = Needs("side", Check("sideZone", "Zone tab",
+                        "The minimap, moved into the panel while the tab is up, and the quests of the zone you "
+                        .. "are in beside it. Its place on the console stands empty meanwhile.")),
                     groups = {},
                 },
                 {

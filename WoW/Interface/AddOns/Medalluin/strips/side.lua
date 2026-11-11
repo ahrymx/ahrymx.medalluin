@@ -1,25 +1,26 @@
 -- The side panel, on the right strip: the chat panel's mirror (chat.lua),
 -- holding Medalluin's own views instead of Blizzard's chat: the Loot log
--- (loot.lua), the Meter (meter.lua) and the Auras (auras.lua).
+-- (loot.lua), the Meter (meter.lua), the Auras (auras.lua) and the Zone
+-- (zone.lua: the minimap and this zone's quests).
 --
 -- In a box as the chat's is (ns.window.Dress, its ink solid at the
 -- screen's edge here), standing on the strip:
 --
---   |  the view's list         [o]    <- the body; the button column on
---   |                          [o]       the OUTER edge (the right), the
---   |                          [o]       scroll bar on the inner edge
+--   |  the view's list      |  [o]    <- the body; the button column on
+--   |                       |  [o]       the OUTER edge (the right), the
+--   |                       |  [o]       scroll bar against it
 --   ---------------------------------
 --   [  *  |  =  |  #  ] |     (bag)   <- the margin: the tabs edge to edge,
 --                                        up to a break divider before the bag
 --
 -- The tabs run inward from the break divider in the views' order: Loot
--- outermost, then Meter, then Auras, sharing the row edge to edge. They and
+-- outermost, then Meter, then Auras, then Zone, sharing the row edge to edge. They and
 -- the column's buttons wear the windows' box (ns.window.Face), a view's
 -- button marked while it is lit.
 --
 -- A view hands the panel its tab label, the option that switches it, its
 -- column buttons (top down, and one at the foot), and draws itself into a
--- body frame between the column and the scroll bar. The panel draws the
+-- body frame from the box's inner edge to the scroll bar. The panel draws the
 -- buttons, the tabs and the scroll bar, and passes the mouse wheel on.
 --
 --   ns.SideView{ key, label, option, Available(), Build(body), Refresh(),
@@ -46,7 +47,12 @@ local PAD, RULE, TABS = 8, 6, 28                -- as the chat box's (chat.lua)
 -- COLUMN wide, between the divider and the box's outer edge, its buttons
 -- flush in it, top down from the box's top edge, each sharing its edges
 -- with the next, the box's and the divider's; the foot's on the rule.
-local INNER = COLUMN + 5 - PAD                  -- the body's outer edge, from the room's
+-- The scroll bar (2026-11-11, was on the inner edge, where the chat's is):
+-- against the divider, so the body runs from the box's inner edge.
+local TRACK, TRACK_GAP = 8, 1                   -- the track's width, and its gap to the divider
+local TRACK_AT = COLUMN - PAD + TRACK_GAP       -- the track's outer edge, from the room's (the divider is COLUMN in)
+local INNER = TRACK_AT + TRACK + 3              -- the body's outer edge, from the room's
+local OUTER = 3                                 -- the body's inner edge, from the room's
 local SPACE = 6                                 -- a ladder's room clear of the buttons above and below it
 local GOLD_D = { 0.541, 0.439, 0.204 }
 
@@ -75,7 +81,7 @@ local function On(view)
 end
 
 -- ------------------------------------------------------------ scroll bar
--- On the inner edge, where the chat's own scroll bar is on its side. The
+-- Against the divider, at the body's outer edge. The
 -- thumb only when there is more than the body shows.
 local function Thumb()
     if not current then
@@ -302,11 +308,11 @@ local function Build()
     divider:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -(COLUMN - 1), 0)
     divider:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -(COLUMN - 1), margin)
 
-    -- the scroll bar's track, where the chat's is on the other side
+    -- the scroll bar's track, against the divider
     track = area:CreateTexture(nil, "BORDER")
     track:SetColorTexture(0, 0, 0, 0.35)
-    track:SetSize(8, tall - 12)
-    track:SetPoint("TOPLEFT", area, "TOPLEFT", 3, -6)
+    track:SetSize(TRACK, tall - 12)
+    track:SetPoint("TOPRIGHT", area, "TOPRIGHT", -TRACK_AT, -6)
     thumb = area:CreateTexture(nil, "ARTWORK")
     thumb:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.8)
     thumb:SetWidth(6)
@@ -317,9 +323,9 @@ local function Build()
         v.available = v.Available() and true or false
         if v.available then
             v.body = CreateFrame("Frame", nil, area)
-            v.body:SetPoint("TOPLEFT", area, "TOPLEFT", L.chatRight, -4)
+            v.body:SetPoint("TOPLEFT", area, "TOPLEFT", OUTER, -4)
             v.body:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -INNER, 4)
-            v.body:SetSize(width - 2 * PAD - L.chatRight - INNER, tall - 8)
+            v.body:SetSize(width - 2 * PAD - OUTER - INNER, tall - 8)
             v.column = CreateFrame("Frame", nil, area)
             v.column:SetAllPoints()
             v.paint = {}

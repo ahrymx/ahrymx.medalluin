@@ -166,6 +166,14 @@ def glyph(kind, x, y):
                  "M2.5,10.2 L7.8,10.2 L7.8,13.5 L12.2,13.5 L12.2,10.2 L17.5,10.2 L16.6,18 L3.4,18 Z "
                  "M8.6,8 L11.4,8 L11.4,12.6 L8.6,12.6 Z "
                  "M9.4,9.8 L10.6,9.8 L10.6,11.4 L9.4,11.4 Z", "evenodd")
+    if kind == "side-zone":     # a folded map, a pin standing on it
+        return (P("M1,6 L7,4 L13,6 L19,4 L19,17 L13,19 L7,17 L1,19 Z M7,4.5 L7,16.5 M13,6.5 L13,18.5")
+                # a dark rim round the pin, so it stands off the map's gold
+                + f'<path transform="translate({x},{y}) scale({s})" d="M10,13.5 C7.6,10.4 6.2,8.6 6.2,6.4 '
+                f'a3.8,3.8 0 1,1 7.6,0 C13.8,8.6 12.4,10.4 10,13.5 Z" fill="none" stroke="#2a1e08" '
+                f'stroke-width="2.4"/>'
+                + P("M10,13.5 C7.6,10.4 6.2,8.6 6.2,6.4 a3.8,3.8 0 1,1 7.6,0 C13.8,8.6 12.4,10.4 10,13.5 Z "
+                    "M8.6,6.3 a1.4,1.4 0 1,0 2.8,0 a1.4,1.4 0 1,0 -2.8,0 Z", "evenodd"))
     # the character window's tabs (character/window.lua)
     if kind == "character":     # head and shoulders
         return P("M6,6.5 a4,4.5 0 1,0 8,0 a4,4.5 0 1,0 -8,0 Z M1.5,19 C1.5,13 5,11.5 10,11.5 C15,11.5 18.5,13 18.5,19 Z")
@@ -475,7 +483,7 @@ GLYPHS = ["spellbook", "talents", "quests", "social", "guild", "lfg", "map", "me
 TABS = ["character", "reputation", "currency", "skills", "pvp", "statistics",
         "chevron-down", "chevron-up", "chevron-double", "close", "questlog", "sort", "view-minimal", "view-full",
         "view-bags", "view-grid", "view-groups", "track", "track-off",
-        "chat-tools", "chat", "channels", "log", "side-auras", "side-meter", "side-loot", "mouse", "edit",
+        "chat-tools", "chat", "channels", "log", "side-auras", "side-meter", "side-loot", "side-zone", "mouse", "edit",
         "role-tank", "role-healer", "role-damage"]
 
 
