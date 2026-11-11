@@ -234,6 +234,96 @@ function Q.Focus(quest)
     return true
 end
 
+-- ------------------------------------------------------------- the map
+-- A zone's map, by its name (the log's heading for the quest): every map
+-- under the world the player is in, a zone's first. Kept once read from
+-- the whole world; read again while only a continent's (or less) is known.
+local maps, whole
+local function MapByName(name)
+    if not (name and C_Map and C_Map.GetMapChildrenInfo) then return end
+    if not whole then
+        local here = C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+            or C_Map.GetFallbackWorldMapID and C_Map.GetFallbackWorldMapID()
+        if not here then return end
+        local top = here
+        local T = Enum and Enum.UIMapType
+        if MapUtil and MapUtil.GetMapParentInfo and T then
+            local world = MapUtil.GetMapParentInfo(here, T.Cosmic, true)
+                or MapUtil.GetMapParentInfo(here, T.World, true)
+            local info = world or MapUtil.GetMapParentInfo(here, T.Continent, true)
+            if info and info.mapID then top = info.mapID end
+            whole = world ~= nil
+        end
+        maps = {}
+        local zone = T and T.Zone
+        for _, m in ipairs(C_Map.GetMapChildrenInfo(top, nil, true) or {}) do
+            local had = maps[m.name]
+            if m.name and (not had or (m.mapType == zone and had.mapType ~= zone)) then maps[m.name] = m end
+        end
+    end
+    return maps[name] and maps[name].mapID
+end
+
+-- The quest's map: the game's own for it (retail), else its zone's.
+function Q.MapOf(quest)
+    local id = GetQuestUiMapID and Try(GetQuestUiMapID, quest.id)
+    if id and id > 0 then return id end
+    return MapByName(quest.zone)
+end
+
+-- Questie's places for the quest: its objectives not yet done, or, ready
+-- to hand in, who takes it; nil when it knows none.
+local function Places(quest)
+    local m, record = Questie(), Record(quest.id)
+    if not (m and record) then return end
+    if quest.state == 1 then
+        if record.Finisher and m.utils.ShowFinisherOnMap then return m, record end
+        return
+    end
+    local list = {}
+    for _, set in ipairs({ record.Objectives or {}, record.SpecialObjectives or {} }) do
+        for _, o in pairs(set) do
+            if type(o) == "table" and not o.Completed and type(o.spawnList) == "table" and next(o.spawnList) then
+                table.insert(list, o)
+            end
+        end
+    end
+    if #list > 0 then return m, nil, list end
+end
+
+-- Whether the map can show it.
+function Q.CanMap(quest)
+    return Places(quest) ~= nil or Q.MapOf(quest) ~= nil
+end
+
+-- The world map at the quest: Questie's way when it knows the places (the
+-- nearest's zone, its icons flashing), else the quest's map (retail pings
+-- the quest on it). True when the map was opened.
+function Q.ShowOnMap(quest)
+    local m, finisher, list = Places(quest)
+    local u = m and m.utils
+    if finisher and pcall(u.ShowFinisherOnMap, u, finisher) then return true end
+    if list then
+        local ok
+        if u.ShowQuestObjectivesOnMap then
+            ok = pcall(u.ShowQuestObjectivesOnMap, u, list)
+        else
+            ok = pcall(u.ShowObjectiveOnMap, u, list[1])
+        end
+        if ok then return true end
+    end
+    local id = Q.MapOf(quest)
+    if not (id and WorldMapFrame) then return false end
+    if OpenWorldMap then
+        OpenWorldMap(id)
+    else
+        if not WorldMapFrame:IsShown() then ShowUIPanel(WorldMapFrame) end
+        WorldMapFrame:SetMapID(id)
+    end
+    if WorldMapFrame.PingQuestID then Try(WorldMapFrame.PingQuestID, WorldMapFrame, quest.id) end
+    return true
+end
+
 -- How many quests the game lets be watched at once (none known: no limit).
 function Q.WatchLimit()
     if C_QuestLog.GetMaxNumQuestsCanWatch then return C_QuestLog.GetMaxNumQuestsCanWatch() end

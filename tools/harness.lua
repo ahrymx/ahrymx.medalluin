@@ -15045,6 +15045,21 @@ if questPass and not questLogPass then
     row("The Fargodeep Mine")
     modsDown.ALT = nil
     calls("quests.alt")
+    -- a middle click: the world map at its zone (Questie knowing no place)
+    do
+        local was = { C_Map, MapUtil, OpenWorldMap, Enum.UIMapType, WorldMapFrame }
+        Enum.UIMapType = Enum.UIMapType or { Cosmic = 0, World = 1, Continent = 2, Zone = 3 }
+        WorldMapFrame = WorldMapFrame or {}
+        C_Map = { GetBestMapForUnit = function() return 1429 end, GetMapChildrenInfo = function(top, _, all)
+            if top ~= 947 or not all then return {} end
+            return { { mapID = 1429, name = "Elwynn Forest", mapType = 3 }, { mapID = 1436, name = "Westfall", mapType = 3 } }
+        end }
+        MapUtil = { GetMapParentInfo = function(_, kind) return kind == 1 and { mapID = 947 } or nil end }
+        function OpenWorldMap(id) table.insert(W.calls, "map " .. id) end
+        row("The Fargodeep Mine", "MiddleButton")
+        calls("quests.middle")
+        C_Map, MapUtil, OpenWorldMap, Enum.UIMapType, WorldMapFrame = was[1], was[2], was[3], was[4], was[5]
+    end
     row("The Defias Brotherhood", "RightButton")
     calls("quests.right")
     -- Questie's untrack leaves the game's watches alone: only its own update says so
@@ -15786,6 +15801,38 @@ if questLogPass then (function()
     pageText("questlog page untracked")
     QP.band.byKey.track.scripts.OnClick(QP.band.byKey.track)
     calls("questlog page track")
+    -- View on map: the world map at its zone, found by name under the
+    -- world (a zone's map before a dungeon's of the same name); the log's
+    -- middle click the same; a zone with no map: off, and no middle click
+    local function called(c) table.insert(W.calls, c) end
+    local mapWas = { C_Map, MapUtil, OpenWorldMap, Enum.UIMapType }
+    Enum.UIMapType = Enum.UIMapType or { Cosmic = 0, World = 1, Continent = 2, Zone = 3 }
+    C_Map = {
+        GetBestMapForUnit = function() return 1429 end,
+        GetMapChildrenInfo = function(top, _, all)
+            if top ~= 947 or not all then return {} end
+            return { { mapID = 9999, name = "Elwynn Forest", mapType = 4 }, { mapID = 1429, name = "Elwynn Forest", mapType = 3 },
+                { mapID = 1436, name = "Westfall", mapType = 3 }, { mapID = 1415, name = "Eastern Kingdoms", mapType = 2 } }
+        end,
+    }
+    MapUtil = { GetMapParentInfo = function(_, kind) return kind == 1 and { mapID = 947 } or nil end }
+    function OpenWorldMap(id) called("map " .. id) end
+    QP.Refresh()
+    print("questlog page map", segState(QP.band), tipOf(QP.band.byKey.map))
+    QP.band.byKey.map.scripts.OnClick(QP.band.byKey.map)
+    calls("questlog page view on map")
+    for _, title in ipairs({ "The Defias Brotherhood", "Seek Out the Ashtongue" }) do
+        r = row(title)
+        print("questlog middle tip " .. title, tipOf(r))
+        r.scripts.OnClick(r, "MiddleButton")
+        calls("questlog middle click " .. title)
+    end
+    r = row("Seek Out the Ashtongue")
+    r.scripts.OnClick(r, "LeftButton")
+    print("questlog page no map", segState(QP.band), tipOf(QP.band.byKey.map))
+    r = row("Princess Must Die!")
+    r.scripts.OnClick(r, "LeftButton")
+    C_Map, MapUtil, OpenWorldMap, Enum.UIMapType = mapWas[1], mapWas[2], mapWas[3], mapWas[4]
     -- the same quest again closes it; another opens on it
     r = row("Princess Must Die!")
     r.scripts.OnClick(r, "LeftButton")
@@ -15913,6 +15960,34 @@ if questLogPass then (function()
     bindings.K = "TOGGLEQUESTLOG"
     fire("UPDATE_BINDINGS")
     print("questlog rebind new key", overrideSets - sets, "K=" .. tostring(W.bound.K))
+    -- 13. View on map, Questie's way (last: its modules are kept once
+    -- read): the objectives not done, flashing; ready to hand in, who
+    -- takes it; Questie knowing no place, the zone's map
+    do
+        local function called(c) table.insert(W.calls, c) end
+        local utils = {
+            ShowQuestObjectivesOnMap = function(_, list) called("questie objectives " .. #list) end,
+            ShowFinisherOnMap = function(_, q) called("questie finisher " .. q.id) end,
+        }
+        local records = {}
+        local modules = { QuestieTracker = {}, TrackerUtils = utils,
+            TrackerData = { GetQuest = function(id) return records[id] end } }
+        local was = { _G.Questie, QuestieLoader, OpenWorldMap }
+        _G.Questie = { API = { isReady = true } }
+        QuestieLoader = { ImportModule = function(_, name) return modules[name] end }
+        function OpenWorldMap(id) called("map " .. id) end
+        for _, q in ipairs(ns.questSource.All()) do
+            records[q.id] = { id = q.id, Finisher = { NPC = { 1 } }, Objectives = {
+                { Completed = false, spawnList = { [1] = {} } }, { Completed = true, spawnList = { [2] = {} } },
+                { Completed = false, spawnList = {} } } }
+            ns.questSource.ShowOnMap(q)
+            calls("questlog questie map " .. q.title .. (q.state == 1 and " (ready)" or ""))
+        end
+        local q = ns.questSource.All()[1]
+        records[q.id] = { id = q.id, Objectives = {} }
+        print("questlog questie no place", tostring(ns.questSource.CanMap(q)))
+        _G.Questie, QuestieLoader, OpenWorldMap = was[1], was[2], was[3]
+    end
     -- Escape's list, and tooltips standing outside
     harnessBeside("questlog tips", f)
 end)() end

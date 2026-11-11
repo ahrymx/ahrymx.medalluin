@@ -52,7 +52,8 @@
 --
 -- A quest: a click opens its page (quests/page.lua; Blizzard's quest log
 -- while Medalluin's is off), Shift links it, Alt focuses
--- it with Questie's arrow, a right click stops tracking it.
+-- it with Questie's arrow, a right click stops tracking it, a middle click
+-- opens the world map at it (Q.ShowOnMap, as the quest log's).
 --
 -- A quest's usable item is a secure button in a column on the right, in a
 -- layer on the strip, and it works in combat. So in combat the rows keep
@@ -189,6 +190,7 @@ local function Tip(row, q)
     end
     GameTooltip:AddLine("Click: quest log.  Shift: link.  Right-click: stop tracking.", 0.7, 0.66, 0.55, true)
     if Q.Questie() then GameTooltip:AddLine("Alt-click: focus, with Questie's arrow.", 0.7, 0.66, 0.55, true) end
+    if Q.CanMap(q) then GameTooltip:AddLine("Middle-click: the map at it.", 0.7, 0.66, 0.55, true) end
     GameTooltip:Show()
 end
 
@@ -298,16 +300,17 @@ local function Rows()
             for _, q in ipairs(z.quests) do
                 local state = q.state == -1 and " |cffe04040(Failed)|r" or ""
                 local click, enter = function(button) Click(q, button) end, function(row) Tip(row, q) end
+                local middle = function() Q.ShowOnMap(q) end
                 table.insert(rows, { label = format("[%d] %s", q.level, q.title) .. state, depth = 1,
                     color = Colour(q), quest = q, item = q.item,
                     inset = COLUMN, font = title, badge = Mark(q), group = q.id,
-                    click = click, enter = enter })
+                    click = click, middle = middle, enter = enter })
                 local objectives = Objectives(q)
                 for i, o in ipairs(objectives) do
                     for j, line in ipairs(Wrap(o.text)) do
                         table.insert(rows, { label = line, depth = 1, pad = pad, lead = Lead(j, i == #objectives),
                             leadWidth = LEAD, dim = o.done, font = objective, group = q.id,
-                            click = click, enter = enter })
+                            click = click, middle = middle, enter = enter })
                     end
                 end
             end

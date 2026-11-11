@@ -16,9 +16,10 @@
 --     Choose one:
 --     [icon] ...
 --   ---------------------------------------------------------------
---   [ Untrack | Share ]  [ Abandon ]
+--   [ Untrack | Share | View on map ]  [ Abandon ]
 --
 -- The words scroll with the wheel when they are more than the page holds.
+-- View on map opens the world map at it (quests/source.lua, Q.ShowOnMap).
 -- Share only in a group, for a quest that can be shared. Abandon asks once
 -- more on its own face (Confirm: abandon), for four seconds. The same quest
 -- again closes it; the quest gone from the log closes it.
@@ -215,6 +216,7 @@ function qp.Refresh()
     band:Set("track", { selected = false })
     band.byKey.track.label:SetText(q.tracked and "Untrack" or "Track")
     band:Set("share", { enabled = Q.CanShare(q) })
+    band:Set("map", { enabled = Q.CanMap(q) })
     band:Set("abandon", { color = RED, selected = armed ~= nil })
     band.byKey.abandon.label:SetText(armed and "Confirm: abandon" or "Abandon")
     qp.quest = q
@@ -284,6 +286,12 @@ local function Window()
                 end, tip = function()
                     return qp.quest and Q.CanShare(qp.quest) and "Offer it to your group."
                         or "Only in a group, and only a quest that can be shared."
+                end },
+                { key = "map", label = "View on map", group = "do", click = function()
+                    if qp.quest then Q.ShowOnMap(qp.quest) end
+                end, tip = function()
+                    return qp.quest and Q.CanMap(qp.quest) and "Open the world map at it."
+                        or "Neither the game nor Questie knows where it is."
                 end },
                 { key = "abandon", label = "Abandon", group = "abandon", color = RED, click = Abandon,
                     tip = function()

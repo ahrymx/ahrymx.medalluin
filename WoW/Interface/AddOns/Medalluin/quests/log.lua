@@ -25,7 +25,8 @@
 -- title a little darker.
 -- Item: a tick when it gives an item (or a choice of them), a cross when
 -- not. A click opens its page (quests/page.lua), Shift links it, a right
--- click tracks it or stops. The search keeps the quests whose title has
+-- click tracks it or stops, a middle click opens the world map at it
+-- (Q.ShowOnMap, as the page's View on map). The search keeps the quests whose title has
 -- the words, folded zones too. Track all stops at the game's limit.
 -- Drop opens the window that abandons quests (quests/drop.lua).
 -- The columns' headings sort (2026-11-11): a click sorts each zone's
@@ -401,7 +402,7 @@ end
 -- filled.
 local function Row()
     local r = CreateFrame("Button", nil, body)
-    r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    r:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
     r:EnableMouseWheel(true)
     r:SetScript("OnMouseWheel", function(_, delta) Wheel(delta) end)
     local glow = r:CreateTexture(nil, "HIGHLIGHT")
@@ -490,6 +491,8 @@ local function Row()
         local d = self.data
         if d.zone then
             Fold(d.zone.name)
+        elseif mouse == "MiddleButton" then
+            Q.ShowOnMap(d.quest)
         elseif mouse == "RightButton" then
             if d.quest.tracked then Q.Untrack(d.quest) else Q.Track(d.quest) end
             log.Refresh()
@@ -506,8 +509,8 @@ local function Row()
         for _, o in ipairs(q.objectives) do
             table.insert(spec, { "body", (o.done and "|cff808080" or "") .. o.text .. (o.done and "|r" or "") })
         end
-        table.insert(spec, { "hint", q.tracked and "Click: its page. Right click: stop tracking it."
-            or "Click: its page. Right click: track it." })
+        table.insert(spec, { "hint", "Click: its page. Right click: " .. (q.tracked and "stop tracking it."
+            or "track it.") .. (Q.CanMap(q) and " Middle click: the map at it." or "") })
         Tip(self, spec)
     end)
     r:SetScript("OnLeave", function() GameTooltip:Hide() end)

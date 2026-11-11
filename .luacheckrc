@@ -136,7 +136,7 @@ read_globals = {
     "GetNumSpecGroups", "GetProfessions", "GetProfessionInfo", "ProfessionsFrame", "C_TradeSkillUI", "Professions", "SecondsToTime",
     -- the quest tracker (quests/); Questie is read, never written
     "GetQuestLink", "GetQuestLogSpecialItemInfo", "GetQuestTagInfo", "QuestMapFrame_OpenToQuestDetails", "QuestLogFrame",
-    "GetDifficultyColor", "GetQuestDifficultyColor", "QuestieLoader", "C_QuestLog", "ShowUIPanel",
+    "GetDifficultyColor", "GetQuestDifficultyColor", "QuestieLoader", "C_QuestLog", "ShowUIPanel", "GetQuestUiMapID", "OpenWorldMap",
     "ObjectiveTrackerFrame", "QuestWatchFrame", "WatchFrame",
     -- the quest log (quests/log.lua, drop.lua, page.lua): the log's rewards,
     -- text, watches and abandon, Classic's by selection; retail's map

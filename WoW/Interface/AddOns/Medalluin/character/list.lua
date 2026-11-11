@@ -12,6 +12,7 @@
 --     an entry may also have (the quest tracker's):
 --       font = { path, size }   its label's, Medalluin's at 12 without
 --       pad                     a gap before what follows, past its depth's indent
+--       middle()                its middle click (no other entry hears that button)
 --       badge = { atlas, file, tint, size }   a mark before its label: the
 --                               atlas where the client has it, else the file
 --                               (tinted); size square
@@ -131,9 +132,16 @@ local function Row(list)
     r.sign:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
     r.bar = Bar(r, BAR_W)
     r.bar:SetPoint("RIGHT", -4, 0)
-    r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    r:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
     r:SetScript("OnClick", function(self, button)
-        if self.data and self.data.click then self.data.click(button) end
+        local d = self.data
+        if not d then return end
+        -- the middle button only for an entry that asks for it
+        if button == "MiddleButton" then
+            if d.middle then d.middle() end
+        elseif d.click then
+            d.click(button)
+        end
     end)
     r:SetScript("OnEnter", function(self)
         list:Light(self.data and self.data.group)
