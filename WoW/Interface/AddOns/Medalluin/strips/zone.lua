@@ -12,8 +12,16 @@
 -- retail those the game marks on this map too. A row is the quest's title,
 -- its progress over all its objectives ("13/30", the counts read from
 -- them) and a tick once it is complete; an eye before the count while it
--- is tracked. A click opens its objectives under it or closes them;
--- shift-click tracks it or stops; a right click shows it on the world map.
+-- is tracked. The quest log's clicks (quests/log.lua), but for two: a
+-- click opens its objectives under it or closes them, and shift-click its
+-- page (quests/page.lua). A right click tracks it or stops, a middle click
+-- opens the world map at it.
+--
+-- A quest with a usable item (quests/source.lua's q.item, as the tracker's)
+-- ends its open objectives with it: its icon, its name and how many you
+-- carry. A click uses it: a secure button over the line, on a layer of its
+-- own on the strip, placed by numbers out of combat (ns.window.Over) and
+-- hidden in combat by the game's driver, as the rows may move meanwhile.
 --
 -- The column: zoom in, zoom out, the minimap's tracking, the world map; at
 -- the foot, every quest here tracked (or, while they all are, none).
@@ -30,6 +38,7 @@ local body, well, hold, list, title, place, empty
 local rows, quests, lines = {}, {}, {}
 local open = {}                 -- quest ids whose objectives are shown
 local first, shown = 0, 0
+local layer                     -- the items' secure buttons (layer.buttons), over their lines
 
 -- ------------------------------------------------------------- the zone
 local function ZoneName()
@@ -96,15 +105,101 @@ local function Progress(q)
     return have, need
 end
 
+-- ---------------------------------------------------------------- items
+local function ItemName(id)
+    local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
+    if not name and GetItemInfo then name = GetItemInfo(id) end
+    return name or "Quest item"
+end
+
+local function ItemIcon(id)
+    local icon = C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id)
+    if not icon and GetItemIcon then icon = GetItemIcon(id) end
+    return icon
+end
+
+local function ItemCount(id)
+    return C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id) or 0
+end
+
+local function ItemTip(owner, id, hint)
+    ns.side.Beside(owner)
+    GameTooltip:SetItemByID(id)
+    if hint then GameTooltip:AddLine(hint, unpack(GOLD_D)) end
+    GameTooltip:Show()
+end
+
+local function Secure(i)
+    local b = layer.buttons[i]
+    if b then return b end
+    b = CreateFrame("Button", "MedalluinZoneItem" .. i, layer, "SecureActionButtonTemplate")
+    b:RegisterForClicks("AnyUp", "AnyDown")
+    b:SetAttribute("type", "item")
+    local glow = b:CreateTexture(nil, "HIGHLIGHT")
+    glow:SetAllPoints()
+    glow:SetColorTexture(1, 1, 1, 0.12)
+    b:SetScript("OnEnter", function(self)
+        if self.item then ItemTip(self, self.item, "Click: use it.") end
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    layer.buttons[i] = b
+    return b
+end
+
+-- Out of combat only: a button over each item line shown, the rest away;
+-- the layer hidden in combat while any is out.
+local function PlaceItems()
+    if InCombatLockdown() then return end
+    if not layer then
+        layer = CreateFrame("Frame", "MedalluinZoneItems", ns.strips[1])
+        layer:SetFrameStrata("LOW")
+        layer:SetAllPoints(ns.strips[1])
+        layer.buttons = {}
+    end
+    local n = 0
+    if body and body:IsVisible() then
+        for _, r in ipairs(rows) do
+            if r:IsShown() and r.line and r.line.item then
+                local b = Secure(n + 1)
+                if ns.window.Over(b, r) then
+                    n = n + 1
+                    b.item = r.line.item
+                    b:SetAttribute("item", "item:" .. b.item)
+                    b:Show()
+                end
+            end
+        end
+    end
+    for i = n + 1, #layer.buttons do
+        local b = layer.buttons[i]
+        b.item = nil
+        b:SetAttribute("item", nil)
+        b:Hide()
+    end
+    if n > 0 then
+        RegisterStateDriver(layer, "visibility", "[combat] hide; show")
+    else
+        UnregisterStateDriver(layer, "visibility")
+        layer:Hide()
+    end
+end
+
 -- ----------------------------------------------------------------- rows
 local function Tip(r)
     local q = r.line and r.line.quest
     if not q then return end
+    if r.line.item then
+        -- (in combat: the secure button is away, the line under it shows)
+        ItemTip(r, r.line.item, "Usable here after combat.")
+        return
+    end
     local state = q.state == 1 and "Complete." or q.state == -1 and "Failed." or nil
     ns.Tip(r, ns.side.Beside, { title = q.title,
         { "body", "Level " .. q.level .. (state and ("  \194\183  " .. state) or "") },
         { "body", q.tracked and "Tracked." or "Not tracked." },
-        { "hint", "Click: its objectives. Shift-click: track it or not. Right-click: the world map." } })
+        { "hint", "Click: its objectives. Shift-click: its page. Right click: "
+            .. (q.tracked and "stop tracking it." or "track it.")
+            .. (ns.questSource.CanMap(q) and " Middle click: the map at it." or "") } })
 end
 
 local Refresh
@@ -125,19 +220,25 @@ local function Row()
     r.eye = r:CreateTexture(nil, "ARTWORK")
     r.eye:SetSize(14, 14)
     r.eye:SetTexture(PARTS .. "track")
+    r.icon = r:CreateTexture(nil, "ARTWORK")
+    r.icon:SetSize(14, 14)
+    r.icon:SetPoint("LEFT", 20, 0)
+    r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     r.text = ns.Text(r, 11)
     r.text:SetJustifyH("LEFT")
     r.text:SetWordWrap(false)
-    r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    r:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
     r:SetScript("OnClick", function(self, mouse)
         local q = self.line and self.line.quest
-        if not q then return end
-        if mouse == "RightButton" then
+        if not q or self.line.item then return end
+        if mouse == "MiddleButton" then
             ns.questSource.ShowOnMap(q)
             return
-        end
-        if IsShiftKeyDown and IsShiftKeyDown() then
+        elseif mouse == "RightButton" then
             if q.tracked then ns.questSource.Untrack(q) else ns.questSource.Track(q) end
+        elseif IsShiftKeyDown and IsShiftKeyDown() then
+            if ns.questPage then ns.questPage.Toggle(q.id) end
+            return
         else
             open[q.id] = not open[q.id] or nil
         end
@@ -153,9 +254,26 @@ end
 -- A quest's row, or one of its objectives under it.
 local function Fill(r, line, odd)
     r.line = line
-    local q, o = line.quest, line.objective
+    local q, o, item = line.quest, line.objective, line.item
     r.text:ClearAllPoints()
-    if o then
+    r.icon:SetShown(item and true or false)
+    if item then
+        local n = ItemCount(item)
+        r:SetHeight(ROW)
+        r.stripe:Hide()
+        r.fold:SetText("")
+        r.eye:Hide()
+        r.tick:Hide()
+        r.icon:SetTexture(ItemIcon(item))
+        r.icon:SetDesaturated(n == 0)
+        r.text:SetPoint("LEFT", r.icon, "RIGHT", 5, 0)
+        r.text:SetPoint("RIGHT", r.count, "LEFT", -6, 0)
+        r.text:SetText(ItemName(item))
+        r.text:SetTextColor(unpack(n > 0 and GOLD or DIM))
+        r.count:SetText(n > 1 and n or "")
+        r.count:SetTextColor(unpack(DIM))
+        r:EnableMouse(true)
+    elseif o then
         local a, b = Count(o)
         r:SetHeight(LINE)
         r.stripe:Hide()
@@ -175,7 +293,7 @@ local function Fill(r, line, odd)
         r:SetHeight(ROW)
         r.stripe:SetColorTexture(odd and 0 or 0.102, odd and 0 or 0.078, odd and 0 or 0.039, 0.45)
         r.stripe:Show()
-        r.fold:SetText(#q.objectives > 0 and (open[q.id] and "-" or "+") or "")
+        r.fold:SetText((#q.objectives > 0 or q.item) and (open[q.id] and "-" or "+") or "")
         r.tick:SetShown(done)
         r.count:SetText(done and "" or need > 0 and (have .. "/" .. need) or "")
         r.count:SetTextColor(unpack(q.state == -1 and { 0.8, 0.3, 0.25 } or GOLD))
@@ -197,6 +315,7 @@ local function Lines()
         table.insert(out, { quest = q })
         if open[q.id] then
             for _, o in ipairs(q.objectives) do table.insert(out, { quest = q, objective = o }) end
+            if q.item then table.insert(out, { quest = q, item = q.item }) end
         end
     end
     return out
@@ -226,7 +345,7 @@ function Refresh()
         r:ClearAllPoints()
         r:SetPoint("TOPLEFT", 0, -y)
         r:SetPoint("TOPRIGHT", 0, -y)
-        if not l.objective then odd = not odd end
+        if not (l.objective or l.item) then odd = not odd end
         Fill(r, l, odd)
         y = y + h
         shown = shown + 1
@@ -236,6 +355,7 @@ function Refresh()
         rows[i].line = nil
     end
     empty:SetShown(#lines == 0)
+    PlaceItems()
     ns.side.Changed()
 end
 
@@ -331,7 +451,10 @@ function view.Build(f)
     empty:SetTextColor(unpack(DIM))
     empty:SetText("No quests in this zone.")
     f:HookScript("OnShow", Lend)
-    f:HookScript("OnHide", Lend)
+    f:HookScript("OnHide", function()
+        Lend()
+        PlaceItems()                -- the items' buttons away (in combat: hidden already)
+    end)
     -- where you stand, twice a second while the tab is up
     local wait = 0
     f:HookScript("OnUpdate", function(_, elapsed)
@@ -344,7 +467,10 @@ function view.Build(f)
         if ns.side.IsCurrent(view) then Refresh() end
     end
     ns.questSource.Listen(Update)
-    for _, e in ipairs({ "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA" }) do
+    -- the items' counts and names; their buttons placed again after a fight
+    ns.On("PLAYER_REGEN_ENABLED", function() if ns.side.IsCurrent(view) then Refresh() else PlaceItems() end end)
+    for _, e in ipairs({ "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
+        "BAG_UPDATE_DELAYED", "GET_ITEM_INFO_RECEIVED" }) do
         ns.On(e, Update)
     end
 end

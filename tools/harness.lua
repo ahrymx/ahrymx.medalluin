@@ -5922,6 +5922,14 @@ if sidePass then
             { title = "A Hidden One", level = 22, questID = 204, isHidden = true, objectives = {} },
         }
         local watched = { [201] = true }
+        -- The Night Watch (the log's fifth) has a usable item
+        function GetQuestLogSpecialItemInfo(i)
+            if i == 5 then return "|Hitem:5555|h[Night Lantern]|h", 1, 1, false end
+        end
+        C_Item = C_Item or {}
+        C_Item.GetItemNameByID = function(id) return id == 5555 and "Night Lantern" or nil end
+        C_Item.GetItemCount = function(id) return id == 5555 and 3 or 0 end
+        C_Item.GetItemIconByID = function(id) return "icon" .. id end
         local function byId(id)
             for _, e in ipairs(log) do if e.questID == id then return e end end
         end
@@ -6020,11 +6028,34 @@ if sidePass then
         row(1).scripts.OnClick(row(1), "LeftButton")
         rows("opened")
         row(1).scripts.OnClick(row(1), "LeftButton")
-        -- shift-click tracks
+        -- a right click tracks; shift-click opens its page, again closes it
+        row(2).scripts.OnClick(row(2), "RightButton")
+        rows("right click")
         modsDown.SHIFT = true
         row(2).scripts.OnClick(row(2), "LeftButton")
+        print("zone shift-click", "page=" .. tostring(ns.questPage and ns.questPage.Current()),
+            "id=" .. tostring(row(2).line and row(2).line.quest and row(2).line.quest.id))
+        row(2).scripts.OnClick(row(2), "LeftButton")
         modsDown.SHIFT = false
-        rows("shift-click")
+        print("zone shift-click again", "page=" .. tostring(ns.questPage and ns.questPage.Current()))
+        -- its item ends its open objectives, a secure button over the line;
+        -- hidden in combat; the quest closed, the button away
+        row(2).scripts.OnClick(row(2), "LeftButton")
+        rows("item")
+        local use = _G.MedalluinZoneItem1
+        print("zone item button", "shown=" .. tostring(use and use.shown),
+            "item=" .. tostring(use and use:GetAttribute("item")),
+            "driver=" .. tostring(_G.MedalluinZoneItems and _G.MedalluinZoneItems.stateDrivers
+                and _G.MedalluinZoneItems.stateDrivers.visibility))
+        harnessHolds.combat = true
+        stateTick()
+        print("zone item in combat", "layer=" .. tostring(_G.MedalluinZoneItems.shown))
+        harnessHolds.combat = nil
+        stateTick()
+        print("zone item after combat", "layer=" .. tostring(_G.MedalluinZoneItems.shown))
+        row(2).scripts.OnClick(row(2), "LeftButton")
+        print("zone item closed", "shown=" .. tostring(use and use.shown),
+            "layer=" .. tostring(_G.MedalluinZoneItems and _G.MedalluinZoneItems.shown))
         -- the column: zoom in twice, out once; the foot tracks the zone, then untracks it
         z.paint[1].scripts.OnClick(z.paint[1], "LeftButton")
         z.paint[1].scripts.OnClick(z.paint[1], "LeftButton")
