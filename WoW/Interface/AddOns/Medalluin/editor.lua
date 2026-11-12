@@ -35,6 +35,7 @@ E.FORMATS = {
         { "percent", "Percent", "\"82%\"." },
         { "current", "Current", "\"41.2k\"." },
         { "both", "Current and percent", "\"41.2k | 82%\"." },
+        { "stacked", "Percent over current", "\"82%\" with \"41.2k\" on a line under it." },
         { "deficit", "Missing", "\"-9.1k\", blank at full health. Where the game keeps the numbers secret, the "
             .. "percent." },
     },

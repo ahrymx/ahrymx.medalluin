@@ -97,6 +97,8 @@ local function HealthValue(self, cur, max, pct)
         self.value:SetText(FormatPower(cur))
     elseif format == "both" then
         self.value:SetFormattedText("%s | %.0f%%", FormatPower(cur), pct)
+    elseif format == "stacked" then
+        self.value:SetFormattedText("%.0f%%\n%s", pct, FormatPower(cur))
     elseif format == "deficit" and not ns.IsSecret(cur) and not ns.IsSecret(max) then
         self.value:SetText(cur < max and "-" .. FormatPower(max - cur) or "")
     else

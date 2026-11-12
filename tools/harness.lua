@@ -8988,10 +8988,12 @@ local function EditorPass()
 
     -- formats
     choose("unit", "value")
-    for _, f in ipairs({ "percent", "current", "both", "deficit" }) do
+    for _, f in ipairs({ "percent", "current", "both", "deficit", "stacked" }) do
         set("format", f)
-        print("  value " .. f, tostring(P.value.text), tostring(T.value.text))
+        local function line(t) return (tostring(t):gsub("\n", "/")) end
+        print("  value " .. f, line(P.value.text), line(T.value.text))
     end
+    set("format", "deficit")
     choose("unit", "powerValue")
     for _, f in ipairs({ "both", "current", "percent" }) do
         set("format", f)
