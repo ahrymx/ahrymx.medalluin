@@ -5,8 +5,9 @@
 #
 #   bug fix                                  patch   0.1.0 -> 0.1.1
 #   a new feature                            minor   0.1.0 -> 0.2.0
-#   every minor feature since the last
-#   major has matured                        major   0.4.2 -> 1.0.0
+#   a major, when its plan (plan.md) says
+#   everything is ready: never suggested
+#   or asked, only passed as --level major   major   0.4.2 -> 1.0.0
 #   nothing under the addon changed
 #   (tools, docs, CI): nothing ships         none
 #
@@ -75,7 +76,7 @@ patch() {
 }
 
 # the releases GitHub tagged, tagged here too, from this clone's own pushes
-# (release.sh tags): the last release and the minors below read the tags
+# (release.sh tags): the last release below reads the tags
 "$REL" tags --quiet || true
 
 CHANGES=$(changes)
@@ -153,32 +154,10 @@ if $interactive; then
     fi
 fi
 [[ -n $level ]] || level=$suggest
-
-# the major: asked only once a minor has shipped since the last major
-last=$("$REL" last)
-if [[ $level == patch || $level == minor ]] && [[ -n $last ]]; then
-    major=${last%%.*}
-    # the tags, and the minor pushed to main if its tag is not here yet
-    newestMinor=$("$REL" last minor)
-    minors=$( { git tag --list "v$major.*" | grep -E "^v$major\.[0-9]+$"; [[ $newestMinor == "$major".* ]] && echo "v${newestMinor%.*}"; } \
-        | grep -vE "^v$major\.0$" | sort -uV | tr '\n' ' ' || true)
-    since="since v$major.0"
-    git rev-parse -q --verify "refs/tags/v$major.0" >/dev/null || since="in $major.x"
-    if [[ -n $minors ]]; then
-        if $interactive; then
-            echo
-            echo "Minors shipped $since: $minors"
-            if ask "Have they all matured (settled, no known bugs, nothing half-built), so this is $((major + 1)).0.0?" n; then
-                level=major
-            fi
-        else
-            echo "  minors shipped $since: $minors(all matured? then --level major)"
-        fi
-    fi
-fi
 [[ $level != "$suggest" ]] && echo "  level: $level (the evidence suggested $suggest)"
 
 # ------------------------------------------------------------ the version
+last=$("$REL" last)
 current=$(sed -n 's/^## Version:[[:space:]]*\([^[:space:]]*\).*/\1/p' "$TOC" | head -n 1)
 if [[ $level == none ]]; then
     to=$current

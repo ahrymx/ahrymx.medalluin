@@ -23,10 +23,9 @@ terminal), so answer them yourself:
      addon. An option moved or renamed is not new.
    - **patch**: it fixes something that was broken, or ships anything else (art,
      wording, a cleanup).
-   - **major**: when every minor feature since the last major has matured. That is
-     the user's call, never yours. When the script lists "minors shipped", say so
-     in your report and ask; do not pass `--level major` unless the user has said
-     to.
+   - **major**: never chosen per commit. A major follows a plan (`plan.md`) the
+     user writes when they decide everything is ready; do not ask about it, and
+     pass `--level major` only when the user says to.
 3. Commit: `tools/commit.sh -a -l <level> -F <file>` with the message in a file
    in the scratchpad (end it with the attribution trailer), or `-m` for one
    line.
