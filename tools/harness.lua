@@ -5736,6 +5736,19 @@ if barPass then
         for _ = 1, 20 do ns.barFade.scripts.OnUpdate(ns.barFade, 0.05) end
         print("drawer hover", string.format("%.2f", ns.actionBar.alpha or 1))
         mouseOver = false
+        -- in a vehicle, on an override bar, controlling a Steam Tonk: bar 1 whole
+        for _ = 1, 20 do ns.barFade.scripts.OnUpdate(ns.barFade, 0.05) end
+        local out = { string.format("on foot %.2f", ns.actionBar.alpha or 1) }
+        for _, k in ipairs({ "UnitInVehicle", "HasOverrideActionBar", "IsPossessBarVisible" }) do
+            local was = _G[k]
+            _G[k] = function() return true end
+            for _ = 1, 20 do ns.barFade.scripts.OnUpdate(ns.barFade, 0.05) end
+            table.insert(out, string.format("%s %.2f", k, ns.actionBar.alpha or 1))
+            _G[k] = was
+            for _ = 1, 20 do ns.barFade.scripts.OnUpdate(ns.barFade, 0.05) end
+        end
+        table.insert(out, string.format("out again %.2f", ns.actionBar.alpha or 1))
+        print("bar1 driving", table.concat(out, " | "))
         page.settings.visibility:Set(1)
         for _ = 1, 20 do ns.barFade.scripts.OnUpdate(ns.barFade, 0.05) end
         BagnonMinimapButton:Show()

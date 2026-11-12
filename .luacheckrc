@@ -70,7 +70,7 @@ read_globals = {
     "SetPortraitTexture", "C_Container", "GetContainerNumSlots", "GetContainerNumFreeSlots",
     "ToggleAllBags", "OpenAllBags", "GetInventoryItemDurability", "GetInventoryItemLink", "ToggleCharacter",
     "GameTime_GetTime", "GameTime_GetLocalTime", "GameTime_GetGameTime", "LoadAddOn", "TimeManager_Toggle",
-    "date", "LibStub", "C_Timer", "C_Spell", "GetSpellCharges", "GetSpellCooldown", "C_PlayerInfo", "IsMounted",
+    "date", "LibStub", "C_Timer", "C_Spell", "GetSpellCharges", "GetSpellCooldown", "UnitInVehicle", "HasVehicleActionBar", "HasOverrideActionBar", "C_PlayerInfo", "IsMounted",
     "QueueStatusButton", "QueueStatusMinimapButton", "MiniMapLFGFrame", "MainMenuBarVehicleLeaveButton", "MainMenuBarVehicleLeaveButton_Update", "CanExitVehicle", "IsMouseButtonDown", "IsPossessBarVisible", "CancelPetPossess", "UnitOnTaxi", "PossessActionBar",
     -- the side panel's Zone tab (strips/zone.lua)
     "C_Minimap", "MenuUtil", "MiniMapTrackingDropDown", "ToggleDropDownMenu", "ToggleWorldMap", "GetSubZoneText",

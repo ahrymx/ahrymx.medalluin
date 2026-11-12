@@ -76,14 +76,28 @@ end
 -- Bars 2/3 independently. Only the alpha changes, which is allowed in combat,
 -- so a faded bar keeps working: clicks and key bindings stay live. It also
 -- comes back while a spell or item is on the cursor, so one can be dropped on it.
+-- Bar 1 shows whole in a vehicle, on an override bar or controlling another
+-- (the Darkmoon Faire's Steam Tonk, a possess bar): it is that one's bar then.
 local FADE_TIME, FADED = 0.2, 0
 
-local function MakeFade(frame, settingKey, isOver)
+local function Asks(f, ...)
+    if not f then return false end
+    local ok, on = pcall(f, ...)
+    return ok and not ns.IsSecret(on) and on and true or false
+end
+local function Driving()
+    return Asks(UnitInVehicle, "player") or Asks(HasVehicleActionBar) or Asks(HasOverrideActionBar)
+        or Asks(C_ActionBar and C_ActionBar.IsPossessBarVisible or IsPossessBarVisible)
+end
+ns.BarDriving = Driving
+
+local function MakeFade(frame, settingKey, isOver, forced)
     local V = ns.VISIBILITY
     local inCombat = InCombatLockdown()
     local function Wanted()
         local mode = ns.db[settingKey] or V.ALWAYS
         if mode == V.ALWAYS or ns.keybinding or (GetCursorInfo and GetCursorInfo()) then return true end
+        if forced and forced() then return true end
         local over = isOver()
         if mode == V.COMBAT then return inCombat end
         if mode == V.MOUSEOVER then return over end
@@ -277,7 +291,7 @@ function ns.BuildBar(rows)
     ns.OnSetting("artColor", Tint)
     ns.barFade = MakeFade(tray, "visibility", function()
         return tray:IsMouseOver() or (ns.drawer and ns.drawer:IsShown() and ns.drawer:IsMouseOver())
-    end)
+    end, Driving)
     ns.extraBarFade = MakeFade(extra, "extraVisibility", function()
         if extra:IsMouseOver() or (row3 and row3:IsMouseOver()) then return true end
         for _, btn in ipairs(ns.extraButtons or {}) do
