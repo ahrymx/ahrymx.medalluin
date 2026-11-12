@@ -813,7 +813,20 @@ local function Build()
     -- built after us, cover it through ns.quests.Cover): hidden while any
     -- of them is shown
     local covers = {}
+    -- (the frame is protected, the quest items' buttons on it: in combat
+    -- it waits for the end, once however often it is asked)
+    local waiting
     local function Covered()
+        if InCombatLockdown() and frame:IsProtected() then
+            if not waiting then
+                waiting = true
+                ns.OutOfCombat(function()
+                    waiting = nil
+                    Covered()
+                end)
+            end
+            return
+        end
         local on = false
         for _, f in ipairs(covers) do on = on or f:IsShown() end
         frame:SetShown(not on and not Stowed())

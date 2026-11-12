@@ -18335,6 +18335,33 @@ if npcPass then
     end)()
     print("npc merchant untouched", tostring(keys(MerchantFrame) == merchantBefore),
         "fns=" .. (#fns > 0 and table.concat(fns, ",") or "none"))
+    -- a cover shown and gone in combat: the tracker (protected, its items'
+    -- buttons) waits for the end, nothing blocked
+    ;(function()
+    local lock, prot, set = InCombatLockdown, tracker.IsProtected, tracker.SetShown
+    local calls = 0
+    InCombatLockdown = function() return true end
+    tracker.IsProtected = function() return true end
+    tracker.SetShown = function(self, on)
+        calls = calls + 1
+        return set(self, on)
+    end
+    local was = tracker.shown
+    box:Show()
+    if box.scripts.OnShow then box.scripts.OnShow(box) end
+    box:Hide()
+    if box.scripts.OnHide then box.scripts.OnHide(box) end
+    box:Show()
+    if box.scripts.OnShow then box.scripts.OnShow(box) end
+    print("npc cover in combat", "tracker=" .. tostring(was) .. ">" .. tostring(tracker.shown), "calls=" .. calls)
+    InCombatLockdown = lock
+    fire("PLAYER_REGEN_ENABLED")
+    print("npc cover after combat", "tracker=" .. tostring(tracker.shown), "calls=" .. calls)
+    box:Hide()
+    if box.scripts.OnHide then box.scripts.OnHide(box) end
+    print("npc cover gone", "tracker=" .. tostring(tracker.shown), "calls=" .. calls)
+    tracker.IsProtected, tracker.SetShown = prot, set
+    end)()
 end
 
 if mailPass then
@@ -19060,13 +19087,14 @@ if lfgPass then (function()
     calls("lfg player calls")
     -- 7. the activity filter, then another category
     choose(G.browse.acts, "The Deadmines", "lfg activities list")
-    -- a dropdown's pick searches straight from its click
-    calls("lfg filtered: searched from the pick")
+    -- a dropdown's pick does not search (the game refuses it there,
+    -- 2026-11-09 and 2026-11-12): the list waits for Search
+    calls("lfg filtered: nothing sent")
     print("lfg pickers filtered", picker(G.browse.acts), G.browse.list.empty.text, "band=" .. seg(G.band))
-    fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
-    calls("lfg filtered, answered")
+    G.browse.go.scripts.OnClick(G.browse.go)
+    calls("lfg filtered, searched")
     choose(G.browse.acts, "The Deadmines")
-    calls("lfg unfiltered: searched from the pick")
+    calls("lfg unfiltered: nothing sent")
     choose(G.browse.cat, "Quests", "lfg categories list")
     calls("lfg category, while one is out")
     fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
@@ -19078,18 +19106,14 @@ if lfgPass then (function()
     calls("lfg search clicked")
     state("lfg searching")
     fire("LFG_LIST_SEARCH_FAILED")
-    -- the game refuses a search: not stuck searching; refused from a pick,
-    -- picks stop searching and leave it to Search's click
+    -- the game refuses a search: not stuck searching, the list waits for a click
     local search = C_LFGList.Search
     C_LFGList.Search = function() fire("ADDON_ACTION_BLOCKED", "Medalluin", "UNKNOWN()") end
     choose(G.browse.cat, "Dungeons")
+    G.browse.go.scripts.OnClick(G.browse.go)
     print("lfg refused", "searching=" .. tostring(ns.lfgData.searching), G.browse.list.empty.text,
-        "band=" .. seg(G.band), "picks search=" .. tostring(ns.lfgData.picksSearch))
+        "band=" .. seg(G.band))
     C_LFGList.Search = search
-    choose(G.browse.cat, "Quests")
-    calls("lfg picked after a refusal: nothing sent")
-    print("lfg after a refusal", G.browse.list.empty.text, "band=" .. seg(G.band))
-    choose(G.browse.cat, "Dungeons")
     G.browse.go.scripts.OnClick(G.browse.go)
     calls("lfg refused, then clicked")
     fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
