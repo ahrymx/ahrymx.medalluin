@@ -2,7 +2,7 @@
 ## Title: Medalluin
 ## Notes: The console (player, target, party, XP, minimap), an optional action bar on it, the corner strips (micro menu, bags, stats), and over them the chat and a side panel of loot, a meter, your auras and the zone (the minimap and its quests); and a bags window.
 ## Author: ahrymx
-## Version: 0.34.0
+## Version: 0.34.1
 ## Category: Medalluin
 ## Category-enUS: Medalluin
 ## Group: Medalluin
