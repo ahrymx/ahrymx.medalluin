@@ -642,27 +642,22 @@ function Region:GetPoint(i)
     end
     for p, a in pairs(self.points) do return p, a[1], a[2], a[3], a[4] end
 end
--- the left edge, in the harness's own units (only compared, never shown)
-function Region:GetLeft()
+-- the edges, in the region's own scale, as the game gives them (so that
+-- times its effective scale is the cursor's units); the harness's own units
+-- otherwise (only compared, never shown)
+function Region:Edge(i, up)
     local ok, r = pcall(resolve, self)
     -- a rect that rests on a secret size is secret
     if not ok and tostring(r):find("secret") then return secret() end
-    return ok and r and r[1] or nil
+    if not (ok and r) then return nil end
+    local v = up and 1080 - r[i] or r[i]
+    return v / scaleOf(self)
 end
-function Region:GetRight()
-    local ok, r = pcall(resolve, self)
-    if not ok and tostring(r):find("secret") then return secret() end
-    return ok and r and r[3] or nil
-end
+function Region:GetLeft() return self:Edge(1) end
+function Region:GetRight() return self:Edge(3) end
 -- the top and bottom edges, up from the screen's foot (1080 high)
-function Region:GetTop()
-    local ok, r = pcall(resolve, self)
-    return ok and r and 1080 - r[2] or nil
-end
-function Region:GetBottom()
-    local ok, r = pcall(resolve, self)
-    return ok and r and 1080 - r[4] or nil
-end
+function Region:GetTop() return self:Edge(2, true) end
+function Region:GetBottom() return self:Edge(4, true) end
 -- Every tooltip a side window shows stands outside it, beside the edge
 -- towards the screen's middle, its top level with what is hovered
 -- (ns.window.Outside): each shown frame in root with a hover that takes the
@@ -8790,6 +8785,44 @@ local function EditorPass()
     end
     local function set(field, v) w.controls[field].spec.set(v) end
     local function get(field) return w.controls[field].spec.get() end
+    -- drag the chosen piece's box on the copy of button b so the piece's
+    -- point (h left|center|right, v top|middle|bottom) lands dx right, dy
+    -- down of that point of what it is on (the cursor moved to put it there)
+    local function drop(b, h, v, dx, dy, shift)
+        local cv = w.stage
+        local o
+        for _, bx in ipairs(cv.boxes) do
+            if bx.shown and cv.proxies[bx.copy].button == b then o = bx end
+        end
+        if not o then return print("  drop: no box on " .. tostring(b.unit)) end
+        local x0, y0 = 100, 100
+        local realCursor, cx, cy = GetCursorPosition, x0, y0
+        function GetCursorPosition() return cx, cy end
+        o.scripts.OnMouseDown(o)
+        local f = o.from
+        local p = cv.proxies[o.copy]
+        local onId = get("on") or "health"
+        local on = onId == "power" and p.power or onId == "name" and p.pieces.name or onId == "frame" and p or p.health
+        local function x(l, r, which) return which == "left" and l or which == "right" and r or (l + r) / 2 end
+        local function y(t, bt, which) return which == "top" and t or which == "bottom" and bt or (t + bt) / 2 end
+        local mx = x(f.rect.l, f.rect.r, h)
+        local my = y(f.rect.t, f.rect.b, v)
+        local tx = x(on:GetLeft(), on:GetRight(), h) + dx
+        local ty = y(on:GetTop(), on:GetBottom(), v) - dy
+        cx, cy = x0 + (tx - mx) * f.scale, y0 + (ty - my) * f.scale
+        modsDown.SHIFT = shift or nil
+        o.scripts.OnUpdate(o)
+        local seen = {}
+        for _, g in ipairs(cv.guides) do if g.shown then seen[#seen + 1] = "guide" end end
+        local lit = 0
+        for _, d in ipairs(cv.dots) do if d.shown then lit = lit + 1 end end
+        o.scripts.OnMouseUp(o)
+        modsDown.SHIFT = nil
+        GetCursorPosition = realCursor
+        local after = 0
+        for _, d in ipairs(cv.dots) do if d.shown then after = after + 1 end end
+        return "dots=" .. lit .. "/after " .. after .. " " .. table.concat(seen, ",")
+    end
 
     -- a move of the name: the target's is the player's mirror
     piece("player before", P, "name")
@@ -8808,14 +8841,14 @@ local function EditorPass()
     piece("target y-5 16 thick", T, "name")
     window("unit name edited")
 
-    -- the anchor grid: the party's role, inner-top, mirrored across the wings
+    -- dropped: the party's role at its copy's top inner corner, 9,7 px in,
+    -- snaps to the dot 8 in, inner-top, mirrored across the wings
     choose("party", "role")
     window("party role")
     piece("party1 role before", ns.units.party1, "role")
     piece("party3 role before", ns.units.party3, "role")
-    for _, c in ipairs(w.controls.anchor.cells) do
-        if c.h == "inner" and c.v == "top" then c.scripts.OnClick(c) end
-    end
+    local inner = E.Side(ns.units.party1, E.byId.party) == -1 and "right" or "left"
+    print("  dropped inner-top", drop(ns.units.party1, inner, "top", inner == "left" and 9 or -9, 7))
     set("size", 20)
     for i = 1, 4 do piece("party" .. i .. " role inner-top 20", ns.units["party" .. i], "role") end
     print("  stored", stored("editParty"))
@@ -9025,8 +9058,8 @@ local function EditorPass()
     -- moved in the editor while secret: the copy follows (the record)
     local edits = ns.db.editUnit
     choose("unit", "value")
-    local cell = w.controls.anchor.cells[1]
-    cell.scripts.OnClick(cell)
+    local outerSide = E.Side(P, E.byId.unit) == -1 and "left" or "right"
+    print("  dropped", drop(P, outerSide, "top", outerSide == "left" and 8 or -8, 8))
     at("all secret, value moved outer-top")
     ns.SetOption("editUnit", edits)
     at("all secret, put back")
@@ -9082,22 +9115,37 @@ local function EditorPass()
         return table.concat(o, ",")
     end
     print("  boxed", boxed())
-    -- each anchor: the box hangs where the name does, the name its own width
+    -- each anchor, dropped there: the box hangs where the name does, the
+    -- name its own width
     local follows, edits = {}, ns.db.editUnit
-    for _, cell in ipairs(w.controls.anchor.cells) do
-        cell.scripts.OnClick(cell)
-        local ok = true
-        for k, p in ipairs(cv.proxies) do
-            if p.shown then
-                local nm, o = p.pieces.name, nil
-                for _, bx in ipairs(cv.boxes) do if bx.shown and bx.copy == k then o = bx end end
-                local tp, bp = next(nm.points), o and next(o.points)
-                ok = ok and tp == bp and o.points[bp][1] == nm.points[tp][1] and (nm.w or 0) == 0
+    for _, v in ipairs({ "top", "middle", "bottom" }) do
+        for _, h in ipairs({ "left", "center", "right" }) do
+            drop(P, h, v, h == "left" and 8 or h == "right" and -8 or 0, v == "top" and 8 or v == "bottom" and -8 or 0)
+            local ok = true
+            for k, p in ipairs(cv.proxies) do
+                if p.shown then
+                    local nm, o = p.pieces.name, nil
+                    for _, bx in ipairs(cv.boxes) do if bx.shown and bx.copy == k then o = bx end end
+                    local tp, bp = next(nm.points), o and next(o.points)
+                    ok = ok and tp == bp and o.points[bp][1] == nm.points[tp][1] and (nm.w or 0) == 0
+                end
             end
+            local f = E.ui.PlaceField
+            follows[#follows + 1] = h .. "-" .. v .. "=" .. tostring(f("h")) .. "/" .. tostring(f("v")) .. "/"
+                .. tostring(f("x")) .. "," .. tostring(f("y")) .. ":" .. tostring(ok)
         end
-        follows[#follows + 1] = cell.h .. "-" .. cell.v .. "=" .. tostring(ok)
     end
     print("  box follows the anchor", table.concat(follows, " "))
+    -- near a dot, pulled onto it; with Shift, left where it is dropped
+    local function place()
+        local f = E.ui.PlaceField
+        return tostring(f("h")) .. "/" .. tostring(f("v")) .. "/" .. tostring(f("x")) .. "," .. tostring(f("y"))
+    end
+    local outer = E.Side(P, E.byId.unit) == -1 and "left" or "right"
+    local how = drop(P, outer, "top", outer == "left" and 11 or -11, 5)
+    print("  dropped 11,5 in", place(), how)
+    how = drop(P, outer, "top", outer == "left" and 11 or -11, 5, true)
+    print("  dropped 11,5 in with Shift", place(), how)
     ns.SetOption("editUnit", edits)
     choose("unit", "value")
     print("  boxed after the list", boxed())
@@ -9109,11 +9157,16 @@ local function EditorPass()
     local realCursor = GetCursorPosition
     function GetCursorPosition() return cursorX, cursorY end
     o.scripts.OnMouseDown(o)
+    local was = { o:GetLeft(), o:GetTop() }
     cursorX, cursorY = 100 + 10 * scale, 100 + 3 * scale
+    modsDown.SHIFT = true
     o.scripts.OnUpdate(o)
+    modsDown.SHIFT = nil
     o.scripts.OnMouseUp(o)
     GetCursorPosition = realCursor
-    print("  dragged value 10,3 frame pixels", stored("editUnit"))
+    E.onApply()
+    print("  dragged value 10,3 frame pixels (Shift)", stored("editUnit"),
+        "box moved " .. tostring(o:GetLeft() - was[1]) .. "," .. tostring(o:GetTop() - was[2]))
     piece("target value dragged", T, "value")
     for k, p in ipairs(cv.proxies) do
         if p.shown then

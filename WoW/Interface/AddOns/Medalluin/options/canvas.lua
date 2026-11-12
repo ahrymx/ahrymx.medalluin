@@ -356,6 +356,213 @@ local function Models(frame)
     return { all[1] }
 end
 
+-- ------------------------------------------------------------ dragging
+-- A dragged piece takes its anchor from where it is dropped: the nearest
+-- of nine dots on what it is on, INSET in from its edges, across and down
+-- (outer, centre, inner; top, middle, bottom). Near the dot, it snaps
+-- there (the dot lit); else level with another piece's edge or middle, it
+-- snaps to that (a guide). Shift: no snapping.
+-- (art: /workspace/editor-snap-S3.png)
+local SNAP, INSET = 6, 8
+local GUIDE = { 0.35, 0.78, 1 }
+local dots, guides = {}, {}
+
+local function Rect(r)
+    if not r then return nil end
+    local l, rt, t, b = Plain(r:GetLeft()), Plain(r:GetRight()), Plain(r:GetTop()), Plain(r:GetBottom())
+    if l and rt and t and b then return { l = l, r = rt, t = t, b = b } end
+end
+
+-- A text's words: its region, where one point sizes it to them; else
+-- where its justify puts them in its span.
+local function Words(r)
+    local box = Rect(r)
+    local w = Plain(r:GetStringWidth())
+    if not box or not w or r:GetNumPoints() < 2 then return box end
+    local j = r.GetJustifyH and r:GetJustifyH() or "CENTER"
+    if j == "LEFT" then box.r = box.l + w
+    elseif j == "RIGHT" then box.l = box.r - w
+    else
+        local mid = (box.l + box.r) / 2
+        box.l, box.r = mid - w / 2, mid + w / 2
+    end
+    return box
+end
+
+-- The copy's region a piece is on (editor.lua's OnRegion).
+local function OnCopy(p, on)
+    if on == "power" then return p.power end
+    if on == "name" then return p.pieces.name end
+    if on == "frame" then return p end
+    return p.health
+end
+
+-- Every other piece on copy p, by its edges and middles (a guide's lines).
+local function Others(p, piece)
+    local out = {}
+    for id, r in pairs(p.pieces) do
+        if id ~= piece then
+            local list = r.GetObjectType and { r } or (rawget(r, 1) and r) or { r }
+            for _, one in ipairs(list) do
+                if one.IsShown and one:IsShown() then
+                    local box = E.PIECES[id].type == "text" and Words(one) or Rect(one)
+                    if box then table.insert(out, box) end
+                end
+            end
+        end
+    end
+    return out
+end
+
+local function Dot(i)
+    local d = dots[i]
+    if d then return d end
+    d = holder:CreateTexture(nil, "OVERLAY")
+    d:SetColorTexture(GUIDE[1], GUIDE[2], GUIDE[3], 1)
+    dots[i] = d
+    return d
+end
+local function Guide(i)
+    local g = guides[i]
+    if g then return g end
+    g = holder:CreateTexture(nil, "OVERLAY")
+    g:SetColorTexture(GUIDE[1], GUIDE[2], GUIDE[3], 0.9)
+    guides[i] = g
+    return g
+end
+local function HideGuides()
+    for _, d in ipairs(dots) do d:Hide() end
+    for _, g in ipairs(guides) do g:Hide() end
+end
+
+local THIRDS = { { "left", "center", "right" }, { "top", "middle", "bottom" } }
+local DOT_POINT = { left = "LEFT", center = "", right = "RIGHT", top = "TOP", middle = "", bottom = "BOTTOM" }
+
+-- The nine dots on what the piece is on; the anchor's larger, filled when
+-- the piece snapped to it.
+local function ShowDots(on, ax, ay, lit)
+    local k = 0
+    for _, v in ipairs(THIRDS[2]) do
+        for _, h in ipairs(THIRDS[1]) do
+            k = k + 1
+            local d = Dot(k)
+            local point = DOT_POINT[v] .. DOT_POINT[h]
+            if point == "" then point = "CENTER" end
+            local x = h == "left" and INSET or h == "right" and -INSET or 0
+            local y = v == "top" and -INSET or v == "bottom" and INSET or 0
+            local mine = h == ax and v == ay
+            local size = mine and (lit and 4 or 3) or 2
+            d:SetSize(size, size)
+            d:SetAlpha(mine and 1 or 0.7)
+            d:ClearAllPoints()
+            d:SetPoint("CENTER", on, point, x, y)
+            d:Show()
+        end
+    end
+end
+
+-- A guide across the copy at a screen x (vertical) or y, in holder units.
+local function ShowGuide(i, vertical, at)
+    local g = Guide(i)
+    local area = Rect(holder)
+    if not area then return end
+    g:ClearAllPoints()
+    if vertical then
+        g:SetSize(0.5, area.t - area.b + 2 * GAP)
+        g:SetPoint("CENTER", holder, "BOTTOMLEFT", at - area.l, (area.t - area.b) / 2)
+    else
+        g:SetSize(area.r - area.l + 40, 0.5)
+        g:SetPoint("CENTER", holder, "BOTTOMLEFT", (area.r - area.l) / 2, at - area.b)
+    end
+    g:Show()
+end
+
+-- The nearest of a piece's low, middle and high edges to another piece's
+-- edges and middles, within SNAP: how far to move, and the guide's place.
+local function Level(lo, hi, others, keyLo, keyHi)
+    local best, guide
+    for _, q in ipairs(others) do
+        for _, a in ipairs({ lo, (lo + hi) / 2, hi }) do
+            for _, b in ipairs({ q[keyLo], (q[keyLo] + q[keyHi]) / 2, q[keyHi] }) do
+                local d = b - a
+                if math.abs(d) <= SNAP and (not best or math.abs(d) < math.abs(best)) then best, guide = d, b end
+            end
+        end
+    end
+    return best, guide
+end
+
+-- One axis, low to high: which dot the piece is nearest (its low edge to
+-- the low dot, INSET in; its middle to the middle; its high edge to the
+-- high dot), the offset of its point there from what it is on's, and
+-- whether it snapped to that dot.
+local function Axis(lo, hi, onLo, onHi, free)
+    local mine = { lo, (lo + hi) / 2, hi }
+    local theirs = { onLo, (onLo + onHi) / 2, onHi }
+    local want = { INSET, 0, -INSET }
+    local at, far
+    -- a tie: the middle
+    for _, i in ipairs({ 2, 1, 3 }) do
+        local d = math.abs(mine[i] - theirs[i] - want[i])
+        if not far or d < far then at, far = i, d end
+    end
+    if not free and far <= SNAP then return at, want[at], true end
+    return at, mine[at] - theirs[at]
+end
+
+local function Drag(self)
+    local from = self.from
+    local x, y = GetCursorPosition()
+    -- the canvas is drawn larger: a pixel of the frame is scale of the screen's
+    local dx, dy = (x - from.x) / from.scale, (y - from.y) / from.scale
+    local box = from.rect
+    local on = OnCopy(from.p, E.ui.PlaceField("on") or "health")
+    local area = Rect(on)
+    if not (box and area) then
+        -- nothing to measure: a plain move, as before
+        local nx = from.px - self.side * math.floor(dx + 0.5)
+        local ny = from.py + math.floor(dy + 0.5)
+        if nx ~= E.ui.PlaceField("x") or ny ~= E.ui.PlaceField("y") then E.ui.SetPlace({ x = nx, y = ny }) end
+        return
+    end
+    local l, r, t, b = box.l + dx, box.r + dx, box.t + dy, box.b + dy
+    local free = IsShiftKeyDown and IsShiftKeyDown()
+    -- across, left to right; down, top to bottom (screen y grows up, so negated)
+    local ax, ox, dotX = Axis(l, r, area.l, area.r, free)
+    local ay, oy, dotY = Axis(-t, -b, -area.t, -area.b, free)
+    local gx, gy
+    if not free and not dotX then
+        local d
+        d, gx = Level(l, r, from.others, "l", "r")
+        if d then ox = ox + d end
+    end
+    if not free and not dotY then
+        local d
+        d, gy = Level(b, t, from.others, "b", "t")
+        if d then oy = oy - d end
+    end
+    local h = THIRDS[1][ax]
+    local v = THIRDS[2][ay]
+    ShowDots(on, h, v, dotX and dotY)
+    for _, g in ipairs(guides) do g:Hide() end
+    if gx then ShowGuide(1, true, gx) end
+    if gy then ShowGuide(2, false, gy) end
+    -- as the editor states a place: outer and inner by this copy's side;
+    -- x inward (away from its outer end), y up
+    local side = self.side
+    local place = {
+        h = h == "center" and "center" or (h == "left") == (side == -1) and "outer" or "inner",
+        v = v,
+        x = math.floor(-side * ox + 0.5) + 0,
+        y = math.floor(-oy + 0.5) + 0,
+        ph = E.NIL, pv = E.NIL,
+    }
+    local now = { E.ui.PlaceField("h"), E.ui.PlaceField("v"), E.ui.PlaceField("x"), E.ui.PlaceField("y") }
+    if now[1] ~= place.h or now[2] ~= place.v or now[3] ~= place.x or now[4] ~= place.y then
+        E.ui.SetPlace(place)
+    end
+end
+
 -- ------------------------------------------------------------ boxes
 local function Box(i)
     local o = boxes[i]
@@ -369,27 +576,34 @@ local function Box(i)
     o.label:SetPoint("BOTTOMLEFT", o, "TOPLEFT", 0, 1)
     o:RegisterForClicks("AnyUp")
     o:SetScript("OnMouseDown", function(self)
-        local x, y = GetCursorPosition()
-        self.from = { x = x, y = y, px = E.ui.PlaceField("x") or 0, py = E.ui.PlaceField("y") or 0,
-            scale = self:GetEffectiveScale() }
-    end)
-    o:SetScript("OnMouseUp", function(self) self.from = nil end)
-    o:SetScript("OnUpdate", function(self)
-        local from = self.from
         -- a bar is sized, not moved: its height is the editor's
-        if not from or E.PIECES[self.piece].type == "bar" then return end
+        if E.PIECES[self.piece].type == "bar" then return end
         local x, y = GetCursorPosition()
-        -- the canvas is drawn larger: a pixel of the frame is scale of the screen's
-        local dx = math.floor((x - from.x) / from.scale + 0.5)
-        local dy = math.floor((y - from.y) / from.scale + 0.5)
-        -- inward is away from this copy's outer end
-        local nx, ny = from.px - self.side * dx, from.py + dy
-        if nx ~= E.ui.PlaceField("x") or ny ~= E.ui.PlaceField("y") then E.ui.SetPlace({ x = nx, y = ny }) end
+        local p = proxies[self.copy]
+        local mine = p.pieces[self.piece]
+        -- what moves to the anchor: a row's first icon, else what is boxed
+        local rect
+        if E.PIECES[self.piece].type == "row" then
+            rect = Rect(mine[1])
+        else
+            rect = Rect(self)
+            if rect then rect.l, rect.r, rect.t, rect.b = rect.l + 1, rect.r - 1, rect.t - 1, rect.b + 1 end
+        end
+        self.from = { x = x, y = y, px = E.ui.PlaceField("x") or 0, py = E.ui.PlaceField("y") or 0,
+            scale = self:GetEffectiveScale(), p = p, rect = rect, others = Others(p, self.piece) }
+    end)
+    o:SetScript("OnMouseUp", function(self)
+        self.from = nil
+        HideGuides()
+    end)
+    o:SetScript("OnUpdate", function(self)
+        if self.from then Drag(self) end
     end)
     o:SetScript("OnEnter", function(self)
         local bar = E.PIECES[self.piece].type == "bar"
         UI.Tip(self, E.PIECES[self.piece].label, bar and "Its height is the editor's, on the right."
-            or "Drag to move it; the arrow keys nudge the chosen piece.")
+            or "Drag to move it: it hangs from the nearest corner, edge or middle, and snaps to the dots "
+            .. "and to other pieces (Shift: no snapping). The arrow keys nudge it.")
     end)
     o:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     boxes[i] = o
@@ -575,7 +789,7 @@ function ns.EditorStage(parent)
     stage:SetScript("OnUpdate", Tick)
     stage:SetScript("OnHide", function() for _, o in ipairs(boxes) do o.from = nil end end)
     -- its parts, by name (the harness reads them)
-    stage.holder, stage.proxies, stage.boxes = holder, proxies, boxes
+    stage.holder, stage.proxies, stage.boxes, stage.dots, stage.guides = holder, proxies, boxes, dots, guides
     return stage
 end
 

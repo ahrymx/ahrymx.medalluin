@@ -79,7 +79,8 @@ local function Specs()
             choices = E.ON,
             get = function() return PlaceField("on") or "health" end,
             set = function(v) SetPlace({ on = v }) end,
-            tip = "What the piece is placed on: the anchor is a point of it." },
+            tip = "What the piece is placed on. Its anchor (a corner, an edge or the middle of it) is "
+                .. "where it is dropped on the canvas." },
         x = { kind = "slider", label = "Inward", min = -150, max = 150,
             get = function() return PlaceField("x") or 0 end,
             set = function(v) SetPlace({ x = v }) end,
@@ -141,62 +142,13 @@ local function Specs()
     }
 end
 
--- A new anchor keeps the piece as far into what it is on as it was: an
--- inset from the inner end becomes one from the outer, not one past it
--- (2026-11-12: the health value thrown off the frame). Centred, no offset.
-local function Reanchor(h, v)
-    local x, y = PlaceField("x") or 0, PlaceField("y") or 0
-    local oh, ov = PlaceField("h"), PlaceField("v")
-    local deepX = oh == "inner" and -x or oh == "outer" and x or math.abs(x)
-    local deepY = ov == "top" and -y or ov == "bottom" and y or math.abs(y)
-    return { h = h, v = v, ph = E.NIL, pv = E.NIL,
-        -- (+ 0: no -0 saved)
-        x = (h == "inner" and -deepX or h == "outer" and deepX or 0) + 0,
-        y = (v == "top" and -deepY or v == "bottom" and deepY or 0) + 0 }
-end
-
--- The anchor: nine points, as the piece sits on what it is placed on.
-local GRID = { { "top", "middle", "bottom" }, { "outer", "center", "inner" } }
-local function Grid(parent)
-    local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(90, 58)
-    f.label = UI.Serif(f, 11, C.goldBright)
-    f.label:SetPoint("TOPLEFT", 0, 0)
-    f.label:SetText("Anchor")
-    f.cells = {}
-    for r, v in ipairs(GRID[1]) do
-        for c, h in ipairs(GRID[2]) do
-            local b = CreateFrame("Button", nil, f)
-            b:SetSize(20, 12)
-            b:SetPoint("TOPLEFT", (c - 1) * 24, -16 - (r - 1) * 14)
-            b.bg = UI.Fill(b, "BACKGROUND", C.well, 1)
-            b.bg:SetAllPoints()
-            UI.Outline(b, "BORDER", C.goldDark, 0)
-            b.h, b.v = h, v
-            b:SetScript("OnClick", function(self) SetPlace(Reanchor(self.h, self.v)) end)
-            table.insert(f.cells, b)
-        end
-    end
-    function f:Refresh(enabled)
-        local h, v = PlaceField("h"), PlaceField("v")
-        for _, b in ipairs(self.cells) do
-            local on = b.h == h and b.v == v
-            local col = on and C.goldBright or C.well
-            b.bg:SetColorTexture(col[1], col[2], col[3], 1)
-            b:SetEnabled(enabled)
-        end
-        self:SetAlpha(enabled and 1 or 0.55)
-    end
-    return f
-end
-
--- Which controls a piece has, row by row (the anchor and what it is on
--- share one).
+-- Which controls a piece has, row by row. Its anchor is where it is
+-- dropped on the canvas.
 local function Rows()
     local kind = E.PIECES[piece].type
     if kind == "cell" then return { { "w", "h" } } end
     if kind == "bar" then return { { "ph" } } end
-    local rows = { { "shown" }, { "anchor", "on" }, { "x", "y" } }
+    local rows = { { "shown" }, { "on" }, { "x", "y" } }
     if kind == "text" then
         table.insert(rows, { "size", "outline" })
         if E.FORMATS[piece] then table.insert(rows, piece == "name" and { "format", "len" } or { "format" }) end
@@ -213,26 +165,14 @@ local function Lay()
     for _, c in pairs(controls) do c:Hide() end
     local y = -(math.ceil(body.scope:GetStringHeight()) + 40)
     for _, row in ipairs(Rows()) do
-        if row[1] == "anchor" then
-            local a, on = controls.anchor, controls.on
-            a:ClearAllPoints()
-            a:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y)
-            on:ClearAllPoints()
-            on:SetPoint("TOPLEFT", body, "TOPLEFT", 100, y)
-            on:SetWidth(BODY_W - 100)
-            a:Show()
-            on:Show()
-            y = y - math.max(a:GetHeight(), on:GetHeight()) - GAP
-        else
-            -- one to a row
-            for _, field in ipairs(row) do
-                local c = controls[field]
-                c:ClearAllPoints()
-                c:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y)
-                if c.SetWidth then c:SetWidth(BODY_W) end
-                c:Show()
-                y = y - c:GetHeight() - GAP
-            end
+        -- one to a row
+        for _, field in ipairs(row) do
+            local c = controls[field]
+            c:ClearAllPoints()
+            c:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y)
+            if c.SetWidth then c:SetWidth(BODY_W) end
+            c:Show()
+            y = y - c:GetHeight() - GAP
         end
     end
     controls.reset:ClearAllPoints()
@@ -545,7 +485,6 @@ local function Window()
         end
         controls[field] = c
     end
-    controls.anchor = Grid(body)
     controls.reset = UI.Button(body, "Reset piece", 110, 22, function() E.ResetPiece(frame, piece) end,
         "This piece back to how its frame draws it.")
 
