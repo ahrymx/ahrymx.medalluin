@@ -59,6 +59,13 @@
 --   w.Build(), w.Select(page), w.Open(page) (as its tab does), w.ByFrame(name), w.Retab(), w.SetShown(on),
 --   w.Detached(), w.Head()
 --
+-- Floating (detached), a window wears a lighter chrome: one soft gold line
+-- and a shadow round it, its head a quiet band with no box round the tabs
+-- or the cross, the page's tab underlined, its margin's rule edge to edge.
+-- Docked, the look above. ns.window.Strip(parent, height) is a row edge to
+-- edge across a page's body (a floating page's toolbar: its search, its
+-- sorts; the quest's facts), a well between two gold lines.
+--
 -- A window with a place has two views, as the quest tracker has, switched
 -- by a glyph left of the cross: docked, on its strip as every window
 -- stands; detached, a box of its own (the bank's), dragged by its ink,
@@ -99,6 +106,9 @@ local SCALES = { 0.6, 1.4, 0.05 }               -- a detached window's scale: le
 local GRIP = 14
 local BESIDE = 4                                -- a tooltip outside the window: its gap
 local GAME_ICON = 0.08                          -- the game's icons' border, trimmed
+local SHADOW, DROP = 12, 3                      -- a floating window's shadow: how far out, how far down
+local UNDER = 44                                -- a floating window's tab's underline
+local FLOAT = { edge = 0.7, rule = 0.55, close = 0.8, dim = 0.5, head = { 0.118, 0.102, 0.071, 0.8 } }
 
 ns.window = { width = WIDTH - 2 * PAD, pad = PAD, band = BAND }
 
@@ -181,6 +191,34 @@ local function Hair(parent, down, alpha)
 end
 ns.window.Hair = Hair
 
+-- A row across a page edge to edge, out over the body's inset to the
+-- window's border: a well between two gold lines (a floating page's
+-- toolbar). Anchor its top (y down from the body's); it is as wide as the
+-- window, less its border; f.At(y) moves it.
+local STRIP_IN = 1
+function ns.window.Strip(parent, height, y)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetHeight(height)
+    function f.At(to)
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", parent, "TOPLEFT", -(PAD - STRIP_IN), -(to or 0))
+        f:SetPoint("TOPRIGHT", parent, "TOPRIGHT", PAD - STRIP_IN, -(to or 0))
+    end
+    f.At(y)
+    local well = f:CreateTexture(nil, "BACKGROUND")
+    well:SetAllPoints()
+    well:SetColorTexture(0.04, 0.035, 0.024, 0.8)
+    for _, at in ipairs({ "TOP", "BOTTOM" }) do
+        local t = f:CreateTexture(nil, "BORDER")
+        t:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.7)
+        t:SetHeight(1)
+        t:SetPoint(at .. "LEFT")
+        t:SetPoint(at .. "RIGHT")
+        f[at:lower()] = t
+    end
+    return f
+end
+
 -- A round icon in a gold rim: the icon (returned, to texture and place),
 -- with a gold disc and an ink one under it, all three masked round (the
 -- bags' round mask, strips/bags.lua). A mask texture, not SetMask: a
@@ -251,7 +289,7 @@ local OutsideTop = function(owner) ns.window.OutsideTop(owner) end
 local function Button(parent, width, click, tip, template, soft)
     local b = CreateFrame("Button", nil, parent, template)
     b:SetSize(width, TAB)
-    if soft == "open" then Bare(b) else Face(b, nil, soft) end
+    if soft == "open" then Bare(b) else b.well, b.edge = Face(b, nil, soft) end
     b.label = ns.Text(b, 12)
     b.label:SetPoint("CENTER")
     if click then b:SetScript("OnClick", click) end
@@ -700,6 +738,9 @@ function ns.Window(spec)
         band = { left = side < 0 and MEDALLION + PAD or PAD, right = side < 0 and PAD or MEDALLION + PAD,
             height = BAND } }
     local window, close, rule, footRule, medal, view, grip
+    local chrome = {}                   -- the floating look's parts (Chrome)
+    w.chrome = chrome                   -- (the harness reads them)
+    local floating = false
     local pageTop = TOP                 -- the page's top: a row lower with a second row of tabs
     local current, dirty
     local tabs = {}
@@ -869,6 +910,75 @@ function ns.Window(spec)
         end
         b.headText:Show()
     end
+    -- A tab's box, there docked, gone floating; and its mark: the box's
+    -- docked, the underline floating (none under a heading)
+    local function Boxed(b, on)
+        if b.edge then b.edge:SetShown(on) end
+        if b.well then b.well:SetShown(on) end
+    end
+    local function Mark(b, on)
+        b.mark:SetShown(on and not floating)
+        if b.under then b.under:SetShown(on and floating and not b.page.head) end
+        b.icon:SetAlpha(on and 1 or floating and FLOAT.dim or 0.6)
+    end
+
+    -- the shadow round a floating window: four corners of one texture,
+    -- flipped, and its inner edge stretched along the sides, a little down
+    local function Shadow()
+        local tex = ns.media .. "strips\\shadow"
+        local parts = {}
+        local function Part(l, r, t, b)
+            local p = window:CreateTexture(nil, "BACKGROUND", nil, -8)
+            p:SetTexture(tex)
+            p:SetTexCoord(l, r, t, b)
+            table.insert(parts, p)
+            return p
+        end
+        local IN = 31 / 32
+        for _, c in ipairs({ { "TOPLEFT", -1, 1, 0, 1, 0, 1 }, { "TOPRIGHT", 1, 1, 1, 0, 0, 1 },
+            { "BOTTOMLEFT", -1, -1, 0, 1, 1, 0 }, { "BOTTOMRIGHT", 1, -1, 1, 0, 1, 0 } }) do
+            local p = Part(c[4], c[5], c[6], c[7])
+            p:SetSize(SHADOW, SHADOW)
+            p:SetPoint(c[1], window, c[1], c[2] * SHADOW, c[3] * SHADOW - DROP)
+        end
+        local top = Part(IN, 1, 0, 1)
+        top:SetPoint("BOTTOMLEFT", window, "TOPLEFT", 0, -DROP)
+        top:SetPoint("BOTTOMRIGHT", window, "TOPRIGHT", 0, -DROP)
+        top:SetHeight(SHADOW)
+        local bottom = Part(IN, 1, 1, 0)
+        bottom:SetPoint("TOPLEFT", window, "BOTTOMLEFT", 0, -DROP)
+        bottom:SetPoint("TOPRIGHT", window, "BOTTOMRIGHT", 0, -DROP)
+        bottom:SetHeight(SHADOW)
+        local left = Part(0, 1, IN, 1)
+        left:SetPoint("TOPRIGHT", window, "TOPLEFT", 0, -DROP)
+        left:SetPoint("BOTTOMRIGHT", window, "BOTTOMLEFT", 0, -DROP)
+        left:SetWidth(SHADOW)
+        local right = Part(1, 0, IN, 1)
+        right:SetPoint("TOPLEFT", window, "TOPRIGHT", 0, -DROP)
+        right:SetPoint("BOTTOMLEFT", window, "BOTTOMRIGHT", 0, -DROP)
+        right:SetWidth(SHADOW)
+        return parts
+    end
+
+    -- The look, floating or docked (the tabs follow in Tabs)
+    local function Chrome(off)
+        floating = off
+        chrome.edge:SetAlpha(off and FLOAT.edge or 1)
+        chrome.lit:SetShown(off)
+        chrome.head:SetShown(off)
+        for _, p in ipairs(chrome.shadow) do p:SetShown(off) end
+        rule:SetAlpha(off and FLOAT.rule or 1)
+        local inset = off and 1 or PAD
+        window.bandRule:ClearAllPoints()
+        window.bandRule:SetPoint("BOTTOMLEFT", inset, BAND)
+        window.bandRule:SetPoint("BOTTOMRIGHT", -inset, BAND)
+        footRule:SetAlpha(off and FLOAT.rule or 1)
+        for _, b in ipairs({ close, view }) do
+            Boxed(b, not off)
+            if b.icon then b.icon:SetAlpha(off and FLOAT.close or 1) end
+        end
+    end
+
     -- The view's place, scale and medallion, then the layout; out of combat.
     local function Place()
         if not window then return end
@@ -888,6 +998,7 @@ function ns.Window(spec)
             window:SetPoint(Outer(side, "BOTTOM"), strip, Outer(side, "BOTTOM"), 0, L.stripHeight)
         end
         medal:SetShown(not off)
+        Chrome(off)
         if grip then grip:SetShown(off) end
         if view then view.icon:SetTexture(ns.media .. "strips\\" .. (off and "view-full" or "view-minimal")) end
         for _, p in ipairs(pages) do
@@ -960,10 +1071,7 @@ function ns.Window(spec)
                 p.band:SetShown(p == page)
                 if p ~= page then p.foot:Hide() end
             end
-            if p.tab then
-                p.tab.mark:SetShown(p == page)
-                p.tab.icon:SetAlpha(p == page and 1 or 0.6)
-            end
+            if p.tab then Mark(p.tab, p == page) end
         end
         Layout()
         Listen()
@@ -1065,6 +1173,11 @@ function ns.Window(spec)
                     b.icon = b:CreateTexture(nil, "ARTWORK")
                     b.icon:SetSize(GLYPH, GLYPH)
                     b.icon:SetPoint("CENTER")
+                    b.under = b:CreateTexture(nil, "ARTWORK")
+                    b.under:SetSize(UNDER, 2)
+                    b.under:SetPoint("BOTTOM", 0, 1)
+                    b.under:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+                    b.under:Hide()
                     tabs[n] = b
                 end
                 b.page = p
@@ -1084,8 +1197,8 @@ function ns.Window(spec)
                 else
                     b:SetPoint("TOPLEFT", 0, -(r - 1) * (TAB - 1))
                 end
-                b.mark:SetShown(p == current)
-                b.icon:SetAlpha(p == current and 1 or 0.6)
+                Boxed(b, not floating)
+                Mark(b, p == current)
                 b:Show()
                 p.tab, prev = b, b
             end
@@ -1154,10 +1267,31 @@ function ns.Window(spec)
         local edge = window:CreateTexture(nil, "BACKGROUND", nil, 1)
         edge:SetAllPoints()
         edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+        chrome.edge = edge
+        chrome.shadow = Shadow()
         local bg = window:CreateTexture(nil, "BACKGROUND", nil, 2)
         bg:SetPoint("TOPLEFT", 1, -1)
         bg:SetPoint("BOTTOMRIGHT", -1, 1)
         bg:SetColorTexture(ns.colors.ink[1], ns.colors.ink[2], ns.colors.ink[3], spec.opaque and 1 or 0.94)
+        -- floating: the head's quiet band, and a lit line along the top
+        chrome.head = window:CreateTexture(nil, "BACKGROUND", nil, 3)
+        chrome.head:SetPoint("TOPLEFT", 1, -1)
+        chrome.head:SetPoint("TOPRIGHT", -1, -1)
+        chrome.head:SetHeight(TAB - 2)
+        chrome.head:SetColorTexture(unpack(FLOAT.head))
+        chrome.head:Hide()
+        chrome.lit = window:CreateTexture(nil, "BORDER")
+        chrome.lit:SetPoint("TOPLEFT", 1, -1)
+        chrome.lit:SetPoint("TOPRIGHT", -1, -1)
+        chrome.lit:SetHeight(1)
+        if chrome.lit.SetGradient and CreateColor then
+            chrome.lit:SetColorTexture(1, 1, 1, 1)
+            chrome.lit:SetGradient("HORIZONTAL", CreateColor(GOLD[1], GOLD[2], GOLD[3], 0.12),
+                CreateColor(GOLD[1], GOLD[2], GOLD[3], 0.6))
+        else
+            chrome.lit:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.35)
+        end
+        chrome.lit:Hide()
         rule = window:CreateTexture(nil, "ARTWORK")
         rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
         rule:SetPoint("TOPLEFT", 0, -(TAB - 1))

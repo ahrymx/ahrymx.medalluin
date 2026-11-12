@@ -3,9 +3,12 @@
 -- sized, scaled; questPagePlace). (2026-11-12, the user's P3.)
 --
 --   [! The Coastal Menace                                   ]  [x]   <- the head:
---   ---------------------------------------------------------------     its mark, its
---   Level 17  ·  Westfall  ·  tracked  ·  142 yd                        title in its
---   Objectives                                                          difficulty's colour
+--   ===============================================================     its mark, its
+--   Level | Zone     | Given by     | Chain  | Status  | Waypoint       title in its
+--    17   | Westfall | Gryan Stoutm.| 2 of 4 | Tracked | 142 yd         difficulty's colour
+--   ===============================================================  <- the facts' tiles
+--   The Defias  ·  1 Furlbrow's Deed ✓  ·  2 The Coastal Menace (this)  <- its chain, when
+--   Objectives                                                          in one
 --     0/1  Old Murk-Eye slain                                  (b)   <- (b): the line into
 --     ===========-------------------------------------------            the chat box
 --   Description
@@ -17,6 +20,15 @@
 --   Drag across the words to select them, Ctrl+C to copy             its quality's colour)
 --   ---------------------------------------------------------------
 --   [ Untrack | Share | (map) | (pin) ]  [ Abandon ]
+--
+-- The facts stand in tiles across the window under the head (edge to
+-- edge, ns.window.Strip): its level, its zone, who gave it (as recorded,
+-- quests/givers.lua; a dash for one accepted before), its step in its
+-- chain ("1 of 1" in none; no tile on a client that cannot say), its
+-- state (ready, failed, tracked or not), and the waypoint's distance while
+-- it has it. A quest in a chain has the chain spelt out over its
+-- objectives: its name and its quests in order, done ticked, this one
+-- marked, a long one shortened round this one.
 --
 -- Shift-click on the head links the quest in chat; a drag on it moves the
 -- window, as one on its ink does. The words (the facts,
@@ -47,7 +59,8 @@ local RED = { 0.86, 0.27, 0.22 }
 local ICON, LINE = 28, 16
 local TILE, GAP = 32, 6                 -- a reward's tile, and between tiles
 local SEND = 18                         -- an objective's chat button, and its room on the right
-local FAR = 70                          -- the waypoint's distance: its room after the facts
+local TILES = 44                        -- the facts' strip
+local AROUND = 6                        -- a chain's quests spelt out, at most
 local HINT = 16                         -- the selecting hint's line, over the band
 local CONFIRM = 4
 local STEP = 40                         -- a turn of the wheel
@@ -56,7 +69,8 @@ local qp = {}
 ns.questPage = qp
 
 local W, page, current, armed
-local scroll, child, parts, band, measure, far
+local scroll, child, parts, band, measure, facts
+local tiles, wayTile = {}, nil
 local offset = 0
 
 function qp.Current() return W and W.window:IsShown() and current or nil end
@@ -194,6 +208,101 @@ local function Quality(q)
     return ns.colors.text
 end
 
+-- ------------------------------------------------------------ the facts
+-- The quest's chain (C_QuestLine, on its map, or the player's): its name,
+-- its quests in order and where this one stands. False when the game
+-- knows it is in none (or alone in one), nil when it cannot say (no
+-- quest lines, or no map to ask on).
+function qp.Chain(id)
+    local L = C_QuestLine
+    if not (L and L.GetQuestLineInfo and L.GetQuestLineQuests) then return nil end
+    local map = GetQuestUiMapID and GetQuestUiMapID(id)
+    if (not map or map == 0) and C_Map and C_Map.GetBestMapForUnit then map = C_Map.GetBestMapForUnit("player") end
+    if not map or map == 0 or ns.IsSecret(map) then return nil end
+    local info = L.GetQuestLineInfo(id, map)
+    local line = info and info.questLineID
+    if not line or ns.IsSecret(line) then return false end
+    local ids, at = L.GetQuestLineQuests(line) or {}, nil
+    for i, q in ipairs(ids) do
+        if q == id then at = i end
+    end
+    if not at or #ids < 2 then return false end
+    return { name = info.questLineName, ids = ids, at = at }
+end
+
+-- a tile: its label over its value, a hairline at its left
+local function Tile(i)
+    local t = tiles[i]
+    if t then return t end
+    t = CreateFrame("Frame", nil, facts)
+    t:SetHeight(TILES - 2)
+    t.label = ns.PlainText(t, 9)
+    t.label:SetPoint("TOP", 0, -7)
+    t.label:SetTextColor(unpack(DIM))
+    t.value = ns.PlainText(t, 12)
+    t.value:SetPoint("TOPLEFT", 6, -21)
+    t.value:SetPoint("TOPRIGHT", -6, -21)
+    t.value:SetWordWrap(false)
+    t.rule = t:CreateTexture(nil, "BORDER")
+    t.rule:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.6)
+    t.rule:SetWidth(1)
+    t.rule:SetPoint("TOPLEFT", 0, -6)
+    t.rule:SetPoint("BOTTOMLEFT", 0, 6)
+    t:EnableMouse(true)
+    t:SetScript("OnEnter", function(self)
+        if self.tip then ns.Tip(self, ns.window.Outside, { title = self.tip, wrap = true }) end
+    end)
+    t:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    tiles[i] = t
+    return t
+end
+
+-- The tiles across the strip: each as wide as its words, the last to the
+-- end; all narrowed alike when they come to more than the strip
+local function Facts(q)
+    local list = { { "Level", tostring(q.level or "") }, { "Zone", q.zone or "" } }
+    local giver = ns.questGivers and ns.questGivers.Of(q.id)
+    table.insert(list, giver and { "Given by", giver }
+        or { "Given by", "\226\128\148", DIM, "Accepted before Medalluin recorded who gave it." })
+    local chain = qp.Chain(q.id)
+    if chain ~= nil then
+        table.insert(list, { "Chain", chain and format("%d of %d", chain.at, #chain.ids) or "1 of 1" })
+    end
+    if q.state == 1 then table.insert(list, { "Status", "Ready to hand in", GOLD })
+    elseif q.state == -1 then table.insert(list, { "Status", "Failed", RED })
+    else table.insert(list, { "Status", q.tracked and "Tracked" or "Not tracked", q.tracked and GOLD or DIM }) end
+    if WP.Is(q.id) then table.insert(list, { "Waypoint", WP.Distance(q.id), WP.COLOR, nil, true }) end
+    local room = (facts:GetWidth() or 0) - 2
+    if room < 2 then room = (W.window:GetWidth() or 0) - 2 end
+    local widths, sum = {}, 0
+    wayTile = nil
+    for i, f in ipairs(list) do
+        local t = Tile(i)
+        t.label:SetText(f[1])
+        t.value:SetText(f[2])
+        t.value:SetTextColor(unpack(f[3] or ns.colors.text))
+        t.tip = f[4]
+        if f[5] then wayTile = t end
+        widths[i] = math.ceil(math.max(t.label:GetStringWidth() or 0, t.value:GetStringWidth() or 0)) + 24
+        sum = sum + widths[i]
+    end
+    local k = sum > room and room / sum or 1
+    local x = 1
+    for i = 1, #list do
+        local t = tiles[i]
+        local w = math.floor(widths[i] * k)
+        if i == #list then w = math.max(w, room + 1 - x) end
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", x, -1)
+        t:SetWidth(w)
+        t.rule:SetShown(i > 1)
+        t:Show()
+        x = x + w
+    end
+    for i = #list + 1, #tiles do tiles[i]:Hide() end
+end
+qp.Facts = Facts
+
 -- ---------------------------------------------------------------- drawing
 local function Draw(q)
     used = {}
@@ -238,21 +347,32 @@ local function Draw(q)
         h:SetText(s)
         Put(h, 0, 20)
     end
-    -- the facts, and the waypoint's distance after them
-    local facts = { "Level " .. q.level, q.zone }
-    if q.state == 1 then table.insert(facts, "ready to hand in")
-    elseif q.state == -1 then table.insert(facts, "failed") end
-    table.insert(facts, q.tracked and "tracked" or "not tracked")
-    local line = table.concat(facts, "  \194\183  ")
-    local top = y
-    Text(line, DIM, 0, 11, FAR)
-    far:ClearAllPoints()
-    far:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 11, "")
-    measure:SetWidth(0)
-    measure:SetText(line)
-    far:SetPoint("TOPLEFT", child, "TOPLEFT", (measure:GetStringWidth() or 0) + 4, -top)
-    far:SetShown(WP.Is(q.id))
-    far:SetText(WP.Is(q.id) and ("\194\183  " .. WP.Distance(q.id)) or "")
+    -- the chain spelt out, when it is one
+    local chain = qp.Chain(q.id)
+    if chain then
+        local n = #chain.ids
+        local from, to = 1, n
+        if n > AROUND then
+            from = math.max(1, chain.at - 2)
+            to = math.min(n, from + AROUND - 1)
+            from = math.max(1, to - AROUND + 1)
+        end
+        local bits = {}
+        if chain.name and chain.name ~= "" and not ns.IsSecret(chain.name) then table.insert(bits, chain.name) end
+        if from > 1 then table.insert(bits, "\226\128\166") end
+        for i = from, to do
+            local id = chain.ids[i]
+            local title = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(id)
+            if not title or ns.IsSecret(title) then
+                if C_QuestLog.RequestLoadQuestByID then C_QuestLog.RequestLoadQuestByID(id) end
+                title = "\226\128\166"
+            end
+            local done = C_QuestLog.IsQuestFlaggedCompleted and C_QuestLog.IsQuestFlaggedCompleted(id)
+            table.insert(bits, i .. " " .. title .. (i == chain.at and " (this)" or done and " \226\156\148" or ""))
+        end
+        if to < n then table.insert(bits, "\226\128\166") end
+        Text(table.concat(bits, "  \194\183  "), DIM, 0, 11)
+    end
     local d = Q.Details(q)
     Heading("Objectives")
     if #q.objectives == 0 then
@@ -360,6 +480,7 @@ function qp.Refresh()
     W.Head()
     -- (a selection stands: drawn once it is left)
     if Selecting() then pending = true else Draw(q) end
+    Facts(q)
     Scroll(offset)
     band:Set("track", { selected = false })
     band.byKey.track.label:SetText(q.tracked and "Untrack" or "Track")
@@ -425,8 +546,9 @@ local function Window()
         Available = function() return true end,
         Build = function(b, _, margin)
             parts = { heading = {}, text = {}, plain = {}, bar = {}, send = {}, item = {} }
+            facts = ns.window.Strip(b, TILES, 0)
             scroll = CreateFrame("ScrollFrame", nil, b)
-            scroll:SetPoint("TOPLEFT")
+            scroll:SetPoint("TOPLEFT", 0, -(TILES + 8))
             scroll:SetPoint("BOTTOMRIGHT", 0, HINT)
             local hint = ns.PlainText(b, 10)
             hint:SetPoint("BOTTOMLEFT", 0, 2)
@@ -443,9 +565,6 @@ local function Window()
             measure:SetWordWrap(true)
             measure:SetNonSpaceWrap(true)
             measure:Hide()
-            far = ns.PlainText(child, 11)
-            far:SetTextColor(unpack(WP.COLOR))
-            far:Hide()
             scroll:EnableMouseWheel(true)
             scroll:SetScript("OnMouseWheel", function(_, delta) Scroll(offset - delta * STEP) end)
             scroll:SetScript("OnSizeChanged", function(self, w)
@@ -486,12 +605,14 @@ local function Window()
             } })
             band:SetPoint("LEFT", 4, 0)
             band:SetPoint("RIGHT", -4, 0)
-            qp.band, qp.child, qp.scroll = band, child, scroll
-            -- the waypoint: the band's pin and the facts' distance; the distance kept up
+            qp.band, qp.child, qp.scroll, qp.facts = band, child, scroll, facts
+            -- the waypoint: the band's pin and the facts' tile; the distance kept up
             WP.OnChange(function() qp.Refresh() end)
             WP.OnTick(function()
                 local q = qp.quest
-                if far:IsShown() and q and W.window:IsShown() then far:SetText("\194\183  " .. WP.Distance(q.id)) end
+                if wayTile and wayTile:IsShown() and q and W.window:IsShown() then
+                    wayTile.value:SetText(WP.Distance(q.id))
+                end
             end)
         end,
         Refresh = function() qp.Refresh() end,
@@ -526,3 +647,8 @@ function qp.Close()
     current = nil
     if ns.questLog and ns.questLog.IsShown() then ns.questLog.Refresh() end
 end
+
+-- a chain's quest's title come in: drawn again
+ns.On("QUEST_DATA_LOAD_RESULT", function()
+    if qp.Current() then qp.Refresh() end
+end)

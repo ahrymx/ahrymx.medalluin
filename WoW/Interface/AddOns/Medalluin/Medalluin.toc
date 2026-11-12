@@ -92,6 +92,7 @@ quests\waypoint.lua
 quests\tracker.lua
 quests\log.lua
 quests\drop.lua
+quests\givers.lua
 quests\page.lua
 npc\window.lua
 npc\gossip.lua

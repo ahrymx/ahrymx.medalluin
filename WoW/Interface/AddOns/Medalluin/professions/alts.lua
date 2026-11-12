@@ -103,7 +103,8 @@ end
 -- character's is read fresh as it opens.
 local AW, shown, dirty
 local pages = {}
-local SEARCH, HEAD_ROW, BAR_W, SLOT, FOLD = 20, 22, 200, 37, 24
+local SEARCH, SLOT, FOLD = 20, 37, 24
+local TOOLBAR, SKILLS_TOP, COLUMN_GAP = 28, 8, 18 -- a page's strip; over the skills; between their columns
 
 local function Ago(t)
     local d = (time and time() or 0) - (t or 0)
@@ -164,6 +165,9 @@ local function Search(page, body, name, hint)
     s:SetAutoFocus(false)
     if s.Instructions then s.Instructions:SetText(hint) end
     s:HookScript("OnTextChanged", function() page.Refresh() end)
+    for _, k in ipairs({ "Left", "Right", "Middle" }) do
+        if s[k] then s[k]:Hide() end
+    end
     page.search = s
     return s
 end
@@ -203,16 +207,40 @@ local function Icon(parent, size)
     return edge, icon
 end
 
-local function Heading(page, text, y)
-    local h = Pool(page, "heading", function()
-        local t = ns.Text(page.child, 13)
-        t:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-        return t
-    end)
-    h:SetText(text)
+-- A heading across the list: its name in gold, a dim count after, and an
+-- underline across (the Items' Bank and Bags, and the recipes'
+-- professions, which fold)
+local function Banded(r, sign)
+    r:SetHeight(FOLD)
+    r.line = r:CreateTexture(nil, "BORDER")
+    r.line:SetPoint("BOTTOMLEFT", 8, 2)
+    r.line:SetPoint("BOTTOMRIGHT", -8, 2)
+    r.line:SetHeight(1)
+    r.line:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.9)
+    local x = 10
+    if sign then
+        r.sign = ns.Text(r, 14)
+        r.sign:SetPoint("LEFT", x, 0)
+        r.sign:SetTextColor(unpack(GOLD))
+        x = x + 14
+    end
+    r.name = ns.Text(r, 13)
+    r.name:SetPoint("LEFT", x, 0)
+    r.name:SetTextColor(unpack(GOLD))
+    r.count = ns.Text(r, 11)
+    r.count:SetPoint("LEFT", r.name, "RIGHT", 6, 0)
+    r.count:SetTextColor(unpack(ns.colors.dim))
+    return r
+end
+
+local function Heading(page, text, count, y, width)
+    local h = Pool(page, "heading", function() return Banded(CreateFrame("Frame", nil, page.child)) end)
+    h.name:SetText(text)
+    h.count:SetText(count or "")
     h:ClearAllPoints()
-    h:SetPoint("TOPLEFT", 4, -y)
-    return y + HEAD_ROW
+    h:SetPoint("TOPLEFT", 0, -y)
+    h:SetWidth(width)
+    return y + FOLD + 4
 end
 
 -- the list as wide as its scroll frame, before it is laid out
@@ -231,28 +259,32 @@ end
 local prof = { key = "professions", label = "Professions", glyph = "profession", order = 1, flex = true,
     bandUsed = true, height = 120, used = {}, parts = {} }
 
+-- A skill, half the block's width: its icon, its name (gold, a primary)
+-- and its recipes' count on a line, its bar under them
+local SKILL_ROW = 40
 local function SkillRow(page)
     return Pool(page, "skill", function()
-        local r = CreateFrame("Frame", nil, page.child)
-        r:SetHeight(ALT)
-        r.edge, r.icon = Icon(r, 20)
-        r.edge:SetPoint("LEFT", 4, 0)
+        local r = CreateFrame("Frame", nil, page.skills)
+        r:SetHeight(SKILL_ROW - 4)
+        r.edge, r.icon = Icon(r, 18)
+        r.edge:SetPoint("TOPLEFT", 0, 0)
         r.edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
         r.name = ns.Text(r, 12)
         r.name:SetPoint("LEFT", r.edge, "RIGHT", 8, 0)
+        r.count = ns.Text(r, 9)
+        r.count:SetPoint("RIGHT", r, "TOPRIGHT", -2, -9)
+        r.count:SetTextColor(unpack(ns.colors.dim))
         r.track = r:CreateTexture(nil, "BACKGROUND")
-        r.track:SetSize(BAR_W, 14)
-        r.track:SetPoint("LEFT", 150, 0)
+        r.track:SetHeight(14)
+        r.track:SetPoint("TOPLEFT", 26, -21)
+        r.track:SetPoint("TOPRIGHT", -2, -21)
         r.track:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.3)
         r.fill = r:CreateTexture(nil, "ARTWORK")
         r.fill:SetPoint("TOPLEFT", r.track)
         r.fill:SetPoint("BOTTOMLEFT", r.track)
         r.fill:SetColorTexture(0.61, 0.48, 0.20, 1)
-        r.value = ns.Text(r, 10)
+        r.value = ns.Text(r, 9)
         r.value:SetPoint("CENTER", r.track)
-        r.count = ns.Text(r, 10)
-        r.count:SetPoint("RIGHT", -4, 0)
-        r.count:SetTextColor(unpack(ns.colors.dim))
         return r
     end)
 end
@@ -284,18 +316,8 @@ local function RecipeRow(page)
     end)
 end
 
--- A profession's heading over its recipes: a band of gold fading to the
--- right (as the quest log's zones), its sign, its name and its count; a
--- click folds it (remembered by the profession's name, altRecipesFolded)
-local function Fade(t, c, a)
-    if t.SetGradient and CreateColor then
-        t:SetColorTexture(1, 1, 1, 1)
-        t:SetGradient("HORIZONTAL", CreateColor(c[1], c[2], c[3], a), CreateColor(c[1], c[2], c[3], a * 0.1))
-    else
-        t:SetColorTexture(c[1], c[2], c[3], a * 0.55)
-    end
-end
-
+-- The professions folded on the Professions page (remembered by name,
+-- altRecipesFolded)
 local function Folded()
     local f = type(ns.db.altRecipesFolded) == "table" and ns.db.altRecipesFolded or {}
     ns.db.altRecipesFolded = f
@@ -304,29 +326,10 @@ end
 
 local function FoldRow(page)
     return Pool(page, "fold", function()
-        local r = CreateFrame("Button", nil, page.child)
-        r:SetHeight(FOLD)
-        r.fill = r:CreateTexture(nil, "BACKGROUND")
-        r.fill:SetPoint("TOPLEFT", 0, -2)
-        r.fill:SetPoint("BOTTOMRIGHT", 0, 2)
-        Fade(r.fill, GOLD_D, 0.45)
-        r.over = r:CreateTexture(nil, "BORDER")
-        r.over:SetPoint("TOPLEFT", 0, -2)
-        r.over:SetPoint("TOPRIGHT", 0, -2)
-        r.over:SetHeight(1)
-        Fade(r.over, GOLD, 0.5)
+        local r = Banded(CreateFrame("Button", nil, page.child), true)
         local glow = r:CreateTexture(nil, "HIGHLIGHT")
         glow:SetAllPoints()
         glow:SetColorTexture(1, 1, 1, 0.06)
-        r.sign = ns.Text(r, 14)
-        r.sign:SetPoint("LEFT", 6, 0)
-        r.sign:SetTextColor(unpack(GOLD))
-        r.name = ns.Text(r, 13)
-        r.name:SetPoint("LEFT", 20, 0)
-        r.name:SetTextColor(unpack(GOLD))
-        r.count = ns.Text(r, 11)
-        r.count:SetPoint("LEFT", r.name, "RIGHT", 6, 0)
-        r.count:SetTextColor(unpack(ns.colors.dim))
         r:SetScript("OnClick", function(self)
             local f = Folded()
             f[self.prof] = not f[self.prof] or nil
@@ -359,34 +362,52 @@ local function Sorted(list, how)
     return out
 end
 
-function prof.Draw()
-    local page, d = prof, Data()
-    page.used = {}
-    local width = Width(page)
-    local y = 4
-    local skills = d.skills or {}
-    local recipes = type(d.recipes) == "table" and d.recipes or {}
-    for _, s in ipairs(skills) do
+-- the skills, two a row, primaries first (as recorded); the block's height
+local function Skills(page, skills, recipes)
+    -- (before the block is laid out, the window's width less its insets)
+    local across = page.skills:GetWidth() or 0
+    if across < 2 then across = (AW.window:GetWidth() or 0) - 2 * ns.window.pad end
+    local half = math.floor((across - COLUMN_GAP) / 2)
+    for i, s in ipairs(skills) do
         local r = SkillRow(page)
+        local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
         r:ClearAllPoints()
-        r:SetPoint("TOPLEFT", 0, -y)
-        r:SetWidth(width)
+        r:SetPoint("TOPLEFT", col * (half + COLUMN_GAP), -(SKILLS_TOP + row * SKILL_ROW))
+        r:SetWidth(math.max(1, half))
         r.icon:SetTexture(s.icon)
         r.name:SetText(s.name or "")
         r.name:SetTextColor(unpack(s.primary and GOLD or ns.colors.text))
         local max = math.max(1, s.max or 1)
-        r.fill:SetWidth(math.max(0.01, BAR_W * math.min(1, (s.rank or 0) / max)))
+        -- (the track: the column less the icon's room and the end's)
+        r.fill:SetWidth(math.max(0.01, math.max(1, half - 28) * math.min(1, (s.rank or 0) / max)))
         r.value:SetText(format("%d / %d", s.rank or 0, s.max or 0))
         local known = recipes[s.name]
         r.count:SetText(known and format(#known == 1 and "%d recipe" or "%d recipes", #known) or "")
-        y = y + ALT + 4
     end
-    if #skills == 0 then
-        y = Heading(page, "No professions recorded", y)
-    end
+    local none = Pool(page, "none", function()
+        local t = ns.Text(page.skills, 11)
+        t:SetPoint("TOPLEFT", 2, -SKILLS_TOP)
+        t:SetTextColor(unpack(ns.colors.dim))
+        t:SetText("No professions recorded.")
+        return t
+    end)
+    none:SetShown(#skills == 0)
+    local tall = SKILLS_TOP + math.max(1, math.ceil(#skills / 2)) * SKILL_ROW
+    if #skills == 0 then tall = SKILLS_TOP + 24 end
+    page.skills:SetHeight(tall)
+    page.strip.At(tall)
+end
+
+function prof.Draw()
+    local page, d = prof, Data()
+    page.used = {}
+    local skills = d.skills or {}
+    local recipes = type(d.recipes) == "table" and d.recipes or {}
+    Skills(page, skills, recipes)
+    local width = Width(page)
+    local y = 4
     -- the recipes under their professions' headings, the search's words in
     -- their names: a search opens every heading it finds recipes under
-    y = Heading(page, "Recipes", y + 6)
     local words, any, names = Words(page), false, {}
     local folded, how = Folded(), ns.db.altRecipesSort or "name"
     for _, o in ipairs(SORTS) do page.sort:Set(o.key, { selected = how == o.key }) end
@@ -550,7 +571,7 @@ function items.Draw()
         for _, where in ipairs({ { "bank", "Bank" }, { "bags", "Bags" } }) do
             local here = {}
             for _, it in ipairs(list) do if it[where[1]] > 0 then table.insert(here, it) end end
-            y = Heading(page, format("%s  (%d)", where[2], #here), y)
+            y = Heading(page, where[2], format("(%d)", #here), y, width)
             for i, it in ipairs(here) do
                 local b = Slot(page)
                 b.it = it
@@ -728,11 +749,16 @@ local function Build(page)
             page.measure:Hide()
             return
         end
-        local top
+        local strip
         if page == items then
-            page.filters = ns.window.Segments(body, { height = 22, fit = true, size = 11, items = page.FilterItems() })
-            page.filters:SetPoint("TOPLEFT", 0, 0)
-            page.view = ns.window.Segments(body, { height = 22, fit = true, items = {
+            -- the filters across the first strip; the search and the view
+            -- in the second
+            local first = ns.window.Strip(body, TOOLBAR, 0)
+            page.filters = ns.window.Segments(first, { height = TOOLBAR - 2, fit = true, size = 11, soft = "open",
+                items = page.FilterItems() })
+            page.filters:SetPoint("LEFT", 4, 0)
+            strip = ns.window.Strip(body, TOOLBAR, TOOLBAR - 1)
+            page.view = ns.window.Segments(strip, { height = TOOLBAR - 2, fit = true, soft = "open", items = {
                 { key = "list", label = "List", icon = "view-groups", group = "v",
                     tip = function() return "A line an item." end, click = function()
                         ns.db.altItemsView = "list"
@@ -744,12 +770,27 @@ local function Build(page)
                         page.Refresh()
                     end },
             } })
-            page.view:SetPoint("TOPRIGHT", 0, -(22 + 6))
-            local s = Search(page, body, "MedalluinAltItemsSearch", "Search its items")
-            s:SetPoint("TOPLEFT", 6, -(22 + 7))
+            page.view:SetPoint("RIGHT", 0, 0)
+            local s = Search(page, strip, "MedalluinAltItemsSearch", "Search its items")
+            s:SetPoint("LEFT", 12, 0)
             s:SetPoint("RIGHT", page.view, "LEFT", -10, 0)
-            top = 2 * 22 + 12
         else
+            -- the skills over the recipes' strip: its name, its search and
+            -- its sorts, over the professions' headings
+            page.skills = CreateFrame("Frame", nil, body)
+            page.skills:SetPoint("TOPLEFT", 0, 0)
+            page.skills:SetPoint("TOPRIGHT", 0, 0)
+            page.skills:SetHeight(1)
+            strip = ns.window.Strip(body, TOOLBAR, 0)
+            page.strip = strip
+            local title = ns.Text(strip, 13)
+            title:SetPoint("LEFT", 12, 0)
+            title:SetTextColor(unpack(GOLD))
+            title:SetText("Recipes")
+            local bar = strip:CreateTexture(nil, "BORDER")
+            bar:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.6)
+            bar:SetSize(1, TOOLBAR - 12)
+            bar:SetPoint("LEFT", title, "RIGHT", 10, 0)
             local sorts = {}
             for _, o in ipairs(SORTS) do
                 table.insert(sorts, { key = o.key, label = o.label, group = "s",
@@ -759,16 +800,17 @@ local function Build(page)
                         page.Refresh()
                     end })
             end
-            page.sort = ns.window.Segments(body, { height = 22, fit = true, size = 11, items = sorts })
-            page.sort:SetPoint("TOPRIGHT", 0, 0)
-            local s = Search(page, body, "MedalluinAltRecipesSearch", "Search its recipes")
-            s:SetPoint("TOPLEFT", 6, -1)
+            page.sort = ns.window.Segments(strip, { height = TOOLBAR - 2, fit = true, size = 11, soft = "open",
+                items = sorts })
+            page.sort:SetPoint("RIGHT", 0, 0)
+            local s = Search(page, strip, "MedalluinAltRecipesSearch", "Search its recipes")
+            s:SetPoint("LEFT", bar, "RIGHT", 10, 0)
             s:SetPoint("RIGHT", page.sort, "LEFT", -10, 0)
-            top = 22 + 8
         end
+        -- the list under the strip, edge to edge as it is
         local holder = CreateFrame("Frame", nil, body)
-        holder:SetPoint("TOPLEFT", 0, -top)
-        holder:SetPoint("BOTTOMRIGHT")
+        holder:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, 0)
+        holder:SetPoint("BOTTOMRIGHT", ns.window.pad - 1, 0)
         page.scroller = ns.window.Scroller(holder, 10)
         page.child = page.scroller.child
         holder:EnableMouseWheel(true)

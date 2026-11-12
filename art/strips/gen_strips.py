@@ -20,6 +20,7 @@ references are not mirrored (portrait outer, backpack inner), so two mirrored re
     python3 art/strips/gen_strips.py glyphs   -> assets/strips/<glyph>.png alone
     python3 art/strips/gen_strips.py mailbox  -> assets/strips/mailbox.png, media/strips/mailbox.tga
     python3 art/strips/gen_strips.py stripes  -> assets/strips/stripes.png (a tile of diagonal stripes)
+    python3 art/strips/gen_strips.py shadow   -> assets/strips/shadow.png (a floating window's shadow's corner)
 
 The user chose B. assets/layer3.png is B's two strips in the console's
 asset format (a 1920x1080 screen, the medallion wells cut out), and
@@ -555,6 +556,25 @@ def stripes():
     print(path)
 
 
+def shadow():
+    """assets/strips/shadow.png: a 32x32 corner of a soft shadow, black,
+    clear at its top left and darkest at its bottom right (the box's
+    corner): the floating windows (window/shell.lua) cut their shadow's
+    four corners from it, flipped, and stretch its inner edge along the
+    sides. The fall is smooth both ways, so the corner is round."""
+    img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+    for y in range(32):
+        for x in range(32):
+            fx, fy = x / 31, y / 31
+            sx, sy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
+            img.putpixel((x, y), (0, 0, 0, round(255 * 0.65 * sx * sy)))
+    parts = os.path.join(ROOT, "assets", "strips")
+    os.makedirs(parts, exist_ok=True)
+    path = os.path.join(parts, "shadow.png")
+    img.save(path)
+    print(path)
+
+
 def glyphs():
     """The glyph parts alone (layer3 untouched), and a sheet of them at 4x
     in render/glyphs.png to look at."""
@@ -826,6 +846,8 @@ if __name__ == "__main__":
         gate_part()
     elif sys.argv[1:2] == ["stripes"]:
         stripes()
+    elif sys.argv[1:2] == ["shadow"]:
+        shadow()
     elif sys.argv[1:2] == ["rings"]:
         rings()
     elif sys.argv[1:2] == ["mailbox"]:

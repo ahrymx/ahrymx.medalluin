@@ -11843,6 +11843,10 @@ if bankPass then
     click(w.view)
     frame()
     state("bank.detached")
+    -- floating: the light chrome (no boxes, an underline, a shadow)
+    print("bank.chrome detached", "edge=" .. W.chrome.edge.alpha, "shadow=" .. tostring(W.chrome.shadow[1].shown),
+        "close box=" .. tostring(w.close.edge.shown), "view box=" .. tostring(w.view.edge.shown),
+        "band@" .. select(4, w.bandRule:GetPoint(1)))
     buy("bank.purchase detached")
     print("bank.place", string.format("w=%s h=%s", tostring(ns.db.bankPlace.w), tostring(ns.db.bankPlace.h)),
         "size=" .. w.w .. "x" .. w.h, "saved=" .. tostring(type(MedalluinDB.global.bankPlace)))
@@ -11942,6 +11946,9 @@ if bankPass then
     click(w.view)
     frame()
     state("bank.docked")
+    print("bank.chrome docked", "edge=" .. W.chrome.edge.alpha, "shadow=" .. tostring(W.chrome.shadow[1].shown),
+        "close box=" .. tostring(w.close.edge.shown), "view box=" .. tostring(w.view.edge.shown),
+        "band@" .. select(4, w.bandRule:GetPoint(1)))
     print("bank.kept", string.format("w=%s scale=%s detached=%s", tostring(ns.db.bankPlace.w),
         tostring(ns.db.bankPlace.scale), tostring(ns.db.bankPlace.detached)))
     click(w.view)
@@ -15567,6 +15574,40 @@ if profPass then
             local P, I, N = page("professions"), page("items"), page("notes")
             P.Refresh()
             dump("prof.alt professions", P)
+            -- the skills two a row over the Recipes strip; the strip edge to edge
+            ;(function()
+            local cells = {}
+            for _, r in ipairs(P.parts.skill or {}) do
+                if r.shown then
+                    local _, _, _, x, y = r:GetPoint(1)
+                    table.insert(cells, r.name.text .. "@" .. x .. "," .. y .. " " .. r.count.text
+                        .. " " .. r.value.text .. " fill=" .. math.floor(r.fill:GetWidth()))
+                end
+            end
+            local _, _, _, sx, sy = P.strip:GetPoint(1)
+            local _, _, _, ex = P.strip:GetPoint(2)
+            print("prof.alt skills", table.concat(cells, " | "), "block=" .. tostring(P.skills:GetHeight()),
+                "strip=" .. sx .. "," .. sy .. ".." .. ex, "sorts=" .. tostring(P.sort:GetParent() == P.strip),
+                "search=" .. tostring(P.search:GetParent() == P.strip))
+            -- the floating chrome: no boxes, the page's tab underlined, a shadow
+            local ch = AW.chrome
+            local function tabs()
+                local out = {}
+                for _, p in ipairs(W.altPages) do
+                    local t = p.tab
+                    table.insert(out, p.key .. "[box=" .. tostring(t.edge.shown) .. " mark=" .. tostring(t.mark.shown)
+                        .. " under=" .. tostring(t.under.shown) .. " a=" .. t.icon.alpha .. "]")
+                end
+                return table.concat(out, " ")
+            end
+            local _, _, _, bx = AW.window.bandRule:GetPoint(1)
+            print("prof.alt chrome", tabs(), "shadow=" .. tostring(ch.shadow[1].shown) .. "/" .. #ch.shadow,
+                "head=" .. tostring(ch.head.shown), "lit=" .. tostring(ch.lit.shown), "edge=" .. ch.edge.alpha,
+                "close box=" .. tostring(AW.window.close.edge.shown), "band@" .. bx)
+            AW.Select(page("items"))
+            print("prof.alt chrome items", tabs())
+            AW.Select(P)
+            end)()
             P.search:SetText("bag")
             P.search.scripts.OnTextChanged(P.search, true)
             dump("prof.alt professions search", P)
@@ -17019,6 +17060,71 @@ if questLogPass then (function()
     end
     pageText("questlog page")
     rows("questlog page open")
+    -- the facts' tiles under the head: level, zone, giver, chain, status
+    ;(function()
+        local function facts(tag)
+            local out = {}
+            for _, t in ipairs(QP.facts.all_ or {}) do
+                if t.shown and t.label and t.value and t.label.text then
+                    local _, _, _, x = t:GetPoint(1)
+                    table.insert(out, t.label.text .. "=" .. tostring(t.value.text) .. "@" .. x
+                        .. (t.tip and " (tip)" or ""))
+                end
+            end
+            print(tag, table.concat(out, " | "))
+        end
+        facts("questlog page facts")
+        local headBox
+        for _, c in ipairs(page.all_) do
+            if c.shown and c.headText and c.headText.shown then headBox = c.edge and c.edge.shown end
+        end
+        print("questlog page head box", tostring(headBox))
+        -- the giver: noted as it is offered, kept as it is accepted
+        local name_ = UnitName
+        UnitName = function(u) if u == "questnpc" then return "Tirion Fordring" end return name_(u) end
+        fire("QUEST_DETAIL")
+        UnitName = name_
+        fire("QUEST_ACCEPTED", 102)
+        QP.Refresh()
+        facts("questlog page facts giver")
+        -- its chain: the game's line, its step, spelt out over the objectives
+        local was = { C_QuestLine, C_QuestLog.GetTitleForQuestID, C_QuestLog.IsQuestFlaggedCompleted,
+            GetQuestUiMapID }
+        GetQuestUiMapID = function() return 1429 end
+        C_QuestLine = {
+            GetQuestLineInfo = function(id) return id == 102 and { questLineID = 7, questLineName = "The Princess" }
+                or nil end,
+            GetQuestLineQuests = function() return { 101, 102, 103, 104 } end,
+        }
+        C_QuestLog.GetTitleForQuestID = function(id)
+            return ({ [101] = "A Royal Summons", [102] = "Princess Must Die!", [103] = "Her Bones" })[id]
+        end
+        C_QuestLog.IsQuestFlaggedCompleted = function(id) return id == 101 end
+        local asked = {}
+        local load_ = C_QuestLog.RequestLoadQuestByID
+        C_QuestLog.RequestLoadQuestByID = function(id) table.insert(asked, id) end
+        QP.Refresh()
+        facts("questlog page facts chain")
+        pageText("questlog page chain")
+        print("questlog page chain asked", table.concat(asked, ","))
+        C_QuestLine.GetQuestLineInfo = function() return nil end
+        QP.Refresh()
+        facts("questlog page facts no chain")
+        C_QuestLine, C_QuestLog.GetTitleForQuestID, C_QuestLog.IsQuestFlaggedCompleted, GetQuestUiMapID =
+            was[1], was[2], was[3], was[4]
+        C_QuestLog.RequestLoadQuestByID = load_
+        -- the waypoint: its tile while the quest has it
+        if C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
+            C_SuperTrack.SetSuperTrackedQuestID(102)
+            fire("SUPER_TRACKING_CHANGED")
+            facts("questlog page facts waypoint")
+            C_SuperTrack.SetSuperTrackedQuestID(0)
+            fire("SUPER_TRACKING_CHANGED")
+        end
+        MedalluinDB.questGivers = nil
+        QP.Refresh()
+        W.calls = {}                    -- (the waypoint's, not the head's)
+    end)()
     -- the head: Shift links the quest; a plain click does nothing
     do
         local tab
