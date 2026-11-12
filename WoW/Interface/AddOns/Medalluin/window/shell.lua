@@ -49,9 +49,15 @@
 --           Available() (or Blizzard's frame exists), height, footHeight,
 --           flex, bandUsed, bandFlush, events = { ... }, Build(body, foot, band),
 --           Fit(height), Refresh(), OnEvent(event, ...), Shown(),
---           Showing(on) }
+--           Showing(on), head }
+--   head = { Text() -> text, colour; Badge() -> a badge (ns.character.Badge's)
+--            or nil; Click(mouse); tip() }: the page's tab is a heading, not
+--            a glyph: the badge, then the words in the colour, left to right
+--            (the quest's page, its title); its click and tooltip are the
+--            head's, and a drag on it moves the window. w.Head() writes it
+--            again.
 --   w.Build(), w.Select(page), w.Open(page) (as its tab does), w.ByFrame(name), w.Retab(), w.SetShown(on),
---   w.Detached()
+--   w.Detached(), w.Head()
 --
 -- A window with a place has two views, as the quest tracker has, switched
 -- by a glyph left of the cross: docked, on its strip as every window
@@ -271,7 +277,9 @@ ns.window.Button = Button
 --   row:Fill({ { key, label, icon, group, tip() -> text, click(button),
 --                selected, enabled, shown, color } ... })   (again: the
 --               buttons kept, their words and deeds changed)
---   row:Set(key, { selected, enabled, shown, color })        one's state
+--   row:Set(key, { selected, enabled, shown, color, lit })   one's state
+--               (lit = { wash = { r, g, b, a }, color = { r, g, b } }: its
+--               well washed, its icon in the colour: the waypoint's)
 --   row:Layout()          shared out again (as its width changes)
 --   row.byKey[key], row.buttons, row.gaps (where each gap starts)
 --
@@ -291,7 +299,18 @@ local function Paint(b)
     b.glow:SetShown(b.enabled)
     local c = not b.enabled and ns.colors.dim or b.color or b.selected and GOLD or ns.colors.text
     b.label:SetTextColor(c[1], c[2], c[3])
-    b.icon:SetAlpha(not b.enabled and 0.3 or b.selected and 1 or 0.6)
+    b.icon:SetAlpha(not b.enabled and 0.3 or (b.selected or b.lit) and 1 or 0.6)
+    local lit = b.lit
+    if lit and not b.wash then
+        b.wash = b:CreateTexture(nil, "BACKGROUND", nil, 4)
+        b.wash:SetAllPoints(b.mark)
+    end
+    if b.wash then
+        b.wash:SetShown(lit and true or false)
+        if lit then b.wash:SetColorTexture(unpack(lit.wash)) end
+    end
+    b.icon:SetDesaturated(lit and true or false)
+    if lit then b.icon:SetVertexColor(unpack(lit.color)) else b.icon:SetVertexColor(1, 1, 1) end
 end
 
 local function Segments(parent, spec)
@@ -359,6 +378,7 @@ local function Segments(parent, spec)
         b.enabled = state.enabled ~= false
         b.shown = state.shown ~= false
         b.color = state.color
+        b.lit = state.lit
         Paint(b)
         if b.shown ~= was then self:Layout() end
     end
@@ -407,6 +427,7 @@ local function Segments(parent, spec)
             if d.icon then b.icon:SetTexture(ns.media .. "strips\\" .. d.icon) end
             b.selected, b.enabled, b.shown, b.color = d.selected and true or false, d.enabled ~= false,
                 d.shown ~= false, d.color
+            b.lit = d.lit
             Paint(b)
             if d.key ~= nil then self.byKey[d.key] = b end
         end
@@ -796,6 +817,58 @@ function ns.Window(spec)
 
     -- ------------------------------------------------------------ place
     local Tabs                  -- below: the tab row, shared out
+
+    -- A tab as its page's heading (head), or back to its glyph.
+    local function Head(b)
+        local head = b.page.head
+        b.icon:SetShown(not head)
+        if not head then
+            if b.headText then
+                b.headText:Hide()
+                b.headBadge:Hide()
+            end
+            return
+        end
+        if not b.headText then
+            b.headBadge = b:CreateTexture(nil, "ARTWORK")
+            b.headText = ns.Text(b, 14)
+            b.headText:SetJustifyH("LEFT")
+            b.headText:SetWordWrap(false)
+            -- a drag on it moves the window, as one on its ink does (the
+            -- click a drag ends in is not the head's)
+            b:RegisterForDrag("LeftButton")
+            b:SetScript("OnMouseDown", function(self) self.dragged = nil end)
+            b:SetScript("OnDragStart", function(self)
+                self.dragged = true
+                local start = window:GetScript("OnDragStart")
+                if start then start(window) end
+            end)
+            b:SetScript("OnDragStop", function()
+                local stop = window:GetScript("OnDragStop")
+                if stop then stop(window) end
+            end)
+        end
+        local text, c = head.Text()
+        c = c or GOLD
+        b.headText:SetText(text or "")
+        b.headText:SetTextColor(c[1], c[2], c[3])
+        b.headText:ClearAllPoints()
+        b.headText:SetPoint("RIGHT", -8, 0)
+        local badge = head.Badge and head.Badge()
+        if badge and ns.character and ns.character.Badge then
+            local size = badge.size or 16
+            ns.character.Badge(b.headBadge, badge)
+            b.headBadge:SetSize(size, size)
+            b.headBadge:ClearAllPoints()
+            b.headBadge:SetPoint("LEFT", 8, 0)
+            b.headBadge:Show()
+            b.headText:SetPoint("LEFT", b.headBadge, "RIGHT", 6, 0)
+        else
+            b.headBadge:Hide()
+            b.headText:SetPoint("LEFT", 8, 0)
+        end
+        b.headText:Show()
+    end
     -- The view's place, scale and medallion, then the layout; out of combat.
     local function Place()
         if not window then return end
@@ -976,14 +1049,26 @@ function ns.Window(spec)
                 local b = tabs[n]
                 if not b then
                     local i = n
-                    b = Button(window, width, function(self) Open(self.page) end,
-                        function() return tabs[i].page.tip or tabs[i].page.label end)
+                    b = Button(window, width, function(self, mouse)
+                        local head = self.page.head
+                        if self.dragged then
+                            self.dragged = nil
+                        elseif head and head.Click then
+                            head.Click(mouse)
+                        else
+                            Open(self.page)
+                        end
+                    end, function()
+                        local pg = tabs[i].page
+                        return pg.head and pg.head.tip and pg.head.tip() or pg.tip or pg.label
+                    end)
                     b.icon = b:CreateTexture(nil, "ARTWORK")
                     b.icon:SetSize(GLYPH, GLYPH)
                     b.icon:SetPoint("CENTER")
                     tabs[n] = b
                 end
                 b.page = p
+                Head(b)
                 -- the last to the row's end, exactly
                 b:SetWidth(k < #list and width or span - (#list - 1) * (width - 1))
                 if p.icon then
@@ -1024,6 +1109,12 @@ function ns.Window(spec)
 
     -- Which pages are there now: a page that has come is built, one that
     -- has gone is left, for the first that is still there.
+    function w.Head()
+        for _, b in ipairs(tabs) do
+            if b:IsShown() and b.page then Head(b) end
+        end
+    end
+
     function w.Retab()
         if not window then return end
         for _, p in ipairs(pages) do

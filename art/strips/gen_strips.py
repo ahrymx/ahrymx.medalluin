@@ -174,6 +174,9 @@ def glyph(kind, x, y):
                 f'stroke-width="2.4"/>'
                 + P("M10,13.5 C7.6,10.4 6.2,8.6 6.2,6.4 a3.8,3.8 0 1,1 7.6,0 C13.8,8.6 12.4,10.4 10,13.5 Z "
                     "M8.6,6.3 a1.4,1.4 0 1,0 2.8,0 a1.4,1.4 0 1,0 -2.8,0 Z", "evenodd"))
+    if kind == "waypoint":      # the quest page's waypoint (quests/page.lua): side-zone's pin alone, larger
+        return P("M10,19 C6,14 3.6,11 3.6,7.4 a6.4,6.4 0 1,1 12.8,0 C16.4,11 14,14 10,19 Z "
+                 "M7.6,7.3 a2.4,2.4 0 1,0 4.8,0 a2.4,2.4 0 1,0 -4.8,0 Z", "evenodd")
     # the character window's tabs (character/window.lua)
     if kind == "character":     # head and shoulders
         return P("M6,6.5 a4,4.5 0 1,0 8,0 a4,4.5 0 1,0 -8,0 Z M1.5,19 C1.5,13 5,11.5 10,11.5 C15,11.5 18.5,13 18.5,19 Z")
@@ -483,7 +486,7 @@ GLYPHS = ["spellbook", "talents", "quests", "social", "guild", "lfg", "map", "me
 TABS = ["character", "reputation", "currency", "skills", "pvp", "statistics",
         "chevron-down", "chevron-up", "chevron-double", "close", "questlog", "sort", "view-minimal", "view-full",
         "view-bags", "view-grid", "view-groups", "track", "track-off",
-        "chat-tools", "chat", "channels", "log", "side-auras", "side-meter", "side-loot", "side-zone", "mouse", "edit",
+        "chat-tools", "chat", "channels", "log", "side-auras", "side-meter", "side-loot", "side-zone", "waypoint", "mouse", "edit",
         "role-tank", "role-healer", "role-damage"]
 
 

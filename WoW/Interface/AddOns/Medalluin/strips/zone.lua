@@ -85,18 +85,9 @@ local function Here()
 end
 
 -- ------------------------------------------------------------- progress
--- An objective's count, "3/10" anywhere in its text; one with none counts
--- as one thing, done or not. Its words without the count.
-local function Count(o)
-    local have, need = o.text:match("(%d+)%s*/%s*(%d+)")
-    if have then return tonumber(have), tonumber(need) end
-    return o.done and 1 or 0, 1
-end
-
-local function Words(o)
-    local s = o.text:gsub("^%s*%d+%s*/%s*%d+%s*", ""):gsub(":?%s*%d+%s*/%s*%d+%s*$", "")
-    return s
-end
+-- (an objective's count and words: quests/source.lua's Q.Count, Q.Words)
+local function Count(o) return ns.questSource.Count(o) end
+local function Words(o) return ns.questSource.Words(o) end
 
 local function Progress(q)
     local have, need = 0, 0

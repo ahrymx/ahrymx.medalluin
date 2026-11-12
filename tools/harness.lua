@@ -16680,7 +16680,9 @@ if questLogPass then (function()
         local out = {}
         for _, b in ipairs(row_.buttons) do
             if b.shown then
-                table.insert(out, b.label.text .. (b.enabled and "" or "/off") .. (b.selected and "*" or ""))
+                local icon = b.icon.shown and b.icon.texture and ("<" .. tostring(b.icon.texture):match("[^\\]+$") .. ">")
+                table.insert(out, (icon or b.label.text) .. (b.enabled and "" or "/off") .. (b.selected and "*" or "")
+                    .. (b.lit and "~lit" or ""))
             end
         end
         return table.concat(out, " | ")
@@ -16859,17 +16861,121 @@ if questLogPass then (function()
     local page = _G.MedalluinQuestPage
     QP.child.w = 400
     QP.Refresh()
+    -- the head (its tab: mark and title), then the page's words, edit
+    -- boxes and texts, top down; a tile with its column
+    local function headOf()
+        for _, c in ipairs(page and page.all_ or {}) do
+            if c.shown and c.headText and c.headText.shown then
+                return c.headText.text .. (c.headBadge.shown and " {mark}" or "") .. " ("
+                    .. string.format("%.2f,%.2f,%.2f", unpack(c.headText.textColor or { 0, 0, 0 })) .. ")"
+                    .. (c.icon.shown and " +glyph" or "")
+            end
+        end
+        return "none"
+    end
     local function pageText(tag)
         local out = {}
         for _, c in ipairs(QP.child.all_ or {}) do
-            if c.shown and c.kind == "FontString" and c.text and c.text ~= "" then table.insert(out, c.text) end
-            if c.shown and c.kind == "Button" and c.name then table.insert(out, "[" .. c.name.text .. "]") end
+            if c.shown and (c.kind == "FontString" or c.kind == "EditBox") and c.text and c.text ~= "" then
+                table.insert(out, (c.kind == "EditBox" and "'" or "") .. c.text)
+            end
+            if c.shown and c.kind == "Button" and c.name then
+                local p_ = c.points.TOPLEFT
+                table.insert(out, "[" .. c.name.text .. (p_ and p_[3] > 10 and " >" or "") .. "]")
+            end
         end
-        print(tag, "shown=" .. tostring(page and page.shown), "current=" .. tostring(QP.Current()), table.concat(out, " ~ "))
+        print(tag, "shown=" .. tostring(page and page.shown), "current=" .. tostring(QP.Current()),
+            "head=" .. headOf(), table.concat(out, " ~ "))
         print(tag .. " band", segState(QP.band))
     end
     pageText("questlog page")
     rows("questlog page open")
+    -- the head: Shift links the quest; a plain click does nothing
+    do
+        local tab
+        for _, c in ipairs(page.all_) do if c.shown and c.headText and c.headText.shown then tab = c end end
+        local was = ChatEdit_InsertLink
+        ChatEdit_InsertLink = function(link)
+            table.insert(W.calls, "link " .. tostring(link))
+            return true                 -- (the game's: an input box was open)
+        end
+        tab.scripts.OnClick(tab, "LeftButton")
+        calls("questlog page head click")
+        charWorld.modified = true
+        tab.scripts.OnClick(tab, "LeftButton")
+        charWorld.modified = false
+        calls("questlog page head shift")
+        print("questlog page head tip", tipOf(tab))
+        -- an objective's bubble: its line into the chat box (open: inserted;
+        -- none open: the chat opened with it)
+        local send
+        for _, c in ipairs(QP.child.all_) do if c.shown and c.line then send = c end end
+        local open_ = ChatFrame_OpenChat
+        ChatFrame_OpenChat = function(text) table.insert(W.calls, "open chat " .. text) end
+        send.scripts.OnClick(send, "LeftButton")
+        calls("questlog page objective to chat")
+        local insert_ = ChatEdit_InsertLink
+        ChatEdit_InsertLink = function() return false end
+        send.scripts.OnClick(send, "LeftButton")
+        calls("questlog page objective to chat, none open")
+        ChatEdit_InsertLink, ChatFrame_OpenChat = insert_, open_
+        -- a drag on it moves the window (Shift held too: no link)
+        local moved = {}
+        local start, stop = page.scripts.OnDragStart, page.scripts.OnDragStop
+        page.scripts.OnDragStart = function() table.insert(moved, "start") end
+        page.scripts.OnDragStop = function() table.insert(moved, "stop") end
+        charWorld.modified = true
+        tab.scripts.OnMouseDown(tab, "LeftButton")
+        tab.scripts.OnDragStart(tab)
+        tab.scripts.OnDragStop(tab)
+        tab.scripts.OnClick(tab, "LeftButton")
+        charWorld.modified = false
+        print("questlog page head drag", "drag=" .. tostring(tab.drag and tab.drag[1]), table.concat(moved, ","))
+        calls("questlog page head drag click")
+        page.scripts.OnDragStart, page.scripts.OnDragStop = start, stop
+        charWorld.modified = true
+        tab.scripts.OnMouseDown(tab, "LeftButton")
+        tab.scripts.OnClick(tab, "LeftButton")
+        charWorld.modified = false
+        calls("questlog page head shift after drag")
+        ChatEdit_InsertLink = was
+    end
+    -- the words: a key's change put back; a refresh waits while one is
+    -- selected, and comes as it is left
+    do
+        local box
+        for _, c in ipairs(QP.child.all_) do
+            if c.shown and c.kind == "EditBox" and c.text and c.text:find("About quest") then box = c end
+        end
+        box:SetText("typed")
+        box.scripts.OnTextChanged(box, true)
+        print("questlog page words", "typed back=" .. tostring(box.text))
+        box:SetFocus()
+        W.byId(102).objectives[1].text = "Princess slain: 1/1 (again)"
+        QP.Refresh()
+        pageText("questlog page selecting")
+        box:ClearFocus()
+        pageText("questlog page selection left")
+        W.byId(102).objectives[1].text = "Princess slain: 1/1"
+        QP.Refresh()
+    end
+    -- the pin: the waypoint set, lit, its distance after the facts; kept up; cleared
+    do
+        local pin = QP.band.byKey.waypoint
+        print("questlog page pin tip", tipOf(pin))
+        pin.scripts.OnClick(pin, "LeftButton")
+        calls("questlog page pin")
+        fire("SUPER_TRACKING_CHANGED")
+        pageText("questlog page waypoint")
+        W.far = 57
+        ns.waypoint.clock.scripts.OnUpdate(ns.waypoint.clock, 1)
+        pageText("questlog page waypoint nearer")
+        pin.scripts.OnClick(pin, "LeftButton")
+        calls("questlog page pin again")
+        fire("SUPER_TRACKING_CHANGED")
+        pageText("questlog page waypoint cleared")
+        W.far = 142.4
+    end
     -- its reward's tooltip, and Share in a group
     W.group = true
     QP.Refresh()

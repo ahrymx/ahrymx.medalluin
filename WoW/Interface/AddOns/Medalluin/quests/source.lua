@@ -243,6 +243,20 @@ function Q.Focus(quest)
     return true
 end
 
+-- An objective's count, "3/10" anywhere in its text; one with none counts
+-- as one thing, done or not. Its words without the count. (The Zone tab's
+-- rows and the quest's page.)
+function Q.Count(o)
+    local have, need = o.text:match("(%d+)%s*/%s*(%d+)")
+    if have then return tonumber(have), tonumber(need) end
+    return o.done and 1 or 0, 1
+end
+
+function Q.Words(o)
+    local s = o.text:gsub("^%s*%d+%s*/%s*%d+%s*", ""):gsub(":?%s*%d+%s*/%s*%d+%s*$", "")
+    return s
+end
+
 -- ------------------------------------------------------------- the map
 -- A zone's map, by its name (the log's heading for the quest): every map
 -- under the world the player is in, a zone's first. Kept once read from
