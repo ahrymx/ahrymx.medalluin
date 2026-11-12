@@ -820,6 +820,10 @@ function browse.Refresh()
     for _, c in ipairs(cats) do if c.id == cat then catName = c.name end end
     browse.list.empty:SetText(D.searching and "Searching\226\128\166"
         or D.stale and ("Press Search for " .. catName .. ".")
+        or #D.results == 0 and D.hidden > 0 and ("The game keeps "
+            .. (D.hidden == 1 and "this listing" or ("these " .. D.hidden .. " listings"))
+            .. " from addons just now (it does in an instance and in combat). Its own group finder still shows "
+            .. (D.hidden == 1 and "it." or "them."))
         or #D.results == 0 and "Nobody is listed here. Refresh, or list yourself (List me)."
         or n == 0 and (words and "Nobody listed has those words." or "Nobody listed needs those roles.") or "")
 end
@@ -1253,8 +1257,10 @@ function listme.Band()
         { key = "post", label = e and "Update" or "List me", group = "a", enabled = problem == nil, click = function()
             local ok, why = D.Post(Asked())
             listme.error = not ok and why or nil
-            -- listed: Browse, picked as the listing is, to see who else is after it
-            if ok and not e then lfg.BrowseFor(ListCategory(), Listed()) end
+            -- listed: Browse, picked as the listing is, to see who else is after
+            -- it; not searched, as the game runs one restricted call a click and
+            -- this one posted (2026-11-12: the search refused)
+            if ok and not e then lfg.BrowseFor(ListCategory(), Listed(), true) end
             lfg.Refresh()
         end, tip = function()
             return problem or (e and "List the new picks." or "List yourself, so groups and players can find you.")
@@ -1513,8 +1519,9 @@ local function Select(key)
 end
 
 -- Browse, its category and activities set to these, and searched (from
--- the click that asked for it)
-function lfg.BrowseFor(cat, ids)
+-- the click that asked for it); wait: not searched, the list waiting for
+-- Search (the click spent on another restricted call)
+function lfg.BrowseFor(cat, ids, wait)
     if not cat then return end
     ns.db.lfgCategory = cat
     local t = {}
@@ -1522,7 +1529,7 @@ function lfg.BrowseFor(cat, ids)
     browse.activities[cat] = t
     browse.list.first = 0
     Select("browse")
-    Search()
+    if wait then D.Stale() else Search() end
 end
 
 local function Covered()

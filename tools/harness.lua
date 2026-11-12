@@ -18639,6 +18639,40 @@ if lfgPass then (function()
     calls("lfg refused, then clicked")
     fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
     results("lfg results again")
+    -- results the game keeps secret (the modern client in an instance or a
+    -- fight; every field but the partyGUID, 2026-11-12): not read, and the
+    -- list says so. A part kept secret in a plain one is left out
+    if issecretvalue then
+        local saved, savedOrder = W.results, W.order
+        local function kept(id)
+            local t = { partyGUID = "Party-6943-1-" .. id }
+            for _, k in ipairs({ "searchResultID", "activityIDs", "leaderName", "numMembers", "age", "comment",
+                "generalPlaystyle", "voiceMode", "newPlayerFriendly", "isDelisted", "hasSelf", "name" }) do
+                t[k] = secret()
+            end
+            return { info = t, people = {}, counts = {} }
+        end
+        local part = { info = saved[11].info,
+            counts = { TANK_REMAINING = secret(), HEALER_REMAINING = 1, DAMAGER_REMAINING = 0 },
+            people = { saved[11].people[1], { name = secret(), level = 20, classFilename = "MAGE", className = "Mage",
+                assignedRole = "DAMAGER", lfgRoles = { dps = true } }, saved[11].people[3] } }
+        W.results = { [21] = kept(21), [22] = kept(22), [11] = part }
+        W.order = { 21, 11, 22 }
+        G.browse.go.scripts.OnClick(G.browse.go)
+        fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
+        results("lfg some secret")
+        local r = ns.lfgData.results[1]
+        print("lfg some secret", "hidden=" .. ns.lfgData.hidden, "members=" .. (r and #r.members or -1),
+            "needs tank=" .. tostring(r and r.needs.TANK), G.browse.list.empty.text)
+        W.order = { 21, 22 }
+        G.browse.go.scripts.OnClick(G.browse.go)
+        fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
+        print("lfg all secret", "hidden=" .. ns.lfgData.hidden, "shown=" .. #ns.lfgData.results,
+            G.browse.list.empty.text)
+        W.results, W.order = saved, savedOrder
+        G.browse.go.scripts.OnClick(G.browse.go)
+        fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
+    end
     W.calls = {}
     -- 8. List me: Blizzard's note box moved in; nothing posts until a playstyle
     press(G.tabs, "list")
@@ -18735,10 +18769,13 @@ if lfgPass then (function()
     acts("lfg list ready")
     print("lfg note", G.listme.count.text)
     press(G.band, "post")
-    -- listed: Browse, picked as the listing is, and searched
+    -- listed: Browse, picked as the listing is; not searched in the same
+    -- click (the game runs one restricted call a click: 2026-11-12, refused)
     calls("lfg listed")
     print("lfg listed, browsing", "page=" .. tostring(ns.db.lfgPage), picker(G.browse.cat), picker(G.browse.acts),
-        G.browse.go.label.text)
+        G.browse.go.label.text, G.browse.list.empty.text)
+    G.browse.go.scripts.OnClick(G.browse.go)
+    calls("lfg listed, then Search")
     fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
     press(G.tabs, "list")
     fire("LFG_LIST_ACTIVE_ENTRY_UPDATE")

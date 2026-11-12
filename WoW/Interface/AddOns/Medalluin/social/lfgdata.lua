@@ -21,7 +21,12 @@
 --             2026-11-09, when one was refused); if the game refuses one,
 --             picks stop searching for the session. Picks changed then,
 --             refused, or asked for while one was out, the list is stale
---             (D.stale) and waits for a click (Browse's Search).
+--             (D.stale) and waits for a click (Browse's Search). A click runs
+--             one restricted call: List me's posts, and Browse waits for
+--             Search (2026-11-12: the search after it was refused).
+--             A result the game keeps secret (every field but its
+--             partyGUID, the modern client in an instance or a fight) is
+--             not read: counted in D.hidden, and the list says so.
 --   who       SendWho(text, origin, { classIDs, raceIDs, uiMapIDs }),
 --             SortWho(mode, ascending); the server answers 50 at most.
 --
@@ -31,7 +36,8 @@
 -- what this client has, and one result as it comes.
 local ADDON, ns = ...
 
-local D = { results = {}, searching = false, who = { list = {}, total = 0, pending = false, query = "" } }
+local D = { results = {}, searching = false, hidden = 0,
+    who = { list = {}, total = 0, pending = false, query = "" } }
 ns.lfgData = D
 
 local listeners = {}
@@ -214,23 +220,39 @@ function D.Search(cat, ids, pick)
     Changed()
 end
 
+local S = ns.IsSecret
 local ROLE = { TANK = "TANK", HEALER = "HEALER", DAMAGER = "DAMAGER" }
+-- (a role the game keeps secret is not one)
 local function Roles(t)
     if type(t) ~= "table" then return {} end
-    return { TANK = t.tank and true or nil, HEALER = t.healer and true or nil,
-        DAMAGER = (t.dps or t.damager) and true or nil }
+    local function On(v) return not S(v) and v and true or nil end
+    return { TANK = On(t.tank), HEALER = On(t.healer), DAMAGER = On(t.dps) or On(t.damager) }
 end
 
 local function Person(p)
-    if type(p) ~= "table" then return nil end
+    if type(p) ~= "table" or S(p.name) or S(p.classFilename) or S(p.assignedRole) or S(p.isLeader)
+        or S(p.lfgRoles) or S(p.level) or S(p.className) then return nil end
     return { name = p.name, level = p.level, class = p.classFilename, className = p.className,
         role = ROLE[p.assignedRole or ""], roles = Roles(p.lfgRoles), leader = p.isLeader }
+end
+
+-- The fields Read tests or compares: one secret, the result is not read.
+local FIELDS = { "isDelisted", "numMembers", "age", "hasSelf", "activityIDs", "name", "comment",
+    "generalPlaystyle", "voiceMode", "newPlayerFriendly", "leaderName", "activityID" }
+local function Hidden(info)
+    for _, k in ipairs(FIELDS) do if S(info[k]) then return true end end
+    return false
 end
 
 local function Read(id)
     local api = L()
     local info = api.GetSearchResultInfo(id)
-    if type(info) ~= "table" or info.isDelisted then return nil end
+    if type(info) ~= "table" then return nil end
+    if Hidden(info) then
+        D.hidden = D.hidden + 1
+        return nil
+    end
+    if info.isDelisted then return nil end
     local ids = info.activityIDs or (info.activityID and { info.activityID }) or {}
     local names = {}
     local lo, hi, size = nil, nil, 0
@@ -261,7 +283,7 @@ local function Read(id)
     if type(n) == "table" then
         for role in pairs(ROLE) do
             local left = n[role .. "_REMAINING"]
-            if left then r.needs[role] = left > 0 or nil end
+            if left and not S(left) then r.needs[role] = left > 0 or nil end
         end
     end
     return r
@@ -269,7 +291,7 @@ end
 D.Read = Read
 
 local function Results()
-    D.searching = false
+    D.searching, D.hidden = false, 0
     local first, ids = L().GetSearchResults()
     if type(first) == "table" then ids = first end
     local out = {}
