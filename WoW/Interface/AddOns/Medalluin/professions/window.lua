@@ -8,10 +8,10 @@
 --   ____                       (open tabs: no boxes, the one in use
 --    secondary   secondary      underlined; rows on fading hairs)
 --   ---------------------------------------------------------------
---   the character's header, its portrait on its rule (professions/alts.lua)
---   ------------------------- Alts --------------------------------
---   [class] an alt  its class          its primary professions
+--   [Alts 3]  the character's header, its portrait on its rule
+--             (professions/alts.lua)
 --   ------------------- Primary professions -----------------------
+--     (each pillar its craft engraved behind, media/professions)
 --               (icon)            :            (icon)
 --           Blacksmithing         :            Mining
 --      [====== 142 / 150 ======]  :   [====== 87 / 150 ======]
@@ -19,13 +19,17 @@
 --          [spell] [spell]     x  :       [spell] [spell]      x
 --   ------------------ Secondary professions ----------------------
 --   (icon) Cooking   [========= 5 / 75 =========]  [spell]      x
+--   ------------------------ Cooldowns ----------------------------
+--   (icon) Transmute: Arcanite      Barkhide              1d 6h
+--   (icon) Mooncloth                Medalluin             Ready
 --   ------------------------- Camping -----------------------------
---   the camp's buffs and objects, one strip (professions/camping.lua)
+--   the camp's buffs and objects on its engraving (professions/camping.lua)
 --   ---------------------------------------------------------------
 --
 -- Overview is a pillar per primary profession (an empty one when not
 -- learned) and a line per secondary learned, under a heading each (none
--- learned: no heading), then Camping; each other tab is a profession with recipes, crafted here
+-- learned: no heading), then the Cooldowns (your characters' cooldown
+-- crafts, professions/altdata.lua) and Camping; each other tab is a profession with recipes, crafted here
 -- (professions/crafting.lua). The tabs are Overview and one per profession
 -- that crafts, six at most: Overview and the primaries on the first row,
 -- the secondaries on a second under it (none: no second row); fewer
@@ -51,9 +55,11 @@ local _, ns = ...
 local GOLD = { 0.941, 0.831, 0.533 }
 local RED = { 1, 0.3, 0.25 }
 local GAP, ICON, SPELL, SMALL = 6, 40, 30, 24   -- a pillar's icon and spells; a line's both
-local PILLAR, LINE = 150, 32            -- a primary's pillar, a secondary's line
+local PILLAR, LINE = 190, 32            -- a primary's pillar, a secondary's line
 local HALF = math.floor((ns.window.width - GAP) / 2)    -- a pillar's width
-local SPELL_Y, NAME_W = 112, 130        -- a pillar's spells' top; a line's icon and name
+local SPELL_Y, NAME_W = 140, 130        -- a pillar's spells' top; a line's icon and name
+local ART_V = 222 / 256                 -- a pillar's engraving: its part of the texture
+local COOLDOWNS, COOL_ROW = 6, 24       -- the cooldowns listed, at most; a row
 local CROSS, FAINT = 16, 0.45           -- Unlearn's cross, and its alpha at rest
 local CARDS = 5                         -- two primaries and three secondaries
 local NONE = "Interface\\Icons\\INV_Scroll_04"
@@ -214,7 +220,11 @@ local function Card(body, pillar)
     c.unlearn = Cross(c)
     c.spells = {}
     if pillar then
-        c.icon:SetPoint("TOP", 0, -6)
+        -- its craft engraved behind (professions\<skill line>), none unlearned
+        c.art = c:CreateTexture(nil, "BACKGROUND")
+        c.art:SetAllPoints()
+        c.art:SetTexCoord(0, 1, 0, ART_V)
+        c.icon:SetPoint("TOP", 0, -14)
         c.name:SetPoint("TOP", c.icon, "BOTTOM", 0, -8)
         c.bar:SetPoint("TOP", c.name, "BOTTOM", 0, -6)
         c.none:SetPoint("TOP", c.name, "BOTTOM", 0, -8)
@@ -259,6 +269,10 @@ end
 local function Fill(c, prof)
     c.prof = prof
     local learned = prof.name ~= nil
+    if c.art then
+        c.art:SetShown(learned and prof.skillLine ~= nil)
+        if learned and prof.skillLine then c.art:SetTexture(ns.media .. "professions\\" .. prof.skillLine) end
+    end
     c.icon:SetTexture(learned and prof.icon or NONE)
     c.icon:SetDesaturated(not learned)
     c.name:SetText(learned and prof.name or "Primary profession")
@@ -354,6 +368,101 @@ local function Follow()
     end
 end
 
+-- ------------------------------------------------------------- Cooldowns
+-- The realm's characters' cooldown crafts (ns.alts.Cooldowns): ready
+-- first, then the soonest; COOLDOWNS at most, the rest in the heading's
+-- tooltip. A row: its icon, its name, whose, and the time left.
+local function CoolRow(parent)
+    local r = CreateFrame("Button", nil, parent)
+    r:SetHeight(COOL_ROW)
+    r.icon = ns.window.Ring(r, 18)
+    r.icon:SetPoint("LEFT", 10, 0)
+    r.name = ns.Text(r, 12)
+    r.name:SetPoint("LEFT", r.icon, "RIGHT", 10, 0)
+    r.left = ns.Text(r, 12)
+    r.left:SetPoint("RIGHT", -10, 0)
+    r.who = ns.Text(r, 11)
+    r.who:SetPoint("RIGHT", -96, 0)
+    local glow = r:CreateTexture(nil, "HIGHLIGHT")
+    glow:SetAllPoints()
+    glow:SetColorTexture(1, 1, 1, 0.05)
+    r:SetScript("OnEnter", function(self)
+        local c = self.cooldown
+        if not c then return end
+        W.Beside(self)
+        if GameTooltip.SetSpellByID and c.id then
+            GameTooltip:SetSpellByID(c.id)
+        else
+            GameTooltip:SetText(c.name or "?")
+        end
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddDoubleLine(c.who, (ns.alts.Left(c.ready)), 1, 1, 1, 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return r
+end
+
+local function ClassColor(class)
+    local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+    return c and { c.r, c.g, c.b } or ns.colors.text
+end
+
+local function Cooldowns(body)
+    local f = CreateFrame("Frame", nil, body)
+    f.rows = {}
+    for i = 1, COOLDOWNS do
+        local r = CoolRow(f)
+        r:SetPoint("TOPLEFT", 0, -(i - 1) * COOL_ROW)
+        r:SetPoint("TOPRIGHT", 0, -(i - 1) * COOL_ROW)
+        f.rows[i] = r
+    end
+    f.none = ns.Text(f, 11)
+    f.none:SetPoint("TOPLEFT", 10, -4)
+    f.none:SetPoint("TOPRIGHT", -10, -4)
+    f.none:SetJustifyH("LEFT")
+    f.none:SetTextColor(unpack(ns.colors.dim))
+    f.none:SetText("Open a profession with a cooldown (Transmute, Mooncloth...) to track it here.")
+    -- the height it takes
+    function f.Refresh()
+        local list = ns.alts and ns.alts.Cooldowns and ns.alts.Cooldowns() or {}
+        f.list = list
+        for i, r in ipairs(f.rows) do
+            local c = list[i]
+            r.cooldown = c
+            r:SetShown(c ~= nil)
+            if c then
+                r.icon:SetTexture(c.icon or NONE)
+                r.name:SetText(c.name or "?")
+                r.who:SetText(c.who)
+                r.who:SetTextColor(unpack(ClassColor(c.class)))
+                local left, ready = ns.alts.Left(c.ready)
+                r.left:SetText(left)
+                r.left:SetTextColor(unpack(ready and { 0.25, 0.85, 0.35 } or ns.colors.text))
+            end
+        end
+        f.none:SetShown(#list == 0)
+        f:SetHeight(#list == 0 and 20 or math.min(#list, COOLDOWNS) * COOL_ROW)
+        return f:GetHeight()
+    end
+    -- the heading's tooltip: the rest
+    function f.Tip(owner)
+        W.Beside(owner)
+        GameTooltip:SetText("Cooldowns", GOLD[1], GOLD[2], GOLD[3])
+        GameTooltip:AddLine("Your characters' cooldown crafts on this realm, as each last saw them.",
+            1, 1, 1, true)
+        local list = f.list or {}
+        for i = COOLDOWNS + 1, #list do
+            local c = list[i]
+            local cc = ClassColor(c.class)
+            GameTooltip:AddDoubleLine(format("%s  |cff%02x%02x%02x%s|r", c.name or "?", cc[1] * 255, cc[2] * 255,
+                cc[3] * 255, c.who), (ns.alts.Left(c.ready)), 1, 1, 1, 1, 1, 1)
+        end
+        GameTooltip:Show()
+    end
+    return f
+end
+
 -- -------------------------------------------------------------- Overview
 overview = { key = "overview", label = "Overview", glyph = "profession", order = 0, frame = "ProfessionsFrame" }
 overview.cards = {}
@@ -367,12 +476,16 @@ function overview.Build(body)
         primary = ns.window.Ornament(body, "Primary professions"),
         secondary = ns.window.Ornament(body, "Secondary professions"),
         camp = ns.window.Ornament(body, "Camping"),
+        cooldowns = ns.window.Ornament(body, "Cooldowns"),
     }
+    overview.cooldowns = Cooldowns(body)
+    local head = overview.heads.cooldowns
+    head:EnableMouse(true)
+    head:SetScript("OnEnter", function(self) overview.cooldowns.Tip(self) end)
+    head:SetScript("OnLeave", function() GameTooltip:Hide() end)
     overview.camp = W.Camp(body)
     overview.camp.Changed = function() overview.Refresh() end
     overview.banner = W.Banner(body)
-    overview.heads.alts = ns.window.Ornament(body, "Alts")
-    overview.alts = W.AltRows(body)
     -- what it takes is measured as it is laid out (Refresh); until then, the cards
     overview.height = PILLAR + (CARDS - 2) * (LINE + GAP)
 end
@@ -393,15 +506,6 @@ function overview.Refresh()
     local secondaries = learned[3] ~= nil
     overview.banner.Refresh()
     Put(overview.banner, W.BANNER_H)
-    -- the alts, under a heading of their own; none: neither
-    local alts = overview.alts
-    local tall = alts.Refresh()
-    overview.heads.alts:SetShown(tall > 0)
-    alts:SetShown(tall > 0)
-    if tall > 0 then
-        Head(overview.heads.alts)
-        Put(alts, tall)
-    end
     -- the primaries side by side (W.Learned has both, learned or not), a
     -- hair down between them
     Head(overview.heads.primary)
@@ -430,6 +534,9 @@ function overview.Refresh()
             Put(c, LINE + GAP)
         end
     end
+    -- the cooldowns, the realm's characters'
+    Head(overview.heads.cooldowns)
+    Put(overview.cooldowns, overview.cooldowns.Refresh() + GAP)
     Head(overview.heads.camp)
     local camp = overview.camp
     camp:ClearAllPoints()
@@ -502,7 +609,8 @@ end
 local function Start()
     if not ns.db.professions or not SpellbookMicroButton or not C_TradeSkillUI or not GetProfessions then return end
     W.Build()
-    -- the camp's timers, each second while the Overview shows (hooked
+    -- the camp's timers, each second while the Overview shows, and the
+    -- cooldowns' each half minute (hooked
     -- once built: the shell sets the window's own OnUpdate as it builds)
     local second
     W.window:HookScript("OnUpdate", function()
@@ -511,6 +619,7 @@ local function Start()
         if now ~= second then
             second = now
             overview.camp.Tick()
+            if now % 30 == 0 then overview.cooldowns.Refresh() end
         end
     end)
     layer = W.Layer("MedalluinProfessionsCasts")

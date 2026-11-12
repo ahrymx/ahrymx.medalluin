@@ -32,6 +32,7 @@ local GOLD_D = { 0.541, 0.439, 0.204 }
 local ICON, ROW = 28, 40                -- a drawer row's icon, and the row
 local BUFF_W, BUFF, OBJ, OBJ_W, STRIP = 96, 24, 28, 42, 40     -- a buff's room and icon; an object's; a row
 local FROM = 3 * BUFF_W + 16            -- the objects' left: past the buffs and their hair
+local ART, ART_V = 132, 152 / 256       -- the engraved camp's height; its part of the texture
 
 -- by the profession's skill line, in the cards' order: each line's tiers
 -- { object, skill, what it adds }, and the buff tier 1 gives
@@ -218,8 +219,20 @@ function W.Camp(body)
     local c = CreateFrame("Frame", nil, body)
     c.slots, c.tiles = {}, {}
     local width = ns.window.width
+    -- the engraved camp behind, the buffs and objects centred on it (row)
+    c.art = c:CreateTexture(nil, "BACKGROUND")
+    c.art:SetTexture(ns.media .. "professions\\camp")
+    c.art:SetTexCoord(0, 1, 0, ART_V)
+    c.art:SetPoint("TOPLEFT")
+    c.art:SetPoint("TOPRIGHT")
+    c.art:SetHeight(ART)
+    local row = CreateFrame("Frame", nil, c)
+    row:SetPoint("TOPLEFT")
+    row:SetPoint("TOPRIGHT")
+    row:SetHeight(1)
+    c.row = row
     for i, spec in ipairs(SLOTS) do
-        local s = CreateFrame("Frame", nil, c)
+        local s = CreateFrame("Frame", nil, row)
         s.spec = spec
         s:SetSize(BUFF_W, STRIP)
         s:SetPoint("TOPLEFT", (i - 1) * BUFF_W, 0)
@@ -249,7 +262,7 @@ function W.Camp(body)
         c.slots[i] = s
     end
 
-    c.split = ns.window.Hair(c, true)
+    c.split = ns.window.Hair(row, true)
     c.split:SetPoint("TOPLEFT", FROM - 8, -4)
     c.split:SetHeight(STRIP - 8)
 
@@ -296,7 +309,7 @@ function W.Camp(body)
     function c.Tile(i)
         local t = c.tiles[i]
         if t then return t end
-        t = CreateFrame("Button", nil, c)
+        t = CreateFrame("Button", nil, row)
         t:SetSize(OBJ_W, STRIP)
         t.icon = ns.window.Ring(t, OBJ)
         t.icon:SetPoint("CENTER", 0, 2)
@@ -387,14 +400,19 @@ function W.Camp(body)
             if c.open == line then opened = t end
         end
         local rows = math.max(1, math.ceil(#lines / across))
-        local height = rows * STRIP
+        local tall = rows * STRIP
+        local top = math.max(0, math.floor((ART - tall) / 2))
+        row:SetPoint("TOPLEFT", 0, -top)
+        row:SetPoint("TOPRIGHT", 0, -top)
+        row:SetHeight(tall)
+        local height = math.max(ART, tall)
         for i = #lines + 1, #c.tiles do c.tiles[i]:Hide() end
         -- the drawer under its tile, or shut when its line has gone
         drawer:SetShown(opened ~= nil)
         if opened then
             local line, prof = opened.line, opened.prof
             drawer:ClearAllPoints()
-            drawer:SetPoint("TOPLEFT", c, "TOPLEFT", 0, -(height + 2))
+            drawer:SetPoint("TOPLEFT", row, "BOTTOMLEFT", 0, -2)
             for i, r in ipairs(drawer.rows) do
                 local t = line.tiers[i]
                 r:SetShown(t ~= nil)
@@ -413,7 +431,7 @@ function W.Camp(body)
                 end
             end
             drawer:SetHeight(#line.tiers * ROW + 2)
-            height = height + 2 + #line.tiers * ROW + 2
+            height = math.max(height, top + tall + 2 + #line.tiers * ROW + 2)
         else
             c.open = nil
         end

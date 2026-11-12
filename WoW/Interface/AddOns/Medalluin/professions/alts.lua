@@ -1,24 +1,24 @@
 -- The Overview's head (professions/window.lua puts it over the cards): the
--- character's banner, and under it a slim row for each of the realm's
--- other characters, its alts, with its class and its primary professions.
+-- character's banner, its Alts button at its left (the realm's other
+-- characters, counted; none: no button).
 --
---                               Ahrymx                       Level 60
+--   [@ Alts 3]                  Ahrymx                       Level 60
 --                       Human Warrior  ·  <Guild>
 --   ============================(portrait)===========================
---   ----------------------------- Alts -----------------------------
---   [class] Medalluin    Priest            [icon] Tailoring [icon] Enchanting
---   .................................................................
---   [class] Barkhide     Druid             [icon] Herbalism [icon] Alchemy
 --
 -- The alts are what each character recorded of itself when it last
 -- played (MedalluinDB.roster[realm][name]: class, level, primaries), so a
--- character appears once it has logged in with Medalluin; the realm's
--- most recently played first, MOST at most. An alt's row opens its window
--- (detached: MedalluinDB.altPlace), and the banner the playing character's.
+-- character appears once it has logged in with Medalluin. The Alts button
+-- opens the characters' window on its Characters tab, the banner on the
+-- playing character's Professions (detached: MedalluinDB.altPlace).
 --
 -- The window, a page a tab, the character in each page's band ("Level 60
 -- Priest · last played 3 days ago"), what it recorded of itself
 -- (professions/altdata.lua):
+--   Characters   every character on the realm, the playing one first, then
+--                the most recently played: its class, level, primaries,
+--                when last played and its soonest cooldown; the one shown
+--                marked; a click shows it, on its Professions
 --   Professions  a bar a profession, then every recipe it knows, searched
 --                by name (its output's quality colour; its tooltip)
 --   Items        its bank and bags: a filter (the bags window's groups,
@@ -31,10 +31,9 @@ local _, ns = ...
 local W = ns.professions
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
-local STRIP, PORTRAIT, ALT, CLASS, PROF = 64, 40, 24, 18, 16
+local STRIP, PORTRAIT = 64, 40
 -- the header: its strip, and the portrait hanging half below its rule
 local BANNER = STRIP + PORTRAIT / 2 + 2
-local MOST = 8                          -- the alts listed, at most
 local CIRCLES = "Interface\\TargetingFrame\\UI-Classes-Circles"
 W.BANNER_H = BANNER
 
@@ -680,6 +679,10 @@ function notes.Draw()
     notes.note:SetText("Saved as you type")
 end
 
+-- the Characters page (drawn below)
+local roster = { key = "roster", label = "Characters", glyph = "social", order = 0, flex = true,
+    bandUsed = true, height = 120, used = {}, parts = {} }
+
 local function Build(page)
     return function(body, _, band)
         Band(page, band)
@@ -750,7 +753,17 @@ local function Build(page)
             return
         end
         local strip
-        if page == items then
+        if page == roster then
+            strip = ns.window.Strip(body, TOOLBAR, 0)
+            local title = ns.Text(strip, 13)
+            title:SetPoint("LEFT", 12, 0)
+            title:SetTextColor(unpack(GOLD))
+            title:SetText("Characters")
+            page.realm = ns.Text(strip, 10)
+            page.realm:SetPoint("RIGHT", -12, 0)
+            page.realm:SetTextColor(unpack(ns.colors.dim))
+            page.realm:SetText("Realm: " .. Realm())
+        elseif page == items then
             -- the filters across the first strip; the search and the view
             -- in the second
             local first = ns.window.Strip(body, TOOLBAR, 0)
@@ -818,7 +831,117 @@ local function Build(page)
     end
 end
 
-for _, page in ipairs({ prof, items, notes }) do
+-- ------------------------------------------------------- characters page
+local CHAR_ROW, RING = 42, 24
+
+local function CharRow(page)
+    return Pool(page, "char", function()
+        local r = CreateFrame("Button", nil, page.child)
+        r:SetHeight(CHAR_ROW - 2)
+        r.mark = r:CreateTexture(nil, "BACKGROUND")
+        r.mark:SetAllPoints()
+        r.mark:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.3)
+        r.edge = r:CreateTexture(nil, "BORDER")
+        r.edge:SetPoint("TOPLEFT")
+        r.edge:SetPoint("BOTTOMLEFT")
+        r.edge:SetWidth(3)
+        r.edge:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+        r.line = r:CreateTexture(nil, "BORDER")
+        r.line:SetPoint("BOTTOMLEFT", 10, -1)
+        r.line:SetPoint("BOTTOMRIGHT", -10, -1)
+        r.line:SetHeight(1)
+        r.line:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.35)
+        local glow = r:CreateTexture(nil, "HIGHLIGHT")
+        glow:SetAllPoints()
+        glow:SetColorTexture(1, 1, 1, 0.06)
+        r.class = r:CreateTexture(nil, "ARTWORK")
+        r.class:SetSize(RING, RING)
+        r.class:SetPoint("LEFT", 12, 0)
+        r.name = ns.Text(r, 13)
+        r.name:SetPoint("TOPLEFT", 12 + RING + 10, -5)
+        r.what = ns.Text(r, 10)
+        r.what:SetPoint("BOTTOMLEFT", 12 + RING + 10, 5)
+        r.what:SetTextColor(unpack(ns.colors.dim))
+        r.profs = ns.Text(r, 11)
+        r.profs:SetPoint("TOPLEFT", 170, -5)
+        r.seen = ns.Text(r, 10)
+        r.seen:SetPoint("BOTTOMLEFT", 170, 5)
+        r.seen:SetTextColor(unpack(ns.colors.dim))
+        r.cd = ns.Text(r, 10)
+        r.cd:SetPoint("RIGHT", -12, 0)
+        r.cd:SetTextColor(unpack(GOLD))
+        r:SetScript("OnClick", function(self) if self.alt then W.ShowAlt(self.alt, prof) end end)
+        r:SetScript("OnEnter", function(self)
+            local alt = self.alt
+            if not alt then return end
+            ns.window.Outside(self)
+            GameTooltip:SetText(alt.name, unpack(Color(alt.e.class)))
+            for _, p in ipairs(alt.e.primaries or {}) do
+                GameTooltip:AddDoubleLine(p.name or "?", format("%d / %d", p.rank or 0, p.max or 0), 1, 1, 1, 1, 1, 1)
+            end
+            for _, c in ipairs(self.cooldowns or {}) do
+                local left, ready = ns.alts.Left(c.ready)
+                GameTooltip:AddDoubleLine(c.name or "?", left, 1, 1, 1, unpack(ready and { 0.25, 0.85, 0.35 } or GOLD))
+            end
+            GameTooltip:AddLine("Click: its professions, items and notes.", unpack(ns.colors.dim))
+            GameTooltip:Show()
+        end)
+        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return r
+    end)
+end
+
+-- the playing character first, then the others, most recently played first
+local function Characters()
+    local list = {}
+    local me = UnitName("player")
+    if me and not ns.IsSecret(me) then
+        Record()
+        table.insert(list, { name = me, e = Roster()[me] or {}, me = true })
+    end
+    for _, a in ipairs(W.Alts()) do table.insert(list, a) end
+    return list
+end
+
+function roster.Draw()
+    local page = roster
+    page.used = {}
+    local width = Width(page)
+    local list = Characters()
+    local cooldowns = {}
+    for _, c in ipairs(ns.alts.Cooldowns()) do
+        cooldowns[c.who] = cooldowns[c.who] or {}
+        table.insert(cooldowns[c.who], c)
+    end
+    local y = 2
+    for _, alt in ipairs(list) do
+        local r = CharRow(page)
+        r.alt, r.cooldowns = alt, cooldowns[alt.name]
+        r:ClearAllPoints()
+        r:SetPoint("TOPLEFT", 0, -y)
+        r:SetWidth(width)
+        ClassIcon(r.class, alt.e.class)
+        r.name:SetText(alt.name)
+        r.name:SetTextColor(unpack(Color(alt.e.class)))
+        r.what:SetText(format("Level %d %s", alt.e.level or 0, alt.e.className or ""))
+        local names = {}
+        for _, p in ipairs(alt.e.primaries or {}) do table.insert(names, p.name or "?") end
+        r.profs:SetText(#names > 0 and table.concat(names, "  ") or "No professions")
+        r.profs:SetTextColor(unpack(#names > 0 and ns.colors.text or ns.colors.dim))
+        r.seen:SetText(alt.me and "playing now" or Ago(alt.e.seen) or "")
+        local c = r.cooldowns and r.cooldowns[1]
+        r.cd:SetText(c and ((c.name or "?") .. "  " .. ns.alts.Left(c.ready)) or "")
+        local on = shown and shown.name == alt.name
+        r.mark:SetShown(on)
+        r.edge:SetShown(on)
+        y = y + CHAR_ROW
+    end
+    Spare(page)
+    Fit(page, y + 4)
+    page.note:SetText(format(#list == 1 and "%d character" or "%d characters", #list))
+end
+
+for _, page in ipairs({ roster, prof, items, notes }) do
     page.Available = function() return true end
     page.Build = Build(page)
     page.Refresh = function()
@@ -867,6 +990,25 @@ function W.OpenAlt(alt)
     if p and p.Refresh then p.Refresh() end
 end
 
+-- A character's window, open on it (never closed by it), on page (or the
+-- page it is on): the Characters tab's click.
+function W.ShowAlt(alt, page)
+    local w = Window()
+    shown = alt
+    w.Select(page or w.Current() or prof)
+    w.SetShown(true)
+    local p = w.Current()
+    if p and p.Refresh then p.Refresh() end
+end
+
+-- the Characters tab, the playing character shown (the banner's Alts)
+function W.OpenRoster()
+    local name = UnitName("player")
+    if not name or ns.IsSecret(name) then return end
+    Record()
+    W.ShowAlt({ name = name, e = Roster()[name] or {}, me = true }, roster)
+end
+
 -- the playing character's own window (the banner's click)
 function W.OpenMine()
     local name = UnitName("player")
@@ -913,6 +1055,22 @@ function W.Banner(body)
     b.what = ns.Text(b, 12)
     b.what:SetPoint("TOP", b.name, "BOTTOM", 0, -6)
     b.what:SetTextColor(unpack(ns.colors.dim))
+    -- the alts: counted, named in its tooltip; a click, the Characters tab
+    b.alts = ns.window.Button(b, 74, function() W.OpenRoster() end, function()
+        local names = {}
+        for _, a in ipairs(W.Alts()) do table.insert(names, a.name) end
+        return "Your alts: " .. table.concat(names, ", ") .. ".\nClick: every character, its professions, "
+            .. "items and notes."
+    end)
+    b.alts:SetHeight(22)
+    b.alts:SetPoint("TOPLEFT", 8, -6)
+    b.alts.glyph = b.alts:CreateTexture(nil, "ARTWORK")
+    b.alts.glyph:SetSize(14, 14)
+    b.alts.glyph:SetPoint("LEFT", 8, 0)
+    b.alts.glyph:SetTexture(ns.media .. "strips\\social")
+    b.alts.label:ClearAllPoints()
+    b.alts.label:SetPoint("LEFT", b.alts.glyph, "RIGHT", 6, 0)
+    b.alts.label:SetTextColor(unpack(GOLD))
     -- a click opens the playing character's own window (its notes, items)
     b:EnableMouse(true)
     b:SetScript("OnMouseUp", function(_, mouse) if mouse == "LeftButton" then W.OpenMine() end end)
@@ -933,102 +1091,9 @@ function W.Banner(body)
         local guild = GetGuildInfo and GetGuildInfo("player")
         local what = (race and (race .. " ") or "") .. (className or "")
         b.what:SetText(guild and guild ~= "" and format("%s  ·  <%s>", what, guild) or what)
+        local n = #W.Alts()
+        b.alts:SetShown(n > 0)
+        b.alts.label:SetText(format("Alts  %d", n))
     end
     return b
-end
-
--- ------------------------------------------------------------ the alts
-function W.AltRows(body)
-    local a = CreateFrame("Frame", nil, body)
-    a.rows = {}
-    local function Row(i)
-        local r = a.rows[i]
-        if r then return r end
-        r = CreateFrame("Button", nil, a)
-        r:SetHeight(ALT)
-        r:SetPoint("TOPLEFT", 0, -(i - 1) * (ALT + 2))
-        r:SetPoint("TOPRIGHT", 0, -(i - 1) * (ALT + 2))
-        local glow = r:CreateTexture(nil, "HIGHLIGHT")
-        glow:SetAllPoints()
-        glow:SetColorTexture(1, 1, 1, 0.06)
-        if i > 1 then
-            r.hair = ns.window.Hair(r, false, 0.6)
-            r.hair:SetPoint("TOPLEFT", 20, 1)
-            r.hair:SetPoint("TOPRIGHT", -20, 1)
-        end
-        r.class = r:CreateTexture(nil, "ARTWORK")
-        r.class:SetSize(CLASS, CLASS)
-        r.class:SetPoint("LEFT", 4, 0)
-        r.name = ns.Text(r, 12)
-        r.name:SetPoint("LEFT", r.class, "RIGHT", 6, 0)
-        r.what = ns.Text(r, 11)
-        r.what:SetPoint("LEFT", 140, 0)
-        r.what:SetTextColor(unpack(ns.colors.dim))
-        r.profs = {}
-        for k = 2, 1, -1 do
-            local p = {}
-            p.label = ns.Text(r, 11)
-            p.icon = r:CreateTexture(nil, "ARTWORK")
-            p.icon:SetSize(PROF, PROF)
-            p.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            p.icon:SetPoint("RIGHT", p.label, "LEFT", -4, 0)
-            r.profs[k] = p
-        end
-        r.profs[2].label:SetPoint("RIGHT", -6, 0)
-        r.profs[1].label:SetPoint("RIGHT", r.profs[2].icon, "LEFT", -10, 0)
-        r:SetScript("OnClick", function(self) if self.alt then W.OpenAlt(self.alt) end end)
-        r:SetScript("OnEnter", function(self)
-            local alt = self.alt
-            if not alt then return end
-            W.Beside(self)
-            GameTooltip:SetText(alt.name, unpack(Color(alt.e.class)))
-            GameTooltip:AddLine(format("Level %d %s", alt.e.level or 0, alt.e.className or ""), 1, 1, 1)
-            for _, p in ipairs(alt.e.primaries or {}) do
-                GameTooltip:AddDoubleLine(p.name or "?", format("%d / %d", p.rank or 0, p.max or 0), 1, 1, 1, 1, 1, 1)
-            end
-            GameTooltip:AddLine("Click: its window.", unpack(ns.colors.dim))
-            GameTooltip:Show()
-        end)
-        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        a.rows[i] = r
-        return r
-    end
-    -- the rows; the height they take (0: no alts)
-    function a.Refresh()
-        local alts = W.Alts()
-        local n = math.min(#alts, MOST)
-        for i = 1, n do
-            local r, alt = Row(i), alts[i]
-            r.alt = alt
-            ClassIcon(r.class, alt.e.class)
-            r.name:SetText(alt.name)
-            r.name:SetTextColor(unpack(Color(alt.e.class)))
-            r.what:SetText(alt.e.className or "")
-            local primaries = alt.e.primaries or {}
-            -- the first primary leftmost: with one, it takes the right slot
-            for k, p in ipairs(r.profs) do
-                local one = #primaries == 2 and primaries[k] or (k == 2 and primaries[1]) or nil
-                p.icon:SetShown(one ~= nil)
-                p.label:SetShown(one ~= nil)
-                if one then
-                    p.icon:SetTexture(one.icon)
-                    p.label:SetText(one.name or "")
-                end
-            end
-            if #primaries == 0 then
-                r.profs[2].label:SetShown(true)
-                r.profs[2].label:SetText("No professions")
-                r.profs[2].label:SetTextColor(unpack(ns.colors.dim))
-            else
-                r.profs[2].label:SetTextColor(unpack(ns.colors.text))
-            end
-            r.profs[1].label:SetTextColor(unpack(ns.colors.text))
-            r:Show()
-        end
-        for i = n + 1, #a.rows do a.rows[i]:Hide() end
-        local height = n > 0 and n * (ALT + 2) - 2 or 0
-        a:SetHeight(math.max(1, height))
-        return height
-    end
-    return a
 end

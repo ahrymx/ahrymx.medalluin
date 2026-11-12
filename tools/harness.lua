@@ -15496,33 +15496,49 @@ if profPass then
         frame()
         click(pageOf("overview").tab)
         frame()
+        -- the banner's Alts: counted, named in its tooltip; none, no button
         local function alts(tag)
-            local o = {}
-            for _, r in ipairs(ov.alts.rows) do
-                if r.shown then
-                    local _, _, _, _, y = r:GetPoint()
-                    local p = {}
-                    for k, q in ipairs(r.profs) do
-                        if q.label.shown then table.insert(p, k .. ":" .. q.label.text) end
-                    end
-                    table.insert(o, string.format("%s %s [%s]@%d", r.name.text, r.what.text, table.concat(p, " "), -y))
-                end
-            end
-            local _, _, _, _, hy = ov.heads.alts:GetPoint()
-            print(tag, "head=" .. (ov.heads.alts.shown and tostring(-hy) or "hidden"), table.concat(o, " | "))
+            local a = ov.banner.alts
+            local _, _, _, x, y = a:GetPoint(1)
+            print(tag, "button=" .. tostring(a.shown), a.label.text, "@" .. x .. "," .. y,
+                "glyph=" .. tostring(a.glyph.texture))
         end
         alts("prof.alts")
-        beside("prof.tip alt", ov.alts.rows[1])
+        beside("prof.tip alts", ov.banner.alts)
         overview("prof.alts")
         local aw = function()
             local f = _G.MedalluinAlt
-            return f and f.shown and W.altWindow.Current().who.text or "closed"
+            return f and f.shown and (W.altWindow.Current().key .. ":" .. W.altWindow.Current().who.text) or "closed"
         end
-        click(ov.alts.rows[1])
+        -- the Characters tab: every character, the playing one first; the
+        -- one shown marked; a click shows it on its Professions
+        local function chars(tag)
+            local R
+            for _, p in ipairs(W.altPages) do if p.key == "roster" then R = p end end
+            local o = {}
+            for _, r in ipairs(R.parts.char or {}) do
+                if r.shown then
+                    local _, _, _, _, y = r:GetPoint()
+                    table.insert(o, string.format("%s%s %s [%s] %s %s@%d", r.mark.shown and "*" or "", r.name.text,
+                        r.what.text, r.profs.text, r.seen.text, r.cd.text, -y))
+                end
+            end
+            print(tag, aw(), "order=" .. R.order, "note=" .. R.note.text, table.concat(o, " | "))
+            return R
+        end
+        local function row(R, name)
+            for _, r in ipairs(R.parts.char) do if r.shown and r.alt.name == name then return r end end
+        end
+        click(ov.banner.alts)
+        local R = chars("prof.alt roster")
+        beside("prof.tip char", row(R, "Barkhide"))
+        click(row(R, "Medalluin"))
         print("prof.alt open", aw())
-        click(ov.alts.rows[2])
+        click(ov.banner.alts)
+        chars("prof.alt roster again")
+        click(row(R, "Barkhide"))
         print("prof.alt other", aw())
-        click(ov.alts.rows[2])
+        W.OpenAlt({ name = "Barkhide", e = roster.Barkhide })
         print("prof.alt again", aw())
         -- an alt's pages, from what it recorded (professions/altdata.lua)
         do
@@ -15569,9 +15585,9 @@ if profPass then
                 end
                 print(tag, p.who.text, p.what.text, table.concat(out, " ~ "), "note=" .. tostring(p.note.text))
             end
-            click(ov.alts.rows[1])
-            frame()
             local P, I, N = page("professions"), page("items"), page("notes")
+            W.ShowAlt({ name = "Medalluin", e = roster.Medalluin }, P)
+            frame()
             P.Refresh()
             dump("prof.alt professions", P)
             -- the skills two a row over the Recipes strip; the strip edge to edge
@@ -15667,7 +15683,67 @@ if profPass then
             N.box:ClearFocus()
             caret("prof.alt caret left")
             AW.Select(P)
-            click(ov.alts.rows[1])
+            -- the cooldowns: recorded as a profession is read, kept fresh
+            -- from their spells; ready first, then the soonest
+            ;(function()
+            local T = C_TradeSkillUI
+            local was = { T.GetAllRecipeIDs, T.GetRecipeInfo, T.GetBaseProfessionInfo, T.GetRecipeCooldown,
+                C_Spell and C_Spell.GetSpellCooldown, C_Timer and C_Timer.After, GetTime, T.GetRecipeSchematic }
+            T.GetRecipeSchematic = function() return nil end
+            T.GetAllRecipeIDs = function() return { 501, 502 } end
+            T.GetRecipeInfo = function(id)
+                return { learned = true, name = id == 501 and "Transmute: Arcanite" or "Iron Bar", icon = id }
+            end
+            T.GetBaseProfessionInfo = function() return { professionID = 171, professionName = "Alchemy" } end
+            T.GetRecipeCooldown = function(id) return id == 501 and 7200 or nil end
+            C_Timer = C_Timer or {}
+            C_Timer.After = function(_, fn) fn() end
+            fire("TRADE_SKILL_LIST_UPDATE")
+            local mine = ns.alts.Data(UnitName("player")).cooldowns
+            print("prof.cool recorded", mine[501] and (mine[501].name .. " ready+" .. (mine[501].ready - time())),
+                "iron=" .. tostring(mine[502]))
+            C_Spell = C_Spell or {}
+            GetTime = function() return 500 end
+            C_Spell.GetSpellCooldown = function(id) return id == 501 and { startTime = 400, duration = 3700 } or nil end
+            fire("SPELL_UPDATE_COOLDOWN")
+            print("prof.cool refreshed", mine[501].ready - time())
+            ns.alts.Data("Medalluin").cooldowns = { [601] = { name = "Mooncloth", icon = 61, ready = time() - 5 } }
+            ns.alts.Data("Barkhide").cooldowns = { [501] = { name = "Transmute: Arcanite", icon = 62,
+                ready = time() + 86400 + 6 * 3600 } }
+            for i = 1, 6 do
+                ns.alts.Data("Newbie").cooldowns = ns.alts.Data("Newbie").cooldowns or {}
+                ns.alts.Data("Newbie").cooldowns[700 + i] = { name = "Spark " .. i, icon = 7, ready = time() + i * 600 }
+            end
+            ov.Refresh()
+            local cd = ov.cooldowns
+            local o = {}
+            for _, r in ipairs(cd.rows) do
+                if r.shown then table.insert(o, r.name.text .. " " .. r.who.text .. " " .. r.left.text) end
+            end
+            local _, _, _, _, hy = ov.heads.cooldowns:GetPoint()
+            local _, _, _, _, cy = ov.heads.camp:GetPoint()
+            print("prof.cool rows", #ns.alts.Cooldowns(), "head@" .. -hy, "camp@" .. -cy, "none=" .. tostring(cd.none.shown),
+                table.concat(o, " | "))
+            local rest, double = {}, GameTooltip.AddDoubleLine
+            GameTooltip.AddDoubleLine = function(_, l, r) table.insert(rest, l .. " = " .. r) end
+            ov.heads.cooldowns.scripts.OnEnter(ov.heads.cooldowns)
+            GameTooltip.AddDoubleLine = double
+            print("prof.cool rest", table.concat(rest, " | "))
+            GameTooltip:Hide()
+            beside("prof.tip cooldown", cd.rows[1])
+            local R = chars("prof.cool roster")
+            R.Refresh()
+            chars("prof.cool roster")
+            ns.alts.Data("Medalluin").cooldowns, ns.alts.Data("Barkhide").cooldowns = nil, nil
+            ns.alts.Data("Newbie").cooldowns, ns.alts.Data(UnitName("player")).cooldowns = nil, nil
+            ov.Refresh()
+            print("prof.cool none", "rows=" .. #ns.alts.Cooldowns(), "none=" .. tostring(cd.none.shown),
+                cd.none.text, "h=" .. cd:GetHeight())
+            T.GetAllRecipeIDs, T.GetRecipeInfo, T.GetBaseProfessionInfo, T.GetRecipeCooldown = was[1], was[2], was[3],
+                was[4]
+            C_Spell.GetSpellCooldown, C_Timer.After, GetTime, T.GetRecipeSchematic = was[5], was[6], was[7], was[8]
+            end)()
+            W.OpenAlt({ name = "Medalluin", e = roster.Medalluin })
             print("prof.alt closed", aw())
             -- the banner: the playing character's own window
             ov.banner.scripts.OnMouseUp(ov.banner, "LeftButton")
@@ -15755,11 +15831,22 @@ if profPass then
     tabs("prof.first aid")
     cards("prof.card")
     -- Mining forgotten: its card says how to learn one, its tab goes
+    -- the pillars' engravings: the craft's, none on an unlearned pillar
+    local function art(tag)
+        local o = {}
+        for i = 1, 2 do
+            local a = ov.cards[i].art
+            table.insert(o, tostring(a.shown) .. ":" .. tostring(a.texture))
+        end
+        print(tag, table.concat(o, " | "), "camp=" .. tostring(ov.camp.art.texture) .. " h=" .. ov.camp.art:GetHeight())
+    end
+    art("prof.pillar art")
     P.learned[2] = nil
     fire("SKILL_LINES_CHANGED")
     frame()
     tabs("prof.no mining")
     cards("prof.card")
+    art("prof.pillar art unlearned")
     P.learned[2] = 2
     fire("SKILL_LINES_CHANGED")
     frame()
