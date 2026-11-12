@@ -15,41 +15,41 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 ## 📸 Showcase
 
 ### Console & Overhead
-![The Medallion console with its action bars, and the overhead's boss, pet, focus and target-of-target frames above](showcase/2026-11-11_23-38-02.png)
+![The Medallion console with its action bars, and the overhead's boss, pet, focus and target-of-target frames above](showcase/console-overhead.png)
 
 ### Settings
-![The Medalluin settings window on its Modules page: each part switched on or off](showcase/2026-11-11_23-49-52.png)
+![The Medalluin settings window on its Modules page: each part switched on or off](showcase/settings-modules.png)
 
 ### Side Panel
 | Zone | Loot |
 |:---:|:---:|
-| ![The side panel's Zone tab: the minimap beside the zone's quests, with zoom, tracking and world map buttons](showcase/2026-11-11_23-35-45.png) | ![The side panel's Loot tab: the group's loot with who won each roll](showcase/2026-11-11_23-36-20.png) |
+| ![The side panel's Zone tab: the minimap beside the zone's quests, with zoom, tracking and world map buttons](showcase/side-panel-zone.png) | ![The side panel's Loot tab: the group's loot with who won each roll](showcase/side-panel-loot.png) |
 
 ### Chat & Quests
 | Quest Tracker & Chat | Quest Log |
 |:---:|:---:|
-| ![The quest tracker's full view above the chat box, with a quest's tooltip](showcase/2026-11-11_23-37-02.png) | ![The quest log on the right strip, quests by zone with their XP, item and coin rewards](showcase/2026-11-11_23-38-51.png) |
+| ![The quest tracker's full view above the chat box, with a quest's tooltip](showcase/quest-tracker.png) | ![The quest log on the right strip, quests by zone with their XP, item and coin rewards](showcase/quest-log.png) |
 
-![The chat box with its tabs, above the left strip's portrait and micro menu](showcase/2026-11-11_23-36-37.png)
+![The chat box with its tabs, above the left strip's portrait and micro menu](showcase/chat.png)
 
 ### Character, Spells & Bags
 | Character | Bags |
 |:---:|:---:|
-| ![The character window: the model, gear slots with item levels, and stats](showcase/2026-11-11_23-40-47.png) | ![The bags window in groups, with locked items and the free slots](showcase/2026-11-11_23-40-16.png) |
+| ![The character window: the model, gear slots with item levels, and stats](showcase/character.png) | ![The bags window in groups, with locked items and the free slots](showcase/bags.png) |
 
 | Spellbook | Macros |
 |:---:|:---:|
-| ![The spellbook: spells by school, with ranks, costs and click-cast bindings](showcase/2026-11-11_23-39-07.png) | ![The macros page, with a macro's editor](showcase/2026-11-11_23-39-47.png) |
+| ![The spellbook: spells by school, with ranks, costs and click-cast bindings](showcase/spellbook.png) | ![The macros page, with a macro's editor](showcase/macros.png) |
 
 | Talents | Talent Plans |
 |:---:|:---:|
-| ![The talents window: a tree with the points available and the next talent in your plan](showcase/2026-11-11_23-48-58.png) | ![A talent plan: each talent's levels, goal and progress, the next checkpoint lit](showcase/2026-11-11_23-49-03.png) |
+| ![The talents window: a tree with the points available and the next talent in your plan](showcase/talents.png) | ![A talent plan: each talent's levels, goal and progress, the next checkpoint lit](showcase/talent-plans.png) |
 
 ### Game Menu
-![The game menu: the character, menu buttons, friends, guild and this session](showcase/2026-11-11_23-40-01.png)
+![The game menu: the character, menu buttons, friends, guild and this session](showcase/game-menu.png)
 
 ### Central Console
-![The console with its minimap bay](showcase/2026-11-02_07-53-41.png)
+![The console with its minimap bay](showcase/central-console.png)
 
 ---
 
