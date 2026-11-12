@@ -6001,7 +6001,8 @@ if sidePass then
             print("zone head " .. tag, tostring(list.all_[1].text), tostring(list.all_[2].text))
             for _, r in ipairs(list.all_) do
                 if r.kind == "Button" and r.shown then
-                    print("", string.format("%s%s|%s|%s%s%s h=%d", r.fold.text or "", r.line.objective and "  " or "",
+                    print("", string.format("%s%s%s|%s|%s%s%s h=%d", r.fold.text or "", r.line.objective and "  " or "",
+                        r.sword and r.sword.shown and "(sword)" or "",
                         tostring(r.text.text), tostring(r.count.text), r.eye.shown and " eye" or "",
                         r.tick.shown and " tick" or "", r.h))
                 end
@@ -6073,6 +6074,15 @@ if sidePass then
         fire("SUPER_TRACKING_CHANGED")
         modsDown.CTRL = nil
         washed("zone waypoint cleared")
+        -- a kill's line: a sword for "slain"; too long, the name's first word
+        -- an initial (a short one keeps its words)
+        row(2).scripts.OnClick(row(2), "LeftButton")
+        local fiend = log[5].objectives[1].text
+        log[5].objectives[1].text = "Dragonmaw Shadowcaster Infiltrator Commander slain: 4/15"
+        z.Refresh()
+        rows("long objective")
+        log[5].objectives[1].text = fiend
+        row(2).scripts.OnClick(row(2), "LeftButton")
         -- its item ends its open objectives, a secure button over the line;
         -- hidden in combat; the quest closed, the button away
         row(2).scripts.OnClick(row(2), "LeftButton")

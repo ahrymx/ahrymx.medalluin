@@ -12,7 +12,9 @@
 -- retail those the game marks on this map too. A row is the quest's title,
 -- its progress over all its objectives ("13/30", the counts read from
 -- them) and a tick once it is complete; an eye before the count while it
--- is tracked. The quest log's clicks (quests/log.lua), but for two: a
+-- is tracked. An objective's line is shortened to fit: a kill's "slain"
+-- becomes a sword before it, and a name too long gives its first word as
+-- an initial ("D. Reclaimer"). The quest log's clicks (quests/log.lua), but for two: a
 -- click opens its objectives under it or closes them, and shift-click its
 -- page (quests/page.lua). Ctrl-click sets the waypoint to it or clears it
 -- (quests/waypoint.lua: its lines washed blue, its distance after its
@@ -32,6 +34,7 @@ local _, ns = ...
 local PARTS = ns.media .. "strips\\"
 local ROW, LINE, HEAD, GAP = 18, 13, 22, 1
 local TICK = "Interface\\RaidFrame\\ReadyCheck-Ready"
+local SWORD = "Interface\\CURSOR\\Attack"    -- the game's attack cursor
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local DIM = { 0.70, 0.66, 0.55 }
@@ -88,6 +91,21 @@ end
 -- (an objective's count and words: quests/source.lua's Q.Count, Q.Words)
 local function Count(o) return ns.questSource.Count(o) end
 local function Words(o) return ns.questSource.Words(o) end
+
+-- An objective's words, shortened for its line: "... slain" (or killed)
+-- loses the word for a sword before the line; and when it is still too long
+-- for room, a name of two words or more gives its first as an initial
+-- ("Dragonmaw Reclaimer" -> "D. Reclaimer"). The words, and whether a sword.
+local function Short(text, room, fs)
+    local killed = text:match("^(.-)%s+[Ss]lain$") or text:match("^(.-)%s+[Kk]illed$")
+    if killed then text = killed end
+    fs:SetText(text)
+    if room > 0 and (fs:GetStringWidth() or 0) > room then
+        local initial, rest = text:match("^(%a)[%a'%-]*%s+(.+)$")
+        if initial then text = initial .. ". " .. rest end
+    end
+    return text, killed ~= nil
+end
 
 local function Progress(q)
     local have, need = 0, 0
@@ -215,6 +233,13 @@ local function Row()
     r.eye = r:CreateTexture(nil, "ARTWORK")
     r.eye:SetSize(14, 14)
     r.eye:SetTexture(PARTS .. "track")
+    -- a kill objective's sword, before the line's indent
+    r.sword = r:CreateTexture(nil, "ARTWORK")
+    r.sword:SetSize(12, 12)
+    r.sword:SetPoint("LEFT", 5, 0)
+    r.sword:SetTexture(SWORD)
+    r.sword:SetDesaturated(true)
+    r.sword:SetVertexColor(unpack(GOLD_D))
     r.icon = r:CreateTexture(nil, "ARTWORK")
     r.icon:SetSize(14, 14)
     r.icon:SetPoint("LEFT", 20, 0)
@@ -264,6 +289,7 @@ local function Fill(r, line, odd)
     r.text:ClearAllPoints()
     r.far = nil
     r.icon:SetShown(item and true or false)
+    r.sword:Hide()
     if item then
         local n = ItemCount(item)
         r:SetHeight(ROW)
@@ -290,10 +316,13 @@ local function Fill(r, line, odd)
         r.tick:Hide()
         r.text:SetPoint("LEFT", 20, 0)
         r.text:SetPoint("RIGHT", r.count, "LEFT", -6, 0)
-        r.text:SetText(Words(o))
-        r.text:SetTextColor(unpack(DIM))
         r.count:SetText(o.text:match("%d+%s*/%s*%d+") and (a .. "/" .. b) or "")
         r.count:SetTextColor(unpack(DIM))
+        local room = (list:GetWidth() or 0) - 20 - 6 - 3 - (r.count:GetStringWidth() or 0)
+        local words, kill = Short(Words(o), room, r.text)
+        r.text:SetText(words)
+        r.text:SetTextColor(unpack(DIM))
+        r.sword:SetShown(kill)
         r:EnableMouse(false)
         Wash(r, q)
     else
