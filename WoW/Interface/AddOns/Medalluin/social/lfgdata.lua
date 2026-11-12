@@ -16,10 +16,12 @@
 --             time; a result of one is a player, of more a group. It is
 --             restricted: the game runs it only straight from a click or
 --             a key, and refuses it otherwise (ADDON_ACTION_BLOCKED, the
---             call quietly dropped); a pick in a dropdown does not count.
---             Picks changed, refused, or asked for while one was out, the
---             list is stale (D.stale) and waits for a click (Browse's
---             Search).
+--             call quietly dropped). A pick in a dropdown searches straight
+--             from its click (2026-11-12; was held back for Search since
+--             2026-11-09, when one was refused); if the game refuses one,
+--             picks stop searching for the session. Picks changed then,
+--             refused, or asked for while one was out, the list is stale
+--             (D.stale) and waits for a click (Browse's Search).
 --   who       SendWho(text, origin, { classIDs, raceIDs, uiMapIDs }),
 --             SortWho(mode, ascending); the server answers 50 at most.
 --
@@ -177,13 +179,22 @@ end
 D.category = nil
 D.stale = false                 -- the list is not of what is asked for: a search waits for a click
 local askedAt                   -- when we last called Search (a refusal comes straight after)
--- the picks changed (from a dropdown, whose click the game does not count):
--- the list waits for Browse's Search
+local fromPick                  -- that call came from a dropdown's pick
+D.picksSearch = true            -- a pick searches; false once the game has refused one
+-- the picks changed and may not search: the list waits for Browse's Search
 function D.Stale()
     D.stale = true
     Changed()
 end
-function D.Search(cat, ids)
+-- the picks changed, from a dropdown's click: searched now, while the game takes it
+function D.Picked(cat, ids)
+    if not D.picksSearch then
+        D.Stale()
+        return
+    end
+    D.Search(cat, ids, true)
+end
+function D.Search(cat, ids, pick)
     if not D.Has() or not cat then return end
     if D.searching then
         -- its answer will be of something else: sent by the next click, not
@@ -198,7 +209,7 @@ function D.Search(cat, ids)
         for _, a in ipairs(D.Activities(cat)) do table.insert(ids, a.id) end
     end
     D.searching, D.stale = true, false
-    askedAt = GetTime()
+    askedAt, fromPick = GetTime(), pick and true or false
     if not pcall(L().Search, cat, 0, 0, nil, false, nil, ids) then D.searching, D.stale = false, true end
     Changed()
 end
@@ -557,6 +568,7 @@ end)
 -- come, so not searching; the list waits for Browse's Search
 ns.On("ADDON_ACTION_BLOCKED", function(_, addon)
     if addon == ADDON and D.searching and askedAt == GetTime() then
+        if fromPick then D.picksSearch = false end
         D.searching, D.stale = false, true
         Changed()
     end

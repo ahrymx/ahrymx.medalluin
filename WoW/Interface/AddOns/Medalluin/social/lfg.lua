@@ -432,12 +432,12 @@ local function Filtered(cat)
     return browse.activities[cat]
 end
 
-local function Search()
+local function Search(pick)
     local cat = Category()
     local ids = {}
     for id in pairs(Filtered(cat)) do table.insert(ids, id) end
     table.sort(ids)
-    D.Search(cat, ids)
+    if pick == true then D.Picked(cat, ids) else D.Search(cat, ids) end
 end
 lfg.Search = Search
 
@@ -713,7 +713,7 @@ function browse.Build(page)
             ns.db.lfgCategory = v
             browseSel = nil
             browse.list.first = 0
-            D.Stale()                   -- a dropdown's pick may not search: Search does
+            Search(true)                -- from the pick's click; Search's button if the game refuses
         end,
         tip = function() return "What the groups and players are listed for." end,
     })
@@ -736,7 +736,7 @@ function browse.Build(page)
             local f = Filtered(Category())
             f[v] = not f[v] or nil
             browseSel = nil
-            D.Stale()
+            Search(true)
         end,
         tip = function() return "Only these activities: none picked, every one that suits your level." end,
     })
