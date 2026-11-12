@@ -51,8 +51,9 @@
 -- every row is as tall as the larger needs.
 --
 -- A quest: a click opens its page (quests/page.lua; Blizzard's quest log
--- while Medalluin's is off), Shift links it, Alt focuses
--- it with Questie's arrow, a right click stops tracking it, a middle click
+-- while Medalluin's is off), Shift links it, Ctrl sets the waypoint to it
+-- or clears it (quests/waypoint.lua: its rows washed blue, its distance
+-- after its title), Alt focuses it with Questie's arrow, a right click stops tracking it, a middle click
 -- opens the world map at it (Q.ShowOnMap, as the quest log's).
 --
 -- A quest's usable item is a secure button in a column on the right, in a
@@ -70,6 +71,7 @@ local _, ns = ...
 
 local L = ns.stripLayout
 local Q = ns.questSource
+local WP = ns.waypoint
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local DIM = "|cff8c8473"
@@ -200,6 +202,10 @@ local function Tip(row, q)
         for _, o in ipairs(q.objectives) do GameTooltip:AddLine(o.text, 1, 1, 1) end
     end
     GameTooltip:AddLine("Click: quest log.  Shift: link.  Right-click: stop tracking.", 0.7, 0.66, 0.55, true)
+    if WP.Has() then
+        GameTooltip:AddLine(WP.Is(q.id) and "Ctrl-click: clear the waypoint." or "Ctrl-click: the waypoint.",
+            0.7, 0.66, 0.55, true)
+    end
     if Q.Questie() then GameTooltip:AddLine("Alt-click: focus, with Questie's arrow.", 0.7, 0.66, 0.55, true) end
     if Q.CanMap(q) then GameTooltip:AddLine("Middle-click: the map at it.", 0.7, 0.66, 0.55, true) end
     GameTooltip:Show()
@@ -210,6 +216,8 @@ local function Click(q, button)
         Q.Untrack(q)
     elseif IsModifiedClick("CHATLINK") and GetQuestLink then
         ChatEdit_InsertLink(GetQuestLink(q.id))
+    elseif IsControlKeyDown() and WP.Has() then
+        WP.Toggle(q)
     elseif IsAltKeyDown() and Q.Focus(q) then
         return
     else
@@ -312,7 +320,10 @@ local function Rows()
                 local state = q.state == -1 and " |cffe04040(Failed)|r" or ""
                 local click, enter = function(button) Click(q, button) end, function(row) Tip(row, q) end
                 local middle = function() Q.ShowOnMap(q) end
-                table.insert(rows, { label = format("[%d] %s", q.level, q.title) .. state, depth = 1,
+                local wash = WP.Is(q.id) and WP.WASH or nil
+                local label = format("[%d] %s", q.level, q.title) .. state
+                table.insert(rows, { label = label .. (wash and WP.Tag(q.id) or ""), depth = 1,
+                    far = wash and label, wash = wash,
                     color = Colour(q), quest = q, item = q.item,
                     inset = COLUMN, font = title, badge = Mark(q), group = q.id,
                     click = click, middle = middle, enter = enter })
@@ -320,7 +331,7 @@ local function Rows()
                 for i, o in ipairs(objectives) do
                     for j, line in ipairs(Wrap(o.text)) do
                         table.insert(rows, { label = line, depth = 1, pad = pad, lead = Lead(j, i == #objectives),
-                            leadWidth = LEAD, dim = o.done, font = objective, group = q.id,
+                            leadWidth = LEAD, dim = o.done, font = objective, group = q.id, wash = wash,
                             click = click, middle = middle, enter = enter })
                     end
                 end
@@ -775,6 +786,17 @@ local function Build()
     Q.Listen(function()
         dirty = true
         if InCombatLockdown() then Refresh() end    -- counts change in place
+    end)
+    -- the waypoint: its wash moves; its distance, in place
+    WP.OnChange(function()
+        dirty = true
+        if InCombatLockdown() then Refresh() end
+    end)
+    WP.OnTick(function()
+        for _, r in ipairs(list.rows) do
+            local d = r:IsShown() and r.data
+            if d and d.far then r.label:SetText(d.far .. WP.Tag(d.quest.id)) end
+        end
     end)
     for _, key in ipairs({ "questsSort", "questsTree", "questsTitleFont", "questsTitleSize", "questsObjectiveFont",
         "questsObjectiveSize" }) do

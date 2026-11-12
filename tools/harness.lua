@@ -2638,6 +2638,15 @@ if questPass then
     end
     function GetQuestLink(id) return "[quest " .. id .. "]" end
     function QuestMapFrame_OpenToQuestDetails(id) called("map " .. id) end
+    -- the waypoint: the game's one super-tracked quest; the event fired by the test
+    W.super, W.far = 0, 142.4
+    C_SuperTrack = {
+        GetSuperTrackedQuestID = function() return W.super end,
+        SetSuperTrackedQuestID = function(id) W.super = id; called("waypoint " .. id) end,
+        IsSuperTrackingQuest = function() return W.super ~= 0 end,
+    }
+    C_Navigation = { GetDistance = function() return W.super ~= 0 and W.far or 0 end }
+    C_QuestLog.GetDistanceSqToQuest = function() return 250 * 250, true end
     if questLogPass then
         -- what each quest gives: xp, copper, items given and to choose from
         W.rewards = {
@@ -5930,6 +5939,13 @@ if sidePass then
         C_Item.GetItemNameByID = function(id) return id == 5555 and "Night Lantern" or nil end
         C_Item.GetItemCount = function(id) return id == 5555 and 3 or 0 end
         C_Item.GetItemIconByID = function(id) return "icon" .. id end
+        local super = 0
+        C_SuperTrack = {
+            GetSuperTrackedQuestID = function() return super end,
+            SetSuperTrackedQuestID = function(id) super = id end,
+            IsSuperTrackingQuest = function() return super ~= 0 end,
+        }
+        C_Navigation = { GetDistance = function() return super ~= 0 and 312 or 0 end }
         local function byId(id)
             for _, e in ipairs(log) do if e.questID == id then return e end end
         end
@@ -6038,6 +6054,25 @@ if sidePass then
         row(2).scripts.OnClick(row(2), "LeftButton")
         modsDown.SHIFT = false
         print("zone shift-click again", "page=" .. tostring(ns.questPage and ns.questPage.Current()))
+        -- Ctrl-click: the waypoint, the quest's lines washed, its distance after
+        -- its title; again, cleared
+        local function washed(tag)
+            local out = {}
+            for _, r in ipairs(select(2, z.body:GetChildren()).all_) do
+                if r.kind == "Button" and r.shown and r.stripe.shown and r.stripe.color[3] == 1 then
+                    table.insert(out, (r.text.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")))
+                end
+            end
+            print(tag, #out > 0 and table.concat(out, " | ") or "none")
+        end
+        modsDown.CTRL = true
+        row(2).scripts.OnClick(row(2), "LeftButton")
+        fire("SUPER_TRACKING_CHANGED")
+        washed("zone waypoint")
+        row(2).scripts.OnClick(row(2), "LeftButton")
+        fire("SUPER_TRACKING_CHANGED")
+        modsDown.CTRL = nil
+        washed("zone waypoint cleared")
         -- its item ends its open objectives, a secure button over the line;
         -- hidden in combat; the quest closed, the button away
         row(2).scripts.OnClick(row(2), "LeftButton")
@@ -15889,6 +15924,33 @@ if questPass and not questLogPass then
     row("The Fargodeep Mine")
     modsDown.ALT = nil
     calls("quests.alt")
+    -- Ctrl: the waypoint, its rows washed blue, its distance after the title,
+    -- kept up twice a second; again, cleared
+    local function washed(tag)
+        local out = {}
+        for _, r in ipairs(list.rows) do
+            local c = r.shown and r.data and r.data.wash and r.fill.color
+            if c then table.insert(out, plain(r.label.text) .. string.format(" (%.2f,%.2f,%.2f,%.2f)", c[1], c[2], c[3], c[4])) end
+        end
+        print(tag, #out > 0 and table.concat(out, " | ") or "none")
+    end
+    modsDown.CTRL = true
+    row("The Fargodeep Mine")
+    calls("quests.ctrl")
+    fire("SUPER_TRACKING_CHANGED")
+    frame()
+    washed("quests.waypoint")
+    W.far = 57
+    ns.waypoint.clock.scripts.OnUpdate(ns.waypoint.clock, 1)
+    washed("quests.waypoint nearer")
+    row("The Fargodeep Mine")
+    modsDown.CTRL = nil
+    calls("quests.ctrl again")
+    fire("SUPER_TRACKING_CHANGED")
+    frame()
+    washed("quests.waypoint cleared")
+    print("quests.waypoint clock", "shown=" .. tostring(ns.waypoint.clock.shown))
+    W.far = 142.4
     -- a middle click: the world map at its zone (Questie knowing no place)
     do
         local was = { C_Map, MapUtil, OpenWorldMap, Enum.UIMapType, WorldMapFrame }
@@ -16758,6 +16820,27 @@ if questLogPass then (function()
     r = row("Seek Out the Ashtongue")
     r.scripts.OnClick(r, "RightButton")
     calls("questlog right click again")
+    -- Ctrl: the waypoint, its row washed, its distance after its title; again, cleared
+    modsDown.CTRL = true
+    r = row("Red Leather Bandanas")
+    r.scripts.OnClick(r, "LeftButton")
+    calls("questlog ctrl")
+    fire("SUPER_TRACKING_CHANGED")
+    QL.Refresh()
+    r = row("Red Leather Bandanas")
+    print("questlog waypoint", "wash=" .. tostring(r.wash.shown), "far=" .. tostring(r.far.shown and r.far.text),
+        "after=" .. tostring(r.far.points.LEFT[1] == r.badge and "mark" or r.far.points.LEFT[1] == r.title and "title"),
+        "title w=" .. tostring(r.title.w))
+    W.far = 57
+    ns.waypoint.clock.scripts.OnUpdate(ns.waypoint.clock, 1)
+    print("questlog waypoint nearer", "far=" .. tostring(row("Red Leather Bandanas").far.text))
+    r.scripts.OnClick(r, "LeftButton")
+    modsDown.CTRL = nil
+    calls("questlog ctrl again")
+    fire("SUPER_TRACKING_CHANGED")
+    QL.Refresh()
+    print("questlog waypoint cleared", "wash=" .. tostring(row("Red Leather Bandanas").wash.shown))
+    W.far = 142.4
     -- 7. the search: the words in any order, folded zones too
     QL.foldAll.scripts.OnClick(QL.foldAll)
     QL.search:SetText("bandanas red")

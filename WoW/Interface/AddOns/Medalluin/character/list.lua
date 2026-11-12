@@ -21,6 +21,7 @@
 --                               its stem going on past a wrapped line (│), or room
 --       group                   rows with the same group light together under
 --                               the pointer, the row's own glow then off
+--       wash = { r, g, b, a }   its band's colour (the waypoint's quest)
 --     list:Draw()      again, at the same scroll (after the body's height changes)
 --     list.fade = true  headings fade out to the right (the quest tracker's,
 --                       over the world), where the client has gradients
@@ -285,7 +286,8 @@ local function Paint(r, d, list)
         r.label:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
         r.sign:SetText(d.collapsed and "+" or "-")
     else
-        r.fill:SetColorTexture(0, 0, 0, 0)
+        local w = d.wash
+        r.fill:SetColorTexture(w and w[1] or 0, w and w[2] or 0, w and w[3] or 0, w and w[4] or 0)
         r.label:SetTextColor(unpack(d.color or d.dim and ns.colors.dim or ns.colors.text))
         r.sign:SetText("")
     end

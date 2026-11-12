@@ -24,9 +24,11 @@
 -- dungeon's: the tracker's); an untracked one's row is striped and its
 -- title a little darker.
 -- Item: a tick when it gives an item (or a choice of them), a cross when
--- not. A click opens its page (quests/page.lua), Shift links it, a right
--- click tracks it or stops, a middle click opens the world map at it
--- (Q.ShowOnMap, as the page's View on map). The search keeps the quests whose title has
+-- not. A click opens its page (quests/page.lua), Shift links it, Ctrl sets
+-- the waypoint to it or clears it (quests/waypoint.lua: its row washed
+-- blue, its distance after its title), a right click tracks it or stops, a
+-- middle click opens the world map at it (Q.ShowOnMap, as the page's View
+-- on map). The search keeps the quests whose title has
 -- the words, folded zones too. Track all stops at the game's limit.
 -- Drop opens the window that abandons quests (quests/drop.lua).
 -- The columns' headings sort (2026-11-11): a click sorts each zone's
@@ -41,6 +43,7 @@
 local _, ns = ...
 
 local Q = ns.questSource
+local WP = ns.waypoint
 local GOLD = { 0.941, 0.831, 0.533 }
 local GOLD_D = { 0.541, 0.439, 0.204 }
 local DIM = { 0.55, 0.52, 0.45 }
@@ -53,6 +56,7 @@ local GUTTER = 10                       -- the scroll bar, left of the rows
 local CONTROL = 18
 local ZEBRA, RULE = 0.05, 0.6
 local FILL = 0.45                       -- a fold's gold
+local FAR = 44                          -- the waypoint's distance: its room after the title
 local STRIPES, UNTRACKED = 0.3, 0.75    -- an untracked quest: its row's stripes, its title's colour
 -- the columns, from the rows' right edge: XP's right, Item's centre, Coin's right
 local AT_XP, AT_ITEM, AT_COIN = 118, 76, 6
@@ -473,6 +477,10 @@ local function Row()
     r.stripes:SetVertTile(true)
     r.stripes:SetVertexColor(ns.colors.text[1], ns.colors.text[2], ns.colors.text[3])
     r.stripes:SetAlpha(STRIPES)
+    -- the waypoint's quest: washed, its distance after its title (and mark)
+    r.wash = r:CreateTexture(nil, "BACKGROUND", nil, 4)
+    r.wash:SetAllPoints()
+    r.wash:SetColorTexture(unpack(WP.WASH))
     r.title = ns.PlainText(r, 11)
     r.title:SetPoint("LEFT", TITLE, 0)
     r.title:SetJustifyH("LEFT")
@@ -480,6 +488,8 @@ local function Row()
     r.badge = r:CreateTexture(nil, "ARTWORK")
     r.badge:SetSize(12, 12)
     r.badge:SetPoint("LEFT", r.title, "RIGHT", 4, 0)
+    r.far = ns.PlainText(r, 10)
+    r.far:SetTextColor(unpack(WP.COLOR))
     r.xp = ns.PlainText(r, 11)
     r.xp:SetPoint("RIGHT", -AT_XP, 0)
     r.xp:SetTextColor(unpack(XP))
@@ -498,6 +508,8 @@ local function Row()
             log.Refresh()
         elseif IsShiftKeyDown() and GetQuestLink and ChatEdit_InsertLink then
             ChatEdit_InsertLink(GetQuestLink(d.quest.id))
+        elseif IsControlKeyDown() and WP.Has() then
+            WP.Toggle(d.quest)
         elseif ns.questPage then
             ns.questPage.Toggle(d.quest.id)
         end
@@ -510,7 +522,9 @@ local function Row()
             table.insert(spec, { "body", (o.done and "|cff808080" or "") .. o.text .. (o.done and "|r" or "") })
         end
         table.insert(spec, { "hint", "Click: its page. Right click: " .. (q.tracked and "stop tracking it."
-            or "track it.") .. (Q.CanMap(q) and " Middle click: the map at it." or "") })
+            or "track it.") .. (Q.CanMap(q) and " Middle click: the map at it." or "")
+            .. (WP.Has() and (WP.Is(q.id) and " Ctrl-click: clear the waypoint." or " Ctrl-click: the waypoint.")
+                or "") })
         Tip(self, spec)
     end)
     r:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -521,7 +535,8 @@ local function FillZone(r, z)
     r:SetHeight(FOLD)
     for _, t in ipairs({ r.fill, r.over, r.under, r.sign, r.zone, r.count }) do t:Show() end
     r.eye:Show()
-    for _, t in ipairs({ r.zebra, r.mark, r.edge, r.lvl, r.stripes, r.title, r.badge, r.xp, r.item, r.coin }) do
+    for _, t in ipairs({ r.zebra, r.mark, r.edge, r.lvl, r.stripes, r.title, r.badge, r.xp, r.item, r.coin,
+        r.wash, r.far }) do
         t:Hide()
     end
     -- a search opens every zone it finds quests in
@@ -550,10 +565,18 @@ local function FillQuest(r, q, n)
     local k = q.tracked and 1 or UNTRACKED
     r.title:SetTextColor(c[1] * k, c[2] * k, c[3] * k)
     -- the title, as wide as the room up to the XP's column
-    r.title:SetWidth(math.min(r.title:GetStringWidth() + 1, body:GetWidth() - GUTTER - TITLE - AT_XP - 60))
+    -- (less the waypoint's distance after it)
+    r.title:SetWidth(math.min(r.title:GetStringWidth() + 1, body:GetWidth() - GUTTER - TITLE - AT_XP - 60
+        - (WP.Is(q.id) and FAR or 0)))
     local marked = q.state == 1 or q.daily or q.kind
     r.badge:SetShown(marked and ns.QuestMark and ns.character and ns.character.Badge and true or false)
     if r.badge:IsShown() then ns.character.Badge(r.badge, ns.QuestMark(q, 12)) end
+    local way = WP.Is(q.id)
+    r.wash:SetShown(way)
+    r.far:SetShown(way)
+    r.far:ClearAllPoints()
+    r.far:SetPoint("LEFT", r.badge:IsShown() and r.badge or r.title, "RIGHT", 6, 0)
+    r.far:SetText(way and WP.Distance(q.id) or "")
     local rw = q.rewards or {}
     r.xp:SetText((rw.xp or 0) > 0 and Number(rw.xp) or "\226\128\148")
     r.xp:SetTextColor(unpack((rw.xp or 0) > 0 and XP or DIM))
@@ -811,6 +834,14 @@ local function Window()
     if UISpecialFrames then table.insert(UISpecialFrames, "MedalluinQuestLog") end
     -- the log changed: drawn again at the next frame, while it is open
     Q.Listen(function() dirty = true end)
+    WP.OnChange(function() dirty = true end)
+    WP.OnTick(function()
+        if not frame:IsShown() then return end
+        for _, r in ipairs(rows) do
+            local q = r:IsShown() and r.data and r.data.quest
+            if q and r.far:IsShown() then r.far:SetText(WP.Distance(q.id)) end
+        end
+    end)
     frame:HookScript("OnUpdate", function() if dirty then log.Refresh() end end)
     log.frame, log.window = frame, W
 end

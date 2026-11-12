@@ -87,6 +87,7 @@ professions\camping.lua
 professions\alts.lua
 professions\crafting.lua
 quests\source.lua
+quests\waypoint.lua
 quests\tracker.lua
 quests\log.lua
 quests\drop.lua

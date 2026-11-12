@@ -14,8 +14,10 @@
 -- them) and a tick once it is complete; an eye before the count while it
 -- is tracked. The quest log's clicks (quests/log.lua), but for two: a
 -- click opens its objectives under it or closes them, and shift-click its
--- page (quests/page.lua). A right click tracks it or stops, a middle click
--- opens the world map at it.
+-- page (quests/page.lua). Ctrl-click sets the waypoint to it or clears it
+-- (quests/waypoint.lua: its lines washed blue, its distance after its
+-- title). A right click tracks it or stops, a middle click opens the world
+-- map at it.
 --
 -- A quest with a usable item (quests/source.lua's q.item, as the tracker's)
 -- ends its open objectives with it: its icon, its name and how many you
@@ -199,7 +201,9 @@ local function Tip(r)
         { "body", q.tracked and "Tracked." or "Not tracked." },
         { "hint", "Click: its objectives. Shift-click: its page. Right click: "
             .. (q.tracked and "stop tracking it." or "track it.")
-            .. (ns.questSource.CanMap(q) and " Middle click: the map at it." or "") } })
+            .. (ns.questSource.CanMap(q) and " Middle click: the map at it." or "")
+            .. (ns.waypoint.Has() and (ns.waypoint.Is(q.id) and " Ctrl-click: clear the waypoint."
+                or " Ctrl-click: the waypoint.") or "") } })
 end
 
 local Refresh
@@ -239,6 +243,9 @@ local function Row()
         elseif IsShiftKeyDown and IsShiftKeyDown() then
             if ns.questPage then ns.questPage.Toggle(q.id) end
             return
+        elseif IsControlKeyDown and IsControlKeyDown() and ns.waypoint.Has() then
+            ns.waypoint.Toggle(q)       -- (drawn again by its change)
+            return
         else
             open[q.id] = not open[q.id] or nil
         end
@@ -251,11 +258,20 @@ local function Row()
     return r
 end
 
+-- The waypoint's quest: all its lines in its wash.
+local function Wash(r, q)
+    if not ns.waypoint.Is(q.id) then return false end
+    r.stripe:SetColorTexture(unpack(ns.waypoint.WASH))
+    r.stripe:Show()
+    return true
+end
+
 -- A quest's row, or one of its objectives under it.
 local function Fill(r, line, odd)
     r.line = line
     local q, o, item = line.quest, line.objective, line.item
     r.text:ClearAllPoints()
+    r.far = nil
     r.icon:SetShown(item and true or false)
     if item then
         local n = ItemCount(item)
@@ -273,6 +289,7 @@ local function Fill(r, line, odd)
         r.count:SetText(n > 1 and n or "")
         r.count:SetTextColor(unpack(DIM))
         r:EnableMouse(true)
+        Wash(r, q)
     elseif o then
         local a, b = Count(o)
         r:SetHeight(LINE)
@@ -287,6 +304,7 @@ local function Fill(r, line, odd)
         r.count:SetText(o.text:match("%d+%s*/%s*%d+") and (a .. "/" .. b) or "")
         r.count:SetTextColor(unpack(DIM))
         r:EnableMouse(false)
+        Wash(r, q)
     else
         local have, need = Progress(q)
         local done = q.state == 1
@@ -305,6 +323,10 @@ local function Fill(r, line, odd)
         r.text:SetText(q.title)
         r.text:SetTextColor(unpack(done and DIM or ns.colors.text))
         r:EnableMouse(true)
+        if Wash(r, q) then
+            r.far = q.title
+            r.text:SetText(q.title .. ns.waypoint.Tag(q.id))
+        end
     end
     r:Show()
 end
@@ -467,6 +489,14 @@ function view.Build(f)
         if ns.side.IsCurrent(view) then Refresh() end
     end
     ns.questSource.Listen(Update)
+    -- the waypoint: its wash moves; its distance, in place
+    ns.waypoint.OnChange(Update)
+    ns.waypoint.OnTick(function()
+        if not body:IsVisible() then return end
+        for _, r in ipairs(rows) do
+            if r:IsShown() and r.far then r.text:SetText(r.far .. ns.waypoint.Tag(r.line.quest.id)) end
+        end
+    end)
     -- the items' counts and names; their buttons placed again after a fight
     ns.On("PLAYER_REGEN_ENABLED", function() if ns.side.IsCurrent(view) then Refresh() else PlaceItems() end end)
     for _, e in ipairs({ "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
