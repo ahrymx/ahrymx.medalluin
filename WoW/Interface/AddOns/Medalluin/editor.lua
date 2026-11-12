@@ -62,8 +62,9 @@ local PIECES = {
     status = { label = "Ready check", type = "icon", get = function(b) return b.statusWidget end },
     cc = { label = "Crowd control", type = "icon", get = function(b) return b.ccWidget end },
     boss = { label = "Boss debuff", type = "icon", get = function(b) return b.bossDebuff end },
-    buffs = { label = "Your buffs", type = "row", get = function(b) return b.buffWidgets end },
-    mine = { label = "Your debuffs", type = "row", get = function(b) return b.mineWidgets end },
+    -- (a row's From: whose auras, yours or all; E.FROM, ns.RowFrom)
+    buffs = { label = "Buffs", type = "row", get = function(b) return b.buffWidgets end },
+    mine = { label = "Debuffs", type = "row", get = function(b) return b.mineWidgets end },
 }
 E.PIECES = PIECES
 
@@ -92,21 +93,23 @@ end
 E.FRAMES = {
     { id = "unit", key = "editUnit", name = "Player · Target", buttons = function()
         return { ns.units.player, ns.units.target }
-    end, pieces = { "name", "level", "leader", "value", "powerValue", "power", "cc", "boss", "buffs" },
-      shows = { cc = "auraCC", boss = "auraBoss", buffs = "auraBuffs" } },
+    end, pieces = { "name", "level", "leader", "value", "powerValue", "power", "cc", "boss", "buffs", "mine" },
+      shows = { cc = "auraCC", boss = "auraBoss", buffs = "auraBuffs", mine = "auraDebuffs" } },
     { id = "party", key = "editParty", name = "Party", buttons = Party(false),
-      pieces = { "name", "level", "value", "power", "role", "leader", "status", "cc", "boss", "buffs" },
+      pieces = { "name", "level", "value", "power", "role", "leader", "status", "cc", "boss", "buffs", "mine" },
       hidden = { value = true },
-      shows = { cc = "auraCC", boss = "auraBoss", buffs = "auraBuffs" } },
+      shows = { cc = "auraCC", boss = "auraBoss", buffs = "auraBuffs", mine = "auraDebuffs" } },
     { id = "partyWidget", key = "editPartyWidget", name = "Party widget", buttons = Party(true),
       cell = { 160, 40 },
-      pieces = { "cell", "name", "level", "value", "power", "role", "leader", "status", "cc", "boss", "buffs" },
+      pieces = { "cell", "name", "level", "value", "power", "role", "leader", "status", "cc", "boss", "buffs",
+          "mine" },
       hidden = { value = true },
-      shows = { cc = "partyWidgetCC", boss = "partyWidgetBoss", buffs = "partyWidgetBuffs" } },
+      shows = { cc = "partyWidgetCC", boss = "partyWidgetBoss", buffs = "partyWidgetBuffs",
+          mine = "partyWidgetDebuffs" } },
     { id = "raid", key = "editRaid", name = "Raid", buttons = Cells("raid"), cell = { 112, 36 },
-      pieces = { "cell", "name", "level", "value", "power", "leader", "cc", "boss" },
+      pieces = { "cell", "name", "level", "value", "power", "leader", "cc", "boss", "mine" },
       hidden = { level = true },
-      shows = { cc = "raidCC", boss = "raidBoss" } },
+      shows = { cc = "raidCC", boss = "raidBoss", mine = "raidDebuffs" } },
     { id = "boss", key = "editBoss", name = "Boss", buttons = Cells("boss"), cell = { 180, 40 },
       pieces = { "cell", "name", "level", "value", "power", "mine" },
       shows = { mine = "bossWidgetMine" } },
@@ -402,6 +405,40 @@ local function Row(b, regions, shot, e, side)
     end
 end
 
+-- The way to the screen's nearer side edge from button b: its outer end
+-- on the console (mirrored), else the half of the screen a widget is in.
+local function EdgeSide(b, frame)
+    if frame.id == "unit" or frame.id == "party" then return Side(b, frame) end
+    local x = b:GetCenter()
+    local w = UIParent and UIParent:GetWidth()
+    if not (Plain(x) and Plain(w)) then return -1 end
+    return x > w / 2 and 1 or -1
+end
+
+-- A row outside its frame (its Outside): the first icon just past the
+-- frame's end toward the screen's edge, the rest running on toward it, a
+-- new line every cols icons. Level with the frame's top; debuffs with
+-- its bottom while the buffs are out too, so the two do not meet.
+local function OutRow(b, frame, piece, regions, shot, e)
+    local _, gap = OwnRun(shot)
+    local edge = EdgeSide(b, frame)
+    local buffsOut = piece == "mine" and (E.Edits(frame, "buffs") or {}).out
+    local v = buffsOut and "BOTTOM" or "TOP"
+    local near, far = edge == -1 and "RIGHT" or "LEFT", edge == -1 and "LEFT" or "RIGHT"
+    local first = regions[1]
+    first:ClearAllPoints()
+    first:SetPoint(v .. near, b, v .. far, edge * gap, 0)
+    local cols = e.cols or #regions
+    local step = (e.size or shot[1].w or 0) + gap
+    local wy = v == "TOP" and -1 or 1
+    for i = 2, #regions do
+        local col, line = (i - 1) % cols, math.floor((i - 1) / cols)
+        local r = regions[i]
+        r:ClearAllPoints()
+        r:SetPoint("CENTER", first, "CENTER", edge * col * step, wy * line * step)
+    end
+end
+
 -- A row's own way (as the editor names it) and length, as the frame's
 -- first button has them: what its Grow and Max show untouched.
 function E.RowOwn(frame, piece)
@@ -410,6 +447,22 @@ function E.RowOwn(frame, piece)
     if not list or not list[1] then return "inner", 1 end
     local dir = OwnRun(Snap(b, piece))
     return dir == Side(b, frame) and "outer" or "inner", list.default or #list
+end
+
+-- Whose auras a row shows (its From): "mine", cast by you, or "all".
+E.FROM = {
+    { "mine", "Cast by you", "Only the auras you cast." },
+    { "all", "All", "Every aura on the unit, whoever cast it." },
+}
+
+-- Whose auras a row of button b shows: its frame's From, else its own
+-- (buttons.from, console/auras.lua).
+function ns.RowFrom(b, piece)
+    local list = PIECES[piece].get(b)
+    if not list then return "mine" end
+    local frame = E.FrameOf(b)
+    local e = frame and E.Edits(frame, piece)
+    return e and e.from or list.from or "mine"
 end
 
 -- How many icons a row of button b shows: its frame's Max, else its own.
@@ -433,7 +486,10 @@ local function ApplyButton(frame, b)
             local e = E.Edits(frame, piece) or {}
             local done = b.editDone[piece] or {}
             -- the place
-            if spec.type == "row" and (e.h or e.grow or e.cols) then
+            if spec.type == "row" and e.out then
+                OutRow(b, frame, piece, regions, shot, e)
+                done.place = true
+            elseif spec.type == "row" and (e.h or e.grow or e.cols) then
                 Row(b, regions, shot, e, side)
                 done.place = true
             elseif e.h then
@@ -564,11 +620,12 @@ local function Retext(frame)
 end
 
 -- The widgets hear about their own frame's option; every frame's pieces
--- follow theirs.
+-- follow theirs, and its rows show again what their Max and From say.
 for _, frame in ipairs(E.FRAMES) do
     ns.OnSetting(frame.key, function()
         E.Apply(frame)
         Retext(frame)
+        if ns.UpdateAllAuras then ns.UpdateAllAuras() end
     end)
 end
 ns.OnSetting("partyLayout", function() E.ApplyAll() end)
@@ -578,14 +635,14 @@ ns.On("PLAYER_LOGIN", function() E.ApplyAll() end)
 -- What the editor's canvas shows on its copies besides the frame (the
 -- footer's chips, options/editor.lua; drawn by options/canvas.lua): a
 -- dispel type's glow (one at a time), the aggro glow, the console's combat
--- tint, crowd control, a boss debuff, your buffs. The frames on screen are
+-- tint, crowd control, a boss debuff, buffs, debuffs. The frames on screen are
 -- not touched, but for the tint, which is the console's.
 E.PREVIEWS = {
     { "Magic", "Magic", dispel = true }, { "Curse", "Curse", dispel = true },
     { "Poison", "Poison", dispel = true }, { "Disease", "Disease", dispel = true },
     { "Bleed", "Bleed", dispel = true },
     { "threat", "Threat" }, { "combat", "Combat" },
-    { "cc", "CC" }, { "boss", "Boss" }, { "buffs", "Buffs" },
+    { "cc", "CC" }, { "boss", "Boss" }, { "buffs", "Buffs" }, { "mine", "Debuffs" },
 }
 E.preview = {}
 

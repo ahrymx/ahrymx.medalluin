@@ -9176,6 +9176,35 @@ local function EditorPass()
     end
     canvas("dragged")
     window("dragged")
+    -- Outside: past the frame's outer end, toward the screen's edge; both
+    -- rows out, the buffs along its top and the debuffs its bottom
+    local function out(tag)
+        local o = {}
+        for _, b in ipairs({ P, T }) do
+            for _, id in ipairs({ "buffs", "mine" }) do
+                local list = E.PIECES[id].get(b)
+                o[#o + 1] = b.unit .. "." .. id .. " " .. pts(b, list[1]) .. " / 2nd " .. pts(list[1], list[2])
+            end
+        end
+        print("  outside " .. tag, table.concat(o, " | "))
+    end
+    choose("unit", "buffs")
+    set("out", true)
+    window("buffs outside")
+    out("buffs")
+    choose("unit", "mine")
+    set("out", true)
+    out("both")
+    set("cols", 2)
+    out("debuffs in 2 columns")
+    -- a drag puts it back in the frame, where it is dropped
+    drop(P, "left", "bottom", 8, -8)
+    print("  dragged in", "out=" .. tostring(E.Edits(E.byId.unit, "mine").out))
+    window("debuffs dragged in")
+    out("debuffs dragged in")
+    E.ResetPiece(E.byId.unit, "mine")
+    E.ResetPiece(E.byId.unit, "buffs")
+    out("reset")
     w.scripts.OnKeyDown(w, "LEFT")
     w.scripts.OnKeyDown(w, "UP")
     print("  nudged", stored("editUnit"), "propagate=" .. tostring(w.propagate))
@@ -12681,6 +12710,74 @@ if dispelPass then
     threatOf = nil
     fire("UNIT_THREAT_SITUATION_UPDATE", "player")
     print("dispel threat gone", "aggro=" .. tostring(b.threatGlow.shown))
+    -- the rows' From: buffs yours by default, debuffs every one; the
+    -- editor's From turns either (yours: the PLAYER filter)
+    C_UnitAuras.GetAuraDataByIndex = function(unit, i, filter)
+        if unit ~= "player" then return end
+        local harm = filter:find("HARMFUL") and true or false
+        local n = filter:find("PLAYER") and (harm and 2 or 1) or 3
+        if i > n then return end
+        return { auraInstanceID = (harm and 800 or 900) + i, icon = (harm and 1360 or 1350) * 100 + i,
+            isHarmful = harm, duration = 10, expirationTime = 20, applications = i == 2 and 4 or 1,
+            name = (harm and "debuff " or "buff ") .. i }
+    end
+    local E = ns.editor
+    local function rows(tag)
+        ns.UpdateUnitAuras(b)
+        local function row(list)
+            local o = {}
+            for _, btn in ipairs(list) do
+                if btn.shown then o[#o + 1] = tostring(btn.icon.texture) .. (btn.count.text ~= "" and ("x"
+                    .. tostring(btn.count.text)) or "") end
+            end
+            return table.concat(o, ",")
+        end
+        print("rows " .. tag, "from=" .. ns.RowFrom(b, "buffs") .. "/" .. ns.RowFrom(b, "mine"),
+            "buffs=" .. row(b.buffWidgets), "debuffs=" .. row(b.mineWidgets))
+    end
+    rows("own")
+    E.Set(E.byId.unit, "buffs", { from = "all" })
+    E.Set(E.byId.unit, "mine", { from = "mine" })
+    rows("buffs all, debuffs mine")
+    ns.SetOption("auraDebuffs", false)
+    rows("debuffs off")
+    ns.SetOption("auraDebuffs", true)
+    E.ResetFrame(E.byId.unit)
+    rows("reset")
+    -- hovered: the aura's tooltip, by the first way the client has, with the
+    -- filter the row found it by (2026-11-12: some showed none)
+    local lines, said = 0, nil
+    local was = { GameTooltip.SetUnitBuffByAuraInstanceID, GameTooltip.SetUnitDebuffByAuraInstanceID,
+        GameTooltip.SetUnitAuraByAuraInstanceID, GameTooltip.SetUnitAura, GameTooltip.NumLines }
+    function GameTooltip:NumLines() return lines end
+    local function way(name, refuse)
+        return function(_, unit, which, filter)
+            if refuse then error("refused") end
+            said, lines = name .. "(" .. unit .. "," .. tostring(which) .. "," .. tostring(filter) .. ")", 1
+        end
+    end
+    local function hover(tag, btn)
+        lines, said = 0, nil
+        GameTooltip.shown = nil
+        btn.scripts.OnEnter(btn)
+        print("tip " .. tag, tostring(said), "shown=" .. tostring(GameTooltip.shown))
+    end
+    GameTooltip.SetUnitBuffByAuraInstanceID = way("buff")
+    GameTooltip.SetUnitDebuffByAuraInstanceID = way("debuff")
+    GameTooltip.SetUnitAuraByAuraInstanceID = way("aura")
+    GameTooltip.SetUnitAura = way("index")
+    ns.UpdateUnitAuras(b)
+    hover("buff", b.buffWidgets[1])
+    hover("debuff", b.mineWidgets[2])
+    GameTooltip.SetUnitDebuffByAuraInstanceID = way("debuff", true)
+    hover("debuff, typed refused", b.mineWidgets[2])
+    GameTooltip.SetUnitBuffByAuraInstanceID, GameTooltip.SetUnitDebuffByAuraInstanceID = nil, nil
+    GameTooltip.SetUnitAuraByAuraInstanceID = nil
+    hover("older client", b.mineWidgets[3])
+    GameTooltip.SetUnitAura = nil
+    hover("no way", b.buffWidgets[1])
+    GameTooltip.SetUnitBuffByAuraInstanceID, GameTooltip.SetUnitDebuffByAuraInstanceID,
+        GameTooltip.SetUnitAuraByAuraInstanceID, GameTooltip.SetUnitAura, GameTooltip.NumLines = unpack(was, 1, 5)
     debuff = nil
     C_UnitAuras.GetAuraDataByIndex, C_Spell.GetSpellName, classOf.player = wasAuras, wasName, wasClass
     C_UnitAuras, IsPlayerSpell = hadAuras, nil

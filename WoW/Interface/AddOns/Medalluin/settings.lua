@@ -178,7 +178,8 @@ local DEFAULTS = {
     auraGlow = true,        -- border glow for dispellable debuffs
     auraThreat = true,      -- border glow while the unit has aggro
     auraCC = true,          -- large center icon for crowd control
-    auraBuffs = true,       -- row of player-cast buffs on outer health corner
+    auraBuffs = true,       -- row of buffs on outer health corner (yours; the editor's From)
+    auraDebuffs = true,     -- row of debuffs on inner health corner (all; the editor's From)
     auraBoss = true,        -- boss debuffs on inner health corner
     bossMine = true,        -- your debuffs on the overhead's bosses
     -- The widgets' (Unit Frames' Widget groups and the Raid, Battleground and
@@ -186,9 +187,9 @@ local DEFAULTS = {
     -- widget's own range and auras (ns.PartyOption; it has no pets), the raid's out of
     -- battlegrounds and in one, the Boss widget's and the arena's
     partyWidgetPlayer = true, partyWidgetRange = 40, partyWidgetGlow = true, partyWidgetCC = true,
-    partyWidgetBuffs = true, partyWidgetBoss = true, partyWidgetThreat = true,
-    raidRange = 40, raidGlow = true, raidCC = true, raidBoss = true, raidThreat = true,
-    bgRange = 40, bgGlow = true, bgCC = true, bgThreat = true,
+    partyWidgetBuffs = true, partyWidgetBoss = true, partyWidgetThreat = true, partyWidgetDebuffs = true,
+    raidRange = 40, raidGlow = true, raidCC = true, raidBoss = true, raidThreat = true, raidDebuffs = true,
+    bgRange = 40, bgGlow = true, bgCC = true, bgThreat = true, bgDebuffs = true,
     -- the dispel glow, type by type (console/auras.lua): on, and its colour;
     -- the aggro glow's colour. Shared by every profile.
     dispelMagic = true, dispelCurse = true, dispelPoison = true, dispelDisease = true, dispelBleed = true,
@@ -270,6 +271,7 @@ for _, key in ipairs({
     "bar1Paging", "bar1PagingCustom", "row2Paging", "row2PagingCustom", "row3Paging", "row3PagingCustom",
     "gridPaging", "gridPagingCustom",
     "partyPets", "partyLayout", "partyRange", "auraGlow", "auraThreat", "auraCC", "auraBuffs", "auraBoss", "bossMine",
+    "auraDebuffs",
     "editUnit", "editParty",
     "overhead", "bossFrames", "topPet", "topFocus", "topToT", "topPetBar", "topStances", "topTotems",
     "detachPet", "detachFocus", "detachToT", "detachPetX", "detachPetY", "detachFocusX", "detachFocusY",
@@ -284,6 +286,7 @@ ns.PER_PROFILE = PER_PROFILE
 local PARTY_WIDGET = {
     partyRange = "partyWidgetRange", auraGlow = "partyWidgetGlow", auraThreat = "partyWidgetThreat",
     auraCC = "partyWidgetCC", auraBuffs = "partyWidgetBuffs", auraBoss = "partyWidgetBoss",
+    auraDebuffs = "partyWidgetDebuffs",
 }
 function ns.PartyKey(key)
     return ns.db.partyLayout == "widget" and PARTY_WIDGET[key] or key

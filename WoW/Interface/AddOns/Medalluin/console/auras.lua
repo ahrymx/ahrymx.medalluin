@@ -286,24 +286,54 @@ local function CreateCCWidget(parent, size)
     return f
 end
 
-local function AttachTooltip(btn, isBuff)
+-- An aura's tooltip, the first way the client has: by its instance as a
+-- buff or a debuff (with the filter it was found by: an aura looked up
+-- with the wrong one is no aura, and the tooltip stays empty), by its
+-- instance alone, else by its index (the older clients). Each may refuse
+-- an aura the game keeps secret; the next is tried.
+local function AuraTip(self)
+    local unit, id, filter = self.unit, self.auraInstanceID, self.filter
+    local harmful = filter and filter:find("HARMFUL") and true or false
+    local typed = harmful and GameTooltip.SetUnitDebuffByAuraInstanceID or GameTooltip.SetUnitBuffByAuraInstanceID
+    for _, try in ipairs({
+        { typed, unit, id, filter },
+        { GameTooltip.SetUnitAuraByAuraInstanceID, unit, id, filter },
+        { self.auraIndex and GameTooltip.SetUnitAura, unit, self.auraIndex, filter },
+    }) do
+        if try[1] and try[3] and pcall(try[1], GameTooltip, try[2], try[3], try[4]) and GameTooltip:NumLines() > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+local function AttachTooltip(btn)
     btn:SetScript("OnEnter", function(self)
-        if not self.auraInstanceID and not self.tooltipTitle then return end
+        if not self.auraInstanceID and not self.auraIndex and not self.tooltipTitle then return end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         if self.tooltipTitle then
             GameTooltip:SetText(self.tooltipTitle, 1, 1, 1)
             if self.tooltipDesc then
                 GameTooltip:AddLine(self.tooltipDesc, 0.7, 0.7, 0.7, true)
             end
-        elseif self.unit and self.auraInstanceID and GameTooltip.SetUnitAuraByAuraInstanceID then
-            GameTooltip:SetUnitAuraByAuraInstanceID(self.unit, self.auraInstanceID)
+        elseif not (self.unit and AuraTip(self)) then
+            GameTooltip:Hide()
+            return
         end
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", GameTooltip_Hide)
 end
 
--- Player buffs container: outer corner of health (where health decreases toward)
+-- Which aura a widget shows, for its tooltip: unit, instance, the filter
+-- and index it was read by (nil for a widget filled another way).
+local function Holds(btn, unit, aura, filter, index)
+    btn.unit, btn.auraInstanceID, btn.filter, btn.auraIndex = unit, aura and aura.auraInstanceID, filter, index
+    btn.tooltipTitle, btn.tooltipDesc = nil, nil
+end
+
+-- The rows: buffs at the health's outer corner (where health decreases toward),
+-- debuffs at its inner one.
 -- A row's icons: as many as the editor's Max may ask for, of which the
 -- row shows its default (buttons.default) until it does (ns.RowMax).
 local POOL = 10
@@ -322,42 +352,55 @@ local function LayBuffs(health, buttons, side)
     end
 end
 
+-- A frame's debuffs, level with its buffs at the other (inner) end, running
+-- outward. Only the rows laid by side (a console unit's, the Party
+-- widget's): the widgets' own stay where they were made.
+local function LayDebuffs(health, buttons, side)
+    local point = (buttons.isParty and "TOP" or "BOTTOM") .. (side == -1 and "RIGHT" or "LEFT")
+    local offsetY = buttons.isParty and -2 or 2
+    for i, btn in ipairs(buttons) do
+        local step = (i - 1) * (ICON + GAP)
+        btn:ClearAllPoints()
+        btn:SetPoint(point, health, point, side == -1 and (-2 - step) or (2 + step), offsetY)
+    end
+end
+
 function ns.LayBuffs(b, side)
     if b.buffWidgets then LayBuffs(b.health, b.buffWidgets, side) end
+    if b.mineWidgets and b.mineWidgets.bySide then LayDebuffs(b.health, b.mineWidgets, side) end
+end
+
+-- An icon of a row: an inked square, the aura's icon, its spiral, its stacks.
+local function RowIcon(health, size)
+    local btn = CreateFrame("Button", nil, health)
+    btn:SetSize(size, size)
+    local border = btn:CreateTexture(nil, "BACKGROUND")
+    border:SetAllPoints()
+    border:SetColorTexture(unpack(ns.colors.ink))
+    btn.icon = btn:CreateTexture(nil, "ARTWORK")
+    btn.icon:SetPoint("TOPLEFT", 1, -1)
+    btn.icon:SetPoint("BOTTOMRIGHT", -1, 1)
+    btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    btn.cooldown = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
+    btn.cooldown:SetAllPoints(btn.icon)
+    btn.cooldown:SetSwipeColor(0, 0, 0, 0.6)
+    btn.cooldown:SetDrawEdge(false)
+    btn.cooldown:SetDrawSwipe(true)
+    if btn.cooldown.SetHideCountdownNumbers then btn.cooldown:SetHideCountdownNumbers(true) end
+    btn.count = ns.Text(btn, 9)
+    btn.count:SetPoint("BOTTOMRIGHT", -1, 1)
+    btn.count:SetTextColor(1, 1, 1)
+    AttachTooltip(btn)
+    btn:Hide()
+    return btn
 end
 
 local function CreateBuffWidgets(health, side, isParty)
-    local buttons = { default = isParty and 3 or 4, isParty = isParty }
+    local buttons = { default = isParty and 3 or 4, isParty = isParty, from = "mine" }
 
     for _ = 1, POOL do
-        local btn = CreateFrame("Button", nil, health)
-        btn:SetSize(ICON, ICON)
+        local btn = RowIcon(health, ICON)
         btn:SetFrameLevel(ns.levels.text + 1)
-
-        local border = btn:CreateTexture(nil, "BACKGROUND")
-        border:SetAllPoints()
-        border:SetColorTexture(unpack(ns.colors.ink))
-
-        btn.icon = btn:CreateTexture(nil, "ARTWORK")
-        btn.icon:SetPoint("TOPLEFT", 1, -1)
-        btn.icon:SetPoint("BOTTOMRIGHT", -1, 1)
-        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-
-        btn.cooldown = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
-        btn.cooldown:SetAllPoints(btn.icon)
-        btn.cooldown:SetSwipeColor(0, 0, 0, 0.6)
-        btn.cooldown:SetDrawEdge(false)
-        btn.cooldown:SetDrawSwipe(true)
-        if btn.cooldown.SetHideCountdownNumbers then
-            btn.cooldown:SetHideCountdownNumbers(true)
-        end
-
-        btn.count = ns.Text(btn, 9)
-        btn.count:SetPoint("BOTTOMRIGHT", -1, 1)
-        btn.count:SetTextColor(1, 1, 1)
-
-        AttachTooltip(btn, true)
-        btn:Hide()
         table.insert(buttons, btn)
     end
     LayBuffs(health, buttons, side)
@@ -403,7 +446,7 @@ local function CreateBossDebuffWidget(health, size)
     btn.count:SetTextColor(1, 1, 1)
 
     btn:SetScript("OnUpdate", OnTimerUpdate)
-    AttachTooltip(btn, false)
+    AttachTooltip(btn)
     btn:Hide()
     return btn
 end
@@ -445,12 +488,15 @@ ns.STUB_ICONS = {
     boss = "Interface\\Icons\\Ability_Creature_Cursed_01",
     buffs = { "Interface\\Icons\\Spell_Nature_Rejuvenation", "Interface\\Icons\\Spell_Nature_ResistNature",
         "Interface\\Icons\\Spell_Holy_Renew" },
+    mine = {},
 }
+for k, icon in ipairs(MINE_ICONS) do ns.STUB_ICONS.mine[k] = "Interface\\Icons\\" .. icon end
 
 -- Whether a frame shows one kind of aura: the option its tab gives it. The
 -- console's party buttons answer to the Party widget's own while they are in
 -- it (ns.PartyKey); the player's and target's to the console's.
-local CONSOLE_KEYS = { glow = "auraGlow", threat = "auraThreat", cc = "auraCC", buffs = "auraBuffs", boss = "auraBoss" }
+local CONSOLE_KEYS = { glow = "auraGlow", threat = "auraThreat", cc = "auraCC", buffs = "auraBuffs", boss = "auraBoss",
+    mine = "auraDebuffs" }
 local function Shows(b, kind)
     local keys = b.auraKeys or CONSOLE_KEYS
     if type(keys) == "function" then keys = keys() end
@@ -527,13 +573,14 @@ local function ApplyStubAuras(b)
         end
     end
 
-    -- Your debuffs stub (an enemy with your damage over time on it)
+    -- Debuffs stub (an enemy with your damage over time on it, a member hurt)
     if b.mineWidgets then
         local n = want.mine and Shows(b, "mine") and math.min(want.mine, ns.RowMax(b, "mine")) or 0
         for k, btn in ipairs(b.mineWidgets) do
             if k <= n then
                 btn.icon:SetTexture("Interface\\Icons\\" .. MINE_ICONS[k])
-                btn.tooltipTitle = "Your debuff " .. k
+                btn.count:SetText("")
+                btn.tooltipTitle = "Debuff " .. k
                 btn.tooltipDesc = "Simulated"
             end
             btn:SetShown(k <= n)
@@ -620,7 +667,7 @@ local function ScanUnitAuras(b)
     end
 
     -- 2. Crowd Control (CC)
-    local ccAura = nil
+    local ccAura, ccIndex = nil, nil
     if b.ccWidget and Shows(b, "cc") then
         if unit == "player" and LossOfControl and LossOfControl.GetActiveLossOfControlDataCount then
             local count = LossOfControl.GetActiveLossOfControlDataCount()
@@ -646,7 +693,7 @@ local function ScanUnitAuras(b)
                 local aura = Read(unit, i, "HARMFUL")
                 if not aura then break end
                 if IsCCAura(aura) then
-                    ccAura = aura
+                    ccAura, ccIndex = aura, i
                     break
                 end
                 i = i + 1
@@ -656,6 +703,8 @@ local function ScanUnitAuras(b)
     if b.ccWidget then
         if ccAura then
             b.ccWidget.icon:SetTexture(ccAura.icon)
+            -- (the loss of control's: by its instance, when it has one)
+            Holds(b.ccWidget, unit, ccAura, "HARMFUL", ccIndex)
             b.ccWidget.stubText = nil
             if ccAura.duration and ccAura.expirationTime and not ns.IsSecret(ccAura.duration)
                 and ccAura.duration > 0 then
@@ -672,23 +721,21 @@ local function ScanUnitAuras(b)
         end
     end
 
-    -- 3. Player-Applied Buffs
+    -- 3. Buffs: yours, or all (the row's From)
     if b.buffWidgets then
         for _, btn in ipairs(b.buffWidgets) do btn:Hide() end
         if Shows(b, "buffs") and Auras and Auras.GetAuraDataByIndex then
             local idx = 1
             local btnIdx = 1
             local max = ns.RowMax(b, "buffs")
+            local filter = ns.RowFrom(b, "buffs") == "all" and "HELPFUL" or "HELPFUL|PLAYER"
             while btnIdx <= max do
-                local aura = Read(unit, idx, "HELPFUL|PLAYER")
+                local aura = Read(unit, idx, filter)
                 if not aura then break end
                 -- Do not show timeless buffs on the player frame
                 if not (unit == "player" and IsTimeless(unit, aura)) then
                     local btn = b.buffWidgets[btnIdx]
-                    btn.unit = unit
-                    btn.auraInstanceID = aura.auraInstanceID
-                    btn.tooltipTitle = nil
-                    btn.tooltipDesc = nil
+                    Holds(btn, unit, aura, filter, idx)
                     btn.icon:SetTexture(aura.icon)
                     local n = aura.applications
                     btn.count:SetText((n and not ns.IsSecret(n) and n > 1) and tostring(n) or "")
@@ -705,14 +752,14 @@ local function ScanUnitAuras(b)
     end
 
     -- 4. Boss Debuffs (shares the center threat slot with CC; P0 is CC, P1 is Boss Debuff)
-    local bossAura = nil
+    local bossAura, bossIndex = nil, nil
     if b.bossDebuff and Shows(b, "boss") and not ccAura and Auras and Auras.GetAuraDataByIndex then
         local i = 1
         while true do
             local aura = Read(unit, i, "HARMFUL")
             if not aura then break end
             if not ns.IsSecret(aura.isBossAura) and aura.isBossAura then
-                bossAura = aura
+                bossAura, bossIndex = aura, i
                 break
             end
             i = i + 1
@@ -720,10 +767,7 @@ local function ScanUnitAuras(b)
     end
     if b.bossDebuff then
         if bossAura and not ccAura then
-            b.bossDebuff.unit = unit
-            b.bossDebuff.auraInstanceID = bossAura.auraInstanceID
-            b.bossDebuff.tooltipTitle = nil
-            b.bossDebuff.tooltipDesc = nil
+            Holds(b.bossDebuff, unit, bossAura, "HARMFUL", bossIndex)
             b.bossDebuff.icon:SetTexture(bossAura.icon)
             b.bossDebuff.stubText = nil
             local n = bossAura.applications
@@ -742,21 +786,21 @@ local function ScanUnitAuras(b)
         end
     end
 
-    -- 5. Your debuffs on an enemy
+    -- 5. Debuffs: yours (on an enemy), or all (the row's From)
     if b.mineWidgets then
         local n = 0
         if Shows(b, "mine") and Auras and Auras.GetAuraDataByIndex then
             local max = ns.RowMax(b, "mine")
+            local filter = ns.RowFrom(b, "mine") == "all" and "HARMFUL" or "HARMFUL|PLAYER"
             while n < max do
-                local aura = Read(unit, n + 1, "HARMFUL|PLAYER")
+                local aura = Read(unit, n + 1, filter)
                 if not aura then break end
                 n = n + 1
                 local btn = b.mineWidgets[n]
-                btn.unit = unit
-                btn.auraInstanceID = aura.auraInstanceID
-                btn.tooltipTitle = nil
-                btn.tooltipDesc = nil
+                Holds(btn, unit, aura, filter, n)
                 btn.icon:SetTexture(aura.icon)
+                local stacks = aura.applications
+                btn.count:SetText((stacks and not ns.IsSecret(stacks) and stacks > 1) and tostring(stacks) or "")
                 if aura.duration and aura.expirationTime and not ns.IsSecret(aura.duration)
                     and aura.duration > 0 then
                     btn.cooldown:SetCooldown(aura.expirationTime - aura.duration, aura.duration)
@@ -839,6 +883,30 @@ local function UpdateAllAuras()
 end
 ns.UpdateAllAuras = UpdateAllAuras   -- the simulation panel's aura toggles (simulate.lua)
 
+-- Debuffs: three icons (the editor's Max more), from point inward along
+-- the health's edge (right to left from a right corner). from: whose, as
+-- the row has it untouched (ns.RowFrom).
+local function CreateMineWidgets(health, size, point, y, from)
+    local buttons = { default = 3, from = from or "mine" }
+    local dir = point:find("LEFT") and 1 or -1
+    for i = 1, POOL do
+        local btn = RowIcon(health, size)
+        btn:SetPoint(point, health, point, dir * (2 + (i - 1) * (size + 2)), y)
+        buttons[i] = btn
+    end
+    return buttons
+end
+
+-- A console unit's (or the Party widget's player's) debuffs: every one on
+-- it, at the inner end level with its buffs (LayDebuffs).
+local function CreateUnitDebuffs(health, side, isParty)
+    local buttons = CreateMineWidgets(health, ICON, "CENTER", 0, "all")
+    buttons.default, buttons.isParty, buttons.bySide = isParty and 3 or 4, isParty, true
+    for _, btn in ipairs(buttons) do btn:SetFrameLevel(ns.levels.text + 1) end
+    LayDebuffs(health, buttons, side)
+    return buttons
+end
+
 -- Initialize widgets on each unit frame
 for unit, b in pairs(ns.units or {}) do
     local window, side = unpack(ns.slots[unit])
@@ -848,51 +916,25 @@ for unit, b in pairs(ns.units or {}) do
     b.threatGlow = CreateDispelGlow(b, side, window)
     b.ccWidget = CreateCCWidget(b.health, isParty and 24 or 32)
     b.buffWidgets = CreateBuffWidgets(b.health, side, isParty)
+    b.mineWidgets = CreateUnitDebuffs(b.health, side, isParty)
     b.bossDebuff = CreateBossDebuffWidget(b.health, isParty and 24 or 32)
 end
 if ns.partyWidgetPlayer then
     local b = ns.partyWidgetPlayer
     b.auraKeys = { glow = "partyWidgetGlow", threat = "partyWidgetThreat", cc = "partyWidgetCC",
-        buffs = "partyWidgetBuffs", boss = "partyWidgetBoss" }
+        buffs = "partyWidgetBuffs", boss = "partyWidgetBoss", mine = "partyWidgetDebuffs" }
     b.dispelGlow = CreateDispelGlow(b, -1)
     b.threatGlow = CreateDispelGlow(b, -1)
     b.ccWidget = CreateCCWidget(b.health, 24)
     b.buffWidgets = CreateBuffWidgets(b.health, -1, true)
+    b.mineWidgets = CreateUnitDebuffs(b.health, -1, true)
     b.bossDebuff = CreateBossDebuffWidget(b.health, 24)
     b:HookScript("OnHide", HideAuras)
 end
 
--- Your debuffs: three icons (the editor's Max more), right to left from
--- the health's top right.
-local function CreateMineWidgets(health, size, point, y)
-    local buttons = { default = 3 }
-    for i = 1, POOL do
-        local btn = CreateFrame("Button", nil, health)
-        btn:SetSize(size, size)
-        btn:SetPoint(point, health, point, -2 - (i - 1) * (size + 2), y)
-        local border = btn:CreateTexture(nil, "BACKGROUND")
-        border:SetAllPoints()
-        border:SetColorTexture(unpack(ns.colors.ink))
-        btn.icon = btn:CreateTexture(nil, "ARTWORK")
-        btn.icon:SetPoint("TOPLEFT", 1, -1)
-        btn.icon:SetPoint("BOTTOMRIGHT", -1, 1)
-        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        btn.cooldown = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
-        btn.cooldown:SetAllPoints(btn.icon)
-        btn.cooldown:SetSwipeColor(0, 0, 0, 0.6)
-        btn.cooldown:SetDrawEdge(false)
-        btn.cooldown:SetDrawSwipe(true)
-        if btn.cooldown.SetHideCountdownNumbers then btn.cooldown:SetHideCountdownNumbers(true) end
-        AttachTooltip(btn, false)
-        btn:Hide()
-        buttons[i] = btn
-    end
-    return buttons
-end
-
 -- In a battleground, the raid's cells answer to the Battleground tab.
-local RAID_KEYS = { glow = "raidGlow", threat = "raidThreat", cc = "raidCC", boss = "raidBoss" }
-local BG_KEYS = { glow = "bgGlow", threat = "bgThreat", cc = "bgCC" }
+local RAID_KEYS = { glow = "raidGlow", threat = "raidThreat", cc = "raidCC", boss = "raidBoss", mine = "raidDebuffs" }
+local BG_KEYS = { glow = "bgGlow", threat = "bgThreat", cc = "bgCC", mine = "bgDebuffs" }
 function ns.InBattleground()
     local _, kind = IsInInstance()
     return kind == "pvp"
@@ -903,7 +945,8 @@ ns.RaidAuraKeys = RaidKeys
 -- A widget's cell, or an overhead boss, given its aura pieces and the
 -- options that rule them (Unit Frames' tabs), by kind:
 --   "raid": the dispel glow on the border; crowd control or a boss debuff
---           in the middle of the health (the draft's A, gen_cell_auras.py)
+--           in the middle of the health (the draft's A, gen_cell_auras.py);
+--           every debuff on it in the health's bottom right
 --   "boss", "arena": your debuffs in the health's top right; on arena,
 --           crowd control in the middle
 --   "overhead": the overhead's boss, too short for a row over its name: your
@@ -922,6 +965,7 @@ function ns.AttachAuras(b, kind, size)
         Over(b.ccWidget, 4)
         b.bossDebuff = CreateBossDebuffWidget(b.health, 20)
         Over(b.bossDebuff, 4)
+        b.mineWidgets = CreateMineWidgets(b.health, 12, "BOTTOMRIGHT", 2, "all")
     elseif kind == "arena" then
         b.auraKeys = { cc = "arenaCC", mine = "arenaMine" }
         b.ccWidget = CreateCCWidget(b.health, 20)
@@ -1026,7 +1070,8 @@ for _, t in ipairs(DISPEL_PRIORITY) do
 end
 for _, key in ipairs({ "raidGlow", "raidCC", "raidBoss", "bgGlow", "bgCC", "bossMine", "bossWidgetMine", "arenaCC",
     "arenaMine", "partyWidgetGlow", "partyWidgetCC", "partyWidgetBuffs", "partyWidgetBoss", "partyLayout",
-    "partyWidgetThreat", "raidThreat", "bgThreat" }) do
+    "partyWidgetThreat", "raidThreat", "bgThreat", "auraDebuffs", "partyWidgetDebuffs", "raidDebuffs",
+    "bgDebuffs" }) do
     ns.OnSetting(key, UpdateAllAuras)
 end
 ns.OnSetting("simParty", UpdateAllAuras)

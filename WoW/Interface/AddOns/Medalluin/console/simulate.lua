@@ -181,8 +181,8 @@ local AURAS = {
     glow = { "Dispel", "A debuff you can dispel: the frame's border glows." },
     cc = { "CC", "Crowd control, in the frame's centre." },
     boss = { "Boss", "A boss's debuff, in the frame's centre." },
-    buffs = { "Buffs", "Your heals over time on the frame." },
-    mine = { "Your debuffs", "Your damage over time on the enemy." },
+    buffs = { "Buffs", "Heals over time on the frame." },
+    mine = { "Debuffs", "Debuffs on the frame: your damage over time on an enemy." },
 }
 local function Auras(page, y, set, keys)
     Label(page, y, "Auras")
@@ -251,7 +251,7 @@ local function PartyPage(page)
         function(name, s) return name .. (s.pet and " has a pet. Click to dismiss it." or
             " has no pet. Click to summon one.") end,
         function() return ns.PartyPets() end)
-    y = Auras(page, y - 4, "party", { "glow", "cc", "boss", "buffs" })
+    y = Auras(page, y - 4, "party", { "glow", "cc", "boss", "buffs", "mine" })
     local half = (IW - 4) / 2
     Button(page, 0, y - 4, half, { id = "party.ready", label = "Ready check",
         lit = function() return check ~= nil and check.kind == "ready" end,
@@ -275,7 +275,7 @@ local function RaidPage(page)
         { "away", "Out of range", "At least one member is out of range.",
             function() return ns.RaidRange() ~= 0 end },
     })
-    return Auras(page, y - 4, "raid", { "glow", "cc", "boss" })
+    return Auras(page, y - 4, "raid", { "glow", "cc", "boss", "mine" })
 end
 
 local function EnemiesPage(page)

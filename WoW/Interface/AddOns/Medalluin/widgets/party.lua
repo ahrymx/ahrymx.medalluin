@@ -90,7 +90,7 @@ local function LayCell(b, row, CELL_W, UNIT_H, step)
     ns.LayBuffs(b, -1)
     b.inWidget = true
     -- what the editor changed goes back on (editor.lua)
-    ns.editor.Relaid(b, "name", "level", "role", "leader", "value", "buffs")
+    ns.editor.Relaid(b, "name", "level", "role", "leader", "value", "buffs", "mine")
     ns.ApplyEdits(b)
 end
 

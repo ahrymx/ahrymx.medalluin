@@ -117,6 +117,9 @@ local function Tab(box)
         -- kept by Medalluin for every profile, not in the game's layout cache
         if box.SetUserPlaced then box:SetUserPlaced(false) end
         Remember(box)
+        -- a row outside its cells runs toward the nearer screen edge
+        -- (editor.lua), which may be the other one now
+        if ns.editor then ns.editor.ApplyAll() end
     end)
     tab:SetScript("OnEnter", function(self)
         ns.Tip(self, "ANCHOR_TOP", { title = self.label:GetText(), color = ns.colors.white,

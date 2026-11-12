@@ -125,8 +125,8 @@ end
 -- one of its frames (ns.SimHas); the party's members are set one by one, on
 -- their stubs (console/units.lua).
 ns.sim = {
-    party = { count = 4, auras = { glow = true, cc = true, buffs = true, boss = true } },
-    raid = { groups = 2, hurt = true, auras = { glow = true, cc = true, boss = true } },
+    party = { count = 4, auras = { glow = true, cc = true, buffs = true, boss = true, mine = true } },
+    raid = { groups = 2, hurt = true, auras = { glow = true, cc = true, boss = true, mine = true } },
     enemies = { bosses = 2, arena = 3, hurt = true, auras = { cc = true, mine = true } },
     overhead = { pet = true, focus = true, targettarget = true, hurt = true },
 }

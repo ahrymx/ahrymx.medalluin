@@ -37,9 +37,9 @@ local function PlaceField(field)
     return Seed()[field]
 end
 -- A change of place: the first one writes the whole place, so what is not
--- changed stays where it was.
+-- changed stays where it was. A row placed is in its frame again (Outside).
 local function SetPlace(fields)
-    local write = {}
+    local write = { out = E.NIL }
     if not Edits().h then
         for k, v in pairs(Seed()) do write[k] = v end
     end
@@ -118,6 +118,20 @@ local function Specs()
             text = function(v) return v < 10 and tostring(v) or "One line" end,
             tip = "Icons in a line before the next starts, away from the edge the first hangs on. Growing up "
                 .. "or down, icons in a column." },
+        out = { kind = "check", label = "Outside",
+            get = function() return Edits().out == true end,
+            set = function(v) SetField("out", v or E.NIL) end,
+            tip = "Beyond the frame's outer end, running toward the screen's edge (a widget's: the edge of the "
+                .. "half of the screen it is in). With buffs and debuffs both outside, the buffs run along the "
+                .. "frame's top, the debuffs its bottom. A drag puts the row back in the frame." },
+        from = { kind = "choice", label = "From", choices = E.FROM,
+            get = function()
+                local b = frame.buttons()[1]
+                local row = b and E.PIECES[piece].get(b)
+                return Edits().from or row and row.from or "mine"
+            end,
+            set = function(v) SetField("from", v) end,
+            tip = "Whose auras the row shows: only the ones you cast, or all of them." },
         max = { kind = "slider", label = "Most icons", min = 1, max = 10,
             get = function() return Edits().max or select(2, E.RowOwn(frame, piece)) end,
             set = function(v) SetField("max", v) end,
@@ -149,10 +163,16 @@ local function Rows()
     if kind == "cell" then return { { "w", "h" } } end
     if kind == "bar" then return { { "ph" } } end
     local rows = { { "shown" }, { "on" }, { "x", "y" } }
+    -- a row outside its frame is placed by that: no place, no way to grow
+    if kind == "row" and Edits().out then
+        return { { "shown" }, { "out" }, { "from" }, { "size", "max" }, { "cols" } }
+    end
     if kind == "text" then
         table.insert(rows, { "size", "outline" })
         if E.FORMATS[piece] then table.insert(rows, piece == "name" and { "format", "len" } or { "format" }) end
     elseif kind == "row" then
+        table.insert(rows, 2, { "out" })
+        table.insert(rows, { "from" })
         table.insert(rows, { "size", "max" })
         table.insert(rows, { "grow", "cols" })
     else
@@ -161,7 +181,15 @@ local function Rows()
     return rows
 end
 
+-- The rows the chosen piece has, as one string; laid: Lay's last.
+local function Laid()
+    local names = {}
+    for _, row in ipairs(Rows()) do names[#names + 1] = table.concat(row, ",") end
+    return piece .. ":" .. table.concat(names, ";")
+end
+local laid
 local function Lay()
+    laid = Laid()
     for _, c in pairs(controls) do c:Hide() end
     local y = -(math.ceil(body.scope:GetStringHeight()) + 40)
     for _, row in ipairs(Rows()) do
@@ -225,6 +253,8 @@ end
 -- ------------------------------------------------------------ refresh
 function Refresh()
     if not window or not window:IsShown() then return end
+    -- a row taken outside, or brought in, has other controls
+    if laid ~= Laid() then Lay() end
     for _, b in ipairs(tabs) do
         local on = b.frame == frame
         local bg, text = on and C.selected or C.ink, on and C.goldBright or C.dim
@@ -278,7 +308,8 @@ local ARROWS = { LEFT = { -1, 0 }, RIGHT = { 1, 0 }, UP = { 0, 1 }, DOWN = { 0, 
 local function Key(self, key)
     local step = ARROWS[key]
     local kind = E.PIECES[piece].type
-    local move = step and kind ~= "cell" and kind ~= "bar"
+    -- (a row outside its frame is placed by that)
+    local move = step and kind ~= "cell" and kind ~= "bar" and not Edits().out
     if not InCombatLockdown() then self:SetPropagateKeyboardInput(not move) end
     if not move then return end
     local b = frame.buttons()[1]

@@ -247,8 +247,14 @@ local function Pets(key)
     return Check(key, "Show party pets", "Show pet unit frames directly below party members who have active pets.")
 end
 local function Buffs(key)
-    return Check(key, "Player buffs on health",
-        "Show a compact row of your own buffs and HoTs on the outer corner of the health bar.")
+    return Check(key, "Buffs",
+        "Show a compact row of buffs on the outer corner of the health bar: your own (buffs and HoTs), or every "
+        .. "one with From in the editor.")
+end
+local function Debuffs(key, where)
+    return Check(key, "Debuffs",
+        "Show a compact row of debuffs " .. (where or "on the inner corner of the health bar") .. ": every one, "
+        .. "or only yours with From in the editor.")
 end
 -- The corner minimap's place and size, and its grip's showing.
 local function MinimapCorner()
@@ -263,8 +269,9 @@ local function Movers(key, what)
         "Hide the " .. what .. " widget's tab, the grip that moves it, until the pointer is over the widget.")
 end
 local function Mine(key, who)
-    return Check(key, "Your debuffs",
-        "Up to three of your own debuffs on " .. who .. ", small icons in the health bar's top right corner.")
+    return Check(key, "Debuffs",
+        "Up to three of your own debuffs on " .. who .. ", small icons in the health bar's top right corner. "
+        .. "From in the editor shows every one instead.")
 end
 
 -- Built when the window first opens: the lists come from modules loaded
@@ -575,13 +582,13 @@ function ns.OptionPages()
                         Group("Console (per profile)",
                             Range("partyRange", "party"), Pets("partyPets"),
                             Glow("auraGlow"), Threat("auraThreat"), CC("auraCC", "the"), Buffs("auraBuffs"),
-                            BossDebuffs("auraBoss")),
+                            Debuffs("auraDebuffs"), BossDebuffs("auraBoss")),
                         Group("Widget (shared by every profile)",
                             Range("partyWidgetRange", "party"),
                             Check("partyWidgetPlayer", "Include yourself",
                                 "Show your own unit frame as the first row of the Party widget."),
                             Glow("partyWidgetGlow"), Threat("partyWidgetThreat"), CC("partyWidgetCC", "the"),
-                            Buffs("partyWidgetBuffs"),
+                            Buffs("partyWidgetBuffs"), Debuffs("partyWidgetDebuffs"),
                             BossDebuffs("partyWidgetBoss"), Movers("partyWidgetMoverHover", "Party")),
                     },
                 },
@@ -592,7 +599,8 @@ function ns.OptionPages()
                     groups = {
                         Group("Raid", Range("raidRange", "raid"), Movers("raidMoverHover", "Raid")),
                         Group("Auras", Glow("raidGlow"), Threat("raidThreat"), CC("raidCC", "a member's"),
-                            BossDebuffs("raidBoss")),
+                            BossDebuffs("raidBoss"),
+                            Debuffs("raidDebuffs", "in the health bar's bottom right corner")),
                         Group("Editor", Editor("raid")),
                     },
                 },
@@ -602,7 +610,8 @@ function ns.OptionPages()
                     groups = {
                         Group("Battleground", Range("bgRange", "battleground team"),
                             Movers("bgMoverHover", "Raid")),
-                        Group("Auras", Glow("bgGlow"), Threat("bgThreat"), CC("bgCC", "a member's")),
+                        Group("Auras", Glow("bgGlow"), Threat("bgThreat"), CC("bgCC", "a member's"),
+                            Debuffs("bgDebuffs", "in the health bar's bottom right corner")),
                         Group("Editor", Editor("raid", "Edit the raid frames")),
                     },
                 },
