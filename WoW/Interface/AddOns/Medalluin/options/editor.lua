@@ -552,11 +552,11 @@ end
 
 -- ------------------------------------------------------------ open
 -- ns.OpenEditor(id): the window, on that frame ("party", "raid", ...), or
--- the party's, as its layout has it.
+-- its first tab (player and target).
 function ns.OpenEditor(id)
     Window()
     TipShown()
-    id = id or (ns.PartyWidgetLayout and ns.PartyWidgetLayout() and "partyWidget" or "party")
+    id = id or E.FRAMES[1].id
     Choose(id, piece)
     window:Show()
     window:Raise()
