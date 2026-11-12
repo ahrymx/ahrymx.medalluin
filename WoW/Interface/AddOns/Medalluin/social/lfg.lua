@@ -7,7 +7,7 @@
 --   Looking for group                                      [x]
 --   [   Browse   |   List me   |    Who    ]       <- the pages
 --   ---------------------------------------------------------
---   Browse   [Dungeons v] [All activities (4) v]      (category, activities)
+--   Browse   [Dungeons v] [All activities (4) v] [Search]   (category, activities)
 --            [search          ]        Need: (T)(H)(D)
 --            - Groups (2)
 --              Ash White  Lvl 26          (T)(H)(D)(D)  4/5   3m
@@ -53,6 +53,7 @@ local PAD, HEAD, TABS, BAND, CONTROL = 12, 36, 26, 28, 16
 local INNER = WIDTH - 2 * PAD                   -- a page's width
 local GUTTER = 10
 local RESULT, MEMBER, ACTIONS = 56, 17, 32      -- a result's row, a member's line under it, its buttons
+local GO = 86                                   -- Browse's Search button, beside its pickers
 local PERSON = 34                               -- a Who row
 local ROW, FOLD, PICK = 20, 24, 22              -- an activity's row, a fold, a dropdown
 local GOLD = { 0.941, 0.831, 0.533 }
@@ -718,7 +719,7 @@ function browse.Build(page)
         tip = function() return "What the groups and players are listed for." end,
     })
     browse.cat:SetPoint("TOPLEFT", 0, 0)
-    browse.acts = Picker(page, INNER - 156, {
+    browse.acts = Picker(page, INNER - 156 - GO - 6, {
         text = function()
             local n = Count(Filtered(Category()))
             return n == 0 and ("All activities  (" .. #D.Activities(Category()) .. ")") or (n .. " picked")
@@ -740,7 +741,18 @@ function browse.Build(page)
         end,
         tip = function() return "Only these activities: none picked, every one that suits your level." end,
     })
-    browse.acts:SetPoint("TOPRIGHT", 0, 0)
+    browse.acts:SetPoint("TOPRIGHT", -(GO + 6), 0)
+    -- Search, beside what it searches for (2026-11-12, was the band's first
+    -- button): gold while the list waits for it, off while one is out
+    browse.go = ns.window.Button(page, GO, function()
+        if not D.searching then Search() end
+    end, function()
+        if D.searching then return "Asking for the listings." end
+        return D.stale and "Search for what is picked: the game asks for a click."
+            or "Ask for the listings again."
+    end)
+    browse.go:SetHeight(PICK)
+    browse.go:SetPoint("TOPRIGHT", 0, 0)
     local filter = CreateFrame("Frame", nil, page)
     filter:SetHeight(22)
     filter:SetPoint("TOPLEFT", 0, -30)
@@ -795,6 +807,9 @@ end
 function browse.Refresh()
     browse.cat:Update()
     browse.acts:Update()
+    browse.go.label:SetText(D.searching and "Searching\226\128\166" or D.stale and "Search" or "Refresh")
+    local word = D.searching and DIM or D.stale and GOLD or ns.colors.text
+    browse.go.label:SetTextColor(word[1], word[2], word[3])
     for _, b in ipairs(browse.discs) do b.icon:Set(b.role, need[b.role] and "on" or "off") end
     if browseSel and not Selected() then browseSel = nil end
     local lines, words, n = browse.Lines()
@@ -813,12 +828,6 @@ function browse.Band()
     local sel = Selected()
     local player = sel and sel.solo and not sel.self
     return {
-        { key = "refresh", label = D.searching and "Searching\226\128\166" or D.stale and "Search" or "Refresh",
-            group = "a", color = D.stale and not D.searching and GOLD or nil, enabled = not D.searching, click = Search,
-            tip = function()
-                return D.stale and "Search for what is picked: the game asks for a click."
-                    or "Ask for the listings again."
-            end },
         { key = "message", label = "Send message", group = "b", enabled = sel ~= nil and not sel.self,
             click = function()
                 local s = Selected()
@@ -1244,6 +1253,8 @@ function listme.Band()
         { key = "post", label = e and "Update" or "List me", group = "a", enabled = problem == nil, click = function()
             local ok, why = D.Post(Asked())
             listme.error = not ok and why or nil
+            -- listed: Browse, picked as the listing is, to see who else is after it
+            if ok and not e then lfg.BrowseFor(ListCategory(), Listed()) end
             lfg.Refresh()
         end, tip = function()
             return problem or (e and "List the new picks." or "List yourself, so groups and players can find you.")
@@ -1499,6 +1510,19 @@ local function Select(key)
     if current ~= key then browseSel = nil end
     current = key
     ns.db.lfgPage = key
+end
+
+-- Browse, its category and activities set to these, and searched (from
+-- the click that asked for it)
+function lfg.BrowseFor(cat, ids)
+    if not cat then return end
+    ns.db.lfgCategory = cat
+    local t = {}
+    for _, id in ipairs(ids or {}) do t[id] = true end
+    browse.activities[cat] = t
+    browse.list.first = 0
+    Select("browse")
+    Search()
 end
 
 local function Covered()
