@@ -8351,6 +8351,27 @@ local function KeybindPass()
     hover(PetActionButton2); key("X")
     say("kb stance, pet", "SHAPESHIFTBUTTON1=" .. keysOf("SHAPESHIFTBUTTON1"),
         "BONUSACTIONBUTTON2=" .. keysOf("BONUSACTIONBUTTON2"))
+    -- the totem bar: its elements, the page's summon, the recall
+    hover(MultiCastActionButton3); key("C")
+    MultiCastActionBarFrame.currentPage = 2
+    hover(MultiCastSummonSpellButton); key("B")
+    MultiCastActionBarFrame.currentPage = 1
+    hover(MultiCastRecallSpellButton); key("N")
+    say("kb totems", ns.BindingCommand(MultiCastActionButton3), ns.BindingCommand(MultiCastSummonSpellButton),
+        "MULTICASTACTIONBUTTON3=" .. keysOf("MULTICASTACTIONBUTTON3"),
+        "MULTICASTSUMMONBUTTON2=" .. keysOf("MULTICASTSUMMONBUTTON2"),
+        "MULTICASTRECALLBUTTON1=" .. keysOf("MULTICASTRECALLBUTTON1"), "tip=" .. table.concat(tip, " | "))
+    -- a client without the totem bar's commands: a click binding
+    ;(function()
+    local n, b = GetNumBindings, GetBinding
+    GetNumBindings, GetBinding = function() return 1 end, function() return "ACTIONBUTTON1" end
+    fire("UPDATE_BINDINGS")
+    say("kb totems, no commands", ns.BindingCommand(MultiCastActionButton3),
+        ns.BindingCommand(MultiCastRecallSpellButton), ns.BindingCommand(ActionButton1))
+    GetNumBindings, GetBinding = n, b
+    fire("UPDATE_BINDINGS")
+    say("kb totems, commands again", ns.BindingCommand(MultiCastActionButton3))
+    end)()
     local b7 = ns.bar7Buttons and ns.bar7Buttons[1]
     if b7 then
         hover(b7); key("V")

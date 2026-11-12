@@ -1,5 +1,6 @@
 -- Key binding on hover: /mdlui kb, or Bind keys on the settings page. While
--- it is on, every action button that takes a binding wears a gold wash; point
+-- it is on, every action button that takes a binding (the bars, the centre
+-- grid, and the tray's stance, pet and totem buttons) wears a gold wash; point
 -- at one and press a key, a modified key, a mouse button (not the left or
 -- right) or the wheel, and that key becomes the button's only binding. Esc
 -- over a button removes its keys; Esc anywhere else, Done, or /mdlui kb again
@@ -28,16 +29,52 @@ local BARS = {
     { "MultiBar7Button", "MULTIACTIONBAR7BUTTON", "Action bar 8", 12 },
     { "StanceButton", "SHAPESHIFTBUTTON", "Stance bar", 10 },
     { "PetActionButton", "BONUSACTIONBUTTON", "Pet bar", 10 },
+    { "MultiCastActionButton", "MULTICASTACTIONBUTTON", "Totem bar", 12 },
     { "MedalluinBar7Button", false, "Centre grid", 10 },
 }
+-- The totem bar's two spells, one button each (the summon is the page's:
+-- Call of the Elements, of the Ancestors, of the Spirits)
+local function Summon()
+    local bar = MultiCastActionBarFrame
+    return "MULTICASTSUMMONBUTTON" .. (bar and bar.currentPage or 1)
+end
+local SINGLES = {
+    MultiCastSummonSpellButton = { Summon, "Totem bar, summon",
+        { "MULTICASTSUMMONBUTTON1", "MULTICASTSUMMONBUTTON2", "MULTICASTSUMMONBUTTON3" } },
+    MultiCastRecallSpellButton = { function() return "MULTICASTRECALLBUTTON1" end, "Totem bar, recall",
+        { "MULTICASTRECALLBUTTON1" } },
+}
+
+-- The game's binding commands, read once: a bar's own command where the
+-- client has it, else a click binding on the button (a client without the
+-- totem bar's commands)
+local known
+local function Known(command)
+    if not (GetNumBindings and GetBinding) then return true end
+    if not known then
+        known = {}
+        for i = 1, GetNumBindings() do
+            local c = GetBinding(i)
+            if c then known[c] = true end
+        end
+    end
+    return known[command] or false
+end
+ns.On("UPDATE_BINDINGS", function() known = nil end)
+local function Command(command, name)
+    if command and Known(command) then return command end
+    return "CLICK " .. name .. ":LeftButton"
+end
 
 local function Find(btn)
     local name = btn and btn.GetName and btn:GetName()
     if not name then return end
+    local single = SINGLES[name]
+    if single then return Command(single[1](), name), single[2] end
     for _, bar in ipairs(BARS) do
         local n = name:match("^" .. bar[1] .. "(%d+)$")
         if n then
-            return (bar[2] and bar[2] .. n or "CLICK " .. name .. ":LeftButton"), bar[3] .. ", button " .. n
+            return Command(bar[2] and bar[2] .. n, name), bar[3] .. ", button " .. n
         end
     end
 end
@@ -175,6 +212,9 @@ local function Targets()
             if btn then table.insert(out, btn) end
         end
     end
+    for name in pairs(SINGLES) do
+        if _G[name] then table.insert(out, _G[name]) end
+    end
     return out
 end
 
@@ -282,11 +322,17 @@ local function Managed()
     local list = {}
     for _, bar in ipairs(BARS) do
         for i = 1, bar[4] do
-            if bar[2] then
-                table.insert(list, bar[2] .. i)
-            elseif _G[bar[1] .. i] then
-                table.insert(list, "CLICK " .. bar[1] .. i .. ":LeftButton")
+            local name = bar[1] .. i
+            if (bar[2] and Known(bar[2] .. i)) or _G[name] then
+                table.insert(list, Command(bar[2] and bar[2] .. i, name))
             end
+        end
+    end
+    for name, single in pairs(SINGLES) do
+        if Known(single[3][1]) then
+            for _, command in ipairs(single[3]) do table.insert(list, command) end
+        elseif _G[name] then
+            table.insert(list, "CLICK " .. name .. ":LeftButton")
         end
     end
     return list
