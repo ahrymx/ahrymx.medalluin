@@ -298,6 +298,21 @@ function ns.LeaderIcon(b, size, level)
     return f
 end
 
+-- The bars in a button's room h: the power bar power high (the editor's
+-- Power bar > Height, ns.PowerHeight, when set), a seam, the health the rest.
+-- A power bar of 0 is none: the health takes its room and the seam. Called
+-- by the frames' own layouts; with no arguments, again as they last were
+-- (the editor's, as an edit changes).
+function ns.LayPower(b, power, seam, h)
+    if power then b.powerDefault, b.powerSeam, b.powerRoom = power, seam, h end
+    local frame = ns.editor and ns.editor.FrameOf(b)
+    local ph = frame and ns.PowerHeight(frame.id, b.powerDefault) or b.powerDefault
+    local room = b.powerRoom or b:GetHeight()
+    b.power:SetHeight(math.max(ph, 0.001))
+    b.power:SetAlpha(ph > 0 and 1 or 0)
+    b.health:SetHeight(room - ph - (ph > 0 and b.powerSeam or 0))
+end
+
 local function UpdateAll(self)
     if not UnitExists(self.unit) and not self.stub then return end
     UpdateName(self)
@@ -537,10 +552,9 @@ local function Spawn(unit, forWidget)
     -- Player and target: power and health. Party flips it across the beam.
     local h = b:GetHeight()
     b.power, b.health = Bar(b, side), Bar(b, side)
-    b.power:SetHeight(style.power)
+    ns.LayPower(b, style.power, style.seam, h)
     b.power:SetPoint("LEFT")
     b.power:SetPoint("RIGHT")
-    b.health:SetHeight(h - style.power - style.seam)
     b.health:SetPoint("LEFT")
     b.health:SetPoint("RIGHT")
     local healthEdge, powerEdge = "TOP", "BOTTOM"
@@ -831,11 +845,10 @@ local function ConsoleParty(b)
     local h = b:GetHeight()
     b.power:ClearAllPoints()
     b.health:ClearAllPoints()
-    b.power:SetHeight(style.power)
+    ns.LayPower(b, style.power, style.seam, h)
     b.power:SetPoint("LEFT")
     b.power:SetPoint("RIGHT")
     b.power:SetPoint("BOTTOM")
-    b.health:SetHeight(h - style.power - style.seam)
     b.health:SetPoint("LEFT")
     b.health:SetPoint("RIGHT")
     b.health:SetPoint("TOP")
@@ -889,10 +902,9 @@ function ns.RelayoutUnits()
         local h = b:GetHeight()
         b.power:ClearAllPoints()
         b.health:ClearAllPoints()
-        b.power:SetHeight(uStyle.power)
+        ns.LayPower(b, uStyle.power, uStyle.seam, h)
         b.power:SetPoint("LEFT")
         b.power:SetPoint("RIGHT")
-        b.health:SetHeight(h - uStyle.power - uStyle.seam)
         b.health:SetPoint("LEFT")
         b.health:SetPoint("RIGHT")
         local healthEdge = uStyle.healthOnTop and "TOP" or "BOTTOM"
@@ -924,11 +936,10 @@ function ns.RelayoutUnits()
             local inner = side == 1 and "LEFT" or "RIGHT"
             b.power:ClearAllPoints()
             b.health:ClearAllPoints()
-            b.power:SetHeight(pStyle.power)
+            ns.LayPower(b, pStyle.power, pStyle.seam, h)
             b.power:SetPoint("LEFT")
             b.power:SetPoint("RIGHT")
             b.power:SetPoint("BOTTOM")
-            b.health:SetHeight(h - pStyle.power - pStyle.seam)
             b.health:SetPoint("LEFT")
             b.health:SetPoint("RIGHT")
             b.health:SetPoint("TOP")

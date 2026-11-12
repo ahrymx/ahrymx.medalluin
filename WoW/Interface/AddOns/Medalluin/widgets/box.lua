@@ -275,10 +275,8 @@ end
 -- A cell at a size (the editor's, editor.lua): the power under the health,
 -- a seam between. A secure cell takes a size only out of combat.
 function ns.SizeWidgetCell(b, width, height)
-    local power = height >= 40 and 5 or 4
     b:SetSize(width, height)
-    b.health:SetHeight(height - power - 1)
-    b.power:SetHeight(power)
+    ns.LayPower(b, height >= 40 and 5 or 4, 1, height)
 end
 
 -- A cell drawn: the unit, then its auras.

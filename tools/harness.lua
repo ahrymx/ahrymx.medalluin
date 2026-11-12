@@ -8989,6 +8989,56 @@ local function EditorPass()
             "health=" .. (fill and string.format("%.2f,%.2f,%.2f", fill[1], fill[2], fill[3]) or "-"))
     end
     canvas("unit")
+    -- the texts' points kept secret (their words are): the copy places them
+    -- as their code first did, or by the point's name, or in what holds them
+    local function at(tag)
+        local p = cv.proxies[1]
+        print("  secret points " .. tag, "value " .. pts(p, p.pieces.value), "power " .. pts(p, p.pieces.powerValue)
+            .. " in " .. tostring(p.pieces.powerValue.points.CENTER and p.pieces.powerValue.points.CENTER[1]
+            == p.powerBox and "powerBox" or "?"))
+    end
+    local getPoint = Region.GetPoint
+    local function hide(r, how)
+        r.GetPoint = function(self, i)
+            local point, rel, relPoint, x, y = getPoint(self, i)
+            if how == "offsets" then return point, rel, relPoint, secret(), secret() end
+            return secret(), rel, secret(), secret(), secret()
+        end
+    end
+    hide(P.value, "offsets")
+    hide(P.powerValue, "offsets")
+    E.onApply()
+    at("offsets, first laid")
+    local shots = P.editShots
+    P.editShots = nil
+    E.Shot(P, "value")
+    E.Shot(P, "powerValue")
+    E.onApply()
+    at("offsets, never read plain")
+    hide(P.value, "all")
+    hide(P.powerValue, "all")
+    P.editShots = nil
+    E.Shot(P, "value")
+    E.Shot(P, "powerValue")
+    E.onApply()
+    at("all secret")
+    -- moved in the editor while secret: the copy follows (the record)
+    local edits = ns.db.editUnit
+    choose("unit", "value")
+    local cell = w.controls.anchor.cells[1]
+    cell.scripts.OnClick(cell)
+    at("all secret, value moved outer-top")
+    ns.SetOption("editUnit", edits)
+    at("all secret, put back")
+    -- and with no record (a text not made by ns.Text): the older ways
+    local recV, recP = P.value.medalluinPoints, P.powerValue.medalluinPoints
+    P.value.medalluinPoints, P.powerValue.medalluinPoints = nil, nil
+    E.onApply()
+    at("all secret, no record")
+    P.value.medalluinPoints, P.powerValue.medalluinPoints = recV, recP
+    choose("unit", "name")
+    P.value.GetPoint, P.powerValue.GetPoint, P.editShots = nil, nil, shots
+    E.onApply()
     -- each copy is its button, read off it: the same points, the same words
     for k, p in ipairs(cv.proxies) do
         if p.shown then
@@ -9011,6 +9061,7 @@ local function EditorPass()
                 local _, at = next(b.points)
                 local on, what = at[1], "?"
                 for id, r in pairs(copy.pieces) do if r == on then what = id end end
+                if on == copy.power then what = "the copy's power bar" end
                 -- a text's box hangs where the text does: from its point
                 local name = next(b.points)
                 for id, r in pairs(copy.pieces) do
@@ -9031,6 +9082,23 @@ local function EditorPass()
         return table.concat(o, ",")
     end
     print("  boxed", boxed())
+    -- each anchor: the box hangs where the name does, the name its own width
+    local follows, edits = {}, ns.db.editUnit
+    for _, cell in ipairs(w.controls.anchor.cells) do
+        cell.scripts.OnClick(cell)
+        local ok = true
+        for k, p in ipairs(cv.proxies) do
+            if p.shown then
+                local nm, o = p.pieces.name, nil
+                for _, bx in ipairs(cv.boxes) do if bx.shown and bx.copy == k then o = bx end end
+                local tp, bp = next(nm.points), o and next(o.points)
+                ok = ok and tp == bp and o.points[bp][1] == nm.points[tp][1] and (nm.w or 0) == 0
+            end
+        end
+        follows[#follows + 1] = cell.h .. "-" .. cell.v .. "=" .. tostring(ok)
+    end
+    print("  box follows the anchor", table.concat(follows, " "))
+    ns.SetOption("editUnit", edits)
     choose("unit", "value")
     print("  boxed after the list", boxed())
     -- drag the target's copy of the value: the editor's place, every button
@@ -9214,6 +9282,33 @@ local function EditorPass()
         end
     end
     print("  canvas row copies", table.concat(copies, ","))
+    -- the power bar's height: the frame's own, the editor's, none; the
+    -- health takes the rest (and the seam, with none)
+    local function bars(tag, b)
+        print("  power " .. tag, tostring(b.unit), "frame=" .. n(b:GetHeight()), "power=" .. n(b.power:GetHeight())
+            .. " alpha=" .. n((b.power.alpha or 1) * 100), "health=" .. n(b.health:GetHeight()),
+            "control=" .. tostring(get("ph")))
+    end
+    choose("unit", "power")
+    bars("own", P)
+    set("ph", 8)
+    bars("8", P)
+    bars("8", T)
+    set("ph", 0)
+    bars("none", P)
+    print("  power canvas", boxed())
+    w.controls.reset.scripts.OnClick(w.controls.reset)
+    bars("reset", P)
+    local raid1 = E.byId.raid.buttons()[1]
+    choose("raid", "power")
+    bars("raid own", raid1)
+    set("ph", 9)
+    bars("raid 9", raid1)
+    set("w", 130)
+    set("h", 50)
+    bars("raid 9, cell 130x50", raid1)
+    E.ResetFrame(E.byId.raid)
+    bars("raid reset", raid1)
     local boss = E.byId.boss.buttons()[1]
     choose("boss", "mine")
     print("editor row boss", "grow=" .. tostring(get("grow")), "max=" .. tostring(get("max")), labels())

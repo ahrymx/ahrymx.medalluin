@@ -51,6 +51,8 @@ E.FORMATS = {
 -- A text piece has formats; one hidden by default starts with its Shown off.
 local PIECES = {
     cell = { label = "Cell size", type = "cell" },
+    -- the power bar's height (ns.LayPower, console/units.lua); 0 none
+    power = { label = "Power bar", type = "bar" },
     name = { label = "Name", type = "text", get = function(b) return b.name end },
     level = { label = "Level", type = "text", get = function(b) return b.levelText end },
     value = { label = "Health value", type = "text", get = function(b) return b.value end },
@@ -90,26 +92,26 @@ end
 E.FRAMES = {
     { id = "unit", key = "editUnit", name = "Player · Target", buttons = function()
         return { ns.units.player, ns.units.target }
-    end, pieces = { "name", "level", "leader", "value", "powerValue", "cc", "boss", "buffs" },
+    end, pieces = { "name", "level", "leader", "value", "powerValue", "power", "cc", "boss", "buffs" },
       shows = { cc = "auraCC", boss = "auraBoss", buffs = "auraBuffs" } },
     { id = "party", key = "editParty", name = "Party", buttons = Party(false),
-      pieces = { "name", "level", "value", "role", "leader", "status", "cc", "boss", "buffs" },
+      pieces = { "name", "level", "value", "power", "role", "leader", "status", "cc", "boss", "buffs" },
       hidden = { value = true },
       shows = { cc = "auraCC", boss = "auraBoss", buffs = "auraBuffs" } },
     { id = "partyWidget", key = "editPartyWidget", name = "Party widget", buttons = Party(true),
       cell = { 160, 40 },
-      pieces = { "cell", "name", "level", "value", "role", "leader", "status", "cc", "boss", "buffs" },
+      pieces = { "cell", "name", "level", "value", "power", "role", "leader", "status", "cc", "boss", "buffs" },
       hidden = { value = true },
       shows = { cc = "partyWidgetCC", boss = "partyWidgetBoss", buffs = "partyWidgetBuffs" } },
     { id = "raid", key = "editRaid", name = "Raid", buttons = Cells("raid"), cell = { 112, 36 },
-      pieces = { "cell", "name", "level", "value", "leader", "cc", "boss" },
+      pieces = { "cell", "name", "level", "value", "power", "leader", "cc", "boss" },
       hidden = { level = true },
       shows = { cc = "raidCC", boss = "raidBoss" } },
     { id = "boss", key = "editBoss", name = "Boss", buttons = Cells("boss"), cell = { 180, 40 },
-      pieces = { "cell", "name", "level", "value", "mine" },
+      pieces = { "cell", "name", "level", "value", "power", "mine" },
       shows = { mine = "bossWidgetMine" } },
     { id = "arena", key = "editArena", name = "Arena", buttons = Cells("arena"), cell = { 160, 40 },
-      pieces = { "cell", "name", "level", "value", "cc", "mine" },
+      pieces = { "cell", "name", "level", "value", "power", "cc", "mine" },
       hidden = { level = true },
       shows = { cc = "arenaCC", mine = "arenaMine" } },
 }
@@ -234,9 +236,17 @@ end
 E.Plain = Plain
 local function Shot(r)
     local s = { points = {}, w = Plain(r:GetWidth()), h = Plain(r:GetHeight()) }
+    local plain = true
     for i = 1, (r:GetNumPoints() or 0) do
         local pt = { r:GetPoint(i) }
         if type(pt[1]) == "string" and not ns.IsSecret(pt[1]) then table.insert(s.points, pt) end
+        if ns.IsSecret(pt[1]) or ns.IsSecret(pt[3]) or ns.IsSecret(pt[4]) or ns.IsSecret(pt[5]) then plain = false end
+    end
+    -- points the game keeps secret (a text's, while its words are): as
+    -- Medalluin's code gave them (ns.Text's record), so Reset puts them back
+    if not plain and r.medalluinPoints then
+        s.points = {}
+        for _, pt in ipairs(r.medalluinPoints) do table.insert(s.points, { unpack(pt) }) end
     end
     if r.GetFont then s.font = { r:GetFont() } end
     if r.GetJustifyH then s.justify = r:GetJustifyH() end
@@ -292,6 +302,10 @@ end
 
 -- Where a piece is, as the editor states a place, read from how a button
 -- had it: the first of its points on a region the editor knows.
+-- A piece's regions on button b as its own code first laid them (the
+-- canvas's, where the game now keeps a point secret).
+function E.Shot(b, piece) return Snap(b, piece) end
+
 function E.Seed(frame, piece)
     local b = frame.buttons()[1]
     if not b then return {} end
@@ -337,16 +351,6 @@ local function Restore(r, shot, text)
     elseif #shot.points == 0 and shot.w then
         r:SetSize(shot.w, shot.h)
     end
-end
-
--- Whether a text was held between a left point and a right one: its words
--- then had that much room, not as much as they need.
-local function Bounded(shot)
-    local left, right
-    for _, pt in ipairs(shot.points) do
-        if pt[1]:match("LEFT$") then left = true elseif pt[1]:match("RIGHT$") then right = true end
-    end
-    return left and right
 end
 
 -- How a row's own code spaced it: the screen way it runs (1 right, -1
@@ -433,21 +437,16 @@ local function ApplyButton(frame, b)
                 Row(b, regions, shot, e, side)
                 done.place = true
             elseif e.h then
-                local p, on = Put(b, regions[1], e, side)
+                local p = Put(b, regions[1], e, side)
                 if spec.type == "text" then
-                    -- one point now: a text held between two keeps the
-                    -- room it had (or what it hangs from has, less the
-                    -- move), leaning the way it sits; one that sized to
-                    -- its words still does
+                    -- one point now: the text sizes to its words and grows
+                    -- from it, as the canvas draws it. (A room kept from
+                    -- the two points it had was read 0 where the game
+                    -- keeps sizes secret: a name 20 wide, drawn off its
+                    -- frame, 2026-11-12. A long name is cut by Longest name.)
                     local r = regions[1]
-                    if Bounded(shot[1]) then
-                        local room = shot[1].w or 0
-                        if room <= 0 then room = (on:GetWidth() or 0) - math.abs(e.x or 0) - 4 end
-                        r:SetWidth(math.max(20, room))
-                        r:SetJustifyH(p:match("LEFT") and "LEFT" or p:match("RIGHT") and "RIGHT" or "CENTER")
-                    else
-                        r:SetWidth(0)
-                    end
+                    r:SetWidth(0)
+                    r:SetJustifyH(p:match("LEFT") and "LEFT" or p:match("RIGHT") and "RIGHT" or "CENTER")
                 end
                 done.place = true
             elseif done.place then
@@ -481,6 +480,8 @@ local function ApplyButton(frame, b)
             b.editDone[piece] = next(done) and done or nil
         end
     end
+    -- the power bar's height, over the room its own code gave the bars
+    if b.powerDefault and ns.LayPower then ns.LayPower(b) end
 end
 
 -- A frame's buttons (all of them, or one) as its edits have them.
@@ -522,6 +523,13 @@ end
 
 -- ------------------------------------------------------------ cells
 -- A widget's cell size: the player's, or its own.
+-- A frame's power bar height: the editor's, else def (its own code's).
+function ns.PowerHeight(id, def)
+    local frame = byId[id]
+    local e = frame and E.Edits(frame, "power")
+    return e and e.ph or def
+end
+
 function ns.CellSize(id)
     local frame = byId[id]
     local e = E.Edits(frame, "cell")

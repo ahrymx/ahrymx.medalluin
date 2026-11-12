@@ -121,6 +121,15 @@ local function Specs()
             get = function() return Edits().max or select(2, E.RowOwn(frame, piece)) end,
             set = function(v) SetField("max", v) end,
             tip = "The most auras the row shows at once." },
+        ph = { kind = "slider", label = "Height", min = 0, max = 20,
+            get = function()
+                local b = frame.buttons()[1]
+                return ns.PowerHeight(frame.id, b and b.powerDefault or 4)
+            end,
+            set = function(v) SetField("ph", v) end,
+            text = function(v) return v > 0 and tostring(v) or "None" end,
+            tip = "The power bar's height; the health bar takes the rest. None: no power bar, the health the "
+                .. "whole frame." },
         w = { kind = "slider", label = "Width", min = 60, max = 300,
             get = function() return (ns.CellSize(frame.id)) end,
             set = function(v) SetField("w", v) end,
@@ -130,6 +139,20 @@ local function Specs()
             set = function(v) SetField("h", v) end,
             tip = "The cell's height, the power bar included. Takes effect out of combat." },
     }
+end
+
+-- A new anchor keeps the piece as far into what it is on as it was: an
+-- inset from the inner end becomes one from the outer, not one past it
+-- (2026-11-12: the health value thrown off the frame). Centred, no offset.
+local function Reanchor(h, v)
+    local x, y = PlaceField("x") or 0, PlaceField("y") or 0
+    local oh, ov = PlaceField("h"), PlaceField("v")
+    local deepX = oh == "inner" and -x or oh == "outer" and x or math.abs(x)
+    local deepY = ov == "top" and -y or ov == "bottom" and y or math.abs(y)
+    return { h = h, v = v, ph = E.NIL, pv = E.NIL,
+        -- (+ 0: no -0 saved)
+        x = (h == "inner" and -deepX or h == "outer" and deepX or 0) + 0,
+        y = (v == "top" and -deepY or v == "bottom" and deepY or 0) + 0 }
 end
 
 -- The anchor: nine points, as the piece sits on what it is placed on.
@@ -150,7 +173,7 @@ local function Grid(parent)
             b.bg:SetAllPoints()
             UI.Outline(b, "BORDER", C.goldDark, 0)
             b.h, b.v = h, v
-            b:SetScript("OnClick", function(self) SetPlace({ h = self.h, v = self.v, ph = E.NIL, pv = E.NIL }) end)
+            b:SetScript("OnClick", function(self) SetPlace(Reanchor(self.h, self.v)) end)
             table.insert(f.cells, b)
         end
     end
@@ -172,6 +195,7 @@ end
 local function Rows()
     local kind = E.PIECES[piece].type
     if kind == "cell" then return { { "w", "h" } } end
+    if kind == "bar" then return { { "ph" } } end
     local rows = { { "shown" }, { "anchor", "on" }, { "x", "y" } }
     if kind == "text" then
         table.insert(rows, { "size", "outline" })
@@ -285,7 +309,8 @@ function Refresh()
     for field, c in pairs(controls) do
         if c:IsShown() and c.Refresh then
             -- a hidden piece's other fields stay set, but wait
-            local enabled = field == "shown" or field == "reset" or E.PIECES[piece].type == "cell"
+            local kind = E.PIECES[piece].type
+            local enabled = field == "shown" or field == "reset" or kind == "cell" or kind == "bar"
                 or controls.shown.spec.get() ~= false
             if field == "reset" then enabled = E.Edits(frame, piece) ~= nil end
             c:Refresh(enabled)
@@ -312,7 +337,8 @@ end
 local ARROWS = { LEFT = { -1, 0 }, RIGHT = { 1, 0 }, UP = { 0, 1 }, DOWN = { 0, -1 } }
 local function Key(self, key)
     local step = ARROWS[key]
-    local move = step and E.PIECES[piece].type ~= "cell"
+    local kind = E.PIECES[piece].type
+    local move = step and kind ~= "cell" and kind ~= "bar"
     if not InCombatLockdown() then self:SetPropagateKeyboardInput(not move) end
     if not move then return end
     local b = frame.buttons()[1]

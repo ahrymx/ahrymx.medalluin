@@ -178,21 +178,50 @@ local function Plain(v)
     if type(v) == "number" and not ns.IsSecret(v) then return v end
 end
 
--- The real region's points onto the copy's. A point the game keeps secret
--- (on a text of secret size) cannot be read: the copy hangs where its own
--- other points put it, or in the middle of the copy.
-local function CopyPoints(src, dst, map, p)
+-- The real region's points onto the copy's. The game keeps a text's points
+-- secret while its words are (2026-11-12: the power value, then the health
+-- value, drawn in the middle of the health): then the points Medalluin's
+-- code gave it (ns.Text's record), else those its code first gave it (shot,
+-- the editor's, while the piece is not moved), else each point by name with
+-- no offset, else the middle of what the text is in.
+local function Readable(point, relPoint, x, y)
+    return type(point) == "string" and not ns.IsSecret(point) and not ns.IsSecret(relPoint)
+        and (x == nil or Plain(x)) and (y == nil or Plain(y))
+end
+local function CopyPoints(src, dst, map, p, shot)
     dst:ClearAllPoints()
-    local set = 0
+    local set, named = 0, {}
     for i = 1, (src:GetNumPoints() or 0) do
         local point, rel, relPoint, x, y = src:GetPoint(i)
-        if type(point) == "string" and not ns.IsSecret(point) and not ns.IsSecret(relPoint)
-            and (x == nil or Plain(x)) and (y == nil or Plain(y)) then
+        if Readable(point, relPoint, x, y) then
             dst:SetPoint(point, map[rel] or p, relPoint or point, x or 0, y or 0)
+            set = set + 1
+        elseif type(point) == "string" and not ns.IsSecret(point) and not ns.IsSecret(rel) then
+            table.insert(named, { point, rel, not ns.IsSecret(relPoint) and relPoint or point })
+        end
+    end
+    if set > 0 then return end
+    -- the points as Medalluin's code gave them (ns.Text keeps them)
+    for _, pt in ipairs(src.medalluinPoints or {}) do
+        dst:SetPoint(pt[1], map[pt[2]] or p, pt[3], pt[4], pt[5])
+        set = set + 1
+    end
+    if set > 0 then return end
+    for _, pt in ipairs(shot and shot.points or {}) do
+        if Readable(pt[1], pt[3], pt[4], pt[5]) then
+            dst:SetPoint(pt[1], map[pt[2]] or p, pt[3] or pt[1], pt[4] or 0, pt[5] or 0)
             set = set + 1
         end
     end
-    if set == 0 then dst:SetPoint("CENTER", p, "CENTER", 0, 0) end
+    if set > 0 then return end
+    for _, pt in ipairs(named) do
+        dst:SetPoint(pt[1], map[pt[2]] or p, pt[3], 0, 0)
+        set = set + 1
+    end
+    if set == 0 then
+        local within = src.GetParent and src:GetParent()
+        dst:SetPoint("CENTER", map[within] or p, "CENTER", 0, 0)
+    end
 end
 
 local function Colour(bar, fallback)
@@ -240,7 +269,11 @@ local function Mirror(frame, b, p, k)
     if b.powerValue then table.insert(pairs_, 3, { b.powerValue:GetParent(), p.powerBox }) end
     for _, pr in ipairs(pairs_) do
         local src, dst = pr[1], pr[2]
-        CopyPoints(src, dst, map, p)
+        -- a piece not moved: its points as its code first gave them
+        local shot
+        local e = pr[3] and E.Edits(frame, pr[3])
+        if pr[3] and not (e and e.h) then shot = E.Shot(b, pr[3])[pr[4] or 1] end
+        CopyPoints(src, dst, map, p, shot)
         local id = pr[3]
         if id and E.PIECES[id].type == "text" then
             local face, size, flags = src:GetFont()
@@ -256,10 +289,12 @@ local function Mirror(frame, b, p, k)
             -- two lines tall, and anything hung from its edge moves with it
             if src.CanWordWrap then dst:SetWordWrap(src:CanWordWrap() and true or false) end
             dst:SetHeight(Plain(src:GetHeight()) or 0)
-            -- a text held by one point is as wide as its own words, or as
-            -- the editor set it
-            -- (a secret width is the words' own: the copy's sample sizes itself)
-            if (src:GetNumPoints() or 0) < 2 then dst:SetWidth(Plain(src:GetWidth()) or 0) end
+            -- a text held by one point grows from it, as wide as its own
+            -- words: the real one's width is not read, which the game gives
+            -- stale just after the editor moved it (2026-11-12: the name
+            -- left behind its box as its anchor changed), and a room the
+            -- editor gave leans the way the point does anyway
+            if (src:GetNumPoints() or 0) < 2 then dst:SetWidth(0) end
         else
             dst:SetSize(Plain(src:GetWidth()) or 0, Plain(src:GetHeight()) or 0)
         end
@@ -287,6 +322,7 @@ local function Mirror(frame, b, p, k)
     -- a button with no unit yet (no group, no preview) was never coloured:
     -- its bars are the game's white, so the copy takes the player's class
     local live = b.stub or (b.unit and UnitExists(b.unit))
+    p.power:SetAlpha(b.power:GetAlpha())
     local hc = live and Colour(b.health, nil)
     if not hc or (hc[1] > 0.99 and hc[2] > 0.99 and hc[3] > 0.99) then hc = ClassColour() end
     p.health.fill:SetColorTexture(hc[1] * 0.7, hc[2] * 0.7, hc[3] * 0.7, 1)
@@ -340,7 +376,8 @@ local function Box(i)
     o:SetScript("OnMouseUp", function(self) self.from = nil end)
     o:SetScript("OnUpdate", function(self)
         local from = self.from
-        if not from then return end
+        -- a bar is sized, not moved: its height is the editor's
+        if not from or E.PIECES[self.piece].type == "bar" then return end
         local x, y = GetCursorPosition()
         -- the canvas is drawn larger: a pixel of the frame is scale of the screen's
         local dx = math.floor((x - from.x) / from.scale + 0.5)
@@ -350,7 +387,9 @@ local function Box(i)
         if nx ~= E.ui.PlaceField("x") or ny ~= E.ui.PlaceField("y") then E.ui.SetPlace({ x = nx, y = ny }) end
     end)
     o:SetScript("OnEnter", function(self)
-        UI.Tip(self, E.PIECES[self.piece].label, "Drag to move it; the arrow keys nudge the chosen piece.")
+        local bar = E.PIECES[self.piece].type == "bar"
+        UI.Tip(self, E.PIECES[self.piece].label, bar and "Its height is the editor's, on the right."
+            or "Drag to move it; the arrow keys nudge the chosen piece.")
     end)
     o:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     boxes[i] = o
@@ -435,7 +474,8 @@ function Draw()
     local kind = E.PIECES[piece].type
     for k = 1, #models do
         local p = proxies[k]
-        local mine = kind ~= "cell" and p.pieces[piece]
+        -- the power bar is the copy's own
+        local mine = kind == "bar" and p.power or kind ~= "cell" and p.pieces[piece]
         local regions = {}
         for _, r in ipairs(kind == "row" and mine or { mine or nil }) do
             if r:IsShown() then table.insert(regions, r) end

@@ -242,12 +242,34 @@ function ns.FontPath(key)
     return name and lsm and lsm:Fetch("font", name, true) or ns.font
 end
 
+-- A text's points as Medalluin's code gave them (fs.medalluinPoints:
+-- { point, relativeTo, relativePoint, x, y } each). The game keeps a text's
+-- points secret while its words are (a health value, in a group), so the
+-- unit-frame editor's canvas reads them here (options/canvas.lua).
+local function Remember(fs)
+    hooksecurefunc(fs, "ClearAllPoints", function(self) self.medalluinPoints = nil end)
+    hooksecurefunc(fs, "SetPoint", function(self, point, rel, relPoint, x, y)
+        -- (the short forms: point, x, y; point, rel, x, y)
+        if type(rel) ~= "table" then rel, relPoint, x, y = self:GetParent(), point, rel, relPoint end
+        if type(relPoint) ~= "string" then relPoint, x, y = point, relPoint, x end
+        local list = self.medalluinPoints or {}
+        for i = #list, 1, -1 do if list[i][1] == point then table.remove(list, i) end end
+        table.insert(list, { point, rel, relPoint, x or 0, y or 0 })
+        self.medalluinPoints = list
+    end)
+    hooksecurefunc(fs, "SetAllPoints", function(self, rel)
+        rel = rel or self:GetParent()
+        self.medalluinPoints = { { "TOPLEFT", rel, "TOPLEFT", 0, 0 }, { "BOTTOMRIGHT", rel, "BOTTOMRIGHT", 0, 0 } }
+    end)
+end
+
 function ns.Text(parent, size)
     local fs = parent:CreateFontString(nil, "OVERLAY")
     fs:SetFont(ns.font, size, "")
     fs:SetShadowOffset(1, -1)
     fs:SetShadowColor(0, 0, 0, 1)
     fs:SetTextColor(unpack(ns.colors.text))
+    Remember(fs)
     return fs
 end
 
