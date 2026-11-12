@@ -91,6 +91,10 @@ local DEFAULTS = {
     bankView = "grid",      -- as bagsView, for the bank
     bankPlace = false,      -- detached: { detached, point, relative, x, y, w, h, scale } (not on the page)
     altPlace = false,       -- an alt's window (professions/alts.lua): { point, relative, x, y, w, h, scale }
+    altItemsView = "list",  -- an alt's Items page: "list" or "grid"
+    altItemsFilter = "all", -- and its filter: "all", "equipment", "consumable", "trade", "quest", "other", "junk"
+    altRecipesSort = "name", -- its Professions page's recipes: "name", "quality" or "newest"
+    altRecipesFolded = false, -- and the professions folded there: { [profession] = true } (not on the page)
     chatLogPlace = false,   -- the chat log's box: { point, relative, x, y, w, h, scale } (not on the page)
     character = true,       -- Medalluin's character window instead of Blizzard's
     spellbook = true,       -- Medalluin's spellbook instead of Blizzard's (Forever)

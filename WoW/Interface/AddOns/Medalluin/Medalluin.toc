@@ -84,6 +84,7 @@ spells\spellbook.lua
 spells\talents.lua
 professions\window.lua
 professions\camping.lua
+professions\altdata.lua
 professions\alts.lua
 professions\crafting.lua
 quests\source.lua

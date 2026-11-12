@@ -14,7 +14,18 @@
 -- played (MedalluinDB.roster[realm][name]: class, level, primaries), so a
 -- character appears once it has logged in with Medalluin; the realm's
 -- most recently played first, MOST at most. An alt's row opens its window
--- (the alt's own, detached: MedalluinDB.altPlace), empty for now.
+-- (detached: MedalluinDB.altPlace), and the banner the playing character's.
+--
+-- The window, a page a tab, the character in each page's band ("Level 60
+-- Priest · last played 3 days ago"), what it recorded of itself
+-- (professions/altdata.lua):
+--   Professions  a bar a profession, then every recipe it knows, searched
+--                by name (its output's quality colour; its tooltip)
+--   Items        its bank and bags: a filter (the bags window's groups,
+--                ns.ItemGroup; altItemsFilter), a search, and a list (a
+--                line an item: Bank, Bags, All) or a grid (the bank's and
+--                the bags' slots) (altItemsView); its money
+--   Notes        a pad, saved as it is typed; any character's to write
 local _, ns = ...
 
 local W = ns.professions
@@ -85,8 +96,697 @@ local function ClassIcon(t, class)
 end
 
 -- ----------------------------------------------------------- the window
--- An alt's own window: detached, one page, nothing on it yet.
-local AW, altPage
+-- A character's own window: detached, three pages, each with the
+-- character in its band (name, level and class, when last played) and the
+-- page's own line on the right. What it shows is what the character
+-- recorded of itself (professions/altdata.lua, ns.alts); the playing
+-- character's is read fresh as it opens.
+local AW, shown, dirty
+local pages = {}
+local SEARCH, HEAD_ROW, BAR_W, SLOT, FOLD = 20, 22, 200, 37, 24
+
+local function Ago(t)
+    local d = (time and time() or 0) - (t or 0)
+    if not t or t <= 0 then return nil end
+    if d < 120 then return "just now" end
+    if d < 7200 then return format("%d minutes ago", d / 60) end
+    if d < 172800 then return format("%d hours ago", d / 3600) end
+    return format("%d days ago", d / 86400)
+end
+
+local function Data()
+    if not shown then return {} end
+    if shown.me then return ns.alts.Me() or {} end
+    return ns.alts.Data(shown.name)
+end
+
+local function Quality(q)
+    local c = q and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
+    return c and { c.r, c.g, c.b } or ns.colors.text
+end
+
+-- an item's name, icon and quality; an item the client has not loaded yet
+-- is asked for, and the page drawn again once it comes
+local function Item(id)
+    local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
+    if not name and GetItemInfo then name = GetItemInfo(id) end
+    if not name and C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
+    local icon = C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id)
+    local quality = C_Item and C_Item.GetItemQualityByID and C_Item.GetItemQualityByID(id)
+    return name or ("Item " .. id), icon, quality
+end
+
+-- A page's band: the character on the left, the page's line on the right.
+local function Band(page, band)
+    page.who = ns.Text(band, 13)
+    page.who:SetPoint("LEFT", 4, 0)
+    page.what = ns.Text(band, 11)
+    page.what:SetPoint("LEFT", page.who, "RIGHT", 10, 0)
+    page.what:SetTextColor(unpack(ns.colors.dim))
+    page.note = ns.Text(band, 11)
+    page.note:SetPoint("RIGHT", -18, 0)          -- clear of the size grip
+    page.note:SetTextColor(unpack(ns.colors.dim))
+end
+
+local function Who(page)
+    local e = shown and shown.e or {}
+    page.who:SetText(shown and shown.name or "")
+    page.who:SetTextColor(unpack(Color(e.class)))
+    local when = shown and shown.me and "playing now" or Ago(e.seen)
+    page.what:SetText(format("Level %d %s", e.level or 0, e.className or "")
+        .. (when and ("  \194\183  " .. (shown.me and when or ("last played " .. when))) or ""))
+end
+
+-- A search box at a page's top.
+local function Search(page, body, name, hint)
+    local s = CreateFrame("EditBox", name, body, "SearchBoxTemplate")
+    s:SetHeight(SEARCH)
+    s:SetAutoFocus(false)
+    if s.Instructions then s.Instructions:SetText(hint) end
+    s:HookScript("OnTextChanged", function() page.Refresh() end)
+    page.search = s
+    return s
+end
+
+local function Words(page)
+    local t = page.search and page.search:GetText() or ""
+    return (t:lower():gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+-- pieces made as needed and kept, a pool a kind
+local function Pool(page, kind, make)
+    page.used[kind] = (page.used[kind] or 0) + 1
+    page.parts[kind] = page.parts[kind] or {}
+    local p = page.parts[kind][page.used[kind]]
+    if not p then
+        p = make()
+        page.parts[kind][page.used[kind]] = p
+    end
+    p:Show()
+    return p
+end
+
+local function Spare(page)
+    for kind, list in pairs(page.parts) do
+        for i = (page.used[kind] or 0) + 1, #list do list[i]:Hide() end
+    end
+end
+
+-- an icon in its quality's edge
+local function Icon(parent, size)
+    local edge = parent:CreateTexture(nil, "BORDER")
+    edge:SetSize(size, size)
+    local icon = parent:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("TOPLEFT", edge, "TOPLEFT", 1, -1)
+    icon:SetPoint("BOTTOMRIGHT", edge, "BOTTOMRIGHT", -1, 1)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    return edge, icon
+end
+
+local function Heading(page, text, y)
+    local h = Pool(page, "heading", function()
+        local t = ns.Text(page.child, 13)
+        t:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+        return t
+    end)
+    h:SetText(text)
+    h:ClearAllPoints()
+    h:SetPoint("TOPLEFT", 4, -y)
+    return y + HEAD_ROW
+end
+
+-- the list as wide as its scroll frame, before it is laid out
+local function Width(page)
+    local width = math.max(1, page.scroller.scroll:GetWidth() or 1)
+    page.child:SetWidth(width)
+    return width
+end
+
+local function Fit(page, y)
+    page.child:SetSize(math.max(1, page.scroller.scroll:GetWidth() or 1), math.max(1, y))
+    page.scroller.To(page.scroller.target, true)
+end
+
+-- ------------------------------------------------------ professions page
+local prof = { key = "professions", label = "Professions", glyph = "profession", order = 1, flex = true,
+    bandUsed = true, height = 120, used = {}, parts = {} }
+
+local function SkillRow(page)
+    return Pool(page, "skill", function()
+        local r = CreateFrame("Frame", nil, page.child)
+        r:SetHeight(ALT)
+        r.edge, r.icon = Icon(r, 20)
+        r.edge:SetPoint("LEFT", 4, 0)
+        r.edge:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 1)
+        r.name = ns.Text(r, 12)
+        r.name:SetPoint("LEFT", r.edge, "RIGHT", 8, 0)
+        r.track = r:CreateTexture(nil, "BACKGROUND")
+        r.track:SetSize(BAR_W, 14)
+        r.track:SetPoint("LEFT", 150, 0)
+        r.track:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.3)
+        r.fill = r:CreateTexture(nil, "ARTWORK")
+        r.fill:SetPoint("TOPLEFT", r.track)
+        r.fill:SetPoint("BOTTOMLEFT", r.track)
+        r.fill:SetColorTexture(0.61, 0.48, 0.20, 1)
+        r.value = ns.Text(r, 10)
+        r.value:SetPoint("CENTER", r.track)
+        r.count = ns.Text(r, 10)
+        r.count:SetPoint("RIGHT", -4, 0)
+        r.count:SetTextColor(unpack(ns.colors.dim))
+        return r
+    end)
+end
+
+local function RecipeRow(page)
+    return Pool(page, "recipe", function()
+        local r = CreateFrame("Button", nil, page.child)
+        r:SetHeight(20)
+        r.edge, r.icon = Icon(r, 18)
+        r.edge:SetPoint("LEFT", 8, 0)
+        r.name = ns.Text(r, 12)
+        r.name:SetPoint("LEFT", r.edge, "RIGHT", 8, 0)
+        r.name:SetPoint("RIGHT", -4, 0)
+        r.name:SetJustifyH("LEFT")
+        r.name:SetWordWrap(false)
+        local glow = r:CreateTexture(nil, "HIGHLIGHT")
+        glow:SetAllPoints()
+        glow:SetColorTexture(1, 1, 1, 0.06)
+        r:SetScript("OnEnter", function(self)
+            local rec = self.recipe
+            if not rec then return end
+            ns.window.Outside(self)
+            if rec.item then GameTooltip:SetItemByID(rec.item) else GameTooltip:SetText(rec.name) end
+            GameTooltip:AddLine(self.prof or "", unpack(ns.colors.dim))
+            GameTooltip:Show()
+        end)
+        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return r
+    end)
+end
+
+-- A profession's heading over its recipes: a band of gold fading to the
+-- right (as the quest log's zones), its sign, its name and its count; a
+-- click folds it (remembered by the profession's name, altRecipesFolded)
+local function Fade(t, c, a)
+    if t.SetGradient and CreateColor then
+        t:SetColorTexture(1, 1, 1, 1)
+        t:SetGradient("HORIZONTAL", CreateColor(c[1], c[2], c[3], a), CreateColor(c[1], c[2], c[3], a * 0.1))
+    else
+        t:SetColorTexture(c[1], c[2], c[3], a * 0.55)
+    end
+end
+
+local function Folded()
+    local f = type(ns.db.altRecipesFolded) == "table" and ns.db.altRecipesFolded or {}
+    ns.db.altRecipesFolded = f
+    return f
+end
+
+local function FoldRow(page)
+    return Pool(page, "fold", function()
+        local r = CreateFrame("Button", nil, page.child)
+        r:SetHeight(FOLD)
+        r.fill = r:CreateTexture(nil, "BACKGROUND")
+        r.fill:SetPoint("TOPLEFT", 0, -2)
+        r.fill:SetPoint("BOTTOMRIGHT", 0, 2)
+        Fade(r.fill, GOLD_D, 0.45)
+        r.over = r:CreateTexture(nil, "BORDER")
+        r.over:SetPoint("TOPLEFT", 0, -2)
+        r.over:SetPoint("TOPRIGHT", 0, -2)
+        r.over:SetHeight(1)
+        Fade(r.over, GOLD, 0.5)
+        local glow = r:CreateTexture(nil, "HIGHLIGHT")
+        glow:SetAllPoints()
+        glow:SetColorTexture(1, 1, 1, 0.06)
+        r.sign = ns.Text(r, 14)
+        r.sign:SetPoint("LEFT", 6, 0)
+        r.sign:SetTextColor(unpack(GOLD))
+        r.name = ns.Text(r, 13)
+        r.name:SetPoint("LEFT", 20, 0)
+        r.name:SetTextColor(unpack(GOLD))
+        r.count = ns.Text(r, 11)
+        r.count:SetPoint("LEFT", r.name, "RIGHT", 6, 0)
+        r.count:SetTextColor(unpack(ns.colors.dim))
+        r:SetScript("OnClick", function(self)
+            local f = Folded()
+            f[self.prof] = not f[self.prof] or nil
+            page.Refresh()
+        end)
+        return r
+    end)
+end
+
+-- the recipes' orders: the list is kept by name
+local SORTS = {
+    { key = "name", label = "Name", tip = "By name." },
+    { key = "quality", label = "Quality", tip = "What they make, the best first." },
+    { key = "newest", label = "Newest", tip = "The latest the game added, first." },
+}
+
+local function Sorted(list, how)
+    local out = {}
+    for i, rec in ipairs(list) do out[i] = rec end
+    if how == "quality" then
+        local q = {}
+        for _, rec in ipairs(out) do q[rec] = rec.item and select(3, Item(rec.item)) or -1 end
+        table.sort(out, function(x, y)
+            if q[x] ~= q[y] then return q[x] > q[y] end
+            return x.name < y.name
+        end)
+    elseif how == "newest" then
+        table.sort(out, function(x, y) return (x.id or 0) > (y.id or 0) end)
+    end
+    return out
+end
+
+function prof.Draw()
+    local page, d = prof, Data()
+    page.used = {}
+    local width = Width(page)
+    local y = 4
+    local skills = d.skills or {}
+    local recipes = type(d.recipes) == "table" and d.recipes or {}
+    for _, s in ipairs(skills) do
+        local r = SkillRow(page)
+        r:ClearAllPoints()
+        r:SetPoint("TOPLEFT", 0, -y)
+        r:SetWidth(width)
+        r.icon:SetTexture(s.icon)
+        r.name:SetText(s.name or "")
+        r.name:SetTextColor(unpack(s.primary and GOLD or ns.colors.text))
+        local max = math.max(1, s.max or 1)
+        r.fill:SetWidth(math.max(0.01, BAR_W * math.min(1, (s.rank or 0) / max)))
+        r.value:SetText(format("%d / %d", s.rank or 0, s.max or 0))
+        local known = recipes[s.name]
+        r.count:SetText(known and format(#known == 1 and "%d recipe" or "%d recipes", #known) or "")
+        y = y + ALT + 4
+    end
+    if #skills == 0 then
+        y = Heading(page, "No professions recorded", y)
+    end
+    -- the recipes under their professions' headings, the search's words in
+    -- their names: a search opens every heading it finds recipes under
+    y = Heading(page, "Recipes", y + 6)
+    local words, any, names = Words(page), false, {}
+    local folded, how = Folded(), ns.db.altRecipesSort or "name"
+    for _, o in ipairs(SORTS) do page.sort:Set(o.key, { selected = how == o.key }) end
+    for name in pairs(recipes) do table.insert(names, name) end
+    table.sort(names)
+    for _, name in ipairs(names) do
+        local found = {}
+        for _, rec in ipairs(recipes[name]) do
+            if words == "" or rec.name:lower():find(words, 1, true) then table.insert(found, rec) end
+        end
+        if #found > 0 then
+            local shut = folded[name] and words == ""
+            local h = FoldRow(page)
+            h.prof = name
+            h:ClearAllPoints()
+            h:SetPoint("TOPLEFT", 0, -y)
+            h:SetWidth(width)
+            h.sign:SetText(shut and "+" or "-")
+            h.name:SetText(name)
+            h.count:SetText(words == "" and format("(%d)", #found)
+                or format("(%d of %d)", #found, #recipes[name]))
+            y = y + FOLD + 2
+            if not shut then
+                for _, rec in ipairs(Sorted(found, how)) do
+                    local r = RecipeRow(page)
+                    r.recipe, r.prof = rec, name
+                    r:ClearAllPoints()
+                    r:SetPoint("TOPLEFT", 0, -y)
+                    r:SetWidth(width)
+                    r.icon:SetTexture(rec.icon)
+                    local quality
+                    if rec.item then quality = select(3, Item(rec.item)) end
+                    local c = Quality(quality)
+                    r.edge:SetColorTexture(c[1], c[2], c[3], 1)
+                    r.name:SetText(rec.name)
+                    r.name:SetTextColor(c[1], c[2], c[3])
+                    y = y + 21
+                end
+                y = y + 4
+            end
+            any = true
+        end
+    end
+    if not any then
+        local t = Pool(page, "empty", function()
+            local e = ns.Text(page.child, 11)
+            e:SetTextColor(unpack(ns.colors.dim))
+            return e
+        end)
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", 8, -y)
+        t:SetText(#names == 0 and format("Open the professions on %s to record its recipes.", shown.name)
+            or "No recipe has those words.")
+        y = y + 20
+    end
+    Spare(page)
+    Fit(page, y + 4)
+    local last
+    for _, t in pairs(type(d.recipesSeen) == "table" and d.recipesSeen or {}) do last = math.max(last or 0, t) end
+    page.note:SetText(last and ("Recipes recorded " .. Ago(last)) or "")
+end
+
+-- ----------------------------------------------------------- items page
+local items = { key = "items", label = "Items", glyph = "view-groups", order = 2, flex = true,
+    bandUsed = true, height = 120, used = {}, parts = {} }
+local FILTERS = {
+    { key = "all", label = "All" }, { key = "equipment", label = "Equipment" },
+    { key = "consumable", label = "Consumables" }, { key = "trade", label = "Trade goods" },
+    { key = "quest", label = "Quest" }, { key = "other", label = "Other" }, { key = "junk", label = "Junk" },
+}
+
+-- the items kept, with their counts in the bank and the bags, that the
+-- filter and the search let through, by name
+local function Kept(d)
+    local filter, words = ns.db.altItemsFilter or "all", Words(items)
+    local all = {}
+    for _, where in ipairs({ "bank", "bags" }) do
+        for id, n in pairs(type(d[where]) == "table" and d[where] or {}) do
+            all[id] = all[id] or { id = id, bank = 0, bags = 0 }
+            all[id][where] = n
+        end
+    end
+    local out = {}
+    for id, it in pairs(all) do
+        it.name, it.icon, it.quality = Item(id)
+        if (filter == "all" or ns.ItemGroup(id, it.quality) == filter)
+            and (words == "" or it.name:lower():find(words, 1, true)) then
+            table.insert(out, it)
+        end
+    end
+    table.sort(out, function(x, y)
+        if x.name ~= y.name then return x.name < y.name end
+        return x.id < y.id
+    end)
+    return out
+end
+
+local function ItemTip(self)
+    local it = self.it
+    if not it then return end
+    ns.window.Outside(self)
+    GameTooltip:SetItemByID(it.id)
+    GameTooltip:AddLine(format("Bank %d  \194\183  Bags %d", it.bank, it.bags), unpack(GOLD))
+    GameTooltip:Show()
+end
+
+local function ListRow(page)
+    return Pool(page, "row", function()
+        local r = CreateFrame("Button", nil, page.child)
+        r:SetHeight(22)
+        r.edge, r.icon = Icon(r, 20)
+        r.edge:SetPoint("LEFT", 4, 0)
+        r.name = ns.Text(r, 12)
+        r.name:SetPoint("LEFT", r.edge, "RIGHT", 8, 0)
+        r.name:SetPoint("RIGHT", -160, 0)
+        r.name:SetJustifyH("LEFT")
+        r.name:SetWordWrap(false)
+        r.cols = {}
+        for i, x in ipairs({ -110, -58, -4 }) do
+            local t = ns.Text(r, 11)
+            t:SetPoint("RIGHT", x, 0)
+            r.cols[i] = t
+        end
+        local glow = r:CreateTexture(nil, "HIGHLIGHT")
+        glow:SetAllPoints()
+        glow:SetColorTexture(1, 1, 1, 0.06)
+        r:SetScript("OnEnter", ItemTip)
+        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return r
+    end)
+end
+
+local function Slot(page)
+    return Pool(page, "slot", function()
+        local b = CreateFrame("Button", nil, page.child)
+        b:SetSize(SLOT, SLOT)
+        b.edge, b.icon = Icon(b, SLOT)
+        b.edge:SetPoint("TOPLEFT")
+        b.count = ns.Text(b, 11)
+        b.count:SetPoint("BOTTOMRIGHT", -2, 2)
+        local glow = b:CreateTexture(nil, "HIGHLIGHT")
+        glow:SetAllPoints()
+        glow:SetColorTexture(1, 1, 1, 0.12)
+        b:SetScript("OnEnter", ItemTip)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return b
+    end)
+end
+
+local function Dash(n) return n > 0 and tostring(n) or "\226\128\148" end
+
+function items.Draw()
+    local page, d = items, Data()
+    page.used = {}
+    local width = Width(page)
+    local list = Kept(d)
+    local y = 4
+    local grid = ns.db.altItemsView == "grid"
+    if grid then
+        local across = math.max(1, math.floor((width - 8 + 4) / (SLOT + 4)))
+        for _, where in ipairs({ { "bank", "Bank" }, { "bags", "Bags" } }) do
+            local here = {}
+            for _, it in ipairs(list) do if it[where[1]] > 0 then table.insert(here, it) end end
+            y = Heading(page, format("%s  (%d)", where[2], #here), y)
+            for i, it in ipairs(here) do
+                local b = Slot(page)
+                b.it = it
+                local c = Quality(it.quality)
+                b.edge:SetColorTexture(c[1], c[2], c[3], 1)
+                b.icon:SetTexture(it.icon)
+                local n = it[where[1]]
+                b.count:SetText(n > 1 and n or "")
+                b:ClearAllPoints()
+                local col, row = (i - 1) % across, math.floor((i - 1) / across)
+                b:SetPoint("TOPLEFT", 6 + col * (SLOT + 4), -(y + row * (SLOT + 4)))
+            end
+            y = y + math.ceil(#here / across) * (SLOT + 4) + 8
+        end
+    else
+        local head = Pool(page, "cols", function()
+            local f = CreateFrame("Frame", nil, page.child)
+            f:SetHeight(18)
+            f.cols = {}
+            for i, x in ipairs({ { -110, "Bank" }, { -58, "Bags" }, { -4, "All" } }) do
+                local t = ns.Text(f, 10)
+                t:SetPoint("RIGHT", x[1], 0)
+                t:SetText(x[2])
+                t:SetTextColor(unpack(ns.colors.dim))
+                f.cols[i] = t
+            end
+            return f
+        end)
+        head:ClearAllPoints()
+        head:SetPoint("TOPLEFT", 0, -y)
+        head:SetWidth(width)
+        y = y + 20
+        for _, it in ipairs(list) do
+            local r = ListRow(page)
+            r.it = it
+            r:ClearAllPoints()
+            r:SetPoint("TOPLEFT", 0, -y)
+            r:SetWidth(width)
+            local c = Quality(it.quality)
+            r.edge:SetColorTexture(c[1], c[2], c[3], 1)
+            r.icon:SetTexture(it.icon)
+            r.name:SetText(it.name)
+            r.name:SetTextColor(c[1], c[2], c[3])
+            r.cols[1]:SetText(Dash(it.bank))
+            r.cols[2]:SetText(Dash(it.bags))
+            r.cols[3]:SetText(it.bank + it.bags)
+            r.cols[3]:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+            y = y + 24
+        end
+    end
+    if #list == 0 then
+        local t = Pool(page, "empty", function()
+            local e = ns.Text(page.child, 11)
+            e:SetTextColor(unpack(ns.colors.dim))
+            return e
+        end)
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", 8, -y)
+        t:SetText((d.bags or d.bank) and "Nothing here." or format("Log in on %s to record its items.", shown.name))
+        y = y + 20
+    end
+    Spare(page)
+    Fit(page, y + 4)
+    local bank = Ago(d.bankSeen)
+    local money = d.money and GetCoinTextureString and GetCoinTextureString(d.money) or nil
+    page.note:SetText((bank and ("Bank seen " .. bank) or format("Visit the bank on %s to record it", shown.name))
+        .. (money and ("   " .. money) or ""))
+    page.filters:Fill(page.FilterItems())
+    page.view:Set("list", { selected = not grid })
+    page.view:Set("grid", { selected = grid })
+end
+
+function items.FilterItems()
+    local out = {}
+    for _, f in ipairs(FILTERS) do
+        local on = (ns.db.altItemsFilter or "all") == f.key
+        table.insert(out, { key = f.key, label = f.label, group = "f", selected = on,
+            click = function()
+                ns.db.altItemsFilter = f.key
+                items.Refresh()
+            end })
+    end
+    return out
+end
+
+-- ----------------------------------------------------------- notes page
+local notes = { key = "notes", label = "Notes", glyph = "edit", order = 3, flex = true,
+    bandUsed = true, height = 120, used = {}, parts = {} }
+
+local function NotesFit()
+    local box, s = notes.box, notes.scroller
+    local width = math.max(1, s.scroll:GetWidth() or 1)
+    notes.measure:SetWidth(math.max(1, width - 12))
+    notes.measure:SetText(box:GetText() or "")
+    local tall = math.max(s.scroll:GetHeight() or 0, (notes.measure:GetStringHeight() or 0) + 16, 1)
+    s.child:SetSize(width, tall)
+    box:SetSize(width, tall)
+    s.To(s.target, true)
+end
+
+function notes.Draw()
+    local d = Data()
+    -- (while it is being typed in, what is shown is what is saved)
+    if not notes.box:HasFocus() then notes.box:SetText(d.notes or "") end
+    NotesFit()
+    notes.note:SetText("Saved as you type")
+end
+
+local function Build(page)
+    return function(body, _, band)
+        Band(page, band)
+        if page == notes then
+            page.scroller = ns.window.Scroller(body, 10)
+            local box = CreateFrame("EditBox", nil, page.scroller.child)
+            box:SetMultiLine(true)
+            box:SetAutoFocus(false)
+            box:SetMaxLetters(0)
+            box:SetFontObject(ChatFontNormal)
+            box:SetTextColor(1, 1, 1)
+            box:SetTextInsets(6, 6, 6, 6)
+            box:SetPoint("TOPLEFT")
+            box:SetScript("OnEscapePressed", box.ClearFocus)
+            box:SetScript("OnTextChanged", function(self, user)
+                if user and shown then
+                    local d = shown.me and ns.alts.Me() or ns.alts.Data(shown.name)
+                    if d then d.notes = self:GetText() end
+                end
+                NotesFit()
+            end)
+            -- the caret: drawn here, as the game shows none in the pad; it
+            -- blinks while the pad has focus, steady for a moment after a move.
+            -- The game gives the cursor from the text's corner, inside the
+            -- insets, and the line's height (the font's size is the letters')
+            local INSET = 6
+            local caret = box:CreateTexture(nil, "OVERLAY")
+            caret:SetColorTexture(1, 1, 1, 0.9)
+            caret:SetSize(1, ChatFontNormal and select(2, ChatFontNormal:GetFont()) or 14)
+            caret:SetPoint("TOPLEFT", INSET, -INSET)
+            caret:Hide()
+            local blink = 0
+            local function Blink(_, elapsed)
+                blink = blink + elapsed
+                caret:SetShown(blink % 1 < 0.5)
+            end
+            box:SetScript("OnEditFocusGained", function()
+                blink = 0
+                caret:Show()
+                box:SetScript("OnUpdate", Blink)
+            end)
+            box:SetScript("OnEditFocusLost", function()
+                box:SetScript("OnUpdate", nil)
+                caret:Hide()
+            end)
+            local atX, atY
+            box:SetScript("OnCursorChanged", function(_, x, y, _, h)
+                -- (it fires as the pad resizes too: only a move restarts the blink)
+                if x ~= atX or y ~= atY then
+                    atX, atY = x, y
+                    caret:SetPoint("TOPLEFT", INSET + x, y - INSET)
+                    blink = 0
+                    if box:HasFocus() then caret:Show() end
+                end
+                local s, view = page.scroller, page.scroller.scroll:GetHeight() or 0
+                if -y < s.target then s.To(-y, true) elseif -y + h > s.target + view then s.To(-y + h - view, true) end
+            end)
+            -- a click anywhere on the pad starts typing
+            body:EnableMouse(true)
+            body:SetScript("OnMouseDown", function() box:SetFocus() end)
+            page.box, page.caret = box, caret
+            page.measure = page.scroller.child:CreateFontString(nil, "ARTWORK")
+            page.measure:SetFontObject(ChatFontNormal)
+            page.measure:SetJustifyH("LEFT")
+            page.measure:SetWordWrap(true)
+            page.measure:SetNonSpaceWrap(true)
+            page.measure:Hide()
+            return
+        end
+        local top
+        if page == items then
+            page.filters = ns.window.Segments(body, { height = 22, fit = true, size = 11, items = page.FilterItems() })
+            page.filters:SetPoint("TOPLEFT", 0, 0)
+            page.view = ns.window.Segments(body, { height = 22, fit = true, items = {
+                { key = "list", label = "List", icon = "view-groups", group = "v",
+                    tip = function() return "A line an item." end, click = function()
+                        ns.db.altItemsView = "list"
+                        page.Refresh()
+                    end },
+                { key = "grid", label = "Grid", icon = "view-grid", group = "v",
+                    tip = function() return "Slots, bank and bags." end, click = function()
+                        ns.db.altItemsView = "grid"
+                        page.Refresh()
+                    end },
+            } })
+            page.view:SetPoint("TOPRIGHT", 0, -(22 + 6))
+            local s = Search(page, body, "MedalluinAltItemsSearch", "Search its items")
+            s:SetPoint("TOPLEFT", 6, -(22 + 7))
+            s:SetPoint("RIGHT", page.view, "LEFT", -10, 0)
+            top = 2 * 22 + 12
+        else
+            local sorts = {}
+            for _, o in ipairs(SORTS) do
+                table.insert(sorts, { key = o.key, label = o.label, group = "s",
+                    selected = (ns.db.altRecipesSort or "name") == o.key,
+                    tip = function() return o.tip end, click = function()
+                        ns.db.altRecipesSort = o.key
+                        page.Refresh()
+                    end })
+            end
+            page.sort = ns.window.Segments(body, { height = 22, fit = true, size = 11, items = sorts })
+            page.sort:SetPoint("TOPRIGHT", 0, 0)
+            local s = Search(page, body, "MedalluinAltRecipesSearch", "Search its recipes")
+            s:SetPoint("TOPLEFT", 6, -1)
+            s:SetPoint("RIGHT", page.sort, "LEFT", -10, 0)
+            top = 22 + 8
+        end
+        local holder = CreateFrame("Frame", nil, body)
+        holder:SetPoint("TOPLEFT", 0, -top)
+        holder:SetPoint("BOTTOMRIGHT")
+        page.scroller = ns.window.Scroller(holder, 10)
+        page.child = page.scroller.child
+        holder:EnableMouseWheel(true)
+        holder:SetScript("OnMouseWheel", function(_, delta) page.scroller.To(page.scroller.target - delta * 60) end)
+    end
+end
+
+for _, page in ipairs({ prof, items, notes }) do
+    page.Available = function() return true end
+    page.Build = Build(page)
+    page.Refresh = function()
+        if not (shown and page.who and AW and AW.window:IsShown()) then return end
+        Who(page)
+        page.Draw()
+    end
+    table.insert(pages, page)
+end
+
 local function Window()
     if AW then return AW end
     AW = ns.Window{
@@ -95,31 +795,42 @@ local function Window()
         Close = function() AW.SetShown(false) end,
         Lifted = function() return {} end,
     }
-    altPage = { key = "alt", label = "", glyph = "character", order = 1, flex = true, bandUsed = true, height = 80,
-        Available = function() return true end,
-        Build = function(_, _, band)
-            altPage.name = ns.Text(band, 13)
-            altPage.name:SetPoint("LEFT", 4, 0)
-        end,
-        Refresh = function()
-            local alt = altPage.alt
-            altPage.name:SetText(alt and alt.name or "")
-            altPage.name:SetTextColor(unpack(Color(alt and alt.e.class)))
-        end }
-    AW.Page(altPage)
+    for _, page in ipairs(pages) do AW.Page(page) end
     AW.Build()
-    ns.professions.altWindow = AW
+    AW.window:HookScript("OnSizeChanged", function()
+        local p = AW.Current()
+        if p and p.Refresh then p.Refresh() end
+    end)
+    -- an item's data come in: the page drawn again at the next frame
+    ns.On("GET_ITEM_INFO_RECEIVED", function() dirty = true end)
+    AW.window:HookScript("OnUpdate", function()
+        if not dirty then return end
+        dirty = false
+        local p = AW.Current()
+        if p and p ~= notes and p.Refresh then p.Refresh() end
+    end)
+    ns.professions.altWindow, ns.professions.altPages = AW, pages     -- (the harness reads them)
     return AW
 end
 
--- the alt's window, open on it; the same alt again closes it
+-- A character's window, open on it; the same one again closes it. alt:
+-- { name, e (its roster entry), me (the playing character) }.
 function W.OpenAlt(alt)
     local w = Window()
-    local same = altPage.alt and altPage.alt.name == alt.name and w.window:IsShown()
-    altPage.alt, altPage.label = alt, alt.name
-    if not w.Current() then w.Select(altPage) end
+    local same = shown and shown.name == alt.name and w.window:IsShown()
+    shown = alt
+    if not w.Current() then w.Select(prof) end
     w.SetShown(not same)
-    altPage.Refresh()
+    local p = w.Current()
+    if p and p.Refresh then p.Refresh() end
+end
+
+-- the playing character's own window (the banner's click)
+function W.OpenMine()
+    local name = UnitName("player")
+    if not name or ns.IsSecret(name) then return end
+    Record()
+    W.OpenAlt({ name = name, e = Roster()[name] or {}, me = true })
 end
 
 -- ---------------------------------------------------------- the banner
@@ -160,6 +871,16 @@ function W.Banner(body)
     b.what = ns.Text(b, 12)
     b.what:SetPoint("TOP", b.name, "BOTTOM", 0, -6)
     b.what:SetTextColor(unpack(ns.colors.dim))
+    -- a click opens the playing character's own window (its notes, items)
+    b:EnableMouse(true)
+    b:SetScript("OnMouseUp", function(_, mouse) if mouse == "LeftButton" then W.OpenMine() end end)
+    b:SetScript("OnEnter", function(self)
+        W.Beside(self)
+        GameTooltip:SetText(UnitName("player") or "", unpack(Color(select(2, UnitClass("player")))))
+        GameTooltip:AddLine("Click: your window (professions, items, notes).", unpack(ns.colors.dim))
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     function b.Refresh()
         SetPortraitTexture(b.portrait, "player")
         local className, class = UnitClass("player")
@@ -244,12 +965,12 @@ function W.AltRows(body)
             local primaries = alt.e.primaries or {}
             -- the first primary leftmost: with one, it takes the right slot
             for k, p in ipairs(r.profs) do
-                local prof = #primaries == 2 and primaries[k] or (k == 2 and primaries[1]) or nil
-                p.icon:SetShown(prof ~= nil)
-                p.label:SetShown(prof ~= nil)
-                if prof then
-                    p.icon:SetTexture(prof.icon)
-                    p.label:SetText(prof.name or "")
+                local one = #primaries == 2 and primaries[k] or (k == 2 and primaries[1]) or nil
+                p.icon:SetShown(one ~= nil)
+                p.label:SetShown(one ~= nil)
+                if one then
+                    p.icon:SetTexture(one.icon)
+                    p.label:SetText(one.name or "")
                 end
             end
             if #primaries == 0 then

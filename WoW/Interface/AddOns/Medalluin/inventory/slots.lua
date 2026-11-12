@@ -56,14 +56,20 @@ local GROUPS = {
 local CLASS = { [2] = "equipment", [4] = "equipment", [0] = "consumable", [12] = "quest",
     [3] = "trade", [5] = "trade", [7] = "trade", [8] = "trade", [9] = "trade", [19] = "trade" }
 
+-- An item's group by itself, where no bag says more (an alt's items,
+-- professions/alts.lua): junk by its quality, the rest by its class.
+function ns.ItemGroup(itemID, quality)
+    if quality == 0 then return "junk" end
+    local class = C_Item and C_Item.GetItemInfoInstant and select(6, C_Item.GetItemInfoInstant(itemID))
+    return CLASS[class] or "other"
+end
+
 -- What group an item goes in.
 local function Group(info, bag, slot)
     if C_NewItems and C_NewItems.IsNewItem(bag, slot) then return "new" end
-    if info.quality == 0 then return "junk" end
     local quest = Container.GetContainerItemQuestInfo and Container.GetContainerItemQuestInfo(bag, slot)
-    if quest and quest.isQuestItem then return "quest" end
-    local class = C_Item and C_Item.GetItemInfoInstant and select(6, C_Item.GetItemInfoInstant(info.itemID))
-    return CLASS[class] or "other"
+    if info.quality ~= 0 and quest and quest.isQuestItem then return "quest" end
+    return ns.ItemGroup(info.itemID, info.quality)
 end
 
 local function Level(b, info, bag, slot)

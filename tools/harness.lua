@@ -15509,7 +15509,7 @@ if profPass then
         overview("prof.alts")
         local aw = function()
             local f = _G.MedalluinAlt
-            return f and f.shown and W.altWindow.Current().name.text or "closed"
+            return f and f.shown and W.altWindow.Current().who.text or "closed"
         end
         click(ov.alts.rows[1])
         print("prof.alt open", aw())
@@ -15517,6 +15517,125 @@ if profPass then
         print("prof.alt other", aw())
         click(ov.alts.rows[2])
         print("prof.alt again", aw())
+        -- an alt's pages, from what it recorded (professions/altdata.lua)
+        do
+            local clock = time
+            time = function() return 1000000 end            -- (a fixed now)
+            roster.Medalluin.seen = time() - 3 * 86400
+            local d = ns.alts.Data("Medalluin")
+            d.skills = { { name = "Tailoring", icon = 3, rank = 287, max = 300, primary = true },
+                { name = "Cooking", icon = 4, rank = 150, max = 300 } }
+            d.recipes = { Tailoring = { { id = 1, name = "Mooncloth Robe", icon = 11, item = 9001 },
+                { id = 3, name = "Runecloth Bag", icon = 12, item = 9002 } },
+                Cooking = { { id = 2, name = "Spiced Bread", icon = 13 } } }
+            d.recipesSeen = { Tailoring = time() - 3 * 86400 }
+            d.bags, d.bank = { [9101] = 4, [9102] = 1 }, { [9101] = 8, [9103] = 2 }
+            d.bankSeen, d.money = time() - 86400, 41218
+            local names = { [9001] = "Mooncloth Robe", [9002] = "Runecloth Bag", [9101] = "Runecloth",
+                [9102] = "Robe of the Void", [9103] = "Major Healing Potion" }
+            local class = { [9101] = 7, [9102] = 4, [9103] = 0 }
+            local was = { C_Item.GetItemNameByID, C_Item.GetItemInfoInstant, C_Item.GetItemQualityByID,
+                C_Item.GetItemIconByID, GetCoinTextureString }
+            C_Item.GetItemNameByID = function(id) return names[id] end
+            C_Item.GetItemInfoInstant = function(id) return id, nil, nil, nil, nil, class[id] end
+            C_Item.GetItemQualityByID = function(id) return (id == 9102 or id == 9002) and 4 or 1 end
+            C_Item.GetItemIconByID = function(id) return id end
+            GetCoinTextureString = function(c) return c .. "c" end
+            local AW = W.altWindow
+            local function page(key) for _, p in ipairs(W.altPages) do if p.key == key then return p end end end
+            local function dump(tag, p)
+                local out = {}
+                for _, c in ipairs(p.child and p.child.all_ or {}) do
+                    if c.shown then
+                        if c.kind == "FontString" and c.text and c.text ~= "" then table.insert(out, c.text)
+                        elseif c.name and c.name.shown then
+                            local cols = {}
+                            for _, t in ipairs(c.cols or {}) do table.insert(cols, t.text) end
+                            table.insert(out, "[" .. (c.sign and (c.sign.text .. " ") or "") .. c.name.text
+                                .. (c.value and (" " .. c.value.text) or "")
+                                .. (c.count and c.count.text ~= "" and (" " .. c.count.text) or "")
+                                .. (#cols > 0 and (" " .. table.concat(cols, "/")) or "") .. "]")
+                        elseif c.it then
+                            table.insert(out, "<" .. c.it.name .. " " .. tostring(c.count.text) .. ">")
+                        end
+                    end
+                end
+                print(tag, p.who.text, p.what.text, table.concat(out, " ~ "), "note=" .. tostring(p.note.text))
+            end
+            click(ov.alts.rows[1])
+            frame()
+            local P, I, N = page("professions"), page("items"), page("notes")
+            P.Refresh()
+            dump("prof.alt professions", P)
+            P.search:SetText("bag")
+            P.search.scripts.OnTextChanged(P.search, true)
+            dump("prof.alt professions search", P)
+            -- folded: the heading alone, remembered; a search opens it
+            local tail = P.parts.fold[1]
+            tail.scripts.OnClick(tail, "LeftButton")
+            dump("prof.alt professions folded", P)
+            print("prof.alt folded saved", tostring(ns.db.altRecipesFolded.Tailoring))
+            P.search:SetText("")
+            P.search.scripts.OnTextChanged(P.search, true)
+            dump("prof.alt professions folded unsearched", P)
+            for _, h in ipairs(P.parts.fold) do
+                if h.shown and h.prof == "Tailoring" then tail = h end
+            end
+            tail.scripts.OnClick(tail, "LeftButton")
+            -- the sorts: the best made first, the newest first, and back
+            P.sort.byKey.quality.scripts.OnClick(P.sort.byKey.quality, "LeftButton")
+            dump("prof.alt professions quality", P)
+            print("prof.alt sort saved", ns.db.altRecipesSort, "lit=" .. tostring(P.sort.byKey.quality.selected))
+            P.sort.byKey.newest.scripts.OnClick(P.sort.byKey.newest, "LeftButton")
+            dump("prof.alt professions newest", P)
+            P.sort.byKey.name.scripts.OnClick(P.sort.byKey.name, "LeftButton")
+            AW.Select(I)
+            ns.db.altItemsFilter, ns.db.altItemsView = "all", "list"
+            I.Refresh()
+            dump("prof.alt items", I)
+            I.filters.byKey.trade.scripts.OnClick(I.filters.byKey.trade, "LeftButton")
+            dump("prof.alt items trade", I)
+            print("prof.alt items saved", ns.db.altItemsFilter)
+            I.filters.byKey.all.scripts.OnClick(I.filters.byKey.all, "LeftButton")
+            I.view.byKey.grid.scripts.OnClick(I.view.byKey.grid, "LeftButton")
+            dump("prof.alt items grid", I)
+            print("prof.alt items view", ns.db.altItemsView)
+            ns.db.altItemsView = "list"
+            AW.Select(N)
+            N.Refresh()
+            N.box:SetText("Dire Maul on Thursday")
+            N.box.scripts.OnTextChanged(N.box, true)
+            print("prof.alt notes saved", tostring(ns.alts.Data("Medalluin").notes), "note=" .. N.note.text)
+            -- the pad's caret: shown with the focus, where the cursor is, blinking
+            local function caret(tag)
+                local _, _, _, x, y = N.caret:GetPoint(1)
+                print(tag, "shown=" .. tostring(N.caret:IsShown()), "at=" .. tostring(x) .. "," .. tostring(y),
+                    "h=" .. tostring(N.caret:GetHeight()))
+            end
+            caret("prof.alt caret idle")
+            N.box:SetFocus()
+            caret("prof.alt caret focus")
+            N.box.scripts.OnCursorChanged(N.box, 48, -20, 0, 14)
+            caret("prof.alt caret moved")
+            N.box.scripts.OnUpdate(N.box, 0.7)
+            caret("prof.alt caret blink")
+            N.box.scripts.OnCursorChanged(N.box, 48, -20, 0, 14)
+            caret("prof.alt caret same place")
+            N.box.scripts.OnUpdate(N.box, 0.5)
+            caret("prof.alt caret back")
+            N.box:ClearFocus()
+            caret("prof.alt caret left")
+            AW.Select(P)
+            click(ov.alts.rows[1])
+            print("prof.alt closed", aw())
+            -- the banner: the playing character's own window
+            ov.banner.scripts.OnMouseUp(ov.banner, "LeftButton")
+            print("prof.alt mine", aw(), W.altWindow.Current().what.text)
+            ov.banner.scripts.OnMouseUp(ov.banner, "LeftButton")
+            C_Item.GetItemNameByID, C_Item.GetItemInfoInstant, C_Item.GetItemQualityByID, C_Item.GetItemIconByID,
+                GetCoinTextureString = was[1], was[2], was[3], was[4], was[5]
+            time = clock
+        end
         roster.Barkhide, roster.Medalluin, roster.Newbie = nil, nil, nil
         fire("SKILL_LINES_CHANGED")
         frame()
