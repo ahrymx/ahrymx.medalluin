@@ -9104,6 +9104,17 @@ local function EditorPass()
     piece("party1 in widget, its own edit", ns.units.party1, "leader")
     print("  party1 cell", n(ns.units.party1.w) .. "x" .. n(ns.units.party1.h), "buttons=" .. #E.byId.partyWidget.buttons())
     ns.SetOption("partyLayout", "console")
+    -- Unit Frames > General: one shortcut, on the editor's first tab
+    ;(function()
+    ns.OpenOptions("units/general")
+    local labels = {}
+    for _, c in ipairs(ns.optionPages["units/general"].controls or {}) do
+        if c.spec and c.spec.kind == "button" then table.insert(labels, c.spec.label) end
+        if c.spec and c.spec.label == "Edit unit frames" then c.scripts.OnClick(c) end
+    end
+    local chosen = E.ui.Chosen()
+    print("  units general shortcut", table.concat(labels, ","), "frame=" .. tostring(chosen and chosen.id))
+    end)()
     ns.OpenEditor()
     window("layout console")
     piece("party1 on console", ns.units.party1, "role")

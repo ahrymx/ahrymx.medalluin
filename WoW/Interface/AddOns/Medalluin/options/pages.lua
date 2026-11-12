@@ -562,10 +562,9 @@ function ns.OptionPages()
                     id = "general", name = "General",
                     intro = "Shared by every profile.",
                     groups = {
+                        -- one way in, on the editor's first tab (player and target)
                         Group("Editor",
-                            Editor(function() return ns.PartyWidgetLayout() and "partyWidget" or "party" end,
-                                "Edit the party frames"),
-                            Editor("unit", "Edit player and target")),
+                            Editor(function() return ns.editor.FRAMES[1].id end, "Edit unit frames")),
                         Glows(),
                         Group("Blizzard's auras (shared by every profile)",
                             Check("blizzardAuras", "Blizzard's buff and debuff rows",
