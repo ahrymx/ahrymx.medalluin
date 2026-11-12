@@ -1,6 +1,7 @@
 -- Aura management on unit frames:
 --   1. Border / taint glow for debuffs the player can dispel (green for Poison,
---      purple for Curse, blue for Magic, orange for Disease, red for Bleed).
+--      purple for Curse, blue for Magic, orange for Disease, red for Bleed;
+--      each type's on and colour are options), else for the unit's aggro.
 --   2. Crowd Control (CC): large centered icon with radial timer sweep and
 --      countdown numbers.
 --   3. Player-applied buffs: compact row on the outer corner of the health bar
@@ -18,52 +19,99 @@ local _, ns = ...
 local Auras = C_UnitAuras
 local LossOfControl = C_LossOfControl
 
-local DISPEL_COLORS = {
-    Magic = { 0.20, 0.60, 1.00 },
-    Curse = { 0.70, 0.00, 1.00 },
-    Poison = { 0.00, 0.82, 0.12 },
-    Disease = { 0.82, 0.38, 0.00 },
-    Bleed = { 0.80, 0.06, 0.06 },
-}
+-- The dispel types, in the order a frame with several shows them. Each has
+-- an option (dispel<Type>) and a colour (dispelColor<Type>, settings.lua).
 local DISPEL_PRIORITY = { "Magic", "Curse", "Poison", "Disease", "Bleed" }
+ns.DISPEL_TYPES = DISPEL_PRIORITY
 
-local playerDispels = {}
+-- What dispels what: the class, the spell's name, the types, its ids.
+-- Retail and Forever share some ids under other names (527 is Purify on
+-- retail, Dispel Magic on Forever), so an id counts only under its own
+-- name; a spell whose id is not here is found by its name in the
+-- spellbook, the class's only (two classes have a Purify).
+local DISPEL_SPELLS = {
+    { "SHAMAN", "Cure Poison", { "Poison" }, 526 },
+    { "SHAMAN", "Cure Disease", { "Disease" }, 2870 },
+    { "SHAMAN", "Cleanse Spirit", { "Curse" }, 51886 },
+    { "SHAMAN", "Purify Spirit", { "Magic", "Curse" }, 77130 },
+    { "DRUID", "Remove Curse", { "Curse" }, 2782 },
+    { "DRUID", "Cure Poison", { "Poison" }, 8946 },
+    { "DRUID", "Abolish Poison", { "Poison" }, 2893 },
+    { "DRUID", "Remove Corruption", { "Curse", "Poison" }, 2782 },
+    { "DRUID", "Nature's Cure", { "Magic", "Curse", "Poison" }, 88423 },
+    { "PRIEST", "Dispel Magic", { "Magic" }, 527, 988 },
+    { "PRIEST", "Cure Disease", { "Disease" }, 528 },
+    { "PRIEST", "Abolish Disease", { "Disease" }, 552 },
+    { "PRIEST", "Purify", { "Magic", "Disease" }, 527 },
+    { "PRIEST", "Purify Disease", { "Disease" }, 213634 },
+    { "PALADIN", "Purify", { "Poison", "Disease" }, 1152 },
+    { "PALADIN", "Cleanse", { "Magic", "Poison", "Disease" }, 4987 },
+    { "PALADIN", "Cleanse Toxins", { "Poison", "Disease" }, 213644 },
+    { "MAGE", "Remove Lesser Curse", { "Curse" }, 475 },
+    { "MAGE", "Remove Curse", { "Curse" }, 475 },
+    { "MONK", "Detox", { "Magic", "Poison", "Disease" }, 115450 },
+    { "MONK", "Detox", { "Poison", "Disease" }, 218164 },
+    { "EVOKER", "Naturalize", { "Magic", "Poison" }, 360823 },
+    { "EVOKER", "Expunge", { "Poison" }, 365585 },
+    { "EVOKER", "Cauterizing Flame", { "Bleed", "Poison", "Curse", "Disease" }, 374251 },
+    -- the felhunter's and the imp's, on the pet's bar
+    { "WARLOCK", "Devour Magic", { "Magic" }, 19505, 19731, 19734, 19736, 27276, 27277, pet = true },
+    { "WARLOCK", "Singe Magic", { "Magic" }, 89808, 132411, pet = true },
+}
+
+local function SpellName(id)
+    if C_Spell and C_Spell.GetSpellName then return C_Spell.GetSpellName(id) end
+    return GetSpellInfo and (GetSpellInfo(id))
+end
+
+local function Known(id, pet)
+    if pet then return IsSpellKnown and IsSpellKnown(id, true) or false end
+    return (IsPlayerSpell and IsPlayerSpell(id)) or (IsSpellKnown and IsSpellKnown(id)) or false
+end
+
+-- A spell in the spellbook by its name (the client answers only for one
+-- the player has).
+local function InBook(name)
+    local ok, info = pcall(C_Spell and C_Spell.GetSpellInfo or GetSpellInfo, name)
+    return ok and info ~= nil
+end
+
+local playerDispels = {}    -- type -> true
+local dispelSpells = {}     -- the names of the spells that grant them
 
 local function UpdatePlayerDispels()
     wipe(playerDispels)
+    wipe(dispelSpells)
     local _, class = UnitClass("player")
-    local spec = GetSpecialization and GetSpecialization() or 0
-    if class == "MAGE" then
-        playerDispels.Curse = true
-    elseif class == "DRUID" then
-        playerDispels.Curse = true
-        playerDispels.Poison = true
-        if spec == 4 then playerDispels.Magic = true end -- Restoration
-    elseif class == "PRIEST" then
-        playerDispels.Magic = true
-        playerDispels.Disease = true
-    elseif class == "PALADIN" then
-        playerDispels.Poison = true
-        playerDispels.Disease = true
-        if spec == 1 then playerDispels.Magic = true end -- Holy
-    elseif class == "SHAMAN" then
-        playerDispels.Curse = true
-        if spec == 3 then -- Restoration
-            playerDispels.Magic = true
-            playerDispels.Poison = true
-        end
-    elseif class == "MONK" then
-        playerDispels.Poison = true
-        playerDispels.Disease = true
-        if spec == 2 then playerDispels.Magic = true end -- Mistweaver
-    elseif class == "EVOKER" then
-        playerDispels.Poison = true
-        if spec == 2 then -- Preservation
-            playerDispels.Magic = true
-            playerDispels.Curse = true
+    for _, s in ipairs(DISPEL_SPELLS) do
+        if s[1] == class then
+            local have = false
+            for k = 4, #s do
+                if Known(s[k], s.pet) and SpellName(s[k]) == s[2] then have = true end
+            end
+            if not have and not s.pet then have = InBook(s[2]) end
+            if have then
+                for _, t in ipairs(s[3]) do playerDispels[t] = true end
+                local listed = false
+                for _, n in ipairs(dispelSpells) do if n == s[2] then listed = true end end
+                if not listed then table.insert(dispelSpells, s[2]) end
+            end
         end
     end
 end
+
+-- What the player dispels: the types (in DISPEL_PRIORITY's order) and the
+-- spells that do it (the Unit Frames page says so).
+function ns.PlayerDispels()
+    local types = {}
+    for _, t in ipairs(DISPEL_PRIORITY) do if playerDispels[t] then table.insert(types, t) end end
+    return types, dispelSpells
+end
+
+-- A type's colour, as the player set it.
+local function DispelColor(t) return ns.HexColor(ns.db["dispelColor" .. t]) end
+-- A type glows when the player dispels it and has it on.
+local function Glows(t) return playerDispels[t] and ns.db["dispel" .. t] ~= false end
 
 -- Common CC spell IDs across Classic and modern expansions
 local CC_SPELLS = {
@@ -117,7 +165,9 @@ local function OnTimerUpdate(self, elapsed)
     end
 end
 
--- Border glow behind the stone console art for dispellable debuffs
+-- A glow round a frame's edges, behind the stone console art, pulsing: a
+-- debuff the player dispels, in its type's colour, or the unit's aggro.
+-- The canvas's copies draw theirs with it too (options/canvas.lua).
 local function CreateDispelGlow(btn, side, window)
     local f = CreateFrame("Frame", nil, btn)
     f:SetAllPoints(btn)
@@ -200,6 +250,7 @@ local function CreateDispelGlow(btn, side, window)
     f:Hide()
     return f
 end
+ns.EdgeGlow = CreateDispelGlow
 
 -- CC Centerpiece widget
 local function CreateCCWidget(parent, size)
@@ -372,19 +423,34 @@ local function SimPlace(unit)
 end
 
 local MINE = { 3, 1, 2 }    -- how many of your debuffs, enemy by enemy
+-- A simulated frame's debuff to dispel: the types the player glows for,
+-- frame by frame; every type in turn when none does, to see the colours.
+local function SimDispel(i)
+    local types = {}
+    for _, t in ipairs(DISPEL_PRIORITY) do if Glows(t) then table.insert(types, t) end end
+    if not types[1] then types = DISPEL_PRIORITY end
+    return types[(i - 1) % #types + 1]
+end
 local function StubAuras(unit)
     local set, i, n = SimPlace(unit)
     if not set then return {} end
     local function has(key) return ns.SimHas(set, key, i, n) end
-    return { glow = has("glow") and "Curse", cc = has("cc"), buffs = has("buffs"), boss = has("boss"),
+    return { glow = has("glow") and SimDispel(i), cc = has("cc"), buffs = has("buffs"), boss = has("boss"),
         mine = has("mine") and MINE[(i - 1) % 3 + 1] }
 end
 local MINE_ICONS = { "Spell_Shadow_ShadowWordPain", "Spell_Holy_SearingLight", "Spell_Shadow_AbominationExplosion" }
+-- The preview's icons, for the editor's canvas too (options/canvas.lua).
+ns.STUB_ICONS = {
+    cc = "Interface\\Icons\\Spell_Nature_Polymorph",
+    boss = "Interface\\Icons\\Ability_Creature_Cursed_01",
+    buffs = { "Interface\\Icons\\Spell_Nature_Rejuvenation", "Interface\\Icons\\Spell_Nature_ResistNature",
+        "Interface\\Icons\\Spell_Holy_Renew" },
+}
 
 -- Whether a frame shows one kind of aura: the option its tab gives it. The
 -- console's party buttons answer to the Party widget's own while they are in
 -- it (ns.PartyKey); the player's and target's to the console's.
-local CONSOLE_KEYS = { glow = "auraGlow", cc = "auraCC", buffs = "auraBuffs", boss = "auraBoss" }
+local CONSOLE_KEYS = { glow = "auraGlow", threat = "auraThreat", cc = "auraCC", buffs = "auraBuffs", boss = "auraBoss" }
 local function Shows(b, kind)
     local keys = b.auraKeys or CONSOLE_KEYS
     if type(keys) == "function" then keys = keys() end
@@ -396,10 +462,10 @@ end
 -- Applies stub simulation auras when simParty is true
 local function ApplyStubAuras(b)
     local want = StubAuras(b.unit)
-    -- Dispel glow stub (a Curse)
+    -- Dispel glow stub
     if b.dispelGlow then
         if want.glow and Shows(b, "glow") then
-            b.dispelGlow:SetGlowColor(unpack(DISPEL_COLORS[want.glow]))
+            b.dispelGlow:SetGlowColor(DispelColor(want.glow))
             b.dispelGlow:Show()
         else
             b.dispelGlow:Hide()
@@ -531,7 +597,7 @@ local function ScanUnitAuras(b)
             local aura = Read(unit, i, "HARMFUL")
             if not aura then break end
             local d = aura.dispelName
-            if d and playerDispels[d] then
+            if d and not ns.IsSecret(d) and Glows(d) then
                 if not bestDispel then
                     bestDispel = d
                 else
@@ -545,8 +611,8 @@ local function ScanUnitAuras(b)
         end
     end
     if b.dispelGlow then
-        if bestDispel and DISPEL_COLORS[bestDispel] then
-            b.dispelGlow:SetGlowColor(unpack(DISPEL_COLORS[bestDispel]))
+        if bestDispel then
+            b.dispelGlow:SetGlowColor(DispelColor(bestDispel))
             b.dispelGlow:Show()
         else
             b.dispelGlow:Hide()
@@ -702,9 +768,25 @@ local function ScanUnitAuras(b)
     end
 end
 
+-- The aggro glow: the unit is tanking something (a threat situation of 2
+-- or more), and the border is not the dispel glow's. Not in the preview
+-- (the editor's canvas shows it); hidden where the game keeps it secret.
+local function UpdateThreat(b)
+    local g = b.threatGlow
+    if not g then return end
+    local show = false
+    if Shows(b, "threat") and UnitExists(b.unit) and not (b.dispelGlow and b.dispelGlow:IsShown()) then
+        local s = UnitThreatSituation and UnitThreatSituation(b.unit)
+        show = s ~= nil and not ns.IsSecret(s) and s >= 2
+    end
+    if show then g:SetGlowColor(ns.HexColor(ns.db.threatColor)) end
+    g:SetShown(show)
+end
+
 -- Every aura piece a frame has, hidden.
 local function HideAuras(b)
     if b.dispelGlow then b.dispelGlow:Hide() end
+    if b.threatGlow then b.threatGlow:Hide() end
     if b.ccWidget then b.ccWidget:Hide() end
     if b.bossDebuff then b.bossDebuff:Hide() end
     for _, btn in ipairs(b.buffWidgets or {}) do btn:Hide() end
@@ -738,6 +820,7 @@ function UpdateUnitAuras(b, retry)
             C_Timer.After(0, function() UpdateUnitAuras(b, true) end)
         end
     end
+    UpdateThreat(b)
 end
 ns.UpdateUnitAuras = UpdateUnitAuras
 
@@ -762,15 +845,17 @@ for unit, b in pairs(ns.units or {}) do
     local isParty = window ~= "unit"
 
     b.dispelGlow = CreateDispelGlow(b, side, window)
+    b.threatGlow = CreateDispelGlow(b, side, window)
     b.ccWidget = CreateCCWidget(b.health, isParty and 24 or 32)
     b.buffWidgets = CreateBuffWidgets(b.health, side, isParty)
     b.bossDebuff = CreateBossDebuffWidget(b.health, isParty and 24 or 32)
 end
 if ns.partyWidgetPlayer then
     local b = ns.partyWidgetPlayer
-    b.auraKeys = { glow = "partyWidgetGlow", cc = "partyWidgetCC", buffs = "partyWidgetBuffs",
-        boss = "partyWidgetBoss" }
+    b.auraKeys = { glow = "partyWidgetGlow", threat = "partyWidgetThreat", cc = "partyWidgetCC",
+        buffs = "partyWidgetBuffs", boss = "partyWidgetBoss" }
     b.dispelGlow = CreateDispelGlow(b, -1)
+    b.threatGlow = CreateDispelGlow(b, -1)
     b.ccWidget = CreateCCWidget(b.health, 24)
     b.buffWidgets = CreateBuffWidgets(b.health, -1, true)
     b.bossDebuff = CreateBossDebuffWidget(b.health, 24)
@@ -806,8 +891,8 @@ local function CreateMineWidgets(health, size, point, y)
 end
 
 -- In a battleground, the raid's cells answer to the Battleground tab.
-local RAID_KEYS = { glow = "raidGlow", cc = "raidCC", boss = "raidBoss" }
-local BG_KEYS = { glow = "bgGlow", cc = "bgCC" }
+local RAID_KEYS = { glow = "raidGlow", threat = "raidThreat", cc = "raidCC", boss = "raidBoss" }
+local BG_KEYS = { glow = "bgGlow", threat = "bgThreat", cc = "bgCC" }
 function ns.InBattleground()
     local _, kind = IsInInstance()
     return kind == "pvp"
@@ -831,6 +916,8 @@ function ns.AttachAuras(b, kind, size)
         b.auraKeys = RaidKeys
         b.dispelGlow = CreateDispelGlow(b, 1)
         Over(b.dispelGlow, 3)
+        b.threatGlow = CreateDispelGlow(b, 1)
+        Over(b.threatGlow, 3)
         b.ccWidget = CreateCCWidget(b.health, 20)
         Over(b.ccWidget, 4)
         b.bossDebuff = CreateBossDebuffWidget(b.health, 20)
@@ -870,9 +957,10 @@ end
 function ns.ShapeDispelGlows()
     local cuts = ns.layout.cuts or {}
     for _, b in pairs(ns.units or {}) do
-        local g = b.dispelGlow
         -- a party button in the widget is a plain rectangle (widgets/party.lua)
-        if g and g.cut then g.cut:SetShown(cuts[g.window] and not b.inWidget and true or false) end
+        for _, g in ipairs({ b.dispelGlow, b.threatGlow }) do
+            if g.cut then g.cut:SetShown(cuts[g.window] and not b.inWidget and true or false) end
+        end
     end
 end
 
@@ -887,6 +975,19 @@ events:SetScript("OnEvent", function(_, _, unit)
     if unit == "player" and ns.partyWidgetPlayer and ns.partyWidgetPlayer.inWidget then
         UpdateUnitAuras(ns.partyWidgetPlayer)
     end
+end)
+
+-- A unit's aggro, wherever its frames are.
+local threat = CreateFrame("Frame")
+threat:RegisterEvent("UNIT_THREAT_SITUATION_UPDATE")
+threat:RegisterEvent("UNIT_THREAT_LIST_UPDATE")
+threat:SetScript("OnEvent", function(_, _, unit)
+    if not unit then return end
+    if ns.units and ns.units[unit] then UpdateThreat(ns.units[unit]) end
+    if unit == "player" and ns.partyWidgetPlayer and ns.partyWidgetPlayer.inWidget then
+        UpdateThreat(ns.partyWidgetPlayer)
+    end
+    for b in pairs(carriers) do if b.unit == unit then UpdateThreat(b) end end
 end)
 
 local loc = CreateFrame("Frame")
@@ -917,8 +1018,15 @@ ns.OnSetting("auraGlow", UpdateAllAuras)
 ns.OnSetting("auraCC", UpdateAllAuras)
 ns.OnSetting("auraBuffs", UpdateAllAuras)
 ns.OnSetting("auraBoss", UpdateAllAuras)
+ns.OnSetting("auraThreat", UpdateAllAuras)
+ns.OnSetting("threatColor", UpdateAllAuras)
+for _, t in ipairs(DISPEL_PRIORITY) do
+    ns.OnSetting("dispel" .. t, UpdateAllAuras)
+    ns.OnSetting("dispelColor" .. t, UpdateAllAuras)
+end
 for _, key in ipairs({ "raidGlow", "raidCC", "raidBoss", "bgGlow", "bgCC", "bossMine", "bossWidgetMine", "arenaCC",
-    "arenaMine", "partyWidgetGlow", "partyWidgetCC", "partyWidgetBuffs", "partyWidgetBoss", "partyLayout" }) do
+    "arenaMine", "partyWidgetGlow", "partyWidgetCC", "partyWidgetBuffs", "partyWidgetBoss", "partyLayout",
+    "partyWidgetThreat", "raidThreat", "bgThreat" }) do
     ns.OnSetting(key, UpdateAllAuras)
 end
 ns.OnSetting("simParty", UpdateAllAuras)

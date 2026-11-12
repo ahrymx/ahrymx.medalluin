@@ -150,7 +150,6 @@ local DEFAULTS = {
     optionsPoint = false,   -- where the settings window was dragged to, the same way (options/window.lua)
     optionsFolded = false,  -- the settings sidebar's folded categories, by name
     editorPoint = false,    -- and the unit-frame editor's (options/editor.lua)
-    editCanvasPoint = false, -- and its edit-mode canvas (options/canvas.lua)
     xpCast = false,         -- the player's casts over the experience bar
     repCast = false,        -- the target's casts over the reputation bar
     simParty = false,       -- simulate party frames and show the group art layer
@@ -177,6 +176,7 @@ local DEFAULTS = {
     topStances = true,      -- stance bar on the bottom tier
     topTotems = true,       -- totem bar on the bottom tier (Forever's)
     auraGlow = true,        -- border glow for dispellable debuffs
+    auraThreat = true,      -- border glow while the unit has aggro
     auraCC = true,          -- large center icon for crowd control
     auraBuffs = true,       -- row of player-cast buffs on outer health corner
     auraBoss = true,        -- boss debuffs on inner health corner
@@ -186,9 +186,15 @@ local DEFAULTS = {
     -- widget's own range and auras (ns.PartyOption; it has no pets), the raid's out of
     -- battlegrounds and in one, the Boss widget's and the arena's
     partyWidgetPlayer = true, partyWidgetRange = 40, partyWidgetGlow = true, partyWidgetCC = true,
-    partyWidgetBuffs = true, partyWidgetBoss = true,
-    raidRange = 40, raidGlow = true, raidCC = true, raidBoss = true,
-    bgRange = 40, bgGlow = true, bgCC = true,
+    partyWidgetBuffs = true, partyWidgetBoss = true, partyWidgetThreat = true,
+    raidRange = 40, raidGlow = true, raidCC = true, raidBoss = true, raidThreat = true,
+    bgRange = 40, bgGlow = true, bgCC = true, bgThreat = true,
+    -- the dispel glow, type by type (console/auras.lua): on, and its colour;
+    -- the aggro glow's colour. Shared by every profile.
+    dispelMagic = true, dispelCurse = true, dispelPoison = true, dispelDisease = true, dispelBleed = true,
+    dispelColorMagic = "ff3399ff", dispelColorCurse = "ffb200ff", dispelColorPoison = "ff00d11f",
+    dispelColorDisease = "ffd16100", dispelColorBleed = "ffcc0f0f",
+    threatColor = "ffe63c28",
     bossWidgetMine = true,
     arenaCC = true, arenaMine = true,
     -- each box's movers (its tabs) only on mouseover (widgets/box.lua)
@@ -263,7 +269,7 @@ for _, key in ipairs({
     "overheadAlpha", "overheadFadeIn", "overheadFadeOut",
     "bar1Paging", "bar1PagingCustom", "row2Paging", "row2PagingCustom", "row3Paging", "row3PagingCustom",
     "gridPaging", "gridPagingCustom",
-    "partyPets", "partyLayout", "partyRange", "auraGlow", "auraCC", "auraBuffs", "auraBoss", "bossMine",
+    "partyPets", "partyLayout", "partyRange", "auraGlow", "auraThreat", "auraCC", "auraBuffs", "auraBoss", "bossMine",
     "editUnit", "editParty",
     "overhead", "bossFrames", "topPet", "topFocus", "topToT", "topPetBar", "topStances", "topTotems",
     "detachPet", "detachFocus", "detachToT", "detachPetX", "detachPetY", "detachFocusX", "detachFocusY",
@@ -276,7 +282,7 @@ ns.PER_PROFILE = PER_PROFILE
 -- it), or, while the Party layout is the widget, the widget's own (shared).
 -- The player's and target's frames keep the console's.
 local PARTY_WIDGET = {
-    partyRange = "partyWidgetRange", auraGlow = "partyWidgetGlow",
+    partyRange = "partyWidgetRange", auraGlow = "partyWidgetGlow", auraThreat = "partyWidgetThreat",
     auraCC = "partyWidgetCC", auraBuffs = "partyWidgetBuffs", auraBoss = "partyWidgetBoss",
 }
 function ns.PartyKey(key)

@@ -198,7 +198,40 @@ end
 local function Glow(key)
     return Check(key, "Dispel glow on frame borders",
         "Glow the frame's border in the debuff's color (purple for Curse, green for Poison, etc.) when an ally has "
-        .. "a debuff you can dispel.")
+        .. "a debuff you can dispel. Which types, and their colours: Unit Frames > General > Glows.")
+end
+local function Threat(key)
+    return Check(key, "Aggro glow on frame borders",
+        "Glow the frame's border while that unit has aggro: something is attacking it. A dispel glow comes first. "
+        .. "Its colour: Unit Frames > General > Glows.")
+end
+-- The glows' own group (Unit Frames > General): the types the player
+-- dispels, each one's on and colour, and the aggro glow's colour.
+local function Glows()
+    local items = {
+        { kind = "note", text = function()
+            local types, spells = ns.PlayerDispels()
+            if not types[1] then return "You dispel nothing: none of your spells removes a debuff." end
+            return "You dispel " .. table.concat(types, ", ") .. "  (" .. table.concat(spells, ", ") .. ")."
+        end },
+    }
+    for _, t in ipairs(ns.DISPEL_TYPES) do
+        local check = Check("dispel" .. t, t, "Glow for a " .. t .. " debuff. A type none of your spells "
+            .. "dispels never glows.")
+        check.can = function()
+            for _, have in ipairs((ns.PlayerDispels())) do if have == t then return true end end
+            return false
+        end
+        check.beside = Color("dispelColor" .. t, t .. " colour", "The glow's colour for a " .. t .. " debuff.")
+        check.beside.can = check.can
+        table.insert(items, check)
+    end
+    table.insert(items, Color("threatColor", "Aggro colour", "The aggro glow's colour."))
+    table.insert(items, Button("Reset colours", function()
+        for _, t in ipairs(ns.DISPEL_TYPES) do ns.SetOption("dispelColor" .. t, ns.OptionBase("dispelColor" .. t)) end
+        ns.SetOption("threatColor", ns.OptionBase("threatColor"))
+    end, "Every glow's colour back to its first."))
+    return Group("Glows", unpack(items))
 end
 local function CC(key, whose)
     return Check(key, "Crowd control center icon",
@@ -526,6 +559,7 @@ function ns.OptionPages()
                             Editor(function() return ns.PartyWidgetLayout() and "partyWidget" or "party" end,
                                 "Edit the party frames"),
                             Editor("unit", "Edit player and target")),
+                        Glows(),
                         Group("Blizzard's auras (shared by every profile)",
                             Check("blizzardAuras", "Blizzard's buff and debuff rows",
                                 "Show Blizzard's own rows of buffs and debuffs at the top right of the screen. Off, "
@@ -540,12 +574,14 @@ function ns.OptionPages()
                     groups = {
                         Group("Console (per profile)",
                             Range("partyRange", "party"), Pets("partyPets"),
-                            Glow("auraGlow"), CC("auraCC", "the"), Buffs("auraBuffs"), BossDebuffs("auraBoss")),
+                            Glow("auraGlow"), Threat("auraThreat"), CC("auraCC", "the"), Buffs("auraBuffs"),
+                            BossDebuffs("auraBoss")),
                         Group("Widget (shared by every profile)",
                             Range("partyWidgetRange", "party"),
                             Check("partyWidgetPlayer", "Include yourself",
                                 "Show your own unit frame as the first row of the Party widget."),
-                            Glow("partyWidgetGlow"), CC("partyWidgetCC", "the"), Buffs("partyWidgetBuffs"),
+                            Glow("partyWidgetGlow"), Threat("partyWidgetThreat"), CC("partyWidgetCC", "the"),
+                            Buffs("partyWidgetBuffs"),
                             BossDebuffs("partyWidgetBoss"), Movers("partyWidgetMoverHover", "Party")),
                     },
                 },
@@ -555,7 +591,8 @@ function ns.OptionPages()
                         .. "Battleground tab's options take over.",
                     groups = {
                         Group("Raid", Range("raidRange", "raid"), Movers("raidMoverHover", "Raid")),
-                        Group("Auras", Glow("raidGlow"), CC("raidCC", "a member's"), BossDebuffs("raidBoss")),
+                        Group("Auras", Glow("raidGlow"), Threat("raidThreat"), CC("raidCC", "a member's"),
+                            BossDebuffs("raidBoss")),
                         Group("Editor", Editor("raid")),
                     },
                 },
@@ -565,7 +602,7 @@ function ns.OptionPages()
                     groups = {
                         Group("Battleground", Range("bgRange", "battleground team"),
                             Movers("bgMoverHover", "Raid")),
-                        Group("Auras", Glow("bgGlow"), CC("bgCC", "a member's")),
+                        Group("Auras", Glow("bgGlow"), Threat("bgThreat"), CC("bgCC", "a member's")),
                         Group("Editor", Editor("raid", "Edit the raid frames")),
                     },
                 },

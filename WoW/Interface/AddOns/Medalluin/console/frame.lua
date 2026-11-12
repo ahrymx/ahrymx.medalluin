@@ -103,7 +103,11 @@ local bayActive = false     -- the bay is the grid's (UpdateGroup)
 local hooked = {}
 
 local fighting = false
+-- the unit-frame editor's preview of the tint: "combat", "threat" or nil
+-- (ns.PreviewTint, editor.lua's chips)
+local previewing
 local function Threatened()
+    if previewing == "threat" then return true end
     local s = UnitThreatSituation and UnitThreatSituation("player")
     if ns.IsSecret(s) or s == nil then return false end
     return s >= 1
@@ -155,20 +159,25 @@ function ns.UpdateConsoleAura()
     }
     local c = Threatened() and TINT.threat or TINT.combat
     for key, t in pairs(auras) do
-        local a = fighting and show[key] or 0
+        local a = (fighting or previewing) and show[key] or 0
         t:SetShown(a > 0)
         if a > 0 then t:SetVertexColor(c[1], c[2], c[3], AURA_ALPHA * a) end
     end
 end
 
 local function UpdateTint()
-    tint:SetShown(fighting)
-    if fighting then
+    local on = fighting or previewing ~= nil
+    tint:SetShown(on)
+    if on then
         local c = Threatened() and TINT.threat or TINT.combat
         tint:SetVertexColor(c[1], c[2], c[3], TINT_ALPHA)
     end
     -- the light profile's art, and its aura with it
     if ns.art.exploreFile and UpdateGroup then UpdateGroup() end
+end
+function ns.PreviewTint(kind)
+    previewing = kind
+    UpdateTint()
 end
 ns.On("PLAYER_REGEN_DISABLED", function() fighting = true; UpdateTint() end)
 ns.On("PLAYER_REGEN_ENABLED", function() fighting = false; UpdateTint() end)

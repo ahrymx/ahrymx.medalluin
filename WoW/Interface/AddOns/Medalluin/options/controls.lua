@@ -507,6 +507,23 @@ function UI.Choice(parent, spec, width, row)
     return f
 end
 
+-- ------------------------------------------------------------ note
+-- Words the page reads as it draws (spec.text(), two lines at most): what
+-- the game says of the player, such as the dispels they know.
+function UI.Note(parent, spec, width)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(width, 32)
+    f.spec = spec
+    f.text = UI.Plain(f, 12, C.text)
+    f.text:SetPoint("TOPLEFT", 0, -2)
+    f.text:SetWidth(width)
+    f.text:SetJustifyH("LEFT")
+    function f:Refresh()
+        self.text:SetText(spec.text())
+    end
+    return f
+end
+
 -- ------------------------------------------------------------ colour
 -- A swatch opening the game's colour picker; the option is "ffRRGGBB".
 local function Hex(r, g, b)

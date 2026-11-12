@@ -66,6 +66,10 @@ local sidePass = args[2] == "side" or args[2] == "zone" or args[3] == "zone"
 -- lent into its well and given back, its place left empty, this zone's
 -- quests, and the column.
 zonePass = args[2] == "zone" or args[3] == "zone"   -- a global: the main chunk is at its local limit
+-- "dispel" (console/auras.lua): what a Forever shaman dispels, read from
+-- the spells known (Cure Poison, Cure Disease), each type's option and
+-- colour, the Glows group's note and greyed types, and the aggro glow.
+dispelPass = args[2] == "dispel" or args[3] == "dispel"
 local savedNoSide = args[3] == "noside"
 local bagsPass = args[2] == "bags"
 local savedNoBags = args[3] == "nobags"
@@ -8952,29 +8956,39 @@ local function EditorPass()
     ns.SetOption("editParty", wasEdits)
     ns.SetOption("editPartyWidget", wasWidgetEdits)
 
-    -- edit mode: the canvas window, beside the editor
+    -- the canvas: the middle of the editor's window, the chosen piece boxed
+    -- and nothing else
     choose("unit", "name")
-    w.editMode.scripts.OnClick(w.editMode)
-    local cv = MedalluinEditCanvas
+    local cv = w.stage
     local function canvas(tag)
-        local rows = {}
-        for _, row in ipairs(cv.tree.rows) do
-            if row.shown then
-                rows[#rows + 1] = row.text.text .. (row.lit.shown and "<" or "") .. (row.mark.shown and "*" or "")
-            end
-        end
         local k, chosen, copies = 0, 0, 0
         for _, o in ipairs(cv.boxes) do
             if o.shown then k = k + 1; if o.label.text ~= "" then chosen = chosen + 1 end end
         end
-        for _, p in ipairs(cv.proxies) do if p.shown then copies = copies + 1 end end
-        print("canvas " .. tag, "shown=" .. tostring(cv.shown), "editor button=" .. tostring(w.editMode.text.text),
-            "keys=" .. tostring(cv.keyboard), "copies=" .. copies, "scale=" .. string.format("%.2f", cv.holder.scale or 1),
-            k .. " boxes, " .. chosen .. " labelled", "note=" .. tostring(cv.stage.note.shown and cv.stage.note.text))
-        print("  title=" .. tostring(cv.stage.title.text), "tree=" .. table.concat(rows, ","))
+        local icons = {}
+        for c, p in ipairs(cv.proxies) do
+            if p.shown then
+                copies = copies + 1
+                for id, r in pairs(p.pieces) do
+                    local row = rawget(r, 1) ~= nil
+                    local list = rawget(r, "tex") and { r } or row and r or {}
+                    local on = 0
+                    for _, f in ipairs(list) do if f.shown then on = on + 1 end end
+                    if on > 0 then icons[#icons + 1] = c .. ":" .. id .. (row and ("x" .. on) or "") end
+                end
+            end
+        end
+        table.sort(icons)
+        print("canvas " .. tag, "shown=" .. tostring(cv:IsVisible()), "in editor=" .. tostring(cv:GetParent() == w),
+            "keys=" .. tostring(w.keyboard), "copies=" .. copies, "scale=" .. string.format("%.2f", cv.holder.scale or 1),
+            k .. " boxes, " .. chosen .. " labelled", "note=" .. tostring(cv.note.shown and cv.note.text))
+        -- the copy's health: the button's colour, else (no unit yet: the
+        -- game's white) the player's class
+        local fill = cv.proxies[1] and cv.proxies[1].shown and cv.proxies[1].health.fill.color
+        print("  title=" .. tostring(cv.title.text), "icons shown=" .. table.concat(icons, ","),
+            "health=" .. (fill and string.format("%.2f,%.2f,%.2f", fill[1], fill[2], fill[3]) or "-"))
     end
     canvas("unit")
-    print("  placed", "TOPLEFT>editor=" .. tostring(cv.points.TOPLEFT and cv.points.TOPLEFT[1] == w))
     -- each copy is its button, read off it: the same points, the same words
     for k, p in ipairs(cv.proxies) do
         if p.shown then
@@ -8987,25 +9001,38 @@ local function EditorPass()
                 "height=" .. n(p.pieces.name.h) .. "/real " .. n(real.name:GetHeight()))
         end
     end
-    -- only the chosen piece is boxed; another is chosen in the tree
+    -- only the chosen piece is boxed
     local function boxed()
         local o = {}
         for _, b in ipairs(cv.boxes) do
             if b.shown then
                 -- and what it is round: the copy's region for that piece
-                local on, copy = b.points.TOPLEFT[1], cv.proxies[b.copy]
-                local what = "?"
+                local copy = cv.proxies[b.copy]
+                local _, at = next(b.points)
+                local on, what = at[1], "?"
                 for id, r in pairs(copy.pieces) do if r == on then what = id end end
-                o[#o + 1] = b.piece .. "@" .. b.side .. " round " .. what
+                -- a text's box hangs where the text does: from its point
+                local name = next(b.points)
+                for id, r in pairs(copy.pieces) do
+                    if what == "?" and r.GetStringWidth and r:GetNumPoints() == 1 then
+                        local pt, rel, relPt = r:GetPoint(1)
+                        if pt == name and rel == on and relPt == at[2] then what, on = id .. " (by its point)", r end
+                    end
+                end
+                -- a text's box is its words' size, not its region's
+                local size = ""
+                if on.GetStringWidth then
+                    size = string.format(" %gx%g words %gx%g", b.w or -1, b.h or -1, on:GetStringWidth() or -1,
+                        on:GetStringHeight() or -1)
+                end
+                o[#o + 1] = b.piece .. "@" .. b.side .. " round " .. what .. size
             end
         end
         return table.concat(o, ",")
     end
     print("  boxed", boxed())
-    for _, row in ipairs(cv.tree.rows) do
-        if row.shown and row.piece == "value" then row.scripts.OnClick(row) end
-    end
-    print("  boxed after the tree", boxed())
+    choose("unit", "value")
+    print("  boxed after the list", boxed())
     -- drag the target's copy of the value: the editor's place, every button
     local o
     for _, b in ipairs(cv.boxes) do if b.shown and b.piece == "value" and b.side == 1 then o = b; break end end
@@ -9023,66 +9050,122 @@ local function EditorPass()
     for k, p in ipairs(cv.proxies) do
         if p.shown then
             print("  copy " .. k .. " value", pts(p, p.pieces.value), "words=" .. tostring(p.pieces.value.text),
-                "alpha=" .. tostring(p.pieces.value.alpha), "cc alpha=" .. tostring(p.pieces.cc.alpha))
+                "alpha=" .. tostring(p.pieces.value.alpha), "cc shown=" .. tostring(p.pieces.cc.shown))
         end
     end
     canvas("dragged")
     window("dragged")
-    cv.scripts.OnKeyDown(cv, "LEFT")
-    cv.scripts.OnKeyDown(cv, "UP")
-    print("  nudged", stored("editUnit"), "propagate=" .. tostring(cv.propagate))
-    cv.scripts.OnKeyDown(cv, "A")
-    print("  other key propagate=" .. tostring(cv.propagate))
-    -- the tree: a frame's head opens it, a piece chooses it, in the editor too
-    for _, row in ipairs(cv.tree.rows) do
-        if row.shown and not row.piece and row.frame.id == "raid" then row.scripts.OnClick(row) end
-    end
+    w.scripts.OnKeyDown(w, "LEFT")
+    w.scripts.OnKeyDown(w, "UP")
+    print("  nudged", stored("editUnit"), "propagate=" .. tostring(w.propagate))
+    w.scripts.OnKeyDown(w, "A")
+    print("  other key propagate=" .. tostring(w.propagate))
+    choose("raid", "value")
     canvas("raid")
-    for _, row in ipairs(cv.tree.rows) do
-        if row.shown and row.piece == "cc" then row.scripts.OnClick(row) end
-    end
+    choose("raid", "cc")
     canvas("raid cc")
-    window("raid cc from the tree")
+    window("raid cc")
     set("shown", false)
     print("  raid cc off", "copy alpha=" .. tostring(cv.proxies[1].pieces.cc.alpha), ns.db.raidCC)
     set("shown", true)
     print("  raid cc on", "copy alpha=" .. tostring(cv.proxies[1].pieces.cc.alpha), ns.db.raidCC)
-    for _, row in ipairs(cv.tree.rows) do
-        if row.shown and not row.piece and row.frame.id == "partyWidget" then row.scripts.OnClick(row) end
-    end
+    choose("partyWidget", "cc")
     canvas("party widget, layout console")
-    for _, row in ipairs(cv.tree.rows) do
-        if row.shown and not row.piece and row.frame.id == "party" then row.scripts.OnClick(row) end
-    end
+    choose("party", "cc")
     canvas("party")
-    -- a fight hands the keys back, and the canvas stays
-    inCombat = true
-    fire("PLAYER_REGEN_DISABLED")
-    canvas("combat")
+    -- the role: the real one's icon, cut from its sheet; else the player's own
+    local function role(tag)
+        local o = {}
+        for k, p in ipairs(cv.proxies) do
+            local r = p.shown and p.pieces.role
+            if r then
+                o[#o + 1] = k .. ":" .. tostring(r.shown) .. " " .. tostring(r.tex.texture):match("[^\\]*$") .. " "
+                    .. table.concat(r.tex.coords or {}, ",") .. " real=" .. tostring(p.button.roleFrame.shown)
+            end
+        end
+        print("  role " .. tag, table.concat(o, "  "))
+    end
+    choose("party", "role")
+    role("chosen")
+    local wasRole = GetSpecializationRole
+    GetSpecializationRole = function() return "HEALER" end
+    local wasSpec = GetSpecialization
+    GetSpecialization = GetSpecialization or function() return 1 end
+    choose("party", "name")
+    choose("party", "role")
+    role("chosen, a healer's spec")
+    -- no group role on the buttons: the copies show the player's
+    local hidden = {}
+    for _, p in ipairs(cv.proxies) do
+        if p.shown then p.button.roleFrame:Hide(); hidden[#hidden + 1] = p.button.roleFrame end
+    end
+    choose("party", "name")
+    choose("party", "role")
+    role("no group role, a healer's spec")
+    GetSpecializationRole = function() return "TANK" end
+    choose("party", "name")
+    choose("party", "role")
+    role("no group role, a tank's spec")
+    GetSpecializationRole = nil
+    choose("party", "name")
+    choose("party", "role")
+    role("no group role, no spec")
+    for _, f in ipairs(hidden) do f:Show() end
+    -- the ready check, with none running: ready, cut from its sheet
+    choose("party", "status")
+    local o = {}
+    for k, p in ipairs(cv.proxies) do
+        local r = p.shown and p.pieces.status
+        if r then
+            o[#o + 1] = k .. ":" .. tostring(r.shown) .. " " .. tostring(r.tex.texture):match("[^\\]*$") .. " "
+                .. table.concat(r.tex.coords or {}, ",") .. " real=" .. tostring(p.button.statusWidget.shown)
+        end
+    end
+    print("  ready check idle", table.concat(o, "  "))
+    GetSpecializationRole, GetSpecialization = wasRole, wasSpec
+    -- the preview chips: one dispel type at a time, drawn on the copies by
+    -- the frame's own glow; crowd control with its sweep; the console's tint
+    choose("party", "name")
     inCombat = false
     fire("PLAYER_REGEN_ENABLED")
-    canvas("combat over")
-    -- the editor closing closes it
+    local function chip(id) for _, b in ipairs(w.chips) do if b.id == id then b.scripts.OnClick(b) end end end
+    local function previews(tag)
+        local lit = {}
+        for _, b in ipairs(w.chips) do if E.preview[b.id] then lit[#lit + 1] = b.id end end
+        local p = cv.proxies[1]
+        local g, cc = p.glow, p.pieces.cc
+        local edge, colour = nil, "-"
+        if g and g.shown then
+            for _, r in ipairs(g.all_ or {}) do if r.vertex then edge = r end end
+        end
+        if edge and edge.vertex then
+            colour = table.concat({ n(edge.vertex[1] * 255), n(edge.vertex[2] * 255), n(edge.vertex[3] * 255) }, ",")
+        end
+        print("  chips " .. tag, "lit=" .. table.concat(lit, ","), "glow=" .. tostring(g and g.shown or false)
+            .. " " .. colour, "cc=" .. tostring(cc.shown) .. " " .. tostring(cc.tex.texture) .. " sweep="
+            .. tostring(cc.cd.shown) .. " timer=" .. tostring(cc.timer.text),
+            "tint=" .. tostring(ns.tint.shown) .. " " .. (ns.tint.vertex and n(ns.tint.vertex[1] * 100) or "-"),
+            "says=" .. tostring(cv.preview.text))
+    end
+    previews("none")
+    chip("Curse")
+    previews("curse")
+    chip("Poison")
+    previews("poison over curse")
+    chip("cc")
+    cv.scripts.OnUpdate(cv, 1)
+    previews("poison, cc")
+    chip("Poison")
+    chip("threat")
+    previews("threat, cc")
+    chip("threat")
+    chip("combat")
+    previews("combat, cc")
+    canvas("chips")
     w:Hide()
     w.scripts.OnHide(w)
-    print("  editor closed", "canvas shown=" .. tostring(cv.shown))
-    if cv.scripts.OnHide then cv.scripts.OnHide(cv) end
+    previews("editor closed")
     ns.OpenEditor("unit")
-    w.editMode.scripts.OnClick(w.editMode)
-    -- dragged somewhere, it opens there again
-    cv:ClearAllPoints()
-    cv:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 40, -50)
-    cv.scripts.OnDragStop(cv)
-    cv:Hide()
-    cv.scripts.OnHide(cv)
-    print("  canvas closed", "editor button=" .. tostring(w.editMode.text.text),
-        "saved=" .. table.concat(ns.db.editCanvasPoint or {}, ","))
-    w.editMode.scripts.OnClick(w.editMode)
-    local p, rel = cv:GetPoint()
-    print("  reopened", tostring(p), rel == UIParent and "UIParent" or "editor")
-    cv:Hide()
-    cv.scripts.OnHide(cv)
-    ns.SetOption("editCanvasPoint", false)
 
     -- a row: its own way and length, then Grow, Columns and Most icons;
     -- the rest of its icons hang from the first
@@ -9122,7 +9205,6 @@ local function EditorPass()
     set("max", 2)
     row("player most 2", P, "buffs")
     row("target most 2", T, "buffs")
-    ns.ShowEditCanvas(true)
     local copies = {}
     for _, p in ipairs(cv.proxies) do
         if p.shown and p.pieces.buffs then
@@ -9132,7 +9214,6 @@ local function EditorPass()
         end
     end
     print("  canvas row copies", table.concat(copies, ","))
-    ns.ShowEditCanvas(false)
     local boss = E.byId.boss.buttons()[1]
     choose("boss", "mine")
     print("editor row boss", "grow=" .. tostring(get("grow")), "max=" .. tostring(get("max")), labels())
@@ -9162,7 +9243,6 @@ local function EditorPass()
     -- the rest, and Reset gives back what the game lets it
     ns.OpenEditor("unit")
     choose("unit", "name")
-    w.editMode.scripts.OnClick(w.editMode)
     P.editShots, P.editDone, T.editShots, T.editDone = nil, nil, nil, nil
     E.ApplyAll()
     for k, p in ipairs(cv.proxies) do
@@ -12361,6 +12441,103 @@ inCombat, threatOf = false, nil
 if keybindPass then KeybindPass() end
 if pagingPass then PagingPass() end
 if editorPass then EditorPass() end
+
+if dispelPass then
+    local known = { [526] = true, [2870] = true }
+    local NAMES = { [526] = "Cure Poison", [2870] = "Cure Disease", [527] = "Purify", [4987] = "Cleanse" }
+    local hadAuras = C_UnitAuras
+    C_UnitAuras = C_UnitAuras or {}
+    local wasClass, wasName, wasAuras = classOf.player, C_Spell and C_Spell.GetSpellName, C_UnitAuras.GetAuraDataByIndex
+    IsPlayerSpell = function(id) return known[id] or false end
+    C_Spell = C_Spell or {}
+    C_Spell.GetSpellName = function(id) return NAMES[id] end
+    classOf.player = "SHAMAN"
+    fire("SPELLS_CHANGED")
+    local types, spells = ns.PlayerDispels()
+    print("dispel known", table.concat(types, ","), "by " .. table.concat(spells, ","))
+    -- an id known under another name is not that spell (527: Purify on
+    -- retail, Dispel Magic on Forever)
+    classOf.player = "PRIEST"
+    known = { [527] = true }
+    NAMES[527] = "Dispel Magic"
+    fire("SPELLS_CHANGED")
+    types, spells = ns.PlayerDispels()
+    print("dispel priest 527 as Dispel Magic", table.concat(types, ","), "by " .. table.concat(spells, ","))
+    classOf.player = "SHAMAN"
+    known = { [526] = true, [2870] = true }
+    fire("SPELLS_CHANGED")
+    -- the page: Unit Frames > General > Glows
+    local glows
+    local function find(t)
+        if type(t) ~= "table" or glows then return end
+        if t.title == "Glows" and t.items then glows = t; return end
+        for _, v in pairs(t) do find(v) end
+    end
+    find(ns.OptionPages())
+    local o = {}
+    for _, spec in ipairs(glows.items) do
+        if spec.kind == "note" then
+            print("dispel note", spec.text())
+        elseif spec.kind == "check" then
+            o[#o + 1] = spec.label .. (spec.can() and "" or "(grey)") .. "/" .. tostring(spec.beside.key)
+        else
+            o[#o + 1] = tostring(spec.key or spec.label)
+        end
+    end
+    print("dispel group", table.concat(o, " "))
+    -- a debuff on the player: glows in its type's colour, if the player dispels it
+    local b, debuff = ns.units.player, nil
+    C_UnitAuras.GetAuraDataByIndex = function(unit, i, filter)
+        if unit == "player" and filter == "HARMFUL" and i == 1 and debuff then
+            return { auraInstanceID = 700, icon = 136000, dispelName = debuff, isHarmful = true, duration = 0,
+                expirationTime = 0, name = debuff .. " debuff" }
+        end
+    end
+    local function colour(g)
+        for _, r in ipairs(g.all_ or {}) do
+            if r.vertex then return string.format("%d,%d,%d", r.vertex[1] * 255 + 0.5, r.vertex[2] * 255 + 0.5,
+                r.vertex[3] * 255 + 0.5) end
+        end
+        return "-"
+    end
+    local function glow(tag, kind, threat)
+        debuff, threatOf = kind, threat
+        ns.UpdateUnitAuras(b)
+        print("dispel " .. tag, "glow=" .. tostring(b.dispelGlow.shown) .. (b.dispelGlow.shown and (" "
+            .. colour(b.dispelGlow)) or ""), "aggro=" .. tostring(b.threatGlow.shown) .. (b.threatGlow.shown
+            and (" " .. colour(b.threatGlow)) or ""))
+    end
+    glow("poison", "Poison")
+    glow("curse (not yours)", "Curse")
+    ns.SetOption("dispelColorPoison", "ff102030")
+    glow("poison recoloured", "Poison")
+    ns.SetOption("dispelPoison", false)
+    glow("poison off", "Poison")
+    ns.SetOption("dispelPoison", true)
+    ns.SetOption("dispelColorPoison", ns.OptionBase("dispelColorPoison"))
+    glow("disease", "Disease")
+    glow("tanking", nil, 3)
+    glow("above the tank", nil, 1)
+    glow("tanking with poison", "Poison", 3)
+    if modern then glow("secret threat", nil, secret()) end
+    ns.SetOption("auraThreat", false)
+    glow("tanking, aggro off", nil, 3)
+    ns.SetOption("auraThreat", true)
+    ns.SetOption("threatColor", "ff00ff00")
+    glow("tanking recoloured", nil, 3)
+    ns.SetOption("threatColor", ns.OptionBase("threatColor"))
+    -- the threat event alone
+    threatOf = 2
+    fire("UNIT_THREAT_SITUATION_UPDATE", "player")
+    print("dispel threat event", "aggro=" .. tostring(b.threatGlow.shown))
+    threatOf = nil
+    fire("UNIT_THREAT_SITUATION_UPDATE", "player")
+    print("dispel threat gone", "aggro=" .. tostring(b.threatGlow.shown))
+    debuff = nil
+    C_UnitAuras.GetAuraDataByIndex, C_Spell.GetSpellName, classOf.player = wasAuras, wasName, wasClass
+    C_UnitAuras, IsPlayerSpell = hadAuras, nil
+    fire("SPELLS_CHANGED")
+end
 
 -- `look [bare] [modern]`: the Action Bar page's Text and Cooldowns options
 -- on the first and last of the bar's buttons: at login, changed on the page,

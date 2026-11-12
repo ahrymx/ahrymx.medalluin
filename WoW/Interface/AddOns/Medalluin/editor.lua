@@ -565,3 +565,51 @@ for _, frame in ipairs(E.FRAMES) do
 end
 ns.OnSetting("partyLayout", function() E.ApplyAll() end)
 ns.On("PLAYER_LOGIN", function() E.ApplyAll() end)
+
+-- ------------------------------------------------------------ previews
+-- What the editor's canvas shows on its copies besides the frame (the
+-- footer's chips, options/editor.lua; drawn by options/canvas.lua): a
+-- dispel type's glow (one at a time), the aggro glow, the console's combat
+-- tint, crowd control, a boss debuff, your buffs. The frames on screen are
+-- not touched, but for the tint, which is the console's.
+E.PREVIEWS = {
+    { "Magic", "Magic", dispel = true }, { "Curse", "Curse", dispel = true },
+    { "Poison", "Poison", dispel = true }, { "Disease", "Disease", dispel = true },
+    { "Bleed", "Bleed", dispel = true },
+    { "threat", "Threat" }, { "combat", "Combat" },
+    { "cc", "CC" }, { "boss", "Boss" }, { "buffs", "Buffs" },
+}
+E.preview = {}
+
+local function Tint()
+    if not ns.PreviewTint then return end
+    ns.PreviewTint(E.preview.threat and "threat" or E.preview.combat and "combat" or nil)
+end
+
+-- A chip clicked: on, or off; a dispel type puts out the other types.
+function E.TogglePreview(id)
+    local on = not E.preview[id]
+    local dispel = false
+    for _, p in ipairs(E.PREVIEWS) do if p[1] == id then dispel = p.dispel end end
+    if on and dispel then
+        for _, p in ipairs(E.PREVIEWS) do if p.dispel then E.preview[p[1]] = nil end end
+    end
+    E.preview[id] = on or nil
+    Tint()
+    if E.onPreview then E.onPreview() end
+end
+
+-- Every chip off (the editor closed).
+function E.ClearPreview()
+    wipe(E.preview)
+    Tint()
+    if E.onPreview then E.onPreview() end
+end
+
+-- What the canvas says it previews.
+function E.PreviewText()
+    local on = {}
+    for _, p in ipairs(E.PREVIEWS) do if E.preview[p[1]] then table.insert(on, p[2]) end end
+    if not on[1] then return "" end
+    return "Previewing: " .. table.concat(on, ", ")
+end

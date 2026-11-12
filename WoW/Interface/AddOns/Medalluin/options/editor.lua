@@ -1,11 +1,13 @@
--- The unit-frame editor's window (art/settings/gen_editor.py, draft A): the
--- frames as tabs, the chosen frame's pieces down the left, the chosen
--- piece's controls on the right, applied as they change. Its footer turns
--- on edit mode (options/canvas.lua: a window beside this one with the frame
--- drawn large, a tree of the frames and their pieces down its left; drag a
--- piece to move it) and the preview (simulate.lua's: a party, a raid,
--- bosses and an arena to edit out of a group). editor.lua is the model:
--- what the pieces are, and where they go.
+-- The unit-frame editor's window (art/settings/gen_editor.py, U3): the
+-- frames as tabs, the chosen frame's pieces down the left, the canvas in
+-- the middle (options/canvas.lua: the frame drawn large, the chosen piece
+-- boxed; drag it to move the piece, the arrow keys nudge it), the chosen
+-- piece's controls down the right, applied as they change. Its footer has
+-- the preview (simulate.lua's: a party, a raid, bosses and an arena to edit
+-- out of a group) and the canvas's preview chips (editor.lua's E.preview:
+-- each dispel type's glow, the aggro glow, the combat tint, crowd control,
+-- a boss debuff, your buffs). editor.lua is the model: what the pieces are,
+-- and where they go.
 --
 -- Opened by /mdlui edit, and by the button on each Unit Frames tab.
 local _, ns = ...
@@ -14,16 +16,14 @@ local UI = ns.OptionsUI
 local C = UI.colors
 local E = ns.editor
 
-local W, H = 640, 500
-local PAD, LIST_W, TAB_H, FOOT = 14, 160, 24, 46
-local ROW_H, COL_GAP = 22, 18
+local W, H = 1000, 620
+local PAD, LIST_W, BODY_W, TAB_H, FOOT = 14, 160, 250, 24, 46
+local ROW_H, GAP, CHIP_H = 22, 8, 24
 
-local window, tabs, list, body
+local window, tabs, list, stage, body, chips
 local frame, piece        -- what is chosen: the frame (E.FRAMES) and its piece
 local controls = {}       -- the body's controls, by field
 local Refresh
--- edit mode is the canvas window being open (options/canvas.lua)
-local function EditMode() return ns.editCanvas ~= nil and ns.editCanvas:IsShown() end
 
 -- ------------------------------------------------------------ the fields
 -- A field of the chosen piece: what the player set, else where the piece
@@ -167,7 +167,8 @@ local function Grid(parent)
     return f
 end
 
--- Which controls a piece has, row by row (two to a row).
+-- Which controls a piece has, row by row (the anchor and what it is on
+-- share one).
 local function Rows()
     local kind = E.PIECES[piece].type
     if kind == "cell" then return { { "w", "h" } } end
@@ -186,23 +187,32 @@ end
 
 local function Lay()
     for _, c in pairs(controls) do c:Hide() end
-    local width = W - 2 * PAD - LIST_W - 14 - 24
-    local col = (width - COL_GAP) / 2
-    local y = -58
+    local y = -(math.ceil(body.scope:GetStringHeight()) + 40)
     for _, row in ipairs(Rows()) do
-        local tallest = 0
-        for i, field in ipairs(row) do
-            local c = controls[field]
-            c:ClearAllPoints()
-            c:SetPoint("TOPLEFT", body, "TOPLEFT", 12 + (i - 1) * (col + COL_GAP), y)
-            if c.SetWidth and field ~= "anchor" then c:SetWidth(col) end
-            c:Show()
-            tallest = math.max(tallest, c:GetHeight())
+        if row[1] == "anchor" then
+            local a, on = controls.anchor, controls.on
+            a:ClearAllPoints()
+            a:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y)
+            on:ClearAllPoints()
+            on:SetPoint("TOPLEFT", body, "TOPLEFT", 100, y)
+            on:SetWidth(BODY_W - 100)
+            a:Show()
+            on:Show()
+            y = y - math.max(a:GetHeight(), on:GetHeight()) - GAP
+        else
+            -- one to a row
+            for _, field in ipairs(row) do
+                local c = controls[field]
+                c:ClearAllPoints()
+                c:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y)
+                if c.SetWidth then c:SetWidth(BODY_W) end
+                c:Show()
+                y = y - c:GetHeight() - GAP
+            end
         end
-        y = y - tallest - 14
     end
     controls.reset:ClearAllPoints()
-    controls.reset:SetPoint("TOPLEFT", body, "TOPLEFT", 12, y - 4)
+    controls.reset:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y - 4)
     controls.reset:Show()
 end
 
@@ -270,7 +280,7 @@ function Refresh()
             row.mark:SetShown(edited)
         end
     end
-    body.title:SetText(frame.name .. "  >  " .. E.PIECES[piece].label)
+    body.title:SetText(E.PIECES[piece].label)
     body.scope:SetText(Scope())
     for field, c in pairs(controls) do
         if c:IsShown() and c.Refresh then
@@ -281,16 +291,84 @@ function Refresh()
             c:Refresh(enabled)
         end
     end
-    window.editMode:SetText(EditMode() and "Edit mode: on" or "Edit mode")
     window.preview:SetText(ns.db.simParty and "Preview: on" or "Preview")
+    for _, b in ipairs(chips) do
+        local on = E.preview[b.id] and true or false
+        local bg, text = on and C.selected or C.ink, on and C.goldBright or C.dim
+        b.bg:SetColorTexture(bg[1], bg[2], bg[3], 1)
+        b.text:SetTextColor(text[1], text[2], text[3])
+        for _, t in ipairs(b.edge) do t:SetShown(on) end
+        if b.swatch then
+            local key = b.id == "threat" and "threatColor" or ("dispelColor" .. b.id)
+            b.swatch:SetColorTexture(ns.HexColor(ns.db[key]))
+        end
+    end
 end
 
--- ------------------------------------------------------------ edit mode
--- The canvas window (options/canvas.lua): the chosen frame drawn as its
--- buttons have it, its pieces dragged there. It shares the editor's choice.
-local function SetEditMode(on)
-    if ns.ShowEditCanvas then ns.ShowEditCanvas(on) end
-    Refresh()
+-- ------------------------------------------------------------ the keys
+-- The arrow keys nudge the chosen piece; the other keys go on to the game
+-- (not in combat: the game forbids passing them on, so a fight hands them
+-- all back).
+local ARROWS = { LEFT = { -1, 0 }, RIGHT = { 1, 0 }, UP = { 0, 1 }, DOWN = { 0, -1 } }
+local function Key(self, key)
+    local step = ARROWS[key]
+    local move = step and E.PIECES[piece].type ~= "cell"
+    if not InCombatLockdown() then self:SetPropagateKeyboardInput(not move) end
+    if not move then return end
+    local b = frame.buttons()[1]
+    local side = Mirrored() and b and E.Side(b, frame) or -1
+    SetPlace({ x = (PlaceField("x") or 0) - side * step[1], y = (PlaceField("y") or 0) + step[2] })
+end
+
+local function Keys(on)
+    if not window then return end
+    window:EnableKeyboard(on)
+    if on and not InCombatLockdown() then window:SetPropagateKeyboardInput(true) end
+end
+ns.On("PLAYER_REGEN_DISABLED", function() Keys(false) end)
+ns.On("PLAYER_REGEN_ENABLED", function() if window and window:IsShown() then Keys(true) end end)
+
+-- ------------------------------------------------------------ the chips
+-- The canvas's previews (E.PREVIEWS), a chip each, across the footer: a
+-- dispel type's and the aggro's with their colour's swatch.
+local function Chips(from, to)
+    chips = {}
+    local n = #E.PREVIEWS
+    local w = math.floor((to - from - (n - 1) * 4) / n)
+    for i, p in ipairs(E.PREVIEWS) do
+        local b = CreateFrame("Button", nil, window)
+        b:SetSize(w, CHIP_H)
+        b:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", from + (i - 1) * (w + 4), 10)
+        b.bg = UI.Fill(b, "BACKGROUND", C.ink, 1)
+        b.bg:SetAllPoints()
+        UI.Outline(b, "BORDER", C.goldDark, 0)
+        b.edge = UI.Outline(b, "OVERLAY", C.goldBright, 0)
+        b.id = p[1]
+        b.text = UI.Serif(b, 11, C.dim)
+        if p.dispel or p[1] == "threat" then
+            b.swatch = UI.Fill(b, "ARTWORK", C.gold)
+            b.swatch:SetSize(6, 6)
+            b.swatch:SetPoint("LEFT", 4, 0)
+            b.text:SetPoint("LEFT", b.swatch, "RIGHT", 3, 0)
+            b.text:SetPoint("RIGHT", -2, 0)
+        else
+            b.text:SetPoint("CENTER", 0, 0)
+        end
+        b.text:SetText(p[2])
+        b:SetScript("OnClick", function(self)
+            E.TogglePreview(self.id)
+            Refresh()
+        end)
+        b:SetScript("OnEnter", function(self)
+            UI.Tip(self, p[2], p.dispel and ("A " .. p[2] .. " debuff's glow on the canvas, in its colour (Unit "
+                .. "Frames > General > Glows). One type at a time.")
+                or p[1] == "threat" and "The aggro glow on the canvas, and the console's tint red."
+                or p[1] == "combat" and "The console's combat tint, on screen."
+                or "Shown on the canvas, as in play.")
+        end)
+        b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+        chips[i] = b
+    end
 end
 
 -- ------------------------------------------------------------ the window
@@ -328,11 +406,16 @@ local function Window()
     UI.Skin(window, C.panel)
     window:Hide()
     if UISpecialFrames then table.insert(UISpecialFrames, "MedalluinEditor") end
-    window:SetScript("OnShow", Refresh)
+    window:SetScript("OnShow", function()
+        Keys(true)
+        Refresh()
+    end)
     window:SetScript("OnHide", function()
         UI.CloseMenu()
-        SetEditMode(false)
+        Keys(false)
+        E.ClearPreview()
     end)
+    window:SetScript("OnKeyDown", Key)
 
     local title = CreateFrame("Frame", nil, window)
     title:SetHeight(28)
@@ -403,16 +486,22 @@ local function Window()
         list.rows[i] = row
     end
 
-    -- the chosen piece's controls
+    -- the chosen piece's controls, down the right
     body = CreateFrame("Frame", nil, window)
-    body:SetPoint("TOPLEFT", list, "TOPRIGHT", 14, 0)
-    body:SetPoint("BOTTOMRIGHT", -PAD, FOOT)
+    body:SetPoint("TOPRIGHT", window, "TOPRIGHT", -PAD - 4, -(PAD + 14 + TAB_H + 14))
+    body:SetPoint("BOTTOMRIGHT", -PAD - 4, FOOT)
+    body:SetWidth(BODY_W)
     body.title = UI.Serif(body, 16, C.goldBright)
-    body.title:SetPoint("TOPLEFT", 12, -6)
+    body.title:SetPoint("TOPLEFT", 0, -2)
     body.scope = UI.Plain(body, 11, C.dim)
-    body.scope:SetPoint("TOPLEFT", 12, -28)
-    body.scope:SetPoint("RIGHT", body, "RIGHT", -8, 0)
+    body.scope:SetPoint("TOPLEFT", 0, -24)
+    body.scope:SetWidth(BODY_W)
     body.scope:SetJustifyH("LEFT")
+
+    -- the canvas, between
+    stage = ns.EditorStage(window)
+    stage:SetPoint("TOPLEFT", list, "TOPRIGHT", 10, 0)
+    stage:SetSize(W - 2 * PAD - LIST_W - 10 - 14 - BODY_W - 4, H - (PAD + 14 + TAB_H + 10) - FOOT)
     local specs = Specs()
     for field, spec in pairs(specs) do
         if type(spec.tip) == "function" then
@@ -439,25 +528,22 @@ local function Window()
     foot:SetHeight(1)
     foot:SetPoint("BOTTOMLEFT", PAD, FOOT - 8)
     foot:SetPoint("BOTTOMRIGHT", -PAD, FOOT - 8)
-    window.editMode = UI.Button(window, "Edit mode", 120, 24, function() SetEditMode(not EditMode()) end,
-        "A window with the frame drawn large: drag a piece to move it, the arrow keys nudge the chosen "
-        .. "one. The frames on screen follow.")
-    window.editMode:SetPoint("BOTTOMLEFT", PAD, 10)
-    window.editMode.SetText = function(self, t) self.text:SetText(t) end
-    window.preview = UI.Button(window, "Preview", 110, 24, function() ns.SetOption("simParty", not ns.db.simParty) end,
+    window.preview = UI.Button(window, "Preview", 100, 24, function() ns.SetOption("simParty", not ns.db.simParty) end,
         "Simulated party, raid, bosses and arena enemies to edit out of a group; their panel sets what "
         .. "they show.")
-    window.preview:SetPoint("LEFT", window.editMode, "RIGHT", 8, 0)
+    window.preview:SetPoint("BOTTOMLEFT", PAD, 10)
     window.preview.SetText = function(self, t) self.text:SetText(t) end
     local close = UI.Button(window, "Close", 96, 24, function() window:Hide() end, nil, true)
     close:SetPoint("BOTTOMRIGHT", -PAD, 10)
-    local reset = UI.Button(window, "Reset frame", 110, 24, function() E.ResetFrame(frame) end,
+    local reset = UI.Button(window, "Reset frame", 100, 24, function() E.ResetFrame(frame) end,
         "Every piece of this frame back to how it draws it.")
     reset:SetPoint("RIGHT", close, "LEFT", -8, 0)
     window.reset = reset
+    Chips(PAD + 100 + 12, W - PAD - 96 - 8 - 100 - 12)
 
     -- its parts, by name (the harness reads them)
     window.tabs, window.list, window.body, window.controls = tabs, list, body, controls
+    window.stage, window.chips = stage, chips
     Choose(E.FRAMES[1].id)
 end
 
@@ -491,7 +577,7 @@ ns.OnAnySetting(function()
     Refresh()
 end)
 
--- What the canvas shares: the choice, and the place a drag writes.
+-- What the canvas shares: the choice, and the place a drag or a key writes.
 E.ui = {
     Choose = function(id, which) Choose(id, which) end,
     Chosen = function() return frame, piece end,

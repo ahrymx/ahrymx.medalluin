@@ -131,13 +131,15 @@ local function Control(parent, spec, width, row, label)
         c = UI.Slider(parent, spec, width, row)
     elseif spec.kind == "key" then
         c = UI.Key(parent, spec, width)
+    elseif spec.kind == "note" then
+        c = UI.Note(parent, spec, width)
     else
         c = UI.Button(parent, spec.label, math.min(width, 200), 24, spec.click, spec.tip)
     end
     -- a control drawn greyed while another option is off, or while its
     -- page's own test says no (spec.needs; content.enabled) unless it is
     -- for every profile there (spec.always)
-    c.needs, c.always = spec.needs, spec.always
+    c.needs, c.always, c.can = spec.needs, spec.always, spec.can
     -- a key control is found by its binding's name
     if spec.key or spec.command then controls[spec.key or spec.command] = c end
     return c
@@ -216,6 +218,15 @@ local function Section(f, group, width, path)
         local c = Control(s, spec, width - 6, true)
         c:SetPoint("TOPLEFT", 6, y)
         table.insert(f.controls, c)
+        -- a swatch on the same row, left of the box (a dispel type's colour)
+        if spec.beside then
+            local w = Control(s, spec.beside, 40, true)
+            -- the row's label says what it is: the swatch's own is its tip
+            w.label:SetText("")
+            w:SetHeight(UI.CHECK_H)
+            w:SetPoint("RIGHT", c, "RIGHT", -30, 0)
+            table.insert(f.controls, w)
+        end
         y = y - c:GetHeight() - 6
         if spec.label then
             table.insert(index, { label = spec.label, path = path, section = s, control = c, where = where })
@@ -733,7 +744,10 @@ end
 local function Refresh()
     if not window then return end
     -- a master greys only with what it needs; all else with it too
-    local function Has(c) return not c.needs or ns.db[c.needs] and true or false end
+    -- (and with its own test: c.can, a dispel type the player has not)
+    local function Has(c)
+        return (not c.needs or ns.db[c.needs] and true or false) and (not c.can or c.can() and true or false)
+    end
     for _, f in pairs(built) do
         local on = (not f.master or ns.db[f.master.spec.key] and Has(f.master))
             and (not f.enabled or f.enabled()) and true or false

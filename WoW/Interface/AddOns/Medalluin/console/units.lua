@@ -86,6 +86,7 @@ local CHECK_COORDS = {
     notready = { 32 / 128, 64 / 128, 0, 1 },
     waiting = { 64 / 128, 96 / 128, 0, 1 },
 }
+ns.CHECK_COORDS = CHECK_COORDS      -- media/ready-status, the editor's canvas too (options/canvas.lua)
 
 -- The health value as the editor's format has it (editor.lua): the percent,
 -- the current health, both, or what is missing. Where the game keeps the

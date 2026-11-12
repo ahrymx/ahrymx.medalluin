@@ -74,6 +74,10 @@ read_globals = {
     "QueueStatusButton", "QueueStatusMinimapButton", "MiniMapLFGFrame", "MainMenuBarVehicleLeaveButton", "MainMenuBarVehicleLeaveButton_Update", "CanExitVehicle", "IsMouseButtonDown", "IsPossessBarVisible", "CancelPetPossess", "UnitOnTaxi", "PossessActionBar",
     -- the side panel's Zone tab (strips/zone.lua)
     "C_Minimap", "MenuUtil", "MiniMapTrackingDropDown", "ToggleDropDownMenu", "ToggleWorldMap", "GetSubZoneText",
+    -- the spells that dispel (console/auras.lua)
+    "IsPlayerSpell", "IsSpellKnown",
+    -- the player's role, the editor's canvas shows (options/canvas.lua)
+    "GetSpecializationRole", "GetTalentGroupRole",
     "issecurevariable", "GetMouseFoci", "GetMouseFocus", "GetNumBindings", "GetBinding", "C_CVar", "C_AddOns",
     -- the Edit Mode clients' API: secret values, curves, duration objects
     "issecretvalue", "C_ActionBar", "C_CurveUtil", "CurveConstants", "Enum", "UnitHealthPercent", "UnitPowerPercent",
