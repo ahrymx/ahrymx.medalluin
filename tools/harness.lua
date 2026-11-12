@@ -354,6 +354,12 @@ function Region:SetText(t)
     self.text = t
 end
 function Region:SetAlpha(a) self.alpha = a end
+-- the modern client's: a boolean (a secret's, from its hidden v) picks the alpha
+function Region:SetAlphaFromBoolean(v, yes, no)
+    local secretOne = isSecret(v)
+    if secretOne then v = rawget(v, "v") end
+    self.alpha, self.alphaSecret = v and (yes or 1) or (no or 0), secretOne
+end
 function Region:SetFormattedText(f, ...)
     for i = 1, select("#", ...) do
         if isSecret(select(i, ...)) then
@@ -8031,6 +8037,18 @@ if args[2] == "widgets" or args[3] == "widgets" then
     harnessInstance = "none"
     S.raidRange:Set(40)
     ns.widgetFade.scripts.OnUpdate(ns.widgetFade, 1)
+    -- the modern client's answer, a secret: applied untested, by the client
+    if issecretvalue then
+        UnitInRange = function(u) return setmetatable({ v = u ~= "raid2" }, getmetatable(secret())), secret() end
+        ns.widgetFade.scripts.OnUpdate(ns.widgetFade, 1)
+        local bySecret = 0
+        for _, h in ipairs(ns.raidHeaders) do
+            for _, b in ipairs(h.all_ or {}) do
+                if made[b] and b.shown and b.alphaSecret then bySecret = bySecret + 1 end
+            end
+        end
+        print("raid faded, a secret range", faded(), "applied by the client=" .. bySecret)
+    end
     UnitInRange = nil
     -- a member sheeped: the client's word on its cell
     if C_UnitAuras then
@@ -10388,6 +10406,23 @@ if savedSimParty then
     p3.stub.inRange = true
     ns.UpdatePartyRange()
     print("party3.range restored", tostring(p3.alpha or 1))
+    -- a real member, the modern client's answer a secret: applied by the client
+    ;(function()
+    if not issecretvalue then return end
+    local stub, exists, on, wasShown = p3.stub, UnitExists, UnitIsConnected, p3.shown
+    p3.stub, p3.shown = nil, true
+    UnitExists = function(u) return u == "party3" or exists(u) end
+    UnitIsConnected = function() return true end
+    UnitInRange = function() return setmetatable({ v = false }, getmetatable(secret())), secret() end
+    ns.UpdatePartyRange()
+    print("party3.range secret out", string.format("%.2f", p3.alpha), "by the client=" .. tostring(p3.alphaSecret))
+    UnitInRange = function() return setmetatable({ v = true }, getmetatable(secret())), secret() end
+    ns.UpdatePartyRange()
+    print("party3.range secret in", string.format("%.2f", p3.alpha), "by the client=" .. tostring(p3.alphaSecret))
+    UnitInRange, UnitExists, UnitIsConnected = nil, exists, on
+    p3.stub, p3.shown = stub, wasShown
+    ns.UpdatePartyRange()
+    end)()
 
     -- 4. Ready check: hides buffs/debuffs, shows middle status
     for _, f in ipairs(events.READY_CHECK or {}) do f.scripts.OnEvent(f, "READY_CHECK") end

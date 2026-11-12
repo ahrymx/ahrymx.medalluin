@@ -387,8 +387,9 @@ fade:SetScript("OnUpdate", function(_, elapsed)
         local friendly = unit:match("^raid")
         for b in pairs(list) do
             if b:IsVisible() then
+                -- (the last may be a secret: passed on untested)
                 local near = b.stub or not friendly or dist == 0 or ns.UnitInRange(unit, dist)
-                b:SetAlpha(near and 1 or 0.45)
+                ns.RangeFade(b, near)
             end
         end
     end

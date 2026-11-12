@@ -980,7 +980,10 @@ function ns.RelayoutUnits()
     if ns.ShapeDispelGlows then ns.ShapeDispelGlows() end
 end
 
--- Range check logic: party frames fade when members are out of distance
+-- Range check logic: party frames fade when members are out of distance.
+-- The answer may be a secret: the modern client keeps UnitInRange's (and
+-- may keep the others') from addons, and it is then passed on untested,
+-- for RangeFade to apply (it was taken as "in range", so nothing faded).
 local function IsUnitInRange(unit, dist)
     if not dist or dist == 0 then return true end
     if unit == "player" then return true end
@@ -991,20 +994,20 @@ local function IsUnitInRange(unit, dist)
     if dist == 10 then
         if CheckInteractDistance then
             local ok, r = pcall(CheckInteractDistance, unit, 3)
-            if ok and ns.IsSecret(r) then return true end
+            if ok and ns.IsSecret(r) then return r end
             if ok and r then return true end
             ok, r = pcall(CheckInteractDistance, unit, 2)
-            if ok and ns.IsSecret(r) then return true end
+            if ok and ns.IsSecret(r) then return r end
             if ok and r then return true end
             return false
         end
     elseif dist == 20 or dist == 30 then
         if CheckInteractDistance then
             local ok, r = pcall(CheckInteractDistance, unit, 1)
-            if ok and ns.IsSecret(r) then return true end
+            if ok and ns.IsSecret(r) then return r end
             if ok and r then return true end
             ok, r = pcall(CheckInteractDistance, unit, 4)
-            if ok and ns.IsSecret(r) then return true end
+            if ok and ns.IsSecret(r) then return r end
             if ok and r then return true end
             return false
         end
@@ -1013,15 +1016,17 @@ local function IsUnitInRange(unit, dist)
     if UnitInRange then
         local ok, inRange, checkedRange = pcall(UnitInRange, unit)
         if ok then
-            if ns.IsSecret(checkedRange) or ns.IsSecret(inRange) then return true end
-            if checkedRange then return inRange and true or false end
+            -- (a secret: its own word, the check unknown, as Blizzard's
+            -- compact frames have it when they cannot tell)
+            if ns.IsSecret(inRange) then return inRange end
+            if ns.IsSecret(checkedRange) or checkedRange then return inRange and true or false end
         end
     end
 
     if UnitIsVisible then
         local ok, vis = pcall(UnitIsVisible, unit)
         if ok then
-            if ns.IsSecret(vis) then return true end
+            if ns.IsSecret(vis) then return vis end
             return vis and true or false
         end
     end
@@ -1030,21 +1035,26 @@ end
 
 ns.UnitInRange = IsUnitInRange
 
+-- A frame faded by its unit's range: near, a secret or not. A secret is
+-- the client's to apply (SetAlphaFromBoolean takes it untested); a client
+-- without that shows the frame whole.
+local FADED = 0.45
+function ns.RangeFade(f, near)
+    if ns.IsSecret(near) then
+        if f.SetAlphaFromBoolean then f:SetAlphaFromBoolean(near, 1, FADED) else f:SetAlpha(1) end
+    else
+        f:SetAlpha(near and 1 or FADED)
+    end
+end
+
 local function UpdatePartyRange()
     local dist = ns.db and ns.PartyOption("partyRange")
     for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
         local pb = ns.units[u]
         if pb and pb:IsShown() then
             local inRange = (dist == 0) or IsUnitInRange(u, dist)
-            local targetAlpha = (inRange == true or ns.IsSecret(inRange)) and 1.0 or 0.45
-            if pb:GetAlpha() ~= targetAlpha then
-                pb:SetAlpha(targetAlpha)
-            end
-            if pb.pet and pb.pet:IsShown() then
-                if pb.pet:GetAlpha() ~= targetAlpha then
-                    pb.pet:SetAlpha(targetAlpha)
-                end
-            end
+            ns.RangeFade(pb, inRange)
+            if pb.pet and pb.pet:IsShown() then ns.RangeFade(pb.pet, inRange) end
         end
     end
 end
