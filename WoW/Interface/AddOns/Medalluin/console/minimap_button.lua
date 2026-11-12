@@ -1,6 +1,7 @@
 -- Medalluin's own minimap button: the gold medal of assets/medalluin-icon.svg
 -- (art/strips/gen_sidepanel.py renders it). Left click opens the settings; right click
--- switches Simulate party frames on or off, as its box on the page does.
+-- switches Simulate party frames on or off, as its box on the page does;
+-- middle click opens the unit frame editor (options/editor.lua), or closes it.
 --
 -- It is made on the minimap like any addon's button, so the action bar's
 -- drawer (bars/drawer.lua) takes it with the others. Without the action bar
@@ -13,7 +14,7 @@ local SIZE = 32
 local button = CreateFrame("Button", "MedalluinMinimapButton", Minimap)
 button:SetSize(SIZE, SIZE)
 button:SetFrameLevel(Minimap:GetFrameLevel() + 5)
-button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+button:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
 local icon = button:CreateTexture(nil, "ARTWORK")
 icon:SetTexture(ns.media .. "strips\\minimap-button")
 icon:SetAllPoints()
@@ -29,13 +30,21 @@ ns.minimapButton = button
 local function Tip(self)
     ns.Tip(self, "ANCHOR_LEFT", { title = "Medalluin",
         { "row", "Left click", "settings", true },
-        { "row", "Right click", "simulate party frames (" .. (ns.db.simParty and "on" or "off") .. ")", true } })
+        { "row", "Right click", "simulate party frames (" .. (ns.db.simParty and "on" or "off") .. ")", true },
+        { "row", "Middle click", "unit frame editor", true } })
 end
 
 button:SetScript("OnClick", function(self, mouse)
     if mouse == "RightButton" then
         ns.SetOption("simParty", not ns.db.simParty)
         if GameTooltip:IsOwned(self) then Tip(self) end
+    elseif mouse == "MiddleButton" then
+        local editor = _G.MedalluinEditor
+        if editor and editor:IsShown() then
+            editor:Hide()
+        elseif ns.OpenEditor then
+            ns.OpenEditor()
+        end
     elseif SlashCmdList.MEDALLUIN then
         SlashCmdList.MEDALLUIN("")
     end

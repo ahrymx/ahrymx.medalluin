@@ -5393,6 +5393,12 @@ if barPass then
         tip("minimapButton tip on")
         mb.scripts.OnClick(mb, "RightButton")
         print("minimapButton right again", "simParty=" .. tostring(ns.db.simParty))
+        -- middle: the unit frame editor, and again closes it
+        mb.scripts.OnClick(mb, "MiddleButton")
+        print("minimapButton middle", "editor=" .. tostring(_G.MedalluinEditor and _G.MedalluinEditor.shown),
+            "opens=" .. tostring(page.opened))
+        mb.scripts.OnClick(mb, "MiddleButton")
+        print("minimapButton middle again", "editor=" .. tostring(_G.MedalluinEditor and _G.MedalluinEditor.shown))
         GameTooltip.AddLine = add
     end
     if StatusTrackingBarManager then
