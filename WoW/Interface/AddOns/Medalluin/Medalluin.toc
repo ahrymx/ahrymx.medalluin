@@ -98,6 +98,7 @@ npc\merchant.lua
 npc\trainer.lua
 npc\mail.lua
 npc\flight.lua
+npc\questitem.lua
 social\lfgdata.lua
 window\reskin.lua
 social\lfg.lua

@@ -75,7 +75,7 @@ read_globals = {
     -- the side panel's Zone tab (strips/zone.lua)
     "C_Minimap", "MenuUtil", "MiniMapTrackingDropDown", "ToggleDropDownMenu", "ToggleWorldMap", "GetSubZoneText",
     -- the spells that dispel (console/auras.lua)
-    "IsPlayerSpell", "IsSpellKnown",
+    "IsPlayerSpell", "IsSpellKnown", "ITEM_STARTS_QUEST",
     -- the player's role, the editor's canvas shows (options/canvas.lua)
     "GetSpecializationRole", "GetTalentGroupRole",
     "issecurevariable", "GetMouseFoci", "GetMouseFocus", "GetNumBindings", "GetBinding", "C_CVar", "C_AddOns",

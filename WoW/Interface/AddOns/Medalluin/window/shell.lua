@@ -96,6 +96,20 @@ local GAME_ICON = 0.08                          -- the game's icons' border, tri
 
 ns.window = { width = WIDTH - 2 * PAD, pad = PAD, band = BAND }
 
+-- A secure button b set over region by numbers from its layer's (its
+-- parent's) own corner and scale, never anchored to region (see w.Layer);
+-- out of combat. False when the region is not laid out.
+function ns.window.Over(b, region)
+    local layer = b:GetParent()
+    local x, y, lx, ly = region:GetLeft(), region:GetBottom(), layer:GetLeft(), layer:GetBottom()
+    if not (x and y and lx and ly) then return false end
+    local k = region:GetEffectiveScale() / layer:GetEffectiveScale()
+    b:ClearAllPoints()
+    b:SetPoint("BOTTOMLEFT", layer, "BOTTOMLEFT", x * k - lx, y * k - ly)
+    b:SetSize(region:GetWidth() * k, region:GetHeight() * k)
+    return true
+end
+
 -- ------------------------------------------------------------ buttons
 -- As the bags window's: a gold edge, an ink well, a white glow under the
 -- mouse; one of a set marked when it is in use. Drawn on b, over b or over
@@ -1207,16 +1221,7 @@ function ns.Window(spec)
         layer.buttons = {}
         return layer
     end
-    function w.Over(b, region)
-        local layer = b:GetParent()
-        local x, y, lx, ly = region:GetLeft(), region:GetBottom(), layer:GetLeft(), layer:GetBottom()
-        if not (x and y and lx and ly) then return false end
-        local k = region:GetEffectiveScale() / layer:GetEffectiveScale()
-        b:ClearAllPoints()
-        b:SetPoint("BOTTOMLEFT", layer, "BOTTOMLEFT", x * k - lx, y * k - ly)
-        b:SetSize(region:GetWidth() * k, region:GetHeight() * k)
-        return true
-    end
+    w.Over = ns.window.Over
 
     return w
 end

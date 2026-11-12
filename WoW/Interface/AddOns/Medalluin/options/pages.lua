@@ -945,6 +945,10 @@ function ns.OptionPages()
                     "Space presses a quest's Accept, Continue or Complete Quest while its page is open, instead "
                     .. "of jumping. A gossip window's choices are numbered either way: the keys 1 to 0, - and = "
                     .. "pick them, and the action bar buttons on those keys wait until it closes.")),
+                Group("Quests", Check("npcQuestItems", "Open quest items",
+                    "When you get an item that begins a quest, the box opens on it: Read the quest (or Space, "
+                    .. "with the Spacebar option) shows the quest, Later puts it away. Items you carry already "
+                    .. "when you log in do not ask.")),
             },
         },
         {

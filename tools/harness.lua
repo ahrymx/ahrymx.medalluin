@@ -17785,6 +17785,99 @@ if npcPass then
     calls("npc flight no paths")
     print("npc flight untouched", tostring(keys(TaxiFrame) == taxiBefore))
     MerchantFrame.shown = false
+
+    -- (a function of its own: the main chunk is at its locals' limit)
+    ;(function()
+    -- a quest item got: the box opens on it (npc/questitem.lua). The bags'
+    -- quest info by slot; what was carried at login, or in the quiet after
+    -- entering the world, does not ask
+    TaxiFrame:Hide()
+    fire("TAXIMAP_CLOSED")
+    local held = { [6] = { id = 900, quest = 50 } }
+    local wasID, wasQuest = C_Container.GetContainerItemID, C_Container.GetContainerItemQuestInfo
+    C_Container.GetContainerItemID = function(bag, slot) return bag == 0 and held[slot] and held[slot].id or nil end
+    C_Container.GetContainerItemQuestInfo = function(bag, slot)
+        local it = bag == 0 and held[slot]
+        return { isQuestItem = it and true or false, questID = it and it.quest, isActive = it and it.active or false }
+    end
+    C_Item.GetItemNameByID = function(id) return "Letter " .. id end
+    C_Item.GetItemIconByID = function(id) return 1000 + id end
+    local use = MedalluinQuestItemUse
+    local function qi(tag)
+        state("npc questitem " .. tag)
+        local rows = {}
+        -- (seen: a hidden tab bar keeps its tabs flagged shown)
+        for _, r in ipairs(page("npc questitem " .. tag)) do if r.c:IsVisible() then rows[#rows + 1] = r.s end end
+        local over = use and use.points.BOTTOMLEFT
+        local face = ns.npc.Primary()
+        local more = "-"
+        for _, b in ipairs(ns.npc.pages.questItem.Blocks()) do
+            if b[1] == "text" and not b.pin then more = b[2] end
+        end
+        print("npc questitem " .. tag, "holder=" .. tostring(MedalluinQuestItem.shown),
+            "front=" .. tostring(ns.npc.Front()), "says=" .. tostring(ns.npc.bar.say:IsVisible()
+                and ns.npc.bar.say.text), "page=" .. table.concat(rows, " | "),
+            "use=" .. tostring(use and use.attrs.type) .. "/" .. tostring(use and use.attrs.item),
+            "layer=" .. tostring(MedalluinQuestItemLayer.shown) .. "/" .. tostring(MedalluinQuestItemLayer.stateDrivers
+                and MedalluinQuestItemLayer.stateDrivers.visibility),
+            "over=" .. (over and string.format("%d,%d %dx%d", over[3], over[4], use.w or 0, use.h or 0) or "-"),
+            "fits=" .. tostring(face and use:GetLeft() and math.abs(use:GetLeft() - face:GetLeft()) < 0.5
+                and math.abs(use:GetTop() - face:GetTop()) < 0.5 and math.abs(use:GetRight() - face:GetRight()) < 0.5
+                or false), "more=" .. tostring(more))
+        foot("npc questitem " .. tag)
+        bound("npc questitem " .. tag)
+    end
+    fire("BAG_UPDATE_DELAYED")
+    qi("carried in the quiet")
+    now = now + 10
+    held[6].quest = nil
+    held[5] = { id = 901, quest = 51 }
+    fire("BAG_UPDATE_DELAYED")
+    qi("got one")
+    harnessBeside("npc questitem tips", box)
+    -- a second while the first waits; Later shows it
+    held[4] = { id = 902, quest = 52 }
+    fire("BAG_UPDATE_DELAYED")
+    qi("a second")
+    press("npc questitem", "Later")
+    qi("later")
+    -- in combat: the button waits, Space is the bars' again
+    inCombat, harnessHolds.combat = true, true
+    fire("PLAYER_REGEN_DISABLED")
+    stateTick()
+    qi("in combat")
+    inCombat, harnessHolds.combat = false, nil
+    fire("PLAYER_REGEN_ENABLED")
+    stateTick()
+    qi("after combat")
+    -- used: the secure click's PostClick; the game answers with the quest page
+    use.scripts.PostClick(use, "LeftButton")
+    qi("used")
+    -- one taken already, one done, one gone before it was read: none ask
+    held[3] = { id = 903, quest = 53, active = true }
+    local wasDone = C_QuestLog.IsQuestFlaggedCompleted
+    C_QuestLog.IsQuestFlaggedCompleted = function(q) return q == 54 end
+    held[2] = { id = 904, quest = 54 }
+    fire("BAG_UPDATE_DELAYED")
+    qi("taken or done")
+    held[1] = { id = 905, quest = 55 }
+    fire("BAG_UPDATE_DELAYED")
+    held[1] = nil
+    fire("BAG_UPDATE_DELAYED")
+    qi("gone")
+    -- Escape puts it away; the option off asks nothing
+    held[1] = { id = 906, quest = 56 }
+    fire("BAG_UPDATE_DELAYED")
+    MedalluinQuestItem:Hide()
+    qi("escaped")
+    ns.SetOption("npcQuestItems", false)
+    held[7] = { id = 907, quest = 57 }
+    fire("BAG_UPDATE_DELAYED")
+    qi("option off")
+    ns.SetOption("npcQuestItems", true)
+    C_QuestLog.IsQuestFlaggedCompleted = wasDone
+    C_Container.GetContainerItemID, C_Container.GetContainerItemQuestInfo = wasID, wasQuest
+    end)()
     print("npc merchant untouched", tostring(keys(MerchantFrame) == merchantBefore),
         "fns=" .. (#fns > 0 and table.concat(fns, ",") or "none"))
 end

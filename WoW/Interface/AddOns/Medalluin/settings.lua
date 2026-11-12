@@ -144,6 +144,7 @@ local DEFAULTS = {
     gameMenuHidden = false, -- the docked game menu's hidden sections, by key (a table once one is)
     npcWindows = true,      -- gossip, the quest pages and the vendor in a box on the chat box (npc/window.lua)
     npcSpace = true,        -- Space presses a quest page's Accept, Continue or Complete Quest
+    npcQuestItems = true,   -- an item that begins a quest, got, opens the box on it (npc/questitem.lua)
     trainerFilter = false,  -- the trainer's type shown: "available", "unavailable" or "used"; Available if unset
     questsTitleFont = "marcellus", questsTitleSize = 12,         -- ns.Fonts()'s keys, and points
     questsObjectiveFont = "marcellus", questsObjectiveSize = 12,

@@ -51,10 +51,14 @@
 --                             tall as these, on every tab: the rest scrolls),
 --                             keys (true: its rows numbered, and picked
 --                             with the keys 1 to 0, - and =), space (Space presses the foot's primary
---                             button, while the Space option is on) }
+--                             button, while the Space option is on), spaceClick
+--                             (Space clicks this secure button by name
+--                             instead: what an addon's click cannot do,
+--                             using an item) }
 --   ns.npc.Show(key) (its page to the front), ns.npc.Update(key) (drawn
 --   again if in front), ns.npc.box, ns.npc.dock, ns.npc.Room() (the room up to the
---   screen's top)
+--   screen's top), ns.npc.Primary() (the foot's primary button, shown),
+--   ns.npc.Front() (the key of the page in front of the shown box)
 --
 -- A page's blocks, top down:
 --   { "text", text, color, pin }         a paragraph, wrapped (pin: the
@@ -793,6 +797,11 @@ end
 -- the foot's buttons, left to right: the width shared out when nothing
 -- is written beside them, else each as wide as its word, at the right
 local buttons = {}
+function ns.npc.Primary()
+    for _, b in ipairs(buttons) do
+        if b:IsShown() and b.data and b.data.primary then return b end
+    end
+end
 local function Foot(spec)
     spec = spec or {}
     primary = nil
@@ -969,13 +978,15 @@ function ns.npc.Keys()
     local shown = box:IsShown() and current
     local rows = shown and #keyed > 0
     local space = shown and current.space and ns.db.npcSpace and primary ~= nil
-    local want = (rows and "rows" or "") .. (space and " space" or "")
+    -- (a secure button of the page's, by name, takes Space instead)
+    local target = space and current.spaceClick or keyer:GetName()
+    local want = (rows and "rows" or "") .. (space and " space " .. target or "")
     if want == bound then return end
     ClearOverrideBindings(keyer)
     if rows then
         for _, key in ipairs(KEYS) do SetOverrideBindingClick(keyer, true, key, keyer:GetName(), key) end
     end
-    if space then SetOverrideBindingClick(keyer, true, "SPACE", keyer:GetName(), "SPACE") end
+    if space then SetOverrideBindingClick(keyer, true, "SPACE", target, "SPACE") end
     bound = want
 end
 
@@ -1016,6 +1027,11 @@ function ns.npc.Show(key)
     current, wanted = p, p
     if p.Shown then p.Shown() end
     ns.npc.Sync()
+end
+
+-- The page in front of the shown box, by key, or nil.
+function ns.npc.Front()
+    return box and box:IsShown() and current and current.key or nil
 end
 
 function ns.npc.Update(key)
