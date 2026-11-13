@@ -24,6 +24,7 @@ local MAX_SCALE, GAP = 3, 30
 local CC_TIME = 8           -- the previewed crowd control's sweep, looping
 
 local stage, holder
+local fit                 -- the reach each copy was fitted to, held still while a box is dragged
 local settling            -- a second drawing waits for the next frame
 local proxies = {}        -- the copies, in use and spare
 local boxes = {}          -- a box per piece per copy, in use and spare
@@ -510,9 +511,18 @@ local function Axis(lo, hi, onLo, onHi, free)
     return at, mine[at] - theirs[at]
 end
 
+-- How far (screen pixels) the pointer goes before a press is a drag: a
+-- click on a box writes nothing (2026-11-13: a click on a row Outside put
+-- it in, and the refit under it threw it thousands of pixels away).
+local SLOP = 3
+
 local function Drag(self)
     local from = self.from
     local x, y = GetCursorPosition()
+    if not from.moved then
+        if math.abs(x - from.x) < SLOP and math.abs(y - from.y) < SLOP then return end
+        from.moved = true
+    end
     -- the canvas is drawn larger: a pixel of the frame is scale of the screen's
     local dx, dy = (x - from.x) / from.scale, (y - from.y) / from.scale
     local box = from.rect
@@ -593,8 +603,11 @@ local function Box(i)
             scale = self:GetEffectiveScale(), p = p, rect = rect, others = Others(p, self.piece) }
     end)
     o:SetScript("OnMouseUp", function(self)
+        local moved = self.from and self.from.moved
         self.from = nil
         HideGuides()
+        -- the fit held still while it was dragged: fitted again to where it is
+        if moved then Draw() end
     end)
     o:SetScript("OnUpdate", function(self)
         if self.from then Drag(self) end
@@ -630,6 +643,30 @@ local function Absent(frame)
     return "Nothing to draw yet: Preview in the editor makes the frames."
 end
 
+-- How far copy p's shown pieces reach past it, from its top left: left
+-- (0 or less), right (its width or more), top (0 or more), bottom (its
+-- height below 0, or further). A piece the game will not measure counts
+-- as inside.
+local function Reach(p)
+    local box = Rect(p)
+    local w, h = Plain(p:GetWidth()) or 0, Plain(p:GetHeight()) or 0
+    local out = { l = 0, r = w, t = 0, b = -h }
+    if not box then return out end
+    for id, r in pairs(p.pieces) do
+        local text = E.PIECES[id].type == "text"
+        for _, one in ipairs(r.GetObjectType and { r } or r) do
+            local at = one:IsShown() and (text and Words(one) or Rect(one))
+            if at then
+                out.l = math.min(out.l, at.l - box.l)
+                out.r = math.max(out.r, at.r - box.l)
+                out.t = math.max(out.t, at.t - box.t)
+                out.b = math.min(out.b, at.b - box.t)
+            end
+        end
+    end
+    return out
+end
+
 -- The previewed glow on a copy: a dispel type's colour, else the aggro's.
 local function Glow(p)
     local key
@@ -654,15 +691,32 @@ function Draw()
     local models = Models(frame)
     stage.note:SetShown(#models == 0)
     if #models == 0 then stage.note:SetText(Absent(frame)) end
-    -- the copies, one over the other, at the largest size that fits: sized
-    -- and placed from their buttons before anything is copied
-    local width, height = 0, 0
-    for _, b in ipairs(models) do
-        width = math.max(width, Plain(b:GetWidth()) or 0)
-        height = height + GAP + (Plain(b:GetHeight()) or 0)
-    end
+    -- the copies, one over the other, at the largest size that fits all
+    -- of each: its button and whatever hangs past it (a row Outside, an
+    -- icon over its edge), measured once copied
     for k = 1, #models do Proxy(k) end
     for k = #models + 1, #proxies do proxies[k]:Hide() end
+    -- (while a box is dragged, the fit it started on: one refitted under
+    -- the pointer moves what the drag measures against, and it runs away)
+    local held = false
+    for _, o in ipairs(boxes) do if o.from and o.from.moved then held = true end end
+    local reach = {}
+    for k, b in ipairs(models) do
+        local p = proxies[k]
+        p:ClearAllPoints()
+        p:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
+        Mirror(frame, b, p, k)
+        Glow(p)
+        reach[k] = Reach(p)
+    end
+    if held and fit and #fit == #models then reach = fit end
+    fit = reach
+    local left, right, height = 0, 0, 0
+    for k = 1, #models do
+        left, right = math.min(left, reach[k].l), math.max(right, reach[k].r)
+        height = height + GAP + reach[k].t - reach[k].b
+    end
+    local width = right - left
     -- the stage's room, less its title, its hint and a margin
     local roomW, roomH = (stage:GetWidth() or 0) - 40, (stage:GetHeight() or 0) - 76
     local scale = MAX_SCALE
@@ -674,14 +728,10 @@ function Draw()
     local y = 0
     for k = 1, #models do
         local p = proxies[k]
-        y = y + GAP
+        y = y + GAP + reach[k].t
         p:ClearAllPoints()
-        p:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -y)
-        y = y + (Plain(models[k]:GetHeight()) or 0)
-    end
-    for k, b in ipairs(models) do
-        Mirror(frame, b, proxies[k], k)
-        Glow(proxies[k])
+        p:SetPoint("TOPLEFT", holder, "TOPLEFT", -left, -y)
+        y = y - reach[k].b
     end
     -- a box round the chosen piece on each copy, and on nothing else
     local n = 0

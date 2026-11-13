@@ -62,6 +62,10 @@ local function Outline()
 end
 
 -- ------------------------------------------------------------ the controls
+-- An offset to the hundredth: one saved earlier from a float read back
+-- from the game (-2 as -2.0000002384186) shows as what it is.
+local function Pixels(v) return tostring(math.floor(v * 100 + 0.5) / 100) end
+
 local function Specs()
     return {
         shown = { kind = "check", label = "Shown",
@@ -83,11 +87,11 @@ local function Specs()
                 .. "where it is dropped on the canvas." },
         x = { kind = "slider", label = "Inward", min = -150, max = 150,
             get = function() return PlaceField("x") or 0 end,
-            set = function(v) SetPlace({ x = v }) end,
+            set = function(v) SetPlace({ x = v }) end, text = Pixels,
             tip = "Pixels from the anchor, toward the frame's inner end (on the console) or right (a widget)." },
         y = { kind = "slider", label = "Up", min = -60, max = 60,
             get = function() return PlaceField("y") or 0 end,
-            set = function(v) SetPlace({ y = v }) end,
+            set = function(v) SetPlace({ y = v }) end, text = Pixels,
             tip = "Pixels from the anchor, up." },
         size = { kind = "slider", label = "Size", min = 6, max = 48,
             get = function() return Edits().size or math.floor((E.SizeOf(frame, piece) or 12) + 0.5) end,
@@ -121,8 +125,20 @@ local function Specs()
         out = { kind = "check", label = "Outside",
             get = function() return Edits().out == true end,
             set = function(v) SetField("out", v or E.NIL) end,
-            tip = "Beyond the frame's outer end, running toward the screen's edge (a widget's: the edge of the "
-                .. "half of the screen it is in). With buffs and debuffs both outside, the buffs run along the "
+            tip = "Beyond the frame's outer end, running toward the screen's edge. With buffs and debuffs both "
+                .. "outside, the buffs run along the frame's top, the debuffs its bottom. A drag puts the row "
+                .. "back in the frame." },
+        -- a widget's: which side, or toward the nearer edge of the screen
+        side = { kind = "choice", label = "Place", choices = {
+                { "in", "Inside the frame" }, { "edge", "Toward screen edge" },
+                { "left", "Outside, left" }, { "right", "Outside, right" } },
+            get = function()
+                local out = Edits().out
+                return out == true and "edge" or out or "in"
+            end,
+            set = function(v) SetField("out", v == "edge" or (v ~= "in" and v) or E.NIL) end,
+            tip = "Inside the frame, or beyond one of its ends, running away from it: toward the nearer edge of "
+                .. "the screen, or left or right. Buffs and debuffs out on the same side: the buffs along the "
                 .. "frame's top, the debuffs its bottom. A drag puts the row back in the frame." },
         from = { kind = "choice", label = "From", choices = E.FROM,
             get = function()
@@ -164,14 +180,15 @@ local function Rows()
     if kind == "bar" then return { { "ph" } } end
     local rows = { { "shown" }, { "on" }, { "x", "y" } }
     -- a row outside its frame is placed by that: no place, no way to grow
+    local out = Mirrored() and "out" or "side"
     if kind == "row" and Edits().out then
-        return { { "shown" }, { "out" }, { "from" }, { "size", "max" }, { "cols" } }
+        return { { "shown" }, { out }, { "from" }, { "size", "max" }, { "cols" } }
     end
     if kind == "text" then
         table.insert(rows, { "size", "outline" })
         if E.FORMATS[piece] then table.insert(rows, piece == "name" and { "format", "len" } or { "format" }) end
     elseif kind == "row" then
-        table.insert(rows, 2, { "out" })
+        table.insert(rows, 2, { out })
         table.insert(rows, { "from" })
         table.insert(rows, { "size", "max" })
         table.insert(rows, { "grow", "cols" })
@@ -203,8 +220,6 @@ local function Lay()
             y = y - c:GetHeight() - GAP
         end
     end
-    controls.reset:ClearAllPoints()
-    controls.reset:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y - 4)
     controls.reset:Show()
 end
 
@@ -518,6 +533,9 @@ local function Window()
     end
     controls.reset = UI.Button(body, "Reset piece", 110, 22, function() E.ResetPiece(frame, piece) end,
         "This piece back to how its frame draws it.")
+    -- level with the piece's name: under the controls, a long list ran it
+    -- into the footer (2026-11-13: the buffs')
+    controls.reset:SetPoint("TOPRIGHT", body, "TOPRIGHT", 0, 0)
 
     -- the footer
     local foot = UI.Fill(window, "ARTWORK", C.goldDark)

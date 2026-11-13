@@ -9116,6 +9116,73 @@ local function EditorPass()
     ns.SetOption("editPartyWidget", widget)
     piece("party1 in widget, its own edit", ns.units.party1, "leader")
     print("  party1 cell", n(ns.units.party1.w) .. "x" .. n(ns.units.party1.h), "buttons=" .. #E.byId.partyWidget.buttons())
+    -- Outside on a widget: a side to choose (Place), or toward the screen's
+    -- edge (0.35's Outside); on the console's frames, outward only
+    ;(function()
+        local pw = E.byId.partyWidget
+        local cell = pw.buttons()[1]
+        local function controls()
+            local shown = {}
+            for _, k in ipairs({ "out", "side" }) do if w.controls[k].shown then shown[#shown + 1] = k end end
+            return "controls=" .. table.concat(shown, ",")
+        end
+        local function rows(tag, b, ids)
+            local o = {}
+            for _, id in ipairs(ids or { "buffs", "mine" }) do
+                local list = E.PIECES[id].get(b)
+                o[#o + 1] = id .. " " .. pts(b, list[1]) .. " / 2nd " .. pts(list[1], list[2])
+            end
+            print("  widget outside " .. tag, table.concat(o, " | "))
+        end
+        choose("partyWidget", "buffs")
+        print("  widget outside controls", controls(), "place=" .. tostring(get("side")))
+        rows("inside", cell)
+        set("side", "left")
+        rows("buffs left", cell)
+        print("  widget outside controls, out", controls(), "place=" .. tostring(get("side")),
+            "stored=" .. tostring(E.Edits(pw, "buffs").out))
+        set("side", "right")
+        rows("buffs right", cell)
+        set("side", "edge")
+        rows("buffs to the edge", cell)
+        print("  widget outside edge stored", tostring(E.Edits(pw, "buffs").out), "place=" .. tostring(get("side")))
+        -- a cell on the screen's right half: toward the right edge
+        -- (the harness's regions have no centre: EdgeSide reads that as left)
+        local width = UIParent.GetWidth
+        UIParent.GetWidth = function() return 2 end
+        Region.GetCenter = function() return 1.5, 0 end
+        ns.SetOption("editPartyWidget", ns.db.editPartyWidget)
+        rows("buffs to the edge, right half", cell)
+        Region.GetCenter = nil
+        UIParent.GetWidth = width
+        ns.SetOption("editPartyWidget", ns.db.editPartyWidget)
+        set("side", "left")
+        choose("partyWidget", "mine")
+        set("side", "left")
+        rows("both left", cell)
+        set("side", "right")
+        rows("buffs left, debuffs right", cell)
+        set("side", "in")
+        rows("debuffs back in", cell)
+        print("  widget outside in stored", tostring(E.Edits(pw, "mine") and E.Edits(pw, "mine").out))
+        E.ResetPiece(pw, "mine")
+        E.ResetPiece(pw, "buffs")
+        local raid = E.byId.raid.buttons()[1]
+        if raid then
+            choose("raid", "mine")
+            set("side", "right")
+            rows("raid right", raid, { "mine" })
+            E.ResetPiece(E.byId.raid, "mine")
+        end
+        -- the console's: the box, and outward whatever is stored
+        choose("unit", "buffs")
+        print("  console outside controls", controls())
+        local was = ns.db.editUnit
+        ns.SetOption("editUnit", { buffs = { out = "right" }, mine = { out = "right" } })
+        rows("console, stored right", P)
+        ns.SetOption("editUnit", was)
+        choose("partyWidget", "cell")
+    end)()
     ns.SetOption("partyLayout", "console")
     -- Unit Frames > General: one shortcut, on the editor's first tab
     ;(function()
@@ -9346,6 +9413,101 @@ local function EditorPass()
     choose("unit", "mine")
     set("out", true)
     out("both")
+    -- the canvas fits the rows outside too: every shown piece of every
+    -- copy within the stage, none clipped at its edge
+    local function within(tag)
+        -- (on the screen: the copies are drawn at the holder's scale)
+        local k = cv:GetEffectiveScale()
+        local sl, sr, st, sb = cv:GetLeft() * k, cv:GetRight() * k, cv:GetTop() * k, cv:GetBottom() * k
+        local past, span = {}, {}
+        for c, p in ipairs(cv.proxies) do
+            if p.shown then
+                local q0 = p:GetEffectiveScale()
+                span[c] = { p:GetTop() * q0, p:GetBottom() * q0 }
+                for id, r in pairs(p.pieces) do
+                    for i, one in ipairs(rawget(r, 1) ~= nil and r or { r }) do
+                        if one.shown and one.GetLeft and one:GetLeft() then
+                            local q = one:GetEffectiveScale()
+                            span[c][1] = math.max(span[c][1], one:GetTop() * q)
+                            span[c][2] = math.min(span[c][2], one:GetBottom() * q)
+                            if one:GetLeft() * q < sl or one:GetRight() * q > sr or one:GetTop() * q > st
+                                or one:GetBottom() * q < sb then
+                                past[#past + 1] = c .. ":" .. id .. i
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        table.sort(past)
+        -- and one copy wholly over the next: nothing of one reaches the other
+        local over = {}
+        for c = 2, #span do
+            if span[c - 1] and span[c] and span[c][1] >= span[c - 1][2] then over[#over + 1] = (c - 1) .. "/" .. c end
+        end
+        print("  canvas " .. tag, "scale=" .. string.format("%.2f", cv.holder.scale or 1),
+            "past the stage=" .. (past[1] and table.concat(past, ",") or "none"),
+            "copies overlap=" .. (over[1] and table.concat(over, ",") or "none"))
+    end
+    within("both outside")
+    -- a piece hung above the frame: room above it too
+    E.Set(E.byId.unit, "level", { on = "frame", h = "center", v = "top", x = 0, y = 40 })
+    within("level above")
+    E.Set(E.byId.unit, "level", { on = "frame", h = "center", v = "bottom", x = 0, y = -40 })
+    within("level below")
+    E.ResetPiece(E.byId.unit, "level")
+    -- a press on a row's box: a click writes nothing; held and moved, the
+    -- canvas keeps the fit it started on, so the place stays where the
+    -- pointer put it frame after frame (2026-11-13: it ran away)
+    local keptEdits, keptShots = ns.db.editUnit, P.editShots
+    choose("unit", "buffs")
+    local function press(moves)
+        local o
+        for _, bx in ipairs(cv.boxes) do
+            if bx.shown and cv.proxies[bx.copy].button == P then o = bx end
+        end
+        local realCursor, cx, cy = GetCursorPosition, 100, 100
+        function GetCursorPosition() return cx, cy end
+        o.scripts.OnMouseDown(o)
+        local seen = {}
+        for _, m in ipairs(moves) do
+            cx, cy = 100 + m[1], 100 + m[2]
+            o.scripts.OnUpdate(o)
+            local e = E.Edits(E.byId.unit, "buffs") or {}
+            seen[#seen + 1] = string.format("%s:%s,%s/%.2f", tostring(e.out), tostring(e.x), tostring(e.y),
+                cv.holder.scale or 1)
+        end
+        o.scripts.OnMouseUp(o)
+        GetCursorPosition = realCursor
+        return table.concat(seen, " "), string.format("%.2f", cv.holder.scale or 1)
+    end
+    print("  pressed, 2px", press({ { 0, 0 }, { 2, 1 }, { 2, 1 } }))
+    print("  held, 40px in", press({ { 40, 0 }, { 40, 0 }, { 40, 0 }, { 40, 0 } }))
+    -- the offsets the game reads back as floats: to the hundredth, seeded
+    -- and shown
+    local realPoint = Region.GetPoint
+    local lv = E.PIECES.level.get(P)
+    function lv:GetPoint(i)
+        local point, rel, relPoint, x, y = realPoint(self, i)
+        return point, rel, relPoint, (x or 0) - 2.0000002384186, (y or 0) + 1.9999997615814
+    end
+    P.editShots = nil
+    choose("unit", "level")
+    print("  float offsets", "seed x=" .. tostring(E.Seed(E.byId.unit, "level").x),
+        "y=" .. tostring(E.Seed(E.byId.unit, "level").y))
+    lv.GetPoint = nil
+    P.editShots = nil
+    E.Set(E.byId.unit, "level", { h = "center", v = "top", on = "frame", x = 3.0000001192093, y = -2.0000002384186 })
+    print("  float offsets stored", "Inward shows " .. tostring(w.controls.x.value.text),
+        "Up shows " .. tostring(w.controls.y.value.text))
+    -- Reset piece level with the piece's name, whatever is under it
+    local rp = w.controls.reset.points.TOPRIGHT
+    print("  reset piece at", rp and (tostring(rp[1] == w.controls.reset.parent and "body") .. "." .. tostring(rp[2])
+        .. "," .. tostring(rp[3]) .. "," .. tostring(rp[4])) or "elsewhere")
+    -- all as it was before this
+    P.editShots = keptShots
+    ns.SetOption("editUnit", keptEdits)
+    choose("unit", "mine")
     set("cols", 2)
     out("debuffs in 2 columns")
     -- a drag puts it back in the frame, where it is dropped
@@ -9374,6 +9536,7 @@ local function EditorPass()
     canvas("party widget, layout console")
     choose("party", "cc")
     canvas("party")
+    within("party")
     -- the role: the real one's icon, cut from its sheet; else the player's own
     local function role(tag)
         local o = {}

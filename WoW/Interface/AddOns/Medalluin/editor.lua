@@ -310,6 +310,8 @@ end
 -- canvas's, where the game now keeps a point secret).
 function E.Shot(b, piece) return Snap(b, piece) end
 
+local function Hundredth(v) return math.floor(v * 100 + 0.5) / 100 end
+
 function E.Seed(frame, piece)
     local b = frame.buttons()[1]
     if not b then return {} end
@@ -323,7 +325,9 @@ function E.Seed(frame, piece)
         if on and readable then
             local h, v = Place(pt[3], side)
             local ph, pv = Place(pt[1], side)
-            local seed = { h = h, v = v, on = on, x = -side * (pt[4] or 0), y = pt[5] or 0 }
+            -- (to the hundredth: the game keeps offsets as floats, -2 read
+            -- back as -2.0000002384186)
+            local seed = { h = h, v = v, on = on, x = Hundredth(-side * (pt[4] or 0)), y = Hundredth(pt[5] or 0) }
             if ph ~= h or pv ~= v then seed.ph, seed.pv = ph, pv end
             return seed
         end
@@ -416,15 +420,26 @@ local function EdgeSide(b, frame)
     return x > w / 2 and 1 or -1
 end
 
+-- The side a row outside its frame hangs on (-1 left, 1 right), by its
+-- Outside: true, toward the screen's edge; "left" or "right", that side.
+-- The console's frames go outward only (inward runs over the ring).
+local function OutEdge(b, frame, e)
+    if frame.id ~= "unit" and frame.id ~= "party" then
+        if e.out == "left" then return -1 end
+        if e.out == "right" then return 1 end
+    end
+    return EdgeSide(b, frame)
+end
+
 -- A row outside its frame (its Outside): the first icon just past the
--- frame's end toward the screen's edge, the rest running on toward it, a
--- new line every cols icons. Level with the frame's top; debuffs with
--- its bottom while the buffs are out too, so the two do not meet.
+-- frame's end on its side, the rest running on away from it, a new line
+-- every cols icons. Level with the frame's top; debuffs with its bottom
+-- while the buffs are out on the same side, so the two do not meet.
 local function OutRow(b, frame, piece, regions, shot, e)
     local _, gap = OwnRun(shot)
-    local edge = EdgeSide(b, frame)
-    local buffsOut = piece == "mine" and (E.Edits(frame, "buffs") or {}).out
-    local v = buffsOut and "BOTTOM" or "TOP"
+    local edge = OutEdge(b, frame, e)
+    local buffs = piece == "mine" and E.Edits(frame, "buffs") or {}
+    local v = buffs.out and OutEdge(b, frame, buffs) == edge and "BOTTOM" or "TOP"
     local near, far = edge == -1 and "RIGHT" or "LEFT", edge == -1 and "LEFT" or "RIGHT"
     local first = regions[1]
     first:ClearAllPoints()
