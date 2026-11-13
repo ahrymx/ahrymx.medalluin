@@ -1,9 +1,9 @@
 -- Medalluin's settings window: a sidebar down the left lists the pages
 -- under their categories (pages.lua's), with a search over every option
 -- above them; the page shown has a header (its title, where it sits, its
--- master's switch) over its options, each group a section of label-left
--- rows, the sections in two columns. Modules, the page it opens on, has a
--- card for each part with a master. The title on the top edge, or the
+-- master's switch) over its options, each group a card of label-left
+-- rows under a title band, the cards in two columns. Modules, the page it
+-- opens on, has a card for each part with a master. The title on the top edge, or the
 -- window itself, drags it; where it is left is kept. The footer names the
 -- profile being edited and, once an option that waits for one has
 -- changed, asks for a reload.
@@ -17,16 +17,17 @@ local C = UI.colors
 
 local W, H = 900, 600
 local PAD, SIDE_W, TITLE_ROOM, FOOT = 14, 200, 22, 46
-local HEAD_H, TAB_H, COL_GAP, SEC_GAP = 54, 24, 22, 14
+local HEAD_H, COL_GAP, SEC_GAP, CARD_PAD, BAND_H = 54, 12, 12, 8, 28
 local ITEM_H, CAT_H, SEARCH_H, LINK_H = 22, 22, 22, 20
 local CARD_H, CARD_GAP = 44, 8
 local X = PAD + SIDE_W + 14             -- the header's and body's left
 local ROUND = ns.media .. "strips\\round"
 local GREEN = { 0.42, 0.78, 0.36 }
+local BAND = { 0.110, 0.098, 0.075 } -- a card's title band, between ink and panel
 
 local pages        -- pages.lua's, built at login
 local categories
-local window, side, nav, navChild, search, tabStrip, body, scroll, thumb, flash
+local window, side, nav, navChild, search, body, scroll, thumb, flash
 local finds        -- a search's page: the sections it matched, lent by their own
 local colW         -- a section's width
 local footProfile, footReload
@@ -34,6 +35,7 @@ local built = {}   -- page frames by path ("general", "console/unit")
 ns.optionPages = built
 local current      -- the path shown
 local lastTab = {} -- each tabbed page's tab, by page id
+local lastIn = {}  -- each category's item last shown, by name
 local reloadAt     -- what the reload options were at login
 local controls = {}
 ns.optionControls = controls
@@ -67,16 +69,21 @@ local function Each(fn)
     end
 end
 
--- A sidebar item's name, and whether it is a tabbed page listed whole (its
--- tabs a row under its header).
-local function Whole(item)
-    local page = Find(item)
-    return page and page.tabs and not item:find("/") and page
-end
+-- A sidebar item's name.
 local function ItemName(item)
     local page, tab = Find(item)
     if not page then return item end
-    return (tab and not Whole(item)) and tab.name or page.name
+    return tab and tab.name or page.name
+end
+
+-- A tab's parent (a tab `under` another, as Paging under Action Bars): its
+-- name, for the crumb, or nil.
+local function Parent(item)
+    local page, tab = Find(item)
+    if not (tab and tab.under) then return nil end
+    for _, t in ipairs(page.tabs) do
+        if t.id == tab.under then return t.name end
+    end
 end
 
 -- Every path's category and item.
@@ -84,9 +91,7 @@ local function Places()
     for _, cat in ipairs(categories) do
         for _, item in ipairs(cat.items) do
             local page, tab = Find(item)
-            if Whole(item) then
-                for _, t in ipairs(page.tabs) do place[item .. "/" .. t.id] = { cat = cat, item = item } end
-            elseif page then
+            if page then
                 place[tab and (page.id .. "/" .. tab.id) or page.id] = { cat = cat, item = item }
             end
         end
@@ -100,6 +105,7 @@ local function ReloadKeys(fn)
     Each(function(content)
         if content.master and content.master.reload then fn(content.master.key) end
         for _, group in ipairs(content.groups) do
+            if group.switch and group.switch.reload then fn(group.switch.key) end
             for _, item in ipairs(group.items) do
                 if item.reload then fn(item.key) end
             end
@@ -148,31 +154,50 @@ local function Control(parent, spec, width, row, label)
 end
 
 -- A page's header, over its body: its title, where it sits ("Console >
--- Action Bars · Kept per profile"), its master's switch, a hairline under.
--- Shown with its page.
+-- Action Bars · Kept per profile"), a (?) after that holding the rest of
+-- its intro and where else its options are, its master's switch, a
+-- hairline under. Shown with its page.
 local function Header(f, content, path, page, tab)
     local head = CreateFrame("Frame", nil, window)
     head:SetPoint("TOPLEFT", window, "TOPLEFT", X, -(PAD + TITLE_ROOM))
     head:SetPoint("TOPRIGHT", window, "TOPRIGHT", -PAD, -(PAD + TITLE_ROOM))
     head:SetHeight(HEAD_H)
     local at = place[path]
-    local whole = at and Whole(at.item)
     head.title = UI.Serif(head, 20, C.goldBright)
     head.title:SetPoint("TOPLEFT", 0, -2)
     head.title:SetText(at and ItemName(at.item) or (tab and tab.name or page.name))
     local parts = {}
     if at then
         table.insert(parts, at.cat.name)
+        table.insert(parts, Parent(at.item))
         table.insert(parts, ItemName(at.item))
-        if whole then table.insert(parts, tab.name) end
     end
     local scope = content.scope or at and at.cat.scope
     head.crumb = UI.Plain(head, 12, C.dim)
     head.crumb:SetPoint("TOPLEFT", 0, -30)
     head.crumb:SetText(table.concat(parts, "  >  ") .. (scope and ("   \194\183   " .. scope) or ""))
+    local more = content.more and content.also and (content.more .. "\n\n" .. content.also)
+        or content.more or content.also
+    if more then
+        local q = CreateFrame("Button", nil, head)
+        q:SetSize(22, 16)
+        q:SetPoint("LEFT", head.crumb, "RIGHT", 6, 0)
+        q.text = UI.Plain(q, 12, C.gold)
+        q.text:SetPoint("CENTER", 0, 0)
+        q.text:SetText("(?)")
+        q.tip = more
+        q:SetScript("OnEnter", function(self)
+            self.text:SetTextColor(C.goldBright[1], C.goldBright[2], C.goldBright[3])
+            UI.Tip(self, head.title:GetText(), self.tip)
+        end)
+        q:SetScript("OnLeave", function(self)
+            self.text:SetTextColor(C.gold[1], C.gold[2], C.gold[3])
+            if GameTooltip then GameTooltip:Hide() end
+        end)
+        head.more = q
+    end
     if content.master then
-        -- a tab's switch names what it turns on: the page's own is Enabled
-        local m = Control(head, content.master, nil, "switch", whole and content.master.label or "Enabled")
+        local m = Control(head, content.master, nil, "switch", "Enabled")
         m:SetPoint("TOPRIGHT", 0, -6)
         f.master = m
         table.insert(f.controls, m)
@@ -187,9 +212,8 @@ end
 
 local function Where(path, title)
     local at = place[path]
-    local s = at and (at.cat.name .. " > " .. ItemName(at.item)) or path
-    local _, tab = Find(path)
-    if at and Whole(at.item) and tab then s = s .. " > " .. tab.name end
+    local up = at and Parent(at.item)
+    local s = at and (at.cat.name .. " > " .. (up and (up .. " > ") or "") .. ItemName(at.item)) or path
     return title and (s .. " > " .. title) or s
 end
 
@@ -213,32 +237,57 @@ local function Own(row, spec)
     return b
 end
 
--- A group as a section: its heading over a hairline, its tip, then an
--- option a row.
+-- A group as a card: a band across its top holding its title and, on the
+-- right, the switch its rows need; its tip, then an option a row, under
+-- that. Its edge is gold while its switch is on.
 local function Section(f, group, width, path)
     local s = CreateFrame("Frame", nil, f)
     s:SetWidth(width)
+    s.group = group
+    local inset = CARD_PAD
+    width = width - 2 * inset
+    UI.Fill(s, "BACKGROUND", C.ink, 1):SetAllPoints()
+    local band = UI.Fill(s, "BACKGROUND", BAND, 2)
+    band:SetPoint("TOPLEFT", 1, -1)
+    band:SetPoint("TOPRIGHT", -1, -1)
+    band:SetHeight(BAND_H - 1)
+    s.band = band
+    s.edge = UI.Outline(s, "BORDER", C.goldDark, 0)
     s.title = UI.Serif(s, 14, C.goldBright)
-    s.title:SetPoint("TOPLEFT", 0, 0)
+    s.title:SetPoint("LEFT", s, "TOPLEFT", inset, -BAND_H / 2)
     s.title:SetText(group.title)
     local rule = UI.Fill(s, "ARTWORK", C.goldDark)
     rule:SetHeight(1)
-    rule:SetPoint("TOPLEFT", 0, -20)
-    rule:SetPoint("TOPRIGHT", 0, -20)
-    local y = -28
+    rule:SetPoint("TOPLEFT", 1, -BAND_H)
+    rule:SetPoint("TOPRIGHT", -1, -BAND_H)
+    local where = Where(path, group.title)
+    if group.switch then
+        -- a part's title names it; another's switch says what it is
+        local w = Control(s, group.switch, nil, "switch", not group.id and group.switch.label or nil)
+        w:SetPoint("TOPRIGHT", -inset, -(BAND_H - w:GetHeight()) / 2)
+        table.insert(f.controls, w)
+        s.switch = w
+        local refresh = w.Refresh
+        function w:Refresh(enabled)
+            refresh(self, enabled)
+            local e = UI.Get(group.switch) and C.gold or C.goldDark
+            for _, t in ipairs(s.edge) do t:SetColorTexture(e[1], e[2], e[3], 1) end
+        end
+        table.insert(index, { label = group.switch.label, path = path, section = s, control = w, where = where })
+    end
+    local y = -BAND_H - 8
     if group.tip then
         local tip = UI.Plain(s, 11, C.dim)
-        tip:SetPoint("TOPLEFT", 6, y)
-        tip:SetWidth(width - 6)
+        tip:SetPoint("TOPLEFT", inset, y)
+        tip:SetWidth(width)
         tip:SetJustifyH("LEFT")
         tip:SetText(group.tip)
         y = y - math.ceil(tip:GetStringHeight()) - 8
     end
-    local where = Where(path, group.title)
     table.insert(index, { label = group.title, path = path, section = s, where = Where(path) })
     for _, spec in ipairs(group.items) do
-        local c = Control(s, spec, width - 6, true)
-        c:SetPoint("TOPLEFT", 6, y)
+        local c = Control(s, spec, width, true)
+        c:SetPoint("TOPLEFT", inset, y)
         table.insert(f.controls, c)
         -- a swatch on the same row, left of the box (a dispel type's colour)
         if spec.beside then
@@ -262,11 +311,12 @@ local function Section(f, group, width, path)
             table.insert(index, { label = spec.label, path = path, section = s, control = c, where = where })
         end
     end
-    s:SetHeight(-y)
+    s:SetHeight(-y + 2)
     return s
 end
 
--- The page's intro, then its sections in two columns, each in the shorter.
+-- The page's intro, then its cards in two columns, each in the shorter, so
+-- the columns end level.
 local function Build(content, path, page, tab, width)
     local f = CreateFrame("Frame", nil, scroll)
     f:SetWidth(width)
@@ -310,7 +360,7 @@ local function Build(content, path, page, tab, width)
 end
 
 -- ------------------------------------------------------------ modules
-local Select
+local Select, Reveal
 
 -- A part's card on Modules: its medallion, name, tag and line, its master's
 -- switch (not the header's: the header's is the option's control); a click
@@ -369,7 +419,9 @@ local function Card(parent, content, path, width, names)
         b.switch = UI.Switch(b, m)
         b.switch:SetPoint("RIGHT", -10, 0)
     end
-    b:SetScript("OnClick", function(self) Select(self.path) end)
+    b:SetScript("OnClick", function(self)
+        if content.group then Reveal(self.path, content.group) else Select(self.path) end
+    end)
     b:SetScript("OnEnter", function(self)
         local why = self.off and ("Turn on " .. (names[self.needs] or self.needs) .. " first.")
         UI.Tip(self, self.name:GetText(), why or (m and m.tip) or content.intro)
@@ -424,10 +476,17 @@ local function Modules(content, path, page, width)
         end
         for _, item in ipairs(cat.items) do
             local pg, tab = Find(item)
-            if Whole(item) then
-                for _, t in ipairs(pg.tabs) do Add(t, item .. "/" .. t.id) end
-            elseif pg then
-                Add(tab or pg, item)
+            if pg then
+                local c = tab or pg
+                Add(c, item)
+                -- a part on that page (a window, a side panel tab): a card
+                -- of its own, opening the page at it
+                for _, g in ipairs(c.groups or {}) do
+                    if g.id and g.switch then
+                        Add({ master = g.switch, name = g.title, forever = g.forever, glyph = g.glyph,
+                            blurb = g.blurb, group = g }, item)
+                    end
+                end
             end
         end
         return out
@@ -490,30 +549,21 @@ local function Scroll(delta)
 end
 
 -- ------------------------------------------------------------ the sidebar
-local function Folded(name)
-    local folded = ns.db.optionsFolded
-    return type(folded) == "table" and folded[name] or false
-end
-
-local function Fold(name)
-    local folded = type(ns.db.optionsFolded) == "table" and ns.db.optionsFolded or {}
-    folded[name] = not folded[name] or nil
-    ns.db.optionsFolded = next(folded) and folded or false
-end
-
 -- The rows down the sidebar: a heading for each category, a row for each
--- item. While a search shows what it found, no item is lit.
+-- item; only the shown page's category open, the others folded to their
+-- heading and how many items they hold. While a search shows what it
+-- found, no item is lit (the last page's category stays open).
 local function Nav()
     local y = -2
     for _, h in ipairs(side.heads) do h:Hide() end
     for _, r in ipairs(side.rows) do r:Hide() end
-    local item = not query and current and place[current] and place[current].item
+    local shown = current and place[current] and place[current].item
+    local item = not query and shown
     for _, h in ipairs(side.heads) do
-        -- the shown page's category stays open
         local here = false
-        for _, r in ipairs(h.rows) do here = here or r.path == item end
-        h.open = here or not Folded(h.cat.name)
-        h.sign:SetText(h.open and "" or "+")
+        for _, r in ipairs(h.rows) do here = here or r.path == shown end
+        h.open = here
+        h.sign:SetText(h.open and "" or tostring(#h.rows))
         h:SetPoint("TOPLEFT", 0, y)
         h:SetPoint("TOPRIGHT", 0, y)
         h:Show()
@@ -551,9 +601,10 @@ local function Head(cat)
     rule:SetHeight(1)
     rule:SetPoint("LEFT", h.text, "RIGHT", 8, 0)
     rule:SetPoint("RIGHT", h, "RIGHT", -22, -2)
+    -- a folded category opens on the item last shown in it, or its first
     h:SetScript("OnClick", function(self)
-        Fold(self.cat.name)
-        Nav()
+        local to = lastIn[self.cat.name] or (self.rows[1] and self.rows[1].path)
+        if to and not self.open then Select(to) end
     end)
     h.rows = {}
     return h
@@ -572,9 +623,11 @@ local function Item(path)
     r.bar:SetPoint("BOTTOMLEFT", 0, 0)
     r.bar:Hide()
     r.text = UI.Serif(r, 12, C.gold)
-    r.text:SetPoint("LEFT", 20, 0)
+    -- a tab under another, indented below it
+    r.sub = Parent(path) and true or nil
+    r.text:SetPoint("LEFT", r.sub and 34 or 20, 0)
     r.text:SetText(ItemName(path))
-    local content = Whole(path) and Whole(path).tabs[1] or select(2, Find(path)) or Find(path)
+    local content = select(2, Find(path)) or Find(path)
     r.master = content.master and content.master.kind == "check" and content.master or nil
     r.addon = content.addon and content or nil
     if r.master or r.addon then
@@ -634,6 +687,15 @@ local function Choose(e)
         Thumb()
     end
     if e.control then Flash(e.control) end
+end
+
+-- A part's card on Modules: its page, scrolled to its section, outlined.
+function Reveal(path, group)
+    Select(path)
+    local f = built[current]
+    for _, s in ipairs(f and f.sections or {}) do
+        if s.group == group then return Choose({ path = current, section = s, control = s }) end
+    end
 end
 
 -- A line over a match: where it is, a click opening it there.
@@ -733,7 +795,6 @@ local function Search(text)
             f:Hide()
             f.head:Hide()
         end
-        for _, t in ipairs(tabStrip.tabs) do t:Hide() end
         body:ClearAllPoints()
         body:SetPoint("TOPLEFT", window, "TOPLEFT", X, -(PAD + TITLE_ROOM + HEAD_H + 12))
         body:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -PAD, FOOT + 4)
@@ -792,8 +853,16 @@ local function Refresh()
     if not window then return end
     -- a master greys only with what it needs; all else with it too
     -- (and with its own test: c.can, a dispel type the player has not)
+    -- what it needs, and what that needs in turn (a gossip card's rows
+    -- need its switch, which needs the chat box)
     local function Has(c)
-        return (not c.needs or ns.db[c.needs] and true or false) and (not c.can or c.can() and true or false)
+        local key, n = c.needs, 0
+        while key and n < 8 do
+            if not ns.db[key] then return false end
+            local by = controls[key]
+            key, n = by and by.needs, n + 1
+        end
+        return not c.can or c.can() and true or false
     end
     for _, f in pairs(built) do
         local on = (not f.master or ns.db[f.master.spec.key] and Has(f.master))
@@ -832,33 +901,8 @@ function Select(path)
     if tab then lastTab[page.id] = tab.id end
     current = tab and (page.id .. "/" .. tab.id) or page.id
     local at = place[current]
-    -- a tabbed page listed whole: its tabs under its header, the body under them
-    for _, t in ipairs(tabStrip.tabs) do t:Hide() end
+    if at then lastIn[at.cat.name] = at.item end
     local top = PAD + TITLE_ROOM + HEAD_H + 12
-    if tab and at and Whole(at.item) then
-        local x = 0
-        for i, t in ipairs(page.tabs) do
-            local b = tabStrip.tabs[i]
-            b.page, b.tab = page, t
-            b.text:SetText(t.name)
-            b:SetWidth(math.ceil(b.text:GetStringWidth()) + 24)
-            b:ClearAllPoints()
-            b:SetPoint("BOTTOMLEFT", tabStrip, "BOTTOMLEFT", x, 0)
-            local on = t == tab
-            b.bg:SetColorTexture(unpack(on and { C.selected[1], C.selected[2], C.selected[3], 1 }
-                or { C.ink[1], C.ink[2], C.ink[3], 1 }))
-            for _, line in ipairs(b.edge) do
-                local c = on and C.gold or C.goldDark
-                line:SetColorTexture(c[1], c[2], c[3], 1)
-            end
-            b.edge[2]:SetShown(not on)
-            local c = on and C.goldBright or C.dim
-            b.text:SetTextColor(c[1], c[2], c[3])
-            b:Show()
-            x = x + b:GetWidth() + 4
-        end
-        top = top + TAB_H + 10
-    end
     body:ClearAllPoints()
     body:SetPoint("TOPLEFT", window, "TOPLEFT", X, -top)
     body:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -PAD, FOOT + 4)
@@ -931,28 +975,6 @@ local function Sidebar()
     end
 end
 
-local function TabStrip()
-    tabStrip = CreateFrame("Frame", nil, window)
-    tabStrip:SetPoint("TOPLEFT", window, "TOPLEFT", X, -(PAD + TITLE_ROOM + HEAD_H + 8))
-    tabStrip:SetPoint("TOPRIGHT", window, "TOPRIGHT", -PAD, -(PAD + TITLE_ROOM + HEAD_H + 8))
-    tabStrip:SetHeight(TAB_H)
-    tabStrip.tabs = {}
-    local most = 0
-    for _, page in ipairs(pages) do most = math.max(most, page.tabs and #page.tabs or 0) end
-    for i = 1, most do
-        local b = CreateFrame("Button", nil, tabStrip)
-        b:SetHeight(TAB_H)
-        b.bg = UI.Fill(b, "BACKGROUND", C.ink, 1)
-        b.bg:SetAllPoints()
-        b.edge = UI.Outline(b, "BORDER", C.goldDark, 0)
-        b.text = UI.Serif(b, 12, C.dim)
-        b.text:SetPoint("CENTER", 0, 0)
-        b:SetScript("OnClick", function(self) Select(self.page.id .. "/" .. self.tab.id) end)
-        b:Hide()
-        tabStrip.tabs[i] = b
-    end
-end
-
 local function Footer()
     local rule = UI.Fill(window, "ARTWORK", C.goldDark)
     rule:SetHeight(1)
@@ -1019,7 +1041,6 @@ local function Window()
 
     Places()
     Sidebar()
-    TabStrip()
 
     body = CreateFrame("Frame", nil, window)
     scroll = CreateFrame("ScrollFrame", nil, body)
@@ -1041,7 +1062,7 @@ local function Window()
     end)
     Footer()
     -- its parts, by name (the harness reads them)
-    window.tree, window.tabs, window.scroll, window.thumb = side, tabStrip.tabs, scroll, thumb
+    window.tree, window.scroll, window.thumb = side, scroll, thumb
     window.search, window.nav, window.flash = search, nav, flash
     window.footProfile, window.footReload = footProfile, footReload
 
@@ -1078,13 +1099,21 @@ local function Window()
 end
 
 -- ------------------------------------------------------------ open
--- ns.OpenOptions(path): the window, on that page ("console/unit"), or on
--- the page it was last on.
+-- ns.OpenOptions(path): the window, on that page ("console/unit"), at a
+-- part's card on it ("windows#bags"), or on the page it was last on.
 function ns.OpenOptions(path)
     if not pages then return end
     Window()
     if SettingsPanel and SettingsPanel:IsShown() and HideUIPanel then HideUIPanel(SettingsPanel) end
-    if path then Select(path) end
+    local at, part = tostring(path or ""):match("^([^#]+)#(.+)$")
+    if at then
+        local page = Find(at)
+        for _, g in ipairs(page and page.groups or {}) do
+            if g.id == part then Reveal(at, g) end
+        end
+    elseif path then
+        Select(path)
+    end
     window:Show()
     window:Raise()
 end

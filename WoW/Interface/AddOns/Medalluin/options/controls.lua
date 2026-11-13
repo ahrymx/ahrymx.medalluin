@@ -457,21 +457,42 @@ local function ChoiceLabel(spec)
     return tostring(value)
 end
 
-UI.CHOICE_W = 150                       -- a row's dropdown
+UI.CHOICE_W = 150                       -- a row's dropdown, at least
+local VALUE_PAD = 8 + 24                -- the value's room: its inset, the arrow's
 
 function UI.Choice(parent, spec, width, row)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(width, UI.CHOICE_H)
     f.spec = spec
     local b = CreateFrame("Button", nil, f)
+    -- one line: a value too long for its box ends in "...", never wraps
+    b.value = UI.Plain(b, 12)
+    b.value:SetWordWrap(false)
     if row then
-        local box = math.min(UI.CHOICE_W, math.floor(width * 0.55))
+        -- as wide as its longest choice, right of its label; where the two
+        -- cannot share a line, under the label, as wide as the row
         f.label = UI.Plain(f, 12)
-        f.label:SetPoint("LEFT", 0, 0)
         f.label:SetText(spec.label)
-        Fit(f, f.label, width - box - 10)
-        b:SetPoint("RIGHT", 0, 0)
-        b:SetWidth(box)
+        local least = math.min(UI.CHOICE_W, math.floor(width * 0.55))
+        local need = least
+        for _, choice in ipairs(spec.choices or {}) do
+            b.value:SetText(choice[2])
+            need = math.max(need, math.ceil(b.value:GetStringWidth()) + VALUE_PAD)
+        end
+        if need <= width - math.ceil(f.label:GetStringWidth()) - 10 or need <= least then
+            f.label:SetPoint("LEFT", 0, 0)
+            Fit(f, f.label, width - need - 10)
+            b:SetPoint("RIGHT", 0, 0)
+            b:SetWidth(need)
+        else
+            f.stacked = true
+            f.label:SetPoint("TOPLEFT", 0, -4)
+            f.label:SetWidth(width)
+            f.label:SetJustifyH("LEFT")
+            b:SetPoint("BOTTOMLEFT", 0, 0)
+            b:SetPoint("BOTTOMRIGHT", 0, 0)
+            f:SetHeight(math.ceil(f.label:GetStringHeight() or 0) + 8 + 22)
+        end
     else
         f.label = UI.Serif(f, 11, C.goldBright)
         f.label:SetPoint("TOPLEFT", 0, 0)
@@ -484,7 +505,6 @@ function UI.Choice(parent, spec, width, row)
     local bg = Fill(b, "BACKGROUND", C.well, 1)
     bg:SetAllPoints()
     Outline(b, "BORDER", C.goldDark, 0)
-    b.value = UI.Plain(b, 12)
     b.value:SetPoint("LEFT", 8, 0)
     b.value:SetPoint("RIGHT", -24, 0)
     b.value:SetJustifyH("LEFT")

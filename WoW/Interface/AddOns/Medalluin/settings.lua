@@ -153,7 +153,6 @@ local DEFAULTS = {
     questsTitleFont = "marcellus", questsTitleSize = 12,         -- ns.Fonts()'s keys, and points
     questsObjectiveFont = "marcellus", questsObjectiveSize = 12,
     optionsPoint = false,   -- where the settings window was dragged to, the same way (options/window.lua)
-    optionsFolded = false,  -- the settings sidebar's folded categories, by name
     editorPoint = false,    -- and the unit-frame editor's (options/editor.lua)
     xpCast = false,         -- the player's casts over the experience bar
     repCast = false,        -- the target's casts over the reputation bar
@@ -601,7 +600,7 @@ local PAGES = {
     layout = "console/general", unitlayout = "console/general",
     cast = "console/general", castbars = "console/general", casting = "console/general",
     minimap = "console/minimap", map = "console/minimap",
-    paging = "console/bar", page = "console/bar", pages = "console/bar",
+    paging = "console/paging", page = "console/paging", pages = "console/paging",
     bar = "console/bar", actionbar = "console/bar", bars = "console/bar",
     unit = "units/general", units = "units/general", unitframe = "units/general", unitframes = "units/general",
     uf = "units/general", party = "units/party", raid = "units/raid", bg = "units/battleground",
@@ -609,17 +608,19 @@ local PAGES = {
     arena = "units/arena",
     overhead = "console/overhead", top = "console/overhead",
     chat = "chat",
-    side = "side/general", meter = "side/meter", loot = "side/loot", auras = "side/auras",
-    bags = "bags", bag = "bags", inventory = "bags", bank = "bank",
-    character = "character", char = "character",
-    spellbook = "spellbook", spells = "spellbook", book = "spellbook",
-    talents = "talents", talent = "talents",
-    professions = "professions", profession = "professions", prof = "professions", craft = "professions",
+    side = "side", meter = "side#side/meter", loot = "side#side/loot", auras = "side#side/auras",
+    windows = "windows", window = "windows",
+    bags = "windows#bags", bag = "windows#bags", inventory = "windows#bags", bank = "windows#bank",
+    character = "windows#character", char = "windows#character",
+    spellbook = "windows#spellbook", spells = "windows#spellbook", book = "windows#spellbook",
+    talents = "windows#talents", talent = "windows#talents",
+    professions = "windows#professions", profession = "windows#professions", prof = "windows#professions",
+    craft = "windows#professions",
     quests = "quests", quest = "quests", tracker = "quests",
     tray = "tray", edge = "tray",
-    questlog = "questlog", log = "questlog",
-    lfg = "lfg", who = "lfg", group = "lfg", finder = "lfg",
-    npc = "npc", gossip = "npc", vendor = "npc", merchant = "npc",
+    questlog = "windows#questlog", log = "windows#questlog",
+    lfg = "windows#lfg", who = "windows#lfg", group = "windows#lfg", finder = "windows#lfg",
+    npc = "windows#npc", gossip = "windows#npc", vendor = "windows#npc", merchant = "windows#npc",
     tooltip = "tooltips", tooltips = "tooltips",
 }
 

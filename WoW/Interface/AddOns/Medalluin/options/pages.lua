@@ -5,9 +5,11 @@
 --
 -- A page's master, when it has one, is the switch in its header and its
 -- card on Modules: while it is off, everything else on the page is drawn
--- but cannot be changed. An
--- option marked reload takes effect after a reload; the window's footer
--- says so once one has changed.
+-- but cannot be changed. A section's switch (Switched) does the same for
+-- its rows; a part's (Part) has a card on Modules too. An intro is one
+-- line; more of it (more) is the header's (?) tip. An option marked
+-- reload takes effect after a reload; the window's footer says so once
+-- one has changed.
 local _, ns = ...
 
 local RELOAD = " Takes effect after a reload."
@@ -66,6 +68,33 @@ end
 local function Group(title, ...)
     return { title = title, items = { ... } }
 end
+-- A section headed by the switch its rows need: on its heading's line, the
+-- rows greyed while it is off (unless they need something else).
+local function Switched(switch, title, ...)
+    local g = Group(title, ...)
+    g.switch = switch
+    for _, spec in ipairs(g.items) do
+        if not spec.needs then spec.needs = switch.key end
+    end
+    return g
+end
+-- A group with a tip under its heading.
+local function Tip(tip, g)
+    g.tip = tip
+    return g
+end
+-- A part (a window, a side panel tab) as a card on its page: its switch in
+-- its head, its options under it, and a card of its own on Modules (by id,
+-- MODULES' key). Its old page's groups, run together.
+local function Part(id, title, forever, switch, groups)
+    local items = {}
+    for _, g in ipairs(groups or {}) do
+        for _, spec in ipairs(g.items) do table.insert(items, spec) end
+    end
+    local g = Switched(switch, title, unpack(items))
+    g.id, g.forever = id, forever or nil
+    return g
+end
 
 -- An opacity, as a percentage; and a fade's length, in seconds.
 local function Opacity(key, label, tip, needs)
@@ -101,7 +130,7 @@ local MODULES = {
     ["console/bar"] = { "skills", "Medalluin's bar on top of the console, holding action bar 1." },
     ["console/overhead"] = { "view-full", "Boss, pet, focus and target frames, and bars, at the top of the screen." },
     chat = { "chat", "Blizzard's chat in a box over the micro menu." },
-    ["side/general"] = { "side-meter", "Zone, auras, meter and loot tabs on the right strip." },
+    side = { "side-meter", "Zone, auras, meter and loot tabs on the right strip." },
     ["side/zone"] = { "side-zone", "The minimap beside this zone's quests, in the side panel." },
     ["side/auras"] = { "side-auras", "Your buffs and debuffs, with the time each has left." },
     ["side/meter"] = { "side-rate", "Damage, healing and more for each member, from the game's meter." },
@@ -143,6 +172,17 @@ local function Dress(content, path)
     end
     local m = MODULES[path]
     if m then content.glyph, content.blurb, content.addon = m[1], m[2], m.addon end
+    -- a part's card: its line under its head when it has no options, and
+    -- Forever only when it is
+    for _, g in ipairs(content.groups or {}) do
+        if g.id then
+            local pm = MODULES[g.id]
+            if pm then g.glyph, g.blurb = pm[1], pm[2] end
+            local tip = #g.items == 0 and g.blurb or nil
+            if g.forever then tip = tip and ("Forever only. " .. tip) or "Forever only." end
+            g.tip = g.tip or tip
+        end
+    end
 end
 
 -- Lists of groups, one after another.
@@ -285,6 +325,7 @@ local function Specs(list)
     local specs = {}
     local function Walk(groups, master)
         for _, g in ipairs(groups or {}) do
+            if g.switch and not specs[g.switch.key] then specs[g.switch.key] = { spec = g.switch, master = master } end
             for _, spec in ipairs(g.items) do
                 if spec.key and not specs[spec.key] then specs[spec.key] = { spec = spec, master = master } end
             end
@@ -389,8 +430,8 @@ local function Shared(list)
     }
 end
 
--- Each part's page whose options are also on a Shared tab says so, under
--- its intro: "Also on Shared > Auras."
+-- Each part's page whose options are also on a Shared tab says so, in its
+-- header's (?) tip: "Also on Shared > Auras."
 local function AlsoOnShared(list)
     local on = {}  -- key -> the Shared tabs' names it is on
     local shared
@@ -425,8 +466,7 @@ local function AlsoOnShared(list)
             end
         end
         if #names == 0 then return end
-        local line = "Also on Shared > " .. table.concat(names, ", ") .. "."
-        content.intro = content.intro and (content.intro .. " " .. line) or line
+        content.also = "Also on Shared > " .. table.concat(names, ", ") .. "."
     end
     for _, page in ipairs(list) do
         if page ~= shared then
@@ -447,16 +487,16 @@ function ns.OptionPages()
     local paging = {}
     for _, pb in ipairs(ns.PAGING_BARS or {}) do
         table.insert(paging, {
-            title = "Paging: " .. pb.name,
+            title = pb.name,
             tip = pb.grid and "The light profile's 2x5 grid in the centre bay."
                 or pb.base and ("Shown with Rows at " .. pb.name:match("%d") .. " or more.")
                 or "Action bar 1, in the bar's frame.",
             items = {
-                Choice(pb.key, "Pages", ns.PagingChoices(pb),
-                    "Which action page the bar shows. A page is 12 slots: page n holds slots (n-1)x12+1 to nx12."),
-                Button("Edit conditional", function() ns.EditPaging(pb) end,
+                Needs("actionBar", Choice(pb.key, "Pages", ns.PagingChoices(pb),
+                    "Which action page the bar shows. A page is 12 slots: page n holds slots (n-1)x12+1 to nx12.")),
+                Needs("actionBar", Button("Edit conditional", function() ns.EditPaging(pb) end,
                     "A macro conditional naming the page, e.g. [mod:shift] 2; [stealth] 7; 1. \"possess\" is the "
-                    .. "bar the game puts up for a vehicle, an override or a possessed unit. Saving it picks Custom."),
+                    .. "bar the game puts up for a vehicle, an override or a possessed unit. Saving it picks Custom.")),
             },
         })
     end
@@ -506,9 +546,10 @@ function ns.OptionPages()
             tabs = {
                 {
                     id = "general", name = "General",
-                    intro = "Each profile remembers everything under Console, the console's party and the "
-                        .. "overhead's bosses under Unit Frames, its skills on the bars and their keys. The "
-                        .. "widgets, Chat, Side panel and Bags are shared. What the frames show is under Unit Frames.",
+                    intro = "Each profile keeps its Console, console party, overhead bosses, skills and keys.",
+                    more = "That is everything under Console, the console's party and the overhead's bosses under "
+                        .. "Unit Frames, its skills on the bars and their keys. The widgets, Chat, Side panel and "
+                        .. "Bags are shared. What the frames show is under Unit Frames.",
                     groups = Concat({
                         Group("Profile",
                             Choice("consoleProfile", "Console profile", ns.PROFILE_NAMES,
@@ -550,13 +591,10 @@ function ns.OptionPages()
                     }, Placed("console", "Position",
                         "Or open Edit Mode: drag a console anywhere, and click it for its scale. Without Edit "
                         .. "Mode, /mdlui move. The corner strips keep their own size and place."), {
-                        {
-                            title = "Visibility",
-                            tip = "A faded console still works: its buttons click and its keys press. Binding "
-                                .. "keys, a spell on the pointer, Edit Mode and Simulate party frames bring it back.",
-                            items = {
-                                Check("consoleFade", "Fade when idle",
-                                    "Fade the console while none of what is ticked here is so."),
+                        Tip("A faded console still works: its buttons click and its keys press. Binding keys, "
+                            .. "a spell on the pointer, Edit Mode and Simulate party frames bring it back.",
+                        Switched(Check("consoleFade", "Fade when idle",
+                                    "Fade the console while none of what is ticked here is so."), "Visibility",
                                 Opacity("consoleFadedAlpha", "Faded opacity",
                                     "How much of it shows while it is faded.", "consoleFade"),
                                 { kind = "check", key = "consoleShowCombat", label = "In combat",
@@ -569,9 +607,7 @@ function ns.OptionPages()
                                     tip = "While you are in a party or a raid.", needs = "consoleFade" },
                                 { kind = "check", key = "consoleShowMouse", label = "On mouseover",
                                     tip = "While the pointer is over the console, its bars or its party.",
-                                    needs = "consoleFade" },
-                            },
-                        },
+                                    needs = "consoleFade" })),
                         Group("Opacity",
                             Opacity("consoleAlpha", "Opacity", "How much of the console shows while it is not "
                                 .. "faded. The corner strips and the corner minimap keep their own."),
@@ -598,7 +634,7 @@ function ns.OptionPages()
                                 .. "red tint, instead of Blizzard's button art.", true),
                             Check("hideEmpty", "Hide empty buttons",
                                 "Hides empty buttons and their keybind text on extra bars (action bars 2 and 3).")),
-                        Group("Lower row",
+                        Group("Long Resource Bar",
                             Choice("barLowRow", "Shows", LowRows(),
                                 "What the row under the buttons shows. Your cast bar covers it while you cast.")),
                         Group("Text",
@@ -631,7 +667,12 @@ function ns.OptionPages()
                                 { ns.DRAWER.UP, "Open up", "One column, up from the bar's left end." },
                             }, "The addons' minimap buttons gather in a drawer behind the box on the bar's left "
                                 .. "end. This is the way it opens.")),
-                    }, paging),
+                    }),
+                },
+                {
+                    -- under Action Bars in the sidebar; greyed while the bar is off
+                    id = "paging", name = "Paging", under = "bar", intro = "Kept per profile.",
+                    groups = paging,
                 },
                 {
                     id = "overhead", name = "Overhead", intro = "Kept per profile.",
@@ -670,9 +711,9 @@ function ns.OptionPages()
                 },
                 {
                     id = "minimap", name = "Minimap",
-                    intro = "Kept per profile. The Central Console's minimap sits in the console's bay, or in the "
-                        .. "screen's corner while the 2x5 grid takes the bay. The Medallion's stays in its ring: of "
-                        .. "this page, only Area name is for it too.",
+                    intro = "Kept per profile. The Central Console's minimap: in the console's bay, or the corner.",
+                    more = "It is in the screen's corner while the 2x5 grid takes the bay. The Medallion's stays "
+                        .. "in its ring: of this page, only Area name is for it too.",
                     enabled = function() return ns.MinimapMoves and ns.MinimapMoves() end,
                     groups = Concat({
                         Group("Switching",
@@ -687,21 +728,17 @@ function ns.OptionPages()
                             }, "Where the minimap is after a login or a reload. It stays there until a ticked "
                                 .. "trigger below starts or ends, or the minimap key is pressed. On the "
                                 .. "Medallion console the minimap stays in its ring.")),
-                        {
-                            title = "Moving by itself",
-                            tip = "A party row under the console always takes the corner: it needs the bay's foot.",
-                            items = {
-                                Check("minimapAuto", "Move automatically",
+                        Tip("A party row under the console always takes the corner: it needs the bay's foot.",
+                        Switched(Check("minimapAuto", "Move automatically",
                                     "Into the corner on what is ticked here, and back into the console after."),
+                                "Moving by itself",
                                 { kind = "check", key = "minimapAutoCombat", label = "In combat",
                                     tip = "While you are in combat.", needs = "minimapAuto" },
                                 { kind = "check", key = "minimapAutoTarget", label = "With a target",
                                     tip = "While you have a target.", needs = "minimapAuto" },
                                 { kind = "check", key = "minimapAutoSkyriding", label = "While skyriding",
                                     tip = "While you skyride: the grid shows the skyriding skills.",
-                                    needs = "minimapAuto" },
-                            },
-                        },
+                                    needs = "minimapAuto" })),
                     }, MinimapCorner(), {
                         Group("Area name",
                             { kind = "slider", key = "minimapAreaTime", label = "Shown for", min = 0, max = 10,
@@ -735,8 +772,8 @@ function ns.OptionPages()
                 },
                 {
                     id = "party", name = "Party",
-                    intro = "The party frames use the group their Party layout puts them in (Console > General). "
-                        .. "The Console group is on the player and target frames too.",
+                    intro = "The party frames use the group their Party layout puts them in (Console > General).",
+                    more = "The Console group is on the player and target frames too.",
                     groups = {
                         Group("Console (per profile)",
                             Range("partyRange", "party"), Pets("partyPets"),
@@ -811,30 +848,23 @@ function ns.OptionPages()
             },
         },
         {
-            id = "side", name = "Side panel",
-            -- the panel itself, then a tab for each of its own tabs; those
-            -- grey while the panel is off, through their masters
-            tabs = {
-                {
-                    id = "general", name = "General", intro = "Shared by every profile.",
-                    master = Check("side", "Side panel",
-                        "The chat panel's mirror on the right strip, over the stats, with a Zone tab, an Auras "
-                        .. "tab, a Meter tab and a Loot tab. Untick it to keep the right corner clear, or to use "
-                        .. "a meter addon.", true),
-                    groups = {},
-                },
-                {
-                    id = "zone", name = "Zone", intro = "Shared by every profile.",
-                    master = Needs("side", Check("sideZone", "Zone tab",
+            id = "side", name = "Side panel", intro = "Shared by every profile.",
+            -- the panel itself, then a card for each of its tabs; those grey
+            -- while the panel is off, through their switches
+            master = Check("side", "Side panel",
+                "The chat panel's mirror on the right strip, over the stats, with a Zone tab, an Auras "
+                .. "tab, a Meter tab and a Loot tab. Untick it to keep the right corner clear, or to use "
+                .. "a meter addon.", true),
+            groups = {
+                Part("side/zone", "Zone tab", false,
+                    Needs("side", Check("sideZone", "Zone tab",
                         "The minimap, moved into the panel while the tab is up, and the quests of the zone you "
                         .. "are in beside it. Its place on the console stands empty meanwhile.")),
-                    groups = {},
-                },
-                {
-                    id = "auras", name = "Auras", intro = "Shared by every profile.",
-                    master = Needs("side", Check("sideAuras", "Auras tab",
+                    nil),
+                Part("side/auras", "Auras tab", false,
+                    Needs("side", Check("sideAuras", "Auras tab",
                         "Your buffs and debuffs, each with the time it has left, the longest first.")),
-                    groups = {
+                    {
                         Group("Lists",
                             Choice("aurasColumns", "Aura lists", {
                                 { 2, "Two", "Buffs and debuffs side by side." },
@@ -850,13 +880,11 @@ function ns.OptionPages()
                                 .. "Manager's tracked bars instead, until combat ends. Ticking this turns the "
                                 .. "Cooldown Manager on in the game's options too. Which bars, and how wide, are set "
                                 .. "in Edit Mode. Only where the game has the Cooldown Manager.")),
-                    },
-                },
-                {
-                    id = "meter", name = "Meter", intro = "Shared by every profile.",
-                    master = Needs("side", Check("sideMeter", "Meter tab",
+                    }),
+                Part("side/meter", "Meter tab", false,
+                    Needs("side", Check("sideMeter", "Meter tab",
                         "Damage, healing and more for each member of your group, from the game's own combat meter.")),
-                    groups = {
+                    {
                         Group("Lists",
                             Choice("meterColumns", "Meter lists", {
                                 { 1, "One", "One list across the panel." },
@@ -873,14 +901,12 @@ function ns.OptionPages()
                             Check("meterRate", "Per second",
                                 "Damage and healing as amounts per second instead of totals. The /s button switches "
                                 .. "this too.")),
-                    },
-                },
-                {
-                    id = "loot", name = "Loot", intro = "Shared by every profile.",
-                    master = Needs("side", Check("sideLoot", "Loot tab",
+                    }),
+                Part("side/loot", "Loot tab", false,
+                    Needs("side", Check("sideLoot", "Loot tab",
                         "What your group looted, boss by boss, with who won each roll. Not the chat's loot lines: "
                         .. "the chat keeps those.")),
-                    groups = {
+                    {
                         Group("Lists",
                             Choice("lootWho", "Whose loot", {
                                 { ns.LOOT_WHO.GROUP, "The group's", "Everything the group looted, yours included." },
@@ -890,88 +916,146 @@ function ns.OptionPages()
                                 "Items below this quality are left out. The diamond button steps through these too."),
                             Check("lootMoney", "Money and currencies",
                                 "Your share of looted money on each heading, and the currencies you loot as lines.")),
-                    },
-                },
+                    }),
             },
         },
         {
-            id = "bags", name = "Bags", intro = "Shared by every profile.",
-            master = Check("bags", "Bags window",
-                "Your backpack, bags and reagent bag in one window, with a search, the game's sort and the items "
-                .. "in groups if you like. Untick it to keep the game's bags, or to use "
-                .. "a bag addon.", true),
+            id = "windows", name = "Windows",
+            intro = "Shared by every profile. Blizzard's windows, reskinned.",
             groups = {
-                Group("Window",
-                    Choice("bagsView", "Show", {
-                        { "bags", "Bags", "Each bag on rows of its own, under its name." },
-                        { "grid", "Grid", "Every slot, bag by bag, the reagent bag on rows of its own." },
-                        { "groups", "Groups", "The items in groups: new, equipment, consumables, quest items, trade "
-                            .. "goods, other and junk, with one slot for the free ones." },
-                    }, "The window's Bags, Grid and Groups buttons switch this too. Kept across reloads."),
-                    Check("bagsItemLevel", "Item levels",
-                        "The item level in the corner of each weapon and piece of armour, in its quality's colour.")),
+                Part("bags", "Bags", false,
+                    Check("bags", "Bags window",
+                        "Your backpack, bags and reagent bag in one window, with a search, the game's sort and the "
+                        .. "items in groups if you like. Untick it to keep the game's bags, or to use a bag "
+                        .. "addon.", true),
+                    {
+                        Group("Window",
+                            Choice("bagsView", "Show", {
+                                { "bags", "Bags", "Each bag on rows of its own, under its name." },
+                                { "grid", "Grid", "Every slot, bag by bag, the reagent bag on rows of its own." },
+                                { "groups", "Groups", "The items in groups: new, equipment, consumables, quest "
+                                    .. "items, trade goods, other and junk, with one slot for the free ones." },
+                            }, "The window's Bags, Grid and Groups buttons switch this too. Kept across reloads."),
+                            Check("bagsItemLevel", "Item levels",
+                                "The item level in the corner of each weapon and piece of armour, in its quality's "
+                                .. "colour.")),
+                    }),
+                Part("bank", "Bank", true,
+                    Check("bank", "Bank window",
+                        "The bank in a window of Medalluin's own, standing on the chat panel or, detached, wherever "
+                        .. "you drag it: the same views and search as the bags window, the game's sort, and the bank's "
+                        .. "bag slots and their purchase below. Untick it to keep the game's bank.", true),
+                    {
+                        Group("Window",
+                            Choice("bankView", "Show", {
+                                { "bags", "Bags", "Each bank bag on rows of its own, under its name." },
+                                { "grid", "Grid", "Every slot, bag by bag." },
+                                { "groups", "Groups", "The items in groups: new, equipment, consumables, quest "
+                                    .. "items, trade goods, other and junk, with one slot for the free ones." },
+                            }, "The window's Bags, Grid and Groups buttons switch this too. Kept across reloads.")),
+                    }),
+                Part("character", "Character", false,
+                    Check("character", "Character window",
+                        "Your character, reputations and currencies (and on Forever your skills, PvP rank and "
+                        .. "statistics) in one window standing on the chat panel, with the gear down both sides of "
+                        .. "your model and the stats under it. Untick it to keep the game's window.", true),
+                    nil),
+                Part("spellbook", "Spellbook", true,
+                    Check("spellbook", "Spellbook window",
+                        "Your spells in one list, a section for General and each specialisation (and your pet's), its "
+                        .. "ranks folded under each spell, in one window standing on the side panel. Cast and drag "
+                        .. "them out of combat; in combat it reads. Untick it to keep the game's spellbook.", true),
+                    {
+                        Group("Spells",
+                            Check("spellbookMissing", "Mark spells not on a bar",
+                                "A red edge on a spell that is on none of your action bars, nor in a macro on one. Its "
+                                .. "tooltip says so, or names the lower rank that is."),
+                            Check("spellbookUpRankAll", "Keep every spell on its highest rank",
+                                "As you learn a rank, a lower rank of it on your action bars is swapped for it, out of "
+                                .. "combat. Unticked, only the spells whose details have it ticked."),
+                            Check("spellbookClickCast", "Mark click-cast bindings",
+                                "A spell bound in Click Casting (/cc) wears a small mouse on its icon, and its click "
+                                .. "follows its rank (Racial · Shift+Middle). While Click Casting is open, the spells "
+                                .. "it can bind glow, the rest grey out, and a click binds a spell instead of casting "
+                                .. "it.")),
+                    }),
+                Part("talents", "Talents", true,
+                    Check("talents", "Talents window",
+                        "Your talents, a tab for each tree, in one window standing on the side panel. Spend points, "
+                        .. "then Apply; switch between your Primary and Secondary talents in its margin. Plans, there, "
+                        .. "draws and keeps the orders to learn them in. In combat it reads. Untick it to keep the "
+                        .. "game's talents.", true),
+                    nil),
+                Part("professions", "Professions", true,
+                    Check("professions", "Professions window",
+                        "Your professions in one window standing on the side panel: an overview, and a tab for each "
+                        .. "profession that crafts, with its recipes and Create. Crafting and the overview's spells "
+                        .. "work out of combat. Untick it to keep the game's professions.", true),
+                    nil),
+                Part("questlog", "Quest log", false,
+                    Check("questLog", "Quest log",
+                        "Every quest in your log in a window on the right strip, as the spellbook's: by zone, each "
+                        .. "with its level, experience, coin and whether it gives an item; a zone's eye tracks or "
+                        .. "stops tracking all its quests, Drop abandons the quests you tick, and a quest opens its "
+                        .. "own page. It opens on the quest log key and the Quests button, and the map no longer shows "
+                        .. "the game's quest log. Untick it to keep the game's.", true),
+                    nil),
+                Part("lfg", "Group finder", false,
+                    Check("lfgWindow", "Looking for group and Who",
+                        "The groups listed, your own listing and Who in one box standing on the chat box, where the "
+                        .. "quest tracker stands (it steps aside while the box is open): Browse shows each group's "
+                        .. "activity, leader, note, the roles it needs, its size and age, and a click opens its "
+                        .. "members with Whisper and Ask to join; List me lists you as the roles you pick, for the "
+                        .. "activities you tick, with a note; Who asks who is online, with your zone, your level and "
+                        .. "your guild a click away. It opens on the game's LFG button and key, and on the Friends "
+                        .. "window's Who tab. Forever's group finder only: on retail the game's stays, and the box has "
+                        .. "Who alone. Untick it to keep the game's.", true),
+                    nil),
+                Part("cdm", "Cooldown Manager", false,
+                    Check("cdmWindow", "Cooldown Manager window",
+                        "The game's Cooldown Manager (/cdm, Edit Mode's Cooldown Settings) in Medalluin's dress, "
+                        .. "standing on the chat box where the LFG window stands: its tabs across the top, its spells "
+                        .. "as round medallions. Everything in it is still the game's own: dragging spells between "
+                        .. "Essential, Utility and Not displayed, their order, the alerts on a right-click, the "
+                        .. "layouts per spec, import and export. It and the LFG window close each other. Untick it to "
+                        .. "keep the game's look.",
+                        true),
+                    {
+                        Group("Display", Check("cdmDisplay", "Cooldowns over the console",
+                            "The game's cooldown and buff icons as medallions in rows over the console: the tracked "
+                            .. "buffs on top, Essential under them, Utility smaller at its right, their sweeps round. "
+                            .. "Edit Mode moving them is undone out of combat. The tracked bars stay in the Auras tab. "
+                            .. "Untick it for the game's icons in their Edit Mode places.", true)),
+                    }),
+                Part("cc", "Click Casting", false,
+                    Check("ccWindow", "Click Casting window",
+                        "The game's Click Casting (/cc) in Medalluin's dress, standing on the chat box where the LFG "
+                        .. "window stands, the spellbook open beside it: each binding a round icon with its click as "
+                        .. "keycaps under its name. Everything in it is still the game's own: binding a spell or a "
+                        .. "macro, mouseover cast and its key, reset and save. It, the Cooldown Manager and the LFG "
+                        .. "window close each other. Untick it to keep the game's look.", true),
+                    nil),
+                Part("npc", "Gossip and vendors", false,
+                    Needs("chat", Check("npcWindows", "Gossip, quest, vendor, trainer, flight and mailbox windows",
+                        "What an NPC says, its quest pages, its wares and what it teaches in one box standing on the "
+                        .. "chat box, where the quest tracker stands (it steps aside while the box is open). A "
+                        .. "vendor's tabs show its wares and what you sold it, with buttons to repair and to sell your "
+                        .. "grey items; a trainer's tabs show what you can learn now, what you cannot yet, or what you "
+                        .. "know; the flight map stands there bare, with the places you can fly to under it (Forever's "
+                        .. "map: retail's other one stays the game's); the mailbox's tabs show your letters, with Open "
+                        .. "all, and a letter to send, the names you write to offered as you type. Needs the chat box. "
+                        .. "Untick it to keep the game's windows, or to use an addon for them.", true)),
+                    {
+                        Group("Keys", Check("npcSpace", "Spacebar accepts quests",
+                            "Space presses a quest's Accept, Continue or Complete Quest while its page is open, "
+                            .. "instead of jumping. A gossip window's choices are numbered either way: the keys 1 to "
+                            .. "0, - and = pick them, and the action bar buttons on those keys wait until it closes.")),
+                        Group("Quests", Check("npcQuestItems", "Open quest items",
+                            "When you get an item that begins a quest, the box opens on it: Read the quest (or Space, "
+                            .. "with the Spacebar option) shows the quest, Later puts it away. Items you carry already "
+                            .. "when you log in do not ask.")),
+                    }),
             },
-        },
-        {
-            id = "bank", name = "Bank", intro = "Forever only. Shared by every profile.",
-            master = Check("bank", "Bank window",
-                "The bank in a window of Medalluin's own, standing on the chat panel or, detached, wherever you "
-                .. "drag it: the same views and search as the bags window, the game's sort, and the bank's bag "
-                .. "slots and their purchase below. Untick it to keep the game's bank.", true),
-            groups = {
-                Group("Window",
-                    Choice("bankView", "Show", {
-                        { "bags", "Bags", "Each bank bag on rows of its own, under its name." },
-                        { "grid", "Grid", "Every slot, bag by bag." },
-                        { "groups", "Groups", "The items in groups: new, equipment, consumables, quest items, trade "
-                            .. "goods, other and junk, with one slot for the free ones." },
-                    }, "The window's Bags, Grid and Groups buttons switch this too. Kept across reloads.")),
-            },
-        },
-        {
-            id = "character", name = "Character", intro = "Shared by every profile.",
-            master = Check("character", "Character window",
-                "Your character, reputations and currencies (and on Forever your skills, PvP rank and statistics) in "
-                .. "one window standing on the chat panel, with the gear down both sides of your model and the stats "
-                .. "under it. Untick it to keep the game's window.", true),
-            groups = {},
-        },
-        {
-            id = "spellbook", name = "Spellbook", intro = "Forever only. Shared by every profile.",
-            master = Check("spellbook", "Spellbook window",
-                "Your spells in one list, a section for General and each specialisation (and your pet's), its "
-                .. "ranks folded under each spell, in one window standing on the side panel. Cast and drag them "
-                .. "out of combat; in combat it reads. Untick it to keep the game's spellbook.", true),
-            groups = {
-                Group("Spells",
-                    Check("spellbookMissing", "Mark spells not on a bar",
-                        "A red edge on a spell that is on none of your action bars, nor in a macro on one. Its "
-                        .. "tooltip says so, or names the lower rank that is."),
-                    Check("spellbookUpRankAll", "Keep every spell on its highest rank",
-                        "As you learn a rank, a lower rank of it on your action bars is swapped for it, out of "
-                        .. "combat. Unticked, only the spells whose details have it ticked."),
-                    Check("spellbookClickCast", "Mark click-cast bindings",
-                        "A spell bound in Click Casting (/cc) wears a small mouse on its icon, and its click "
-                        .. "follows its rank (Racial · Shift+Middle). While Click Casting is open, the spells it "
-                        .. "can bind glow, the rest grey out, and a click binds a spell instead of casting it.")),
-            },
-        },
-        {
-            id = "talents", name = "Talents", intro = "Forever only. Shared by every profile.",
-            master = Check("talents", "Talents window",
-                "Your talents, a tab for each tree, in one window standing on the side panel. Spend points, then "
-                .. "Apply; switch between your Primary and Secondary talents in its margin. Plans, there, "
-                .. "draws and keeps the orders to learn them in. In combat it reads. Untick it to keep the game's "
-                .. "talents.", true),
-            groups = {},
-        },
-        {
-            id = "professions", name = "Professions", intro = "Forever only. Shared by every profile.",
-            master = Check("professions", "Professions window",
-                "Your professions in one window standing on the side panel: an overview, and a tab for each "
-                .. "profession that crafts, with its recipes and Create. Crafting and the overview's spells work "
-                .. "out of combat. Untick it to keep the game's professions.", true),
-            groups = {},
         },
         {
             id = "quests", name = "Quests", intro = "Shared by every profile.",
@@ -1039,82 +1123,10 @@ function ns.OptionPages()
             },
         },
         {
-            id = "questlog", name = "Quest log", intro = "Shared by every profile.",
-            master = Check("questLog", "Quest log",
-                "Every quest in your log in a window on the right strip, as the spellbook's: by zone, each with its "
-                .. "level, experience, coin and whether it gives an item; a zone's eye tracks or stops "
-                .. "tracking all its quests, Drop abandons the quests you tick, and a quest opens its own page. "
-                .. "It opens on the quest log key and the Quests button, and the map no longer shows the "
-                .. "game's quest log. Untick it to keep the game's.", true),
-            groups = {},
-        },
-        {
-            id = "lfg", name = "Group finder", intro = "Shared by every profile.",
-            master = Check("lfgWindow", "Looking for group and Who",
-                "The groups listed, your own listing and Who in one box standing on the chat box, where the quest "
-                .. "tracker stands (it steps aside while the box is open): Browse shows each group's activity, "
-                .. "leader, note, the roles it needs, its size and age, and a click opens its members with "
-                .. "Whisper and Ask to join; List me lists you as the roles you pick, for the activities you tick, "
-                .. "with a note; Who asks who is online, with your zone, your level and your guild a click away. "
-                .. "It opens on the game's LFG button and key, and on the Friends window's Who tab. Forever's "
-                .. "group finder only: on retail the game's stays, and the box has Who alone. Untick it to keep "
-                .. "the game's.", true),
-            groups = {},
-        },
-        {
-            id = "cdm", name = "Cooldown Manager", intro = "Shared by every profile.",
-            master = Check("cdmWindow", "Cooldown Manager window",
-                "The game's Cooldown Manager (/cdm, Edit Mode's Cooldown Settings) in Medalluin's dress, standing "
-                .. "on the chat box where the LFG window stands: its tabs across the top, its spells as round "
-                .. "medallions. Everything in it is still the game's own: dragging spells between Essential, "
-                .. "Utility and Not displayed, their order, the alerts on a right-click, the layouts per spec, "
-                .. "import and export. It and the LFG window close each other. Untick it to keep the game's look.",
-                true),
-            groups = {
-                Group("Display", Check("cdmDisplay", "Cooldowns over the console",
-                    "The game's cooldown and buff icons as medallions in rows over the console: the tracked "
-                    .. "buffs on top, Essential under them, Utility smaller at its right, their sweeps round. "
-                    .. "Edit Mode moving them is undone out of combat. The tracked bars stay in the Auras tab. "
-                    .. "Untick it for the game's icons in their Edit Mode places.", true)),
-            },
-        },
-        {
-            id = "cc", name = "Click Casting", intro = "Shared by every profile.",
-            master = Check("ccWindow", "Click Casting window",
-                "The game's Click Casting (/cc) in Medalluin's dress, standing on the chat box where the LFG "
-                .. "window stands, the spellbook open beside it: each binding a round icon with its click as "
-                .. "keycaps under its name. Everything in it is still the game's own: binding a spell or a "
-                .. "macro, mouseover cast and its key, reset and save. It, the Cooldown Manager and the LFG "
-                .. "window close each other. Untick it to keep the game's look.", true),
-            groups = {},
-        },
-        {
-            id = "npc", name = "Gossip and vendors", intro = "Shared by every profile.",
-            master = Needs("chat", Check("npcWindows", "Gossip, quest, vendor, trainer, flight and mailbox windows",
-                "What an NPC says, its quest pages, its wares and what it teaches in one box standing on the chat "
-                .. "box, where the quest tracker stands (it steps aside while the box is open). A vendor's tabs "
-                .. "show its wares and what you sold it, with buttons to repair and to sell your grey items; a "
-                .. "trainer's tabs show what you can learn now, what you cannot yet, or what you know; the flight "
-                .. "map stands there bare, with the places you can fly to under it (Forever's map: retail's "
-                .. "other one stays the game's); the mailbox's tabs show your letters, with Open all, and a "
-                .. "letter to send, the names you write to offered as you type. Needs the chat "
-                .. "box. Untick it to keep the game's windows, or to use an addon for them.", true)),
-            groups = {
-                Group("Keys", Check("npcSpace", "Spacebar accepts quests",
-                    "Space presses a quest's Accept, Continue or Complete Quest while its page is open, instead "
-                    .. "of jumping. A gossip window's choices are numbered either way: the keys 1 to 0, - and = "
-                    .. "pick them, and the action bar buttons on those keys wait until it closes.")),
-                Group("Quests", Check("npcQuestItems", "Open quest items",
-                    "When you get an item that begins a quest, the box opens on it: Read the quest (or Space, "
-                    .. "with the Spacebar option) shows the quest, Later puts it away. Items you carry already "
-                    .. "when you log in do not ask.")),
-            },
-        },
-        {
             id = "tooltips", name = "Tooltips (ext)",
-            intro = "Provided by the optional mdlui_Tooltips companion addon. "
-                .. "Enable mdlui_Tooltips in your AddOns list to reskin tooltips "
-                .. "and open its style editor and options.",
+            intro = "Provided by the optional mdlui_Tooltips companion addon.",
+            more = "Enable mdlui_Tooltips in your AddOns list to reskin tooltips and open its style editor "
+                .. "and options.",
             enabled = function() return SlashCmdList and SlashCmdList.MDLUI_TOOLTIPS ~= nil end,
             groups = {
                 Group("mdlui_Tooltips",
@@ -1147,23 +1159,21 @@ function ns.OptionPages()
 end
 
 -- The sidebar: its categories in order, each a heading over its items (a
--- page, or one of a page's tabs; a page with tabs listed whole keeps them as
--- a row under its header). A category's scope or note sits by its heading on
--- Modules.
+-- page, or one of a page's tabs; a tab `under` another is indented below it). Only the shown page's category is open.
+-- A category's scope or note sits by its heading on Modules.
 function ns.OptionCategories()
     return {
         { name = "Overview", items = { "modules", "general" } },
         { name = "Shared", scope = "Every part's, in one place",
             items = { "shared/visibility", "shared/auras", "shared/look", "shared/tools" } },
         { name = "Console", scope = "Kept per profile",
-            items = { "console/general", "console/bar", "console/overhead", "console/minimap" } },
+            items = { "console/general", "console/bar", "console/paging", "console/overhead",
+                "console/minimap" } },
         { name = "Unit frames",
             items = { "units/general", "units/party", "units/raid", "units/battleground", "units/boss",
                 "units/arena" } },
-        { name = "Interface", scope = "Shared by every profile", items = { "chat", "side", "quests", "tray" } },
-        { name = "Windows", note = "Blizzard's windows, reskinned",
-            items = { "bags", "bank", "character", "spellbook", "talents", "professions", "questlog", "lfg", "cdm",
-                "cc", "npc" } },
+        { name = "Interface", scope = "Shared by every profile",
+            items = { "chat", "side", "quests", "tray", "windows" } },
         { name = "Extensions", note = "Companion addons", items = { "tooltips" } },
     }
 end

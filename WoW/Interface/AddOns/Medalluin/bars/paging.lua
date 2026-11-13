@@ -50,7 +50,7 @@ ns.PAGING_BARS = {
     { key = "row3Paging", name = "Row 3", base = 5,
       defaultLabel = "Action bar 3 (page 5)", defaultTip = "What Blizzard's action bar 3 shows." },
     { key = "gridPaging", name = "Centre grid", base = 7, grid = true,
-      defaultLabel = "Forms, stealth and flying (pages 7-11)", defaultTip = "The light profile's: page 7, page 8 "
+      defaultLabel = "Forms, stealth, flying (7-11)", defaultTip = "The light profile's: page 7, page 8 "
         .. "in the first form or stance, 9 in the second and third, 10 in stealth, and 11 on a skyriding "
         .. "mount, the page bar 1 flies on, so skyriding skills can go on the grid." },
 }

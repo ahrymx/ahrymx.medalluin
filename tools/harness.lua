@@ -5102,7 +5102,7 @@ if barPass then
             print("info button", "opens=" .. tostring(page.opened), "panel closed=" .. tostring(not SettingsPanel.shown))
         end
     end
-    -- the window: each page, its tree row and tabs, its controls in order
+    -- the window: each page, its tree row, its controls in order
     -- (where each sits on the page, what it shows, whether it can be changed)
     local win = MedalluinOptions
     local shows = optionShown
@@ -5117,7 +5117,6 @@ if barPass then
         ns.OpenOptions(path)
         local f = ns.optionPages[page.opened]
         print("window " .. tostring(page.opened), "tree=" .. lit(win.tree.rows, function(r) return r.lit.shown end),
-            "tabs=" .. lit(win.tabs, function(t) return not t.edge[2].shown end),
             "height=" .. f.h, "range=" .. win.scroll:GetVerticalScrollRange(),
             "thumb=" .. tostring(win.thumb.shown))
         -- the header: title, where it sits, the master's switch; then each
@@ -5125,9 +5124,30 @@ if barPass then
         local m = f.master
         print("  header", f.head.title.text, f.head.crumb.text, m and ("switch=" .. (m.label and m.label.text or "")
             .. (m.tick.shown and " on" or " off") .. (m:IsEnabled() and "" or " grey")) or "switch=-")
+        -- the intro, one line; the rest in the header's (?)
+        print("  intro", f.intro and f.intro.text or "-", "lines=" .. (f.intro and f.intro:GetStringHeight() or 0),
+            "more=" .. (f.head.more and f.head.more.tip:gsub("\n", "/") or "-"))
+        -- each section's column and top, its switch, whether it is a card
         local secs = {}
-        for _, s in ipairs(f.sections) do table.insert(secs, s.title.text .. "@" .. tostring(s.col) .. "," .. s.top) end
+        for _, s in ipairs(f.sections) do
+            local w = s.switch
+            table.insert(secs, s.title.text .. "@" .. tostring(s.col) .. "," .. s.top .. " h" .. s.h
+                .. (w and (" [" .. (w.label and w.label.text or "") .. (w.tick.shown and " on" or " off")
+                    .. (w:IsEnabled() and "" or " grey") .. "]") or "")
+                .. (s.edge and (" card " .. (s.edge[1].color[1] == ns.OptionsUI.colors.gold[1] and "gold" or "dark")) or ""))
+        end
         print("  sections", table.concat(secs, "; "))
+        -- a card's title band: its title and switch centred in it, the rows under
+        local s1 = f.sections[1]
+        if s1 then
+            local tp = s1.title.points.LEFT and "LEFT" or next(s1.title.points)
+            local t, w = s1.title.points[tp], s1.switch and s1.switch.points.TOPRIGHT
+            print("  card", s1.title.text, "band=" .. s1.band.h .. "@" .. s1.band.points.TOPLEFT[4],
+                "title=" .. tp .. ">" .. t[2] .. " " .. t[3] .. "," .. t[4],
+                "switch=" .. (w and (w[3] .. "," .. w[4] .. " h" .. s1.switch.h) or "-"),
+                "row=" .. (f.controls[1] and f.controls[1].parent == s1 and f.controls[1].points.TOPLEFT
+                    and (f.controls[1].points.TOPLEFT[3] .. "," .. f.controls[1].points.TOPLEFT[4]) or "-"))
+        end
         local top = resolve(f)
         for _, c in ipairs(f.controls) do
           -- a frame's Own mark (a choice of its own over Shared's): only
@@ -5145,7 +5165,7 @@ if barPass then
             local r = resolve(c)
             print("  grid", string.format("at=%d,%d %dx%d", r[1] - top[1], r[2] - top[2], c.w, c.h),
                 "cols=" .. #c.spec.cols, table.concat(rows, " "))
-          elseif not (c.spec.label == "Own" and not c.shown) then
+          elseif not (c.spec.label == "Own" and not c.shown) and not (c.track and c:GetParent().switch == c) then
             local r = resolve(c)
             local choices = {}
             for _, ch in ipairs(c.spec.choices or {}) do table.insert(choices, tostring(ch[1]) .. "=" .. ch[2]) end
@@ -5159,15 +5179,62 @@ if barPass then
     print("window", "size=" .. win.w .. "x" .. win.h, "strata=" .. tostring(win.strata),
         "esc=" .. tostring(UISpecialFrames[1]), "title=" .. win.title.text)
     for _, path in ipairs({ "general", "shared/visibility", "shared/auras", "shared/look", "shared/tools",
-        "console/general", "console/bar", "console/overhead",
+        "console/general", "console/bar", "console/paging", "console/overhead",
         "console/minimap", "units/general", "units/party", "units/raid", "units/battleground", "units/boss",
-        "units/arena", "chat", "side/general", "side/auras", "side/meter", "side/loot", "bags" }) do dump(path) end
-    -- a master off greys its page; the footer asks for a reload
+        "units/arena", "chat", "side", "windows" }) do dump(path) end
+    -- a card's switch off greys its card's rows, not the others; the footer
+    -- asks for a reload
     page.settings.bags:Set(false)
-    dump("bags")
+    dump("windows")
     print("  footer", win.footProfile.text, "reload=" .. tostring(win.footReload.shown))
     page.settings.bags:Set(true)
     print("  bags back", "reload=" .. tostring(win.footReload.shown))
+    -- every dropdown as wide as its longest choice (by the 7px a character
+    -- above), else its value one line ending in "..."; never wrapped
+    ;(function()
+        local short, wraps, stacked, n = {}, {}, {}, 0
+        for path, f in pairs(ns.optionPages) do
+            for _, c in ipairs(f.controls or {}) do
+                if c.spec and c.spec.kind == "choice" and c.button then
+                    n = n + 1
+                    local long = 0
+                    for _, ch in ipairs(c.spec.choices or {}) do long = math.max(long, #ch[2] * 7) end
+                    local w = c.stacked and c.w or c.button.w
+                    if long + 32 > w then
+                        table.insert(short, path .. ":" .. c.spec.key .. " " .. w .. "<" .. (long + 32))
+                    end
+                    if c.stacked then table.insert(stacked, path .. ":" .. c.spec.key .. " h" .. c.h) end
+                    if c.button.value.wrap ~= false then table.insert(wraps, c.spec.key) end
+                end
+            end
+        end
+        table.sort(short)
+        table.sort(wraps)
+        table.sort(stacked)
+        print("options.choices fit", n .. " dropdowns", "short=" .. (#short > 0 and table.concat(short, " ") or "none"),
+            "wrap=" .. (#wraps > 0 and table.concat(wraps, " ") or "none"),
+            "stacked=" .. (#stacked > 0 and table.concat(stacked, " ") or "none"))
+    end)()
+    -- Paging: its own page, indented under Action Bars in the sidebar, its
+    -- crumb through Action Bars; greyed while the action bar is off
+    ns.OpenOptions("console/paging")
+    local subs = {}
+    for _, r in ipairs(win.tree.rows) do
+        if r.shown ~= false then table.insert(subs, r.text.text .. "@" .. r.text.points.LEFT[3]) end
+    end
+    print("options.paging sidebar", table.concat(subs, " "))
+    local function greyed(label)
+        local o = {}
+        for _, c in ipairs(ns.optionPages["console/paging"].controls) do
+            local hit = c.spec.kind == "choice" and c.button or c
+            table.insert(o, (c.spec.key or c.spec.label) .. "=" .. (hit:IsEnabled() and "live" or "grey"))
+        end
+        print("options.paging " .. label, table.concat(o, " "))
+    end
+    page.settings.actionBar:Set(false)
+    greyed("bar off")
+    page.settings.actionBar:Set(true)
+    greyed("bar on")
     -- Settings > Shared: one value for an option many frames have, which a
     -- frame's own choice overrides (marked Own on its page, a gold corner
     -- in the grid); the frames following it hear its change
@@ -5261,12 +5328,27 @@ if barPass then
         ns.SetOption("arenaMine", true)
         state("restored")
     end)()
-    -- the side panel off greys its tabs' pages, each tab's own master too
+    -- the side panel off greys its page, each tab's own switch too
     page.settings.side:Set(false)
-    dump("side/auras")
+    dump("side")
     page.settings.side:Set(true)
+    -- a section's switch greys its rows: the console's Visibility
+    page.settings.consoleFade:Set(true)
+    dump("console/general")
+    page.settings.consoleFade:Set(false)
+    -- the chat box off greys the gossip card's switch and its rows with it
+    page.settings.chat:Set(false)
+    ns.OpenOptions("windows")
+    for _, c in ipairs(ns.optionPages.windows.controls) do
+        if c.spec.key == "npcWindows" or c.spec.key == "npcSpace" or c.spec.key == "bagsView" then
+            local hit = c.button or c.box or c
+            print("windows chat off", c.spec.key, hit:IsEnabled() and "live" or "grey")
+        end
+    end
+    page.settings.chat:Set(true)
     ;(function()
-        -- the sidebar: each category, open or folded, its items and their dots
+        -- the sidebar: only the shown page's category open, its items and
+        -- their dots; each folded one its count
         local function sidebar(label)
             local o = {}
             for _, h in ipairs(win.tree.heads) do
@@ -5277,25 +5359,31 @@ if barPass then
                             .. (r.dot and (r.dot.on and "(on)" or "(off)") or ""))
                     end
                 end
-                table.insert(o, h.cat.name .. (h.open and "" or "+") .. ": " .. table.concat(items, ", "))
+                table.insert(o, h.cat.name .. (h.open and "" or ("+" .. h.sign.text)) .. ": "
+                    .. table.concat(items, ", "))
             end
-            print("options.sidebar " .. label, table.concat(o, " | "))
+            print("options.sidebar " .. label, ns.OptionsShown(), "height=" .. win.nav.scrollChild.h,
+                table.concat(o, " | "))
         end
-        ns.OpenOptions("bags")
+        ns.OpenOptions("windows#bags")
         sidebar("bags")
         local function head(name)
             for _, h in ipairs(win.tree.heads) do if h.cat.name == name then return h end end
         end
+        -- a folded heading opens on its first item, then on the one last shown
         head("Unit frames").scripts.OnClick(head("Unit frames"))
-        head("Windows").scripts.OnClick(head("Windows"))
-        sidebar("folded")
-        print("options.folded saved", ns.db.optionsFolded and ns.db.optionsFolded["Unit frames"],
-            ns.db.optionsFolded and ns.db.optionsFolded.Windows)
+        sidebar("unit frames clicked")
+        ns.OpenOptions("units/raid")
+        head("Console").scripts.OnClick(head("Console"))
+        sidebar("console clicked")
         head("Unit frames").scripts.OnClick(head("Unit frames"))
-        ns.OpenOptions("console/bar")
-        sidebar("unit frames unfolded")
-        head("Windows").scripts.OnClick(head("Windows"))
-        print("options.folded cleared", tostring(ns.db.optionsFolded))
+        sidebar("unit frames again")
+        -- the open one's heading does nothing
+        head("Unit frames").scripts.OnClick(head("Unit frames"))
+        print("options.sidebar open heading", ns.OptionsShown())
+        -- one never shown opens on its first
+        head("Extensions").scripts.OnClick(head("Extensions"))
+        sidebar("extensions clicked")
         -- Modules: a card a part, under its category
         ns.OpenOptions("modules")
         local mods = ns.optionPages.modules
@@ -5304,7 +5392,8 @@ if barPass then
             for _, c in ipairs(mods.cards) do
                 table.insert(o, c.name.text .. (c.tag.shown ~= false and ("[" .. c.tag.text.text .. "]") or "")
                     .. (c.switch and ((c.switch.tick.shown and " on" or " off")
-                        .. (c.switch:IsEnabled() and "" or " grey")) or "") .. ">" .. c.path)
+                        .. (c.switch:IsEnabled() and "" or " grey")) or "") .. ">" .. c.path
+                    .. (c.content.group and ("#" .. c.content.group.id) or ""))
             end
             print("options.modules " .. label, table.concat(o, "; "))
         end
@@ -5315,20 +5404,41 @@ if barPass then
         page.settings.side:Set(false)
         cards("side off")
         page.settings.side:Set(true)
-        local bags
-        for _, c in ipairs(mods.cards) do if c.path == "bags" then bags = c end end
+        local function card(id)
+            for _, c in ipairs(mods.cards) do if c.content.group and c.content.group.id == id then return c end end
+        end
+        local bags = card("bags")
         bags.switch.scripts.OnClick(bags.switch)
         print("options.modules bags switch", "bags=" .. tostring(ns.db.bags), "reload=" .. tostring(win.footReload.shown),
             "header=" .. tostring(ns.optionControls.bags.tick.shown))
         bags.switch.scripts.OnClick(bags.switch)
-        bags.scripts.OnClick(bags)
-        print("options.modules card click", "opens=" .. tostring(ns.OptionsShown()))
+        -- a part's card opens its page at its card, outlined
+        for _, id in ipairs({ "bags", "npc", "side/loot" }) do
+            ns.OpenOptions("modules")
+            local c = card(id)
+            c.scripts.OnClick(c)
+            print("options.modules card click", id, "opens=" .. tostring(ns.OptionsShown()),
+                "scroll=" .. win.scroll:GetVerticalScroll(), "flash=" .. tostring(win.flash.shown) .. " on "
+                .. tostring(win.flash.control and win.flash.control.title and win.flash.control.title.text))
+        end
+        -- /mdlui's words: each opens a page the window has
+        local missing = {}
+        for _, word in ipairs({ "bags", "bank", "character", "spellbook", "talents", "professions", "questlog",
+            "lfg", "npc", "side", "meter", "loot", "auras", "quests", "tray", "chat", "windows", "paging", "bar" }) do
+            SlashCmdList.MDLUI(word)
+            local shown = ns.OptionsShown()
+            local f = ns.optionPages[shown]
+            table.insert(missing, word .. ">" .. tostring(shown) .. "@" .. win.scroll:GetVerticalScroll()
+                .. (win.flash.shown and win.flash.control.title and ("(" .. win.flash.control.title.text .. ")") or ""))
+            if not f then table.insert(missing, "NONE") end
+        end
+        print("options./mdlui words", table.concat(missing, " "))
         -- search: matches, where they are; choosing one opens its page at its
         -- section and outlines it; Esc gives the sidebar back
         -- search: what it found on the right, each section under where it
         -- is (lent: its options work there); a line opens the page at its
         -- section and outlines the match; Esc gives the page back
-        ns.OpenOptions("bags")
+        ns.OpenOptions("windows")
         local function found(label)
             local o = {}
             for _, b in ipairs(win.finds.links) do
@@ -5342,7 +5452,7 @@ if barPass then
             end
             print("options.search " .. label, win.finds.head.crumb.text, "lines=" .. table.concat(o, "; "),
                 "sections=" .. table.concat(lent, "; "), "shown=" .. tostring(win.finds.shown),
-                "page=" .. tostring(ns.optionPages.bags.shown), "lit=" .. tostring(win.tree.rows[1].lit.shown))
+                "page=" .. tostring(ns.optionPages.windows.shown), "lit=" .. tostring(win.tree.rows[1].lit.shown))
         end
         ns.SearchOptions("sweep")
         found("sweep")
@@ -5352,10 +5462,15 @@ if barPass then
         print("options.search toggled there", "cooldownSwipe " .. tostring(was) .. "->" .. tostring(ns.db.cooldownSwipe),
             "tick=" .. tostring(sweep.tick.shown))
         sweep.scripts.OnClick(sweep)
+        ns.SearchOptions("edit conditional")
+        found("edit conditional")
         ns.SearchOptions("bags")
         found("bags")
         ns.SearchOptions("zzzq")
         found("none")
+        -- a section's switch is found by its own name
+        ns.SearchOptions("move automatically")
+        found("switch")
         ns.SearchOptions("s")
         print("options.search one letter", "shown=" .. tostring(win.finds.shown), ns.OptionsShown())
         ns.SearchOptions("sweep", 1)
@@ -12217,12 +12332,16 @@ if bagsPass then
 
     -- 14. the page and the slash command
     ns.BuildOptions()
-    for _, c in ipairs(ns.optionPages.bags.controls) do
+    for _, c in ipairs(ns.optionPages.windows.controls) do
+      -- the bags' card: its switch, then its rows
+      local sec = c:GetParent()
+      if sec and sec.group and sec.group.id == "bags" then
         local spec, choices = c.spec, {}
         for _, o in ipairs(spec.choices or {}) do table.insert(choices, tostring(o[1]) .. "=" .. o[2]) end
         local hit = spec.kind == "choice" and c.button or c.less or c.box or c
         print("bags.page", spec.kind, spec.label, "default=" .. tostring(ns.OptionBase(spec.key)),
             hit:IsEnabled() and "live" or "grey", table.concat(choices, "; "))
+      end
     end
     SlashCmdList.MDLUI("bags")
     print("/mdlui bags opens", tostring(page.opened))
