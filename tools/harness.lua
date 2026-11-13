@@ -5130,6 +5130,22 @@ if barPass then
         print("  sections", table.concat(secs, "; "))
         local top = resolve(f)
         for _, c in ipairs(f.controls) do
+          -- a frame's Own mark (a choice of its own over Shared's): only
+          -- while it has one; a grid, its columns and rows
+          if c.spec.kind == "grid" then
+            local rows = {}
+            for i, row in ipairs(c.spec.rows) do
+                local cells = {}
+                for j in ipairs(c.spec.cols) do
+                    local cell = c.cells[i][j]
+                    cells[j] = not cell and "-" or ((cell.tick.shown and "x" or "o") .. (cell.corner.shown and "*" or ""))
+                end
+                rows[i] = row.label .. "=" .. table.concat(cells)
+            end
+            local r = resolve(c)
+            print("  grid", string.format("at=%d,%d %dx%d", r[1] - top[1], r[2] - top[2], c.w, c.h),
+                "cols=" .. #c.spec.cols, table.concat(rows, " "))
+          elseif not (c.spec.label == "Own" and not c.shown) then
             local r = resolve(c)
             local choices = {}
             for _, ch in ipairs(c.spec.choices or {}) do table.insert(choices, tostring(ch[1]) .. "=" .. ch[2]) end
@@ -5137,11 +5153,13 @@ if barPass then
             print("  " .. c.spec.kind, c.spec.label, tostring(c.spec.key), "shows=" .. shows(c),
                 hit:IsEnabled() and "live" or "grey", string.format("at=%d,%d %dx%d", r[1] - top[1], r[2] - top[2],
                     c.w, c.h), c.spec.reload and "reload" or "", table.concat(choices, "; "))
+          end
         end
     end
     print("window", "size=" .. win.w .. "x" .. win.h, "strata=" .. tostring(win.strata),
         "esc=" .. tostring(UISpecialFrames[1]), "title=" .. win.title.text)
-    for _, path in ipairs({ "general", "console/general", "console/bar", "console/overhead",
+    for _, path in ipairs({ "general", "shared/visibility", "shared/auras", "shared/look", "shared/tools",
+        "console/general", "console/bar", "console/overhead",
         "console/minimap", "units/general", "units/party", "units/raid", "units/battleground", "units/boss",
         "units/arena", "chat", "side/general", "side/auras", "side/meter", "side/loot", "bags" }) do dump(path) end
     -- a master off greys its page; the footer asks for a reload
@@ -5150,6 +5168,99 @@ if barPass then
     print("  footer", win.footProfile.text, "reload=" .. tostring(win.footReload.shown))
     page.settings.bags:Set(true)
     print("  bags back", "reload=" .. tostring(win.footReload.shown))
+    -- Settings > Shared: one value for an option many frames have, which a
+    -- frame's own choice overrides (marked Own on its page, a gold corner
+    -- in the grid); the frames following it hear its change
+    ;(function()
+        -- each family starts where its frames did: nothing changes for a
+        -- player until the shared value is set
+        local off = {}
+        for shared, keys in pairs(ns.SHARED) do
+            for _, k in ipairs(keys) do
+                if ns.OptionDefault(k) ~= ns.OptionDefault(shared) then table.insert(off, k) end
+            end
+        end
+        table.sort(off)
+        print("shared defaults differ", #off == 0 and "none" or table.concat(off, ","))
+        local heard = {}
+        for _, k in ipairs({ "raidDebuffs", "arenaMine", "auraDebuffs", "bossMine" }) do
+            ns.OnSetting(k, function(v) table.insert(heard, k .. "=" .. tostring(v)) end)
+        end
+        local function state(tag)
+            local o = {}
+            for _, k in ipairs({ "auraDebuffs", "raidDebuffs", "bossMine", "arenaMine" }) do
+                table.insert(o, k .. "=" .. tostring(ns.db[k]) .. (ns.OptionOwn(k) and " own" or ""))
+            end
+            print("shared " .. tag, "all=" .. tostring(ns.db.sharedDebuffs), table.concat(o, " "),
+                "heard=" .. table.concat(heard, ","))
+            for i = #heard, 1, -1 do heard[i] = nil end
+        end
+        state("start")
+        ns.SetOption("sharedDebuffs", false)
+        state("all off")
+        ns.SetOption("raidDebuffs", true)
+        state("raid its own")
+        ns.SetOption("sharedDebuffs", true)
+        ns.SetOption("sharedDebuffs", false)
+        state("all on and off again")
+        -- the raid's page: its Own mark, and the mark's click following Shared again
+        local function own(path, key)
+            ns.OpenOptions(path)
+            for _, c in ipairs(ns.optionPages[page.opened].controls) do
+                if c.spec.label == "Own" and c:GetParent().spec.key == key then return c end
+            end
+        end
+        local mark = own("units/raid", "raidDebuffs")
+        print("shared own mark", "raid=" .. tostring(mark and mark.shown),
+            "party's=" .. tostring(own("units/party", "auraDebuffs").shown))
+        mark = own("units/raid", "raidDebuffs")
+        mark.scripts.OnClick(mark)
+        ns.RefreshOptions()
+        state("own clicked")
+        print("shared own mark after", "raid=" .. tostring(mark.shown))
+        -- the grid: a box sets its frame's own; All moves the rest, not it
+        ns.OpenOptions("shared/auras")
+        local grid
+        for _, c in ipairs(ns.optionPages[page.opened].controls) do
+            if c.spec.kind == "grid" then grid = c end
+        end
+        local function row(label)
+            for i, r in ipairs(grid.spec.rows) do
+                if r.label == label then
+                    local cells = {}
+                    for j in ipairs(grid.spec.cols) do
+                        local cell = grid.cells[i][j]
+                        cells[j] = not cell and "-" or ((cell.tick.shown and "x" or "o") .. (cell.corner.shown and "*" or ""))
+                    end
+                    return label .. "=" .. table.concat(cells), grid.cells[i]
+                end
+            end
+        end
+        local _, cells = row("Debuffs")
+        print("shared grid keys", (function()
+            local o = {}
+            for j, cell in pairs(cells) do o[j] = grid.spec.cols[j].label .. ":" .. cell.spec.key end
+            return table.concat(o, " ")
+        end)())
+        cells[8].scripts.OnClick(cells[8])
+        ns.RefreshOptions()
+        state("grid arena on")
+        print("shared grid", (row("Debuffs")))
+        cells[1].scripts.OnClick(cells[1])
+        ns.RefreshOptions()
+        state("grid all on")
+        print("shared grid", (row("Debuffs")))
+        -- the console's party is kept per profile: its own goes with it
+        ns.SetOption("auraDebuffs", false)
+        state("console its own")
+        ns.SetOption("consoleProfile", "light")
+        state("light profile")
+        ns.SetOption("consoleProfile", "default")
+        state("default profile")
+        ns.SetOption("auraDebuffs", true)
+        ns.SetOption("arenaMine", true)
+        state("restored")
+    end)()
     -- the side panel off greys its tabs' pages, each tab's own master too
     page.settings.side:Set(false)
     dump("side/auras")

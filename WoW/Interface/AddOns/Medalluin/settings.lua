@@ -219,6 +219,11 @@ local DEFAULTS = {
     row2Paging = "default", row2PagingCustom = "",
     row3Paging = "default", row3PagingCustom = "",
     gridPaging = "default", gridPagingCustom = "",
+    -- Settings > Shared: one value for an option many frames have, which
+    -- each frame's own choice overrides (SHARED below)
+    moverHover = false, rangeFade = 40,
+    sharedGlow = true, sharedThreat = true, sharedCC = true, sharedBuffs = true, sharedDebuffs = true,
+    sharedBoss = true,
 }
 ns.VISIBILITY = { ALWAYS = 1, COMBAT = 2, MOUSEOVER = 3, COMBAT_OR_MOUSEOVER = 4 }
 ns.DRAWER = { LEFT = 1, UP = 2 }
@@ -301,21 +306,57 @@ function ns.PartyOption(key) return ns.db[ns.PartyKey(key)] end
 -- competitive play, where they are not wanted).
 function ns.PartyPets() return ns.db.partyLayout ~= "widget" and ns.db.partyPets ~= false end
 
+-- Options many frames have, one value for them all (Settings > Shared):
+-- a frame's option the player has not set is the shared one; one set is
+-- the frame's own, and wins. Set back to the shared value, it follows it
+-- again (a choice equal to its base is not saved). Each family's defaults
+-- are the same, so the shared value changes nothing until it is changed.
+local SHARED = {
+    moverHover = { "minimapMoverHover", "partyWidgetMoverHover", "raidMoverHover", "bgMoverHover",
+        "bossMoverHover", "arenaMoverHover" },
+    rangeFade = { "partyRange", "partyWidgetRange", "raidRange", "bgRange" },
+    sharedGlow = { "auraGlow", "partyWidgetGlow", "raidGlow", "bgGlow" },
+    sharedThreat = { "auraThreat", "partyWidgetThreat", "raidThreat", "bgThreat" },
+    sharedCC = { "auraCC", "partyWidgetCC", "raidCC", "bgCC", "arenaCC" },
+    sharedBuffs = { "auraBuffs", "partyWidgetBuffs" },
+    sharedDebuffs = { "auraDebuffs", "partyWidgetDebuffs", "raidDebuffs", "bgDebuffs", "bossMine", "bossWidgetMine",
+        "arenaMine" },
+    sharedBoss = { "auraBoss", "partyWidgetBoss", "raidBoss" },
+}
+local SHARED_OF = {}
+for shared, keys in pairs(SHARED) do
+    for _, key in ipairs(keys) do SHARED_OF[key] = shared end
+end
+ns.SHARED = SHARED
+-- The shared option a frame's option follows, or nil.
+function ns.SharedOf(key) return SHARED_OF[key] end
+
 local function Profile()
     return MedalluinDB and PROFILES[MedalluinDB.consoleProfile] and MedalluinDB.consoleProfile or "default"
-end
-
--- What an option is when the player has not chosen: the profile's, else DEFAULTS.
-local function Base(key)
-    local v = PROFILES[Profile()][key]
-    if v == nil then v = DEFAULTS[key] end
-    return v
 end
 
 -- Where the player's choice for an option is kept.
 local function Store(key)
     if PER_PROFILE[key] then return MedalluinDB.profiles[Profile()] end
     return MedalluinDB.global
+end
+
+-- What an option is when the player has not chosen: the profile's, else
+-- the shared option's it follows (as chosen), else DEFAULTS.
+local function Base(key)
+    local v = PROFILES[Profile()][key]
+    local shared = v == nil and SHARED_OF[key]
+    if shared then
+        v = MedalluinDB and MedalluinDB.global and MedalluinDB.global[shared]
+        if v == nil then v = Base(shared) end
+    end
+    if v == nil then v = DEFAULTS[key] end
+    return v
+end
+
+-- Whether the player chose this option (a frame's own, over a shared one).
+function ns.OptionOwn(key)
+    return MedalluinDB ~= nil and MedalluinDB.global ~= nil and Store(key)[key] ~= nil
 end
 
 -- ns.db reads through the layers and writes the player's choices; it holds
@@ -359,6 +400,9 @@ end
 
 -- What an option is when the player has not chosen one (the window's tips).
 ns.OptionBase = Base
+-- What an option is before any profile or choice (the harness's check that
+-- a shared option starts where its frames' did).
+function ns.OptionDefault(key) return DEFAULTS[key] end
 
 local SwitchProfile
 
@@ -367,7 +411,14 @@ local SwitchProfile
 -- profile switches to it.
 function ns.SetOption(key, value)
     if key == "consoleProfile" then SwitchProfile(value) end
+    -- a shared option: the frames that follow it hear their change too
+    local followers, before = SHARED[key], {}
+    for _, k in ipairs(followers or {}) do before[k] = ns.db[k] end
     Changed(key, value)
+    for _, k in ipairs(followers or {}) do
+        local now = ns.db[k]
+        if now ~= before[k] then Changed(k, now) end
+    end
 end
 
 -- Run change(), which moves layers under the options, then tell the modules

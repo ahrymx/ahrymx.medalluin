@@ -274,6 +274,168 @@ local function Mine(key, who)
         .. "From in the editor shows every one instead.")
 end
 
+-- ------------------------------------------------------------ Shared
+-- Settings > Shared: what many parts have, in one place. Its own options
+-- are the shared values (settings.lua's SHARED), which a frame's own choice
+-- on its page overrides (marked Own there); the rest are the parts' own
+-- options, the same ones, gathered by topic.
+
+-- Every option on the pages by key, with the master that greys it there.
+local function Specs(list)
+    local specs = {}
+    local function Walk(groups, master)
+        for _, g in ipairs(groups or {}) do
+            for _, spec in ipairs(g.items) do
+                if spec.key and not specs[spec.key] then specs[spec.key] = { spec = spec, master = master } end
+            end
+        end
+    end
+    for _, page in ipairs(list) do
+        Walk(page.groups, page.master)
+        for _, tab in ipairs(page.tabs or {}) do Walk(tab.groups, tab.master or page.master) end
+    end
+    return specs
+end
+
+local AURA_COLS = { { label = "All" }, { label = "Console" }, { label = "Widget" }, { label = "Raid" },
+    { label = "BG" }, { label = "Overhead" }, { label = "Boss" }, { label = "Arena" } }
+-- a row per piece: the shared key, then each frame set's (false: it has none)
+local AURA_ROWS = {
+    { label = "Dispel glow", tip = "The frame's border in the debuff's colour while an ally has one you can "
+        .. "dispel.", keys = { "sharedGlow", "auraGlow", "partyWidgetGlow", "raidGlow", "bgGlow", false, false,
+        false } },
+    { label = "Aggro glow", tip = "The frame's border while that unit has aggro.",
+        keys = { "sharedThreat", "auraThreat", "partyWidgetThreat", "raidThreat", "bgThreat", false, false, false } },
+    { label = "Crowd control", tip = "A large icon in the middle of the frame while the unit is crowd "
+        .. "controlled.", keys = { "sharedCC", "auraCC", "partyWidgetCC", "raidCC", "bgCC", false, false,
+        "arenaCC" } },
+    { label = "Buffs", tip = "A row of buffs on the frame.",
+        keys = { "sharedBuffs", "auraBuffs", "partyWidgetBuffs", false, false, false, false, false } },
+    { label = "Debuffs", tip = "A row of debuffs on the frame.",
+        keys = { "sharedDebuffs", "auraDebuffs", "partyWidgetDebuffs", "raidDebuffs", "bgDebuffs", "bossMine",
+            "bossWidgetMine", "arenaMine" } },
+    { label = "Boss debuffs", tip = "A critical boss debuff in the middle of the frame.",
+        keys = { "sharedBoss", "auraBoss", "partyWidgetBoss", "raidBoss", false, false, false, false } },
+}
+
+local SHARED_NOTE = "A frame's own choice, on its page, wins over a shared one there, and is marked Own."
+
+local function Shared(list)
+    local specs = Specs(list)
+    -- a part's own options, by key, under a title (greyed with their
+    -- page's master, as there)
+    local function Mirror(title, keys, tip)
+        local items = {}
+        for _, key in ipairs(keys) do
+            local e = specs[key]
+            if e then
+                if e.master and not e.spec.needs and e.spec ~= e.master then e.spec.needs = e.master.key end
+                table.insert(items, e.spec)
+            end
+        end
+        local g = Group(title, unpack(items))
+        g.tip = tip
+        return g
+    end
+    local grid = Group("On the frames", { kind = "grid", label = "Auras", cols = AURA_COLS, rows = AURA_ROWS })
+    grid.wide = true
+    grid.tip = "All sets every frame that has not chosen its own; a gold corner marks one that has."
+    local tools = Mirror("Tools", { "simParty", "gameMenu" })
+    table.insert(tools.items, 2, Editor(nil, "Edit unit frames"))
+    table.insert(tools.items, 3, Button("Bind keys", function()
+        if ns.CloseOptions then ns.CloseOptions() end
+        ns.KeybindMode(true)
+    end, "Closes this window. Point at an action button and press a key to bind it; Esc over a button "
+        .. "removes its keys. Also /mdlui kb."))
+    return {
+        id = "shared", name = "Shared",
+        tabs = {
+            {
+                id = "visibility", name = "Visibility & fading", intro = SHARED_NOTE,
+                groups = {
+                    Group("Every frame",
+                        Check("moverHover", "Movers only on mouseover",
+                            "Hide each box's tab, the grip that moves it, and the corner minimap's, until the "
+                            .. "pointer is over it."),
+                        Range("rangeFade", "group")),
+                    Mirror("Console", { "consoleFade", "consoleFadedAlpha", "consoleShowCombat",
+                        "consoleShowTarget", "consoleShowHurt", "consoleShowGroup", "consoleShowMouse",
+                        "consoleAlpha", "consoleFadeIn", "consoleFadeOut" }),
+                    Mirror("Overhead", { "overheadAlpha", "overheadFadeIn", "overheadFadeOut" }),
+                    Mirror("Action bars", { "visibility", "extraVisibility" }),
+                    Mirror("Quest tracker, full view", { "questsFullMouseover", "questsFullCombat" }),
+                    Mirror("Quest tracker, minimal view", { "questsMinimalMouseover", "questsMinimalCombat" }),
+                    Mirror("Edge Draw", { "trayDelay" }),
+                },
+            },
+            {
+                id = "auras", name = "Auras", intro = SHARED_NOTE,
+                groups = { grid, Glows(), Mirror("Blizzard's auras", { "blizzardAuras" }) },
+            },
+            {
+                id = "look", name = "Colours & look", intro = "Each part's own, gathered here.",
+                groups = {
+                    Mirror("Unit frames", { "deadColor" }),
+                    Mirror("Action bars", { "artColor", "hotkeySize", "cooldownTextSize" }),
+                    Mirror("Quest tracker", { "questsTitleFont", "questsTitleSize", "questsObjectiveFont",
+                        "questsObjectiveSize" }),
+                },
+            },
+            {
+                id = "tools", name = "Tools", intro = "Also on Overview > General.",
+                groups = { tools },
+            },
+        },
+    }
+end
+
+-- Each part's page whose options are also on a Shared tab says so, under
+-- its intro: "Also on Shared > Auras."
+local function AlsoOnShared(list)
+    local on = {}  -- key -> the Shared tabs' names it is on
+    local shared
+    for _, page in ipairs(list) do if page.id == "shared" then shared = page end end
+    for _, tab in ipairs(shared.tabs) do
+        local function Add(key)
+            on[key] = on[key] or {}
+            if on[key][#on[key]] ~= tab.name then table.insert(on[key], tab.name) end
+        end
+        for _, g in ipairs(tab.groups) do
+            for _, spec in ipairs(g.items) do
+                if spec.key then
+                    Add(spec.key)
+                    for _, k in ipairs(ns.SHARED[spec.key] or {}) do Add(k) end
+                end
+                for _, row in ipairs(spec.rows or {}) do
+                    for _, k in ipairs(row.keys) do if k then Add(k) end end
+                end
+            end
+        end
+    end
+    local function Note(content)
+        local names, seen = {}, {}
+        for _, g in ipairs(content.groups or {}) do
+            for _, spec in ipairs(g.items) do
+                for _, name in ipairs(spec.key and on[spec.key] or {}) do
+                    if not seen[name] then
+                        seen[name] = true
+                        table.insert(names, name)
+                    end
+                end
+            end
+        end
+        if #names == 0 then return end
+        local line = "Also on Shared > " .. table.concat(names, ", ") .. "."
+        content.intro = content.intro and (content.intro .. " " .. line) or line
+    end
+    for _, page in ipairs(list) do
+        if page ~= shared then
+            Note(page)
+            for _, tab in ipairs(page.tabs or {}) do Note(tab) end
+        end
+    end
+end
+
 -- Built when the window first opens: the lists come from modules loaded
 -- after settings.lua (paging, the meter, the loot log).
 function ns.OptionPages()
@@ -972,6 +1134,7 @@ function ns.OptionPages()
             },
         },
     }
+    table.insert(list, 2, Shared(list))
     for _, page in ipairs(list) do
         if page.tabs then
             for _, tab in ipairs(page.tabs) do Dress(tab, page.id .. "/" .. tab.id) end
@@ -979,6 +1142,7 @@ function ns.OptionPages()
             Dress(page, page.id)
         end
     end
+    AlsoOnShared(list)
     return list
 end
 
@@ -989,6 +1153,8 @@ end
 function ns.OptionCategories()
     return {
         { name = "Overview", items = { "modules", "general" } },
+        { name = "Shared", scope = "Every part's, in one place",
+            items = { "shared/visibility", "shared/auras", "shared/look", "shared/tools" } },
         { name = "Console", scope = "Kept per profile",
             items = { "console/general", "console/bar", "console/overhead", "console/minimap" } },
         { name = "Unit frames",

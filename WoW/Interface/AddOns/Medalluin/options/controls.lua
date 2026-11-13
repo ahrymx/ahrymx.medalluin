@@ -507,6 +507,70 @@ function UI.Choice(parent, spec, width, row)
     return f
 end
 
+-- ------------------------------------------------------------ grid
+-- One option for many frames, a box each: a column per frame (cols, each
+-- { label }), a row per option (rows, each { label, keys, tip }, keys one
+-- per column, false where that frame has no such option: a dash). A box
+-- whose frame chose its own over the shared one (the row's key in the
+-- first column) wears a gold corner.
+UI.GRID_COL = 58
+function UI.Grid(parent, spec, width)
+    local f = CreateFrame("Frame", nil, parent)
+    f.spec = spec
+    local n = #spec.cols
+    local left = width - n * UI.GRID_COL
+    f.heads, f.cells, f.labels, f.dashes = {}, {}, {}, {}
+    for i, col in ipairs(spec.cols) do
+        local h = UI.Plain(f, 10, C.goldDark)
+        h:SetPoint("TOP", f, "TOPLEFT", left + (i - 0.5) * UI.GRID_COL, -2)
+        h:SetWidth(UI.GRID_COL - 2)
+        h:SetText(col.label)
+        f.heads[i] = h
+    end
+    local y = -18
+    for r, row in ipairs(spec.rows) do
+        local label = UI.Plain(f, 12, C.text)
+        label:SetPoint("LEFT", f, "TOPLEFT", 0, y - UI.CHECK_H / 2)
+        label:SetWidth(left - 8)
+        label:SetJustifyH("LEFT")
+        label:SetText(row.label)
+        f.labels[r] = label
+        f.cells[r] = {}
+        for i, key in ipairs(row.keys) do
+            local x = left + (i - 0.5) * UI.GRID_COL
+            if key then
+                local cell = UI.Check(f, { kind = "check", key = key,
+                    label = row.label .. ": " .. spec.cols[i].label, tip = row.tip }, CHECK, false)
+                cell.label:SetText("")
+                cell:SetPoint("CENTER", f, "TOPLEFT", x, y - UI.CHECK_H / 2)
+                cell.corner = Fill(cell, "OVERLAY", C.gold)
+                cell.corner:SetSize(5, 5)
+                cell.corner:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 1, 1)
+                cell.corner:Hide()
+                f.cells[r][i] = cell
+            else
+                local dash = UI.Plain(f, 12, C.dim)
+                dash:SetPoint("CENTER", f, "TOPLEFT", x, y - UI.CHECK_H / 2)
+                dash:SetText("-")
+                f.dashes[#f.dashes + 1] = dash
+            end
+        end
+        y = y - UI.CHECK_H - 4
+    end
+    f:SetSize(width, -y)
+    function f:Refresh(enabled)
+        for _, cells in pairs(self.cells) do
+            for _, cell in pairs(cells) do
+                cell:Refresh(enabled)
+                cell.corner:SetShown(ns.SharedOf(cell.spec.key) ~= nil and ns.OptionOwn(cell.spec.key))
+            end
+        end
+        local c = enabled and C.text or C.dim
+        for _, l in ipairs(self.labels) do l:SetTextColor(c[1], c[2], c[3]) end
+    end
+    return f
+end
+
 -- ------------------------------------------------------------ note
 -- Words the page reads as it draws (spec.text(), two lines at most): what
 -- the game says of the player, such as the dispels they know.

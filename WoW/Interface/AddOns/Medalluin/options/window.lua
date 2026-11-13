@@ -133,6 +133,8 @@ local function Control(parent, spec, width, row, label)
         c = UI.Key(parent, spec, width)
     elseif spec.kind == "note" then
         c = UI.Note(parent, spec, width)
+    elseif spec.kind == "grid" then
+        c = UI.Grid(parent, spec, width)
     else
         c = UI.Button(parent, spec.label, math.min(width, 200), 24, spec.click, spec.tip)
     end
@@ -191,6 +193,26 @@ local function Where(path, title)
     return title and (s .. " > " .. title) or s
 end
 
+-- A frame's own choice over a shared option (settings.lua's SHARED): a
+-- small "Own" left of its control, while it has one; a click puts it back
+-- on the shared value, which it then follows.
+local function Own(row, spec)
+    local shared = ns.SharedOf(spec.key)
+    local b = UI.Button(row, "Own", 38, 16, function()
+        ns.SetOption(spec.key, ns.db[shared])
+    end, "This one's own choice, over Shared's. Click to follow Shared again.")
+    b.text:SetFont(b.text:GetFont(), 10)
+    local room = spec.kind == "choice" and UI.CHOICE_W or 16
+    b:SetPoint("RIGHT", row, "RIGHT", -(room + 8), 0)
+    local refresh = b.Refresh
+    function b:Refresh(enabled)
+        refresh(self, enabled)
+        self:SetShown(ns.OptionOwn(spec.key))
+    end
+    b.always = true
+    return b
+end
+
 -- A group as a section: its heading over a hairline, its tip, then an
 -- option a row.
 local function Section(f, group, width, path)
@@ -227,6 +249,14 @@ local function Section(f, group, width, path)
             w:SetPoint("RIGHT", c, "RIGHT", -30, 0)
             table.insert(f.controls, w)
         end
+        if spec.key and ns.SharedOf(spec.key) then
+            c.own = Own(c, spec)
+            table.insert(f.controls, c.own)
+        end
+        -- a grid's rows are found by their names
+        for _, r in ipairs(spec.kind == "grid" and spec.rows or {}) do
+            table.insert(index, { label = r.label, path = path, section = s, control = c, where = where })
+        end
         y = y - c:GetHeight() - 6
         if spec.label then
             table.insert(index, { label = spec.label, path = path, section = s, control = c, where = where })
@@ -256,11 +286,22 @@ local function Build(content, path, page, tab, width)
     end
     local tops = { y, y }
     for i, group in ipairs(content.groups) do
-        local col = tops[2] > tops[1] and 2 or 1
-        local s = Section(f, group, colW, path)
-        s:SetPoint("TOPLEFT", (col - 1) * (colW + COL_GAP), tops[col])
-        s.home, s.x, s.top, s.col = f, (col - 1) * (colW + COL_GAP), -tops[col], col
-        tops[col] = tops[col] - s:GetHeight() - SEC_GAP
+        local s
+        if group.wide then
+            -- across both columns, under the longer
+            local top = math.min(tops[1], tops[2])
+            s = Section(f, group, 2 * colW + COL_GAP, path)
+            s:SetPoint("TOPLEFT", 0, top)
+            s.home, s.x, s.top, s.col, s.wide = f, 0, -top, 1, true
+            tops[1] = top - s:GetHeight() - SEC_GAP
+            tops[2] = tops[1]
+        else
+            local col = tops[2] > tops[1] and 2 or 1
+            s = Section(f, group, colW, path)
+            s:SetPoint("TOPLEFT", (col - 1) * (colW + COL_GAP), tops[col])
+            s.home, s.x, s.top, s.col = f, (col - 1) * (colW + COL_GAP), -tops[col], col
+            tops[col] = tops[col] - s:GetHeight() - SEC_GAP
+        end
         f.sections[i] = s
     end
     f:SetHeight(-math.min(tops[1], tops[2]) + 4)
@@ -651,12 +692,18 @@ local function Found()
         local s = e.section
         local col = tops[2] > tops[1] and 2 or 1
         local x = (col - 1) * (colW + COL_GAP)
-        Line(e, Where(e.path) .. "  >", x, tops[col], colW)
+        -- a wide one across both, under the longer
+        if s.wide then
+            col, x = 1, 0
+            tops[1] = math.min(tops[1], tops[2])
+        end
+        Line(e, Where(e.path) .. "  >", x, tops[col], s.wide and 2 * colW + COL_GAP or colW)
         s:SetParent(finds)
         s:ClearAllPoints()
         s:SetPoint("TOPLEFT", finds, "TOPLEFT", x, tops[col] - LINK_H - 2)
         table.insert(finds.lent, s)
         tops[col] = tops[col] - LINK_H - 2 - s:GetHeight() - SEC_GAP
+        if s.wide then tops[2] = tops[1] end
     end
     finds.none:SetShown(#results == 0)
     finds.head.crumb:SetText(#results == 0 and ("Nothing matches \"" .. query .. "\".")
