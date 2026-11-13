@@ -24,7 +24,8 @@
 -- The facts stand in tiles across the window under the head (edge to
 -- edge, ns.window.Strip): its level, its zone, who gave it (as recorded,
 -- quests/givers.lua; a dash for one accepted before), its step in its
--- chain ("1 of 1" in none; no tile on a client that cannot say), its
+-- chain ("1 of 1" in none; no tile on a client that cannot say; the
+-- game's quest line, else QuestieDB's, quests/chains.lua), its
 -- state (ready, failed, tracked or not), and the waypoint's distance while
 -- it has it. A quest in a chain has the chain spelt out over its
 -- objectives: its name and its quests in order, done ticked, this one
@@ -212,8 +213,9 @@ end
 -- The quest's chain (C_QuestLine, on its map, or the player's): its name,
 -- its quests in order and where this one stands. False when the game
 -- knows it is in none (or alone in one), nil when it cannot say (no
--- quest lines, or no map to ask on).
-function qp.Chain(id)
+-- quest lines, or no map to ask on). When the game has no line for it,
+-- QuestieDB's chain if it is installed (quests/chains.lua; no name).
+local function GameChain(id)
     local L = C_QuestLine
     if not (L and L.GetQuestLineInfo and L.GetQuestLineQuests) then return nil end
     local map = GetQuestUiMapID and GetQuestUiMapID(id)
@@ -228,6 +230,14 @@ function qp.Chain(id)
     end
     if not at or #ids < 2 then return false end
     return { name = info.questLineName, ids = ids, at = at }
+end
+
+function qp.Chain(id)
+    local chain = GameChain(id)
+    if chain then return chain end
+    local other = ns.questChains and ns.questChains.Of(id)
+    if other ~= nil then return other end
+    return chain
 end
 
 -- a tile: its label over its value, a hairline at its left
@@ -363,6 +373,7 @@ local function Draw(q)
         for i = from, to do
             local id = chain.ids[i]
             local title = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(id)
+            if (not title or ns.IsSecret(title)) and ns.questChains then title = ns.questChains.Title(id) end
             if not title or ns.IsSecret(title) then
                 if C_QuestLog.RequestLoadQuestByID then C_QuestLog.RequestLoadQuestByID(id) end
                 title = "\226\128\166"

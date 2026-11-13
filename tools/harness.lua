@@ -17289,7 +17289,83 @@ if questLogPass then (function()
         C_QuestLine.GetQuestLineInfo = function() return nil end
         QP.Refresh()
         facts("questlog page facts no chain")
-        C_QuestLine, C_QuestLog.GetTitleForQuestID, C_QuestLog.IsQuestFlaggedCompleted, GetQuestUiMapID =
+        -- QuestieDB's chain when the game has no line for it (quests/chains.lua):
+        -- the Alliance Call of Air (here 102), its masks as QuestieDB has them
+        ;(function()
+            local ALLY, HORDE = 4294967373, 8589934770          -- races 1,3,4,7 (+33); 2,5,6,8 (+34)
+            local rows = {
+                [102] = { name = "Call of Air", requiredRaces = ALLY, requiredClasses = 64, nextQuestInChain = 96264 },
+                [96264] = { name = "Elemental Aid", requiredRaces = ALLY, requiredClasses = 64,
+                    preQuestSingle = { 102 }, nextQuestInChain = 79358 },
+                [79358] = { name = "Storm, Earth, and Fire", preQuestSingle = { 96264 } },
+                [1516] = { name = "Call of Earth (Horde)", requiredRaces = HORDE, nextQuestInChain = 102 },
+                [1519] = { name = "Call of Earth (Alliance)", requiredRaces = ALLY, nextQuestInChain = 102 },
+                [79360] = { name = "Elemental Aid (Horde)", requiredRaces = HORDE },
+                [555] = { name = "Druids only", requiredClasses = 1024 },
+            }
+            local contract = true
+            LibQuestieDB = { RequireContract = function(n) return contract and n == 4 end }
+            QuestDB = {
+                Exists = function(id) return rows[id] ~= nil end,
+                Get = function(id, key) return rows[id] and rows[id][key] end,
+            }
+            local race, class = 3, 7                            -- a Dwarf shaman
+            local raceWas, classWas = UnitRace, UnitClass
+            UnitRace = function() return "Dwarf", "Dwarf", race end
+            UnitClass = function() return "Shaman", "SHAMAN", class end
+            local done = {}
+            C_QuestLog.IsQuestFlaggedCompleted = function(id) return done[id] or false end
+            C_QuestLog.GetTitleForQuestID = function(id) return id == 102 and "Call of Air" or nil end
+            local function show(tag)
+                fire("QUEST_TURNED_IN", 0)                      -- (drops the walks kept)
+                QP.Refresh()
+                facts("questlog page facts " .. tag)
+                local c = ns.questChains.Of(102)
+                print("questlog chain " .. tag, c == nil and "nil" or c == false and "false"
+                    or (table.concat(c.ids, ",") .. " at " .. c.at))
+            end
+            show("questiedb")
+            pageText("questlog page questiedb")
+            -- two before it, one per faction: the one done, else the one the player can take
+            rows[102].preQuestSingle = { 1516, 1519 }
+            show("questiedb by race")
+            done[1516] = true
+            show("questiedb by done")
+            done[1516] = nil
+            race = 33                                           -- a bit past 32 (the Alliance's: 1519, not the first)
+            show("questiedb race 33")
+            race = 3
+            -- prerequisites that are all needed, when none is an alternative
+            rows[102].preQuestSingle, rows[102].preQuestGroup = nil, { 1519 }
+            show("questiedb group")
+            rows[102].preQuestSingle, rows[102].preQuestGroup = { 1516, 1519 }, nil
+            -- a next quest the player cannot take ends it
+            rows[79358].nextQuestInChain = 555
+            show("questiedb class ends")
+            -- a loop in the data ends
+            rows[79358].nextQuestInChain = 1519
+            rows[1519].preQuestSingle = { 79358 }
+            show("questiedb loop")
+            rows[79358].nextQuestInChain, rows[1519].preQuestSingle, rows[102].preQuestSingle = nil, nil, nil
+            -- alone in QuestieDB: "1 of 1"; unknown to it: as the game says
+            rows[102].nextQuestInChain = nil
+            show("questiedb alone")
+            rows[102] = nil
+            show("questiedb unknown")
+            rows[102] = { name = "Call of Air", nextQuestInChain = 96264 }
+            -- a QuestieDB of another contract is not read
+            contract = false
+            show("questiedb contract")
+            contract = true
+            -- the game's own line, where it has one, comes first
+            C_QuestLine.GetQuestLineInfo = function(id) return id == 102 and { questLineID = 7, questLineName = "The Princess" }
+                or nil end
+            show("questiedb game first")
+            C_QuestLine.GetQuestLineInfo = function() return nil end
+            LibQuestieDB, QuestDB, UnitRace, UnitClass = nil, nil, raceWas, classWas
+            show("questiedb gone")
+        end)()
+        C_QuestLine,C_QuestLog.GetTitleForQuestID, C_QuestLog.IsQuestFlaggedCompleted, GetQuestUiMapID =
             was[1], was[2], was[3], was[4]
         C_QuestLog.RequestLoadQuestByID = load_
         -- the waypoint: its tile while the quest has it
