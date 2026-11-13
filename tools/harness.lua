@@ -17252,6 +17252,26 @@ if questLogPass then (function()
             end
             print(tag, table.concat(out, " | "))
         end
+        -- the chain's steps: box, title (its colour), level, the box lit, the rail on
+        local function steps(tag)
+            local out = {}
+            for _, c in ipairs(QP.child.all_ or {}) do
+                local at = c.points and c.points.TOPLEFT
+                local y_ = at and -(at[4] or 0) or 0
+                if c.shown and c.kind == "Button" and c.num then
+                    local lit = c.edge.color and c.edge.color[1] > 0.9
+                    table.insert(out, string.format("(%s%s) %s [%s] %s%s%s", c.num.text or "", lit and "*" or "",
+                        tostring(c.name.text), c3(c.name.textColor), c.lvl.text ~= "" and ("lvl " .. c.lvl.text) or "-",
+                        c.rail.shown and " |" or "", c.go and " >" or ""))
+                    out[#out] = { y_, out[#out] }
+                elseif c.shown and c.kind == "FontString" and c.text and c.text:find("^\226\128\166") then
+                    table.insert(out, { y_, c.text })
+                end
+            end
+            table.sort(out, function(a, b) return a[1] < b[1] end)
+            for i, o in ipairs(out) do out[i] = o[2] end
+            print(tag, table.concat(out, " ; "))
+        end
         facts("questlog page facts")
         local headBox
         for _, c in ipairs(page.all_) do
@@ -17285,7 +17305,19 @@ if questLogPass then (function()
         QP.Refresh()
         facts("questlog page facts chain")
         pageText("questlog page chain")
+        steps("questlog page chain steps")
         print("questlog page chain asked", table.concat(asked, ","))
+        -- a step in the log, no Questie: a click opens its page
+        ;(function()
+            local herBones
+            for _, c in ipairs(QP.child.all_) do
+                if c.shown and c.num and c.id == 103 then herBones = c end
+            end
+            print("questlog page chain step tip", tipOf(herBones))
+            herBones.scripts.OnClick(herBones)
+            print("questlog page chain step click", "current=" .. tostring(QP.Current()))
+            QP.Open(102)
+        end)()
         C_QuestLine.GetQuestLineInfo = function() return nil end
         QP.Refresh()
         facts("questlog page facts no chain")
@@ -17326,6 +17358,79 @@ if questLogPass then (function()
             end
             show("questiedb")
             pageText("questlog page questiedb")
+            steps("questlog page questiedb steps")
+            -- a step, Questie there or not: a click opens it in Questie's Journey, at the quest
+            ;(function()
+                local function step(id)
+                    for _, c in ipairs(QP.child.all_) do
+                        if c.shown and c.num and c.id == id then return c end
+                    end
+                end
+                local aid = step(96264)
+                print("questlog page step tip, no questie", tipOf(aid))
+                W.calls = {}
+                aid.scripts.OnClick(aid)
+                print("questlog page step click, no questie", #W.calls > 0 and table.concat(W.calls, ", ") or "none",
+                    "current=" .. tostring(QP.Current()))
+                local was = { _G.Questie, QuestieLoader }
+                local shown, broken = false, false
+                local journey = {
+                    IsShown = function() return shown end,
+                    ToggleJourneyWindow = function() shown = not shown; table.insert(W.calls, "journey toggled") end,
+                    tabGroup = { SelectTab = function(_, t) table.insert(W.calls, "journey tab " .. t) end },
+                }
+                local results = { SetSearch = function(_, kind, id)
+                    if broken then error("SetSearch changed") end
+                    table.insert(W.calls, "journey " .. kind .. " " .. id)
+                end }
+                local mods = { QuestieJourney = journey, QuestieSearchResults = results }
+                QuestieLoader = { ImportModule = function(_, name) return mods[name] end }
+                _G.Questie = { started = false }
+                QP.Refresh()
+                aid = step(96264)
+                print("questlog page step tip, questie loading", tipOf(aid))
+                _G.Questie.started = true
+                QP.Refresh()
+                steps("questlog page questiedb steps, questie")
+                aid = step(96264)
+                print("questlog page step tip, questie", tipOf(aid))
+                W.calls = {}
+                aid.scripts.OnClick(aid)
+                print("questlog page step click, questie", table.concat(W.calls, ", "))
+                W.calls = {}
+                aid.scripts.OnClick(aid)
+                print("questlog page step click, journey open", table.concat(W.calls, ", "))
+                broken = true
+                W.calls = {}
+                print("questlog page step questie broken", tostring(ns.questSource.ShowInQuestie(96264)),
+                    #W.calls > 0 and table.concat(W.calls, ", ") or "none", "current=" .. tostring(QP.Current()))
+                _G.Questie, QuestieLoader = was[1], was[2]
+                QP.Refresh()
+            end)()
+            -- a long chain: round this one, the rest counted
+            ;(function()
+                local saved = {}
+                for k, v in pairs(rows) do saved[k] = v end
+                for i = 1, 10 do
+                    local id = 900 + i
+                    rows[id] = { name = "Step " .. i, questLevel = 20 + i, preQuestSingle = i > 1 and { id - 1 } or nil,
+                        nextQuestInChain = i < 10 and id + 1 or nil }
+                end
+                rows[909].nextQuestInChain = 102
+                rows[102] = { name = "Call of Air", questLevel = 30, preQuestSingle = { 909 }, nextQuestInChain = 910 }
+                rows[910].preQuestSingle = { 102 }
+                done[901], done[905] = true, true
+                show("questiedb long")
+                steps("questlog page questiedb long steps")
+                -- this one near the start: the rest after it counted
+                rows[909].nextQuestInChain, rows[910].preQuestSingle = 910, { 909 }
+                rows[102].preQuestSingle, rows[102].nextQuestInChain = { 901 }, 902
+                rows[901].nextQuestInChain, rows[902].preQuestSingle = 102, { 102 }
+                show("questiedb long, early")
+                steps("questlog page questiedb long early steps")
+                done[901], done[905] = nil, nil
+                for k in pairs(rows) do rows[k] = saved[k] end
+            end)()
             -- two before it, one per faction: the one done, else the one the player can take
             rows[102].preQuestSingle = { 1516, 1519 }
             show("questiedb by race")

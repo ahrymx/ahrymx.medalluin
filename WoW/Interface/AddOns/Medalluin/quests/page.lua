@@ -7,8 +7,7 @@
 --   Level | Zone     | Given by     | Chain  | Status  | Waypoint       title in its
 --    17   | Westfall | Gryan Stoutm.| 2 of 4 | Tracked | 142 yd         difficulty's colour
 --   ===============================================================  <- the facts' tiles
---   The Defias  ·  1 Furlbrow's Deed ✓  ·  2 The Coastal Menace (this)  <- its chain, when
---   Objectives                                                          in one
+--   Objectives
 --     0/1  Old Murk-Eye slain                                  (b)   <- (b): the line into
 --     ===========-------------------------------------------            the chat box
 --   Description
@@ -17,7 +16,13 @@
 --     1,250 xp     35s
 --     Choose one:
 --     [[icon] Murkeye's Fins     ]  [[icon] Shore Boots       ]    (tiles, two a row,
---   Drag across the words to select them, Ctrl+C to copy             its quality's colour)
+--   Chain · The Defias                                                 its quality's colour)
+--    (✔)  Furlbrow's Deed                               12        <- its chain, when in
+--     |                                                                one: a step a row,
+--    (2)  The Coastal Menace                            17           this one gold
+--     |
+--    (3)  Red Linen Goods                               18
+--   Drag across the words to select them, Ctrl+C to copy
 --   ---------------------------------------------------------------
 --   [ Untrack | Share | (map) | (pin) ]  [ Abandon ]
 --
@@ -27,9 +32,12 @@
 -- chain ("1 of 1" in none; no tile on a client that cannot say; the
 -- game's quest line, else QuestieDB's, quests/chains.lua), its
 -- state (ready, failed, tracked or not), and the waypoint's distance while
--- it has it. A quest in a chain has the chain spelt out over its
--- objectives: its name and its quests in order, done ticked, this one
--- marked, a long one shortened round this one.
+-- it has it. A quest in a chain has the chain under its rewards: its name,
+-- then its quests in order on a rail, each with its step (a tick once
+-- done), its title and its level, this one gold, one in the log lit; a
+-- long one shortened round this one. A click on a step opens it in
+-- Questie (its Journey's search) when Questie is there, else the step's
+-- own page when it is in the log.
 --
 -- Shift-click on the head links the quest in chat; a drag on it moves the
 -- window, as one on its ink does. The words (the facts,
@@ -62,6 +70,7 @@ local TILE, GAP = 32, 6                 -- a reward's tile, and between tiles
 local SEND = 18                         -- an objective's chat button, and its room on the right
 local TILES = 44                        -- the facts' strip
 local AROUND = 6                        -- a chain's quests spelt out, at most
+local STEPH, DOT = 22, 16               -- a chain's step: its row, and its numbered box
 local HINT = 16                         -- the selecting hint's line, over the band
 local CONFIRM = 4
 local STEP = 40                         -- a turn of the wheel
@@ -138,6 +147,48 @@ local function Take(kind)
             if ChatEdit_InsertLink and ChatEdit_InsertLink(line) then return end
             local open = ChatFrameUtil and ChatFrameUtil.OpenChat or ChatFrame_OpenChat
             if open then open(line) end
+        end)
+    elseif kind == "step" then
+        -- a chain's step: its box on the rail, its title, its level
+        p = CreateFrame("Button", nil, child)
+        p:SetHeight(STEPH)
+        p.rail = p:CreateTexture(nil, "BACKGROUND")
+        p.rail:SetColorTexture(GOLD_D[1], GOLD_D[2], GOLD_D[3], 0.7)
+        p.rail:SetWidth(1)
+        p.rail:SetHeight(STEPH)
+        p.rail:SetPoint("TOP", p, "TOPLEFT", 10 + DOT / 2, -STEPH / 2)
+        p.edge = p:CreateTexture(nil, "BORDER")
+        p.edge:SetSize(DOT, DOT)
+        p.edge:SetPoint("LEFT", 10, 0)
+        p.well = p:CreateTexture(nil, "ARTWORK")
+        p.well:SetPoint("TOPLEFT", p.edge, 1, -1)
+        p.well:SetPoint("BOTTOMRIGHT", p.edge, -1, 1)
+        p.num = ns.PlainText(p, 10)
+        p.num:SetPoint("CENTER", p.edge, 0, 0)
+        p.lvl = ns.PlainText(p, 11)
+        p.lvl:SetPoint("RIGHT", -6, 0)
+        p.lvl:SetJustifyH("RIGHT")
+        p.lvl:SetTextColor(unpack(DIM))
+        p.name = ns.PlainText(p, 12)
+        p.name:SetPoint("LEFT", p.edge, "RIGHT", 8, 0)
+        p.name:SetPoint("RIGHT", -44, 0)
+        p.name:SetJustifyH("LEFT")
+        p.name:SetWordWrap(false)
+        p.glow = p:CreateTexture(nil, "HIGHLIGHT")
+        p.glow:SetAllPoints()
+        p.glow:SetColorTexture(1, 1, 1, 0.06)
+        p:SetScript("OnEnter", function(self)
+            if not self.id then return end
+            local spec = { title = self.title, wrap = true, { "body", self.where, DIM } }
+            if self.go then table.insert(spec, { "hint", self.go }) end
+            ns.Tip(self, ns.window.Outside, spec)
+        end)
+        p:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        p:SetScript("OnClick", function(self)
+            local id = self.id
+            if not (id and self.go) then return end
+            if Q.CanShowInQuestie() and Q.ShowInQuestie(id) then return end
+            if Find(id) then qp.Open(id) end
         end)
     elseif kind == "bar" then
         p = CreateFrame("Frame", nil, child)
@@ -357,33 +408,6 @@ local function Draw(q)
         h:SetText(s)
         Put(h, 0, 20)
     end
-    -- the chain spelt out, when it is one
-    local chain = qp.Chain(q.id)
-    if chain then
-        local n = #chain.ids
-        local from, to = 1, n
-        if n > AROUND then
-            from = math.max(1, chain.at - 2)
-            to = math.min(n, from + AROUND - 1)
-            from = math.max(1, to - AROUND + 1)
-        end
-        local bits = {}
-        if chain.name and chain.name ~= "" and not ns.IsSecret(chain.name) then table.insert(bits, chain.name) end
-        if from > 1 then table.insert(bits, "\226\128\166") end
-        for i = from, to do
-            local id = chain.ids[i]
-            local title = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(id)
-            if (not title or ns.IsSecret(title)) and ns.questChains then title = ns.questChains.Title(id) end
-            if not title or ns.IsSecret(title) then
-                if C_QuestLog.RequestLoadQuestByID then C_QuestLog.RequestLoadQuestByID(id) end
-                title = "\226\128\166"
-            end
-            local done = C_QuestLog.IsQuestFlaggedCompleted and C_QuestLog.IsQuestFlaggedCompleted(id)
-            table.insert(bits, i .. " " .. title .. (i == chain.at and " (this)" or done and " \226\156\148" or ""))
-        end
-        if to < n then table.insert(bits, "\226\128\166") end
-        Text(table.concat(bits, "  \194\183  "), DIM, 0, 11)
-    end
     local d = Q.Details(q)
     Heading("Objectives")
     if #q.objectives == 0 then
@@ -461,10 +485,62 @@ local function Draw(q)
             end
         end
     end
+    -- the chain, when it is one: a step a row, round this one when long
+    local chain = qp.Chain(q.id)
+    if chain then
+        local n = #chain.ids
+        local from, to = 1, n
+        if n > AROUND then
+            from = math.max(1, chain.at - 2)
+            to = math.min(n, from + AROUND - 1)
+            from = math.max(1, to - AROUND + 1)
+        end
+        local name = chain.name
+        Heading((name and name ~= "" and not ns.IsSecret(name)) and ("Chain \194\183 " .. name) or "Chain")
+        local function More(k, words)
+            Plain(format(words, k), DIM, 10 + DOT + 8, 11)
+            y = y + LINE
+        end
+        if from > 1 then More(from - 1, "\226\128\166 %d before") end
+        local questie = Q.CanShowInQuestie()
+        for i = from, to do
+            local id = chain.ids[i]
+            local title = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(id)
+            if (not title or ns.IsSecret(title)) and ns.questChains then title = ns.questChains.Title(id) end
+            if not title or ns.IsSecret(title) then
+                if C_QuestLog.RequestLoadQuestByID then C_QuestLog.RequestLoadQuestByID(id) end
+                title = "\226\128\166"
+            end
+            local this = i == chain.at
+            local done = not this and C_QuestLog.IsQuestFlaggedCompleted and C_QuestLog.IsQuestFlaggedCompleted(id)
+            local held = not this and Find(id) ~= nil
+            local level = ns.questChains and ns.questChains.Level(id)
+            local r = Take("step")
+            r.id, r.title = id, title
+            r.where = format("Step %d of %d", i, n) .. (level and (", level " .. level) or "")
+                .. (this and ": this quest" or done and ": done" or held and ": in your quest log" or "")
+            r.go = questie and "Click: open it in Questie." or (held and "Click: open its page.") or nil
+            r:SetWidth(width)
+            r.name:SetText(title)
+            r.name:SetTextColor(unpack(this and GOLD or done and DIM or ns.colors.text))
+            r.num:SetText(done and "\226\156\148" or tostring(i))
+            r.num:SetTextColor(unpack(this and ns.colors.ink or done and DIM or GOLD))
+            local edge = (this or held and not done) and GOLD or GOLD_D
+            r.edge:SetColorTexture(edge[1], edge[2], edge[3], 1)
+            local well = this and GOLD or ns.colors.ink
+            r.well:SetColorTexture(well[1], well[2], well[3], 1)
+            r.lvl:SetText(level and tostring(level) or "")
+            r.rail:SetShown(i < to)
+            r.glow:SetAlpha(r.go and 1 or 0)
+            Put(r, 0, STEPH)
+        end
+        if to < n then More(n - to, "\226\128\166 %d more") end
+        y = y + 4
+    end
     for kind, list in pairs(parts) do
         for i = (used[kind] or 0) + 1, #list do
             list[i]:Hide()
-            if kind == "item" then list[i].item = nil end
+            if kind == "item" or kind == "step" then list[i].item, list[i].id = nil, nil end
         end
     end
     child:SetHeight(math.max(1, y))
@@ -556,7 +632,7 @@ local function Window()
         },
         Available = function() return true end,
         Build = function(b, _, margin)
-            parts = { heading = {}, text = {}, plain = {}, bar = {}, send = {}, item = {} }
+            parts = { heading = {}, text = {}, plain = {}, bar = {}, send = {}, item = {}, step = {} }
             facts = ns.window.Strip(b, TILES, 0)
             scroll = CreateFrame("ScrollFrame", nil, b)
             scroll:SetPoint("TOPLEFT", 0, -(TILES + 8))

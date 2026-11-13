@@ -243,6 +243,29 @@ function Q.Focus(quest)
     return true
 end
 
+-- Questie's own page for any quest, in its log or not: its Journey's
+-- search, at the quest, as Questie's own quest links open it. Started,
+-- not ready: the Journey needs only Questie loaded.
+local function Journey()
+    local Q_ = _G.Questie
+    if not (QuestieLoader and type(Q_) == "table" and Q_.started) then return end
+    local journey = Try(QuestieLoader.ImportModule, QuestieLoader, "QuestieJourney")
+    local results = Try(QuestieLoader.ImportModule, QuestieLoader, "QuestieSearchResults")
+    if journey and results then return journey, results end
+end
+
+function Q.CanShowInQuestie() return Journey() ~= nil end
+
+function Q.ShowInQuestie(id)
+    local journey, results = Journey()
+    if not journey then return false end
+    return pcall(function()
+        if not journey:IsShown() then journey:ToggleJourneyWindow() end
+        journey.tabGroup:SelectTab("search")
+        results:SetSearch("quest", id)
+    end) and true or false
+end
+
 -- An objective's count, "3/10" anywhere in its text; one with none counts
 -- as one thing, done or not. Its words without the count. (The Zone tab's
 -- rows and the quest's page.)

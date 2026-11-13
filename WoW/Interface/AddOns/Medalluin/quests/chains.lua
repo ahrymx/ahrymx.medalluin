@@ -10,6 +10,7 @@
 --
 --   ns.questChains.Of(id)     { ids, at }; false: known, alone; nil: unknown
 --   ns.questChains.Title(id)  its name in QuestieDB, or nil
+--   ns.questChains.Level(id)  its level in QuestieDB, or nil
 local _, ns = ...
 
 local qc = {}
@@ -113,6 +114,13 @@ function qc.Title(id)
     if not db then return nil end
     local name = Get(db, id, "name")
     return type(name) == "string" and name ~= "" and name or nil
+end
+
+function qc.Level(id)
+    local db = DB()
+    if not db then return nil end
+    local level = Get(db, id, "questLevel")
+    return type(level) == "number" and level > 0 and level or nil
 end
 
 -- a quest handed in can change which of several the walk takes
