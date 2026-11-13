@@ -420,7 +420,7 @@ local function Draw(q)
         local have, need = Q.Count(o)
         local words = counted and (have .. "/" .. need .. "  " .. Q.Words(o)) or o.text
         local at = y
-        local _, h = Text((o.done and "\226\156\148 " or "") .. words, o.done and DIM or ns.colors.text, 10, 12,
+        local _, h = Text((o.done and ns.Tick(DIM) .. " " or "") .. words, o.done and DIM or ns.colors.text, 10, 12,
             SEND + 4)
         local send = Take("send")
         send.line = counted and (have .. "/" .. need .. " " .. Q.Words(o)) or o.text
@@ -523,7 +523,7 @@ local function Draw(q)
             r:SetWidth(width)
             r.name:SetText(title)
             r.name:SetTextColor(unpack(this and GOLD or done and DIM or ns.colors.text))
-            r.num:SetText(done and "\226\156\148" or tostring(i))
+            r.num:SetText(done and ns.Tick(DIM) or tostring(i))
             r.num:SetTextColor(unpack(this and ns.colors.ink or done and DIM or GOLD))
             local edge = (this or held and not done) and GOLD or GOLD_D
             r.edge:SetColorTexture(edge[1], edge[2], edge[3], 1)

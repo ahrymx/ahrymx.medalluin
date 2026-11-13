@@ -72,7 +72,7 @@ local ROUND = ns.media .. "strips\\round"
 local SLOT, SLOTS = 18, 5                       -- a result's role slots: their pitch, how many
 local MEDAL = 34                                -- List me's role medallions
 local NOTE = 255                                -- a listing's note, at most
-local TICK, SOME = "\226\156\148", "\226\128\147"
+local TICK, SOME = ns.Tick(GOLD), "\226\128\147"
 
 local lfg = {}
 ns.lfg = lfg

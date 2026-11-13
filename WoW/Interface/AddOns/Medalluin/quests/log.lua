@@ -580,7 +580,7 @@ local function FillQuest(r, q, n)
     local rw = q.rewards or {}
     r.xp:SetText((rw.xp or 0) > 0 and Number(rw.xp) or "\226\128\148")
     r.xp:SetTextColor(unpack((rw.xp or 0) > 0 and XP or DIM))
-    r.item:SetText(rw.items and "\226\156\148" or "\226\156\150")      -- a tick, a cross
+    r.item:SetText(rw.items and ns.Tick({ 0.43, 0.78, 0.35 }) or ns.Cross(NONE))
     r.item:SetTextColor(unpack(rw.items and { 0.43, 0.78, 0.35 } or NONE))
     local coin = Money(rw.money)
     r.coin:SetText(coin or "\226\128\148")

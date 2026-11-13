@@ -204,12 +204,19 @@ def icon(draw):
 
 
 def export():
-    """The window's two drawn marks: the checkbox's tick and the dropdown's
-    arrow (options/controls.lua). Gold, so the game draws them untinted."""
+    """The window's two drawn marks, the checkbox's tick and the dropdown's
+    arrow (options/controls.lua), gold, so the game draws them untinted; and
+    a tick and a cross for text, white."""
     os.makedirs(MEDIA, exist_ok=True)
     tick = icon(lambda d: d.line([(22, 66), (52, 98), (106, 28)], fill=GOLD_B + (255,), width=18, joint="curve"))
     arrow = icon(lambda d: d.polygon([(24, 44), (104, 44), (64, 92)], fill=GOLD_B + (255,)))
-    for name, img in (("check", tick), ("arrow", arrow)):
+    # the tick and cross in a line of text (core.lua's ns.Tick, ns.Cross):
+    # white, so the |T escape tints them each to its text; no font has them
+    WHITE = (255, 255, 255, 255)
+    mark = icon(lambda d: d.line([(22, 66), (52, 98), (106, 28)], fill=WHITE, width=18, joint="curve"))
+    cross = icon(lambda d: (d.line([(34, 34), (94, 94)], fill=WHITE, width=16),
+                            d.line([(94, 34), (34, 94)], fill=WHITE, width=16)))
+    for name, img in (("check", tick), ("arrow", arrow), ("tick", mark), ("cross", cross)):
         path = os.path.join(MEDIA, name + ".tga")
         img.save(path, orientation=1)   # top-left first, as media/widgets/tab.tga
         print(path)

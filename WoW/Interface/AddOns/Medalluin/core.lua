@@ -263,6 +263,17 @@ local function Remember(fs)
     end)
 end
 
+-- A tick or a cross in a line of text, as tall as the text and tinted
+-- (colour {r, g, b}, 0-1; white when nil): neither Marcellus nor the game's
+-- fonts have ✔ or ✖, which drew as an empty box (2026-11-13).
+local function Mark(name, color, size)
+    local c = color or { 1, 1, 1 }
+    return ("|T%s:%d:%d:0:0:32:32:0:32:0:32:%d:%d:%d|t"):format(ns.media .. "options\\" .. name, size or 0,
+        size or 0, math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
+end
+function ns.Tick(color, size) return Mark("tick", color, size) end
+function ns.Cross(color, size) return Mark("cross", color, size) end
+
 function ns.Text(parent, size)
     local fs = parent:CreateFontString(nil, "OVERLAY")
     fs:SetFont(ns.font, size, "")

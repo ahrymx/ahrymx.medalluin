@@ -6011,10 +6011,11 @@ if sidePass then
             local to = pt and pt[1]
             local name = to and (to.name or (to == ns.console and "console") or tostring(to)) or "none"
             print("zone map " .. tag, string.format("clip in=%s map at=%s size=%.0fx%.0f mask=%s strata=%s "
-                .. "above the well=%s", tostring(clip.parent and (clip.parent.name or
+                .. "above the well=%s shape=%s", tostring(clip.parent and (clip.parent.name or
                 (clip.parent == ns.console and "console")) or "?"), name, Minimap.w, Minimap.h,
                 tostring(Minimap.mask):match("[^\\]+$"), tostring(Minimap.strata),
-                tostring(Minimap.level > (_G.MedalluinZoneMap.level or 0))))
+                tostring(Minimap.level > (_G.MedalluinZoneMap.level or 0)),
+                tostring(GetMinimapShape and GetMinimapShape())))
             local dark
             for _, r in ipairs(hole.all_ or {}) do if r.kind == "Texture" then dark = r end end
             print("zone empty " .. tag, "shown=" .. tostring(hole.shown), string.format("size=%.0fx%.0f dark=%.0f",
@@ -17456,7 +17457,7 @@ if questLogPass then (function()
                 else
                     table.insert(out, string.format("%s%s%s %s(%s) xp=%s item=%s coin=%s%s%s", tostring(r.lvl.text),
                         r.stripes.shown and "/" or " ", r.title.text, r.badge.shown and "{mark}" or "",
-                        c3(r.title.textColor), r.xp.text, r.item.text == "\226\156\148" and "yes" or "no",
+                        c3(r.title.textColor), r.xp.text, tostring(r.item.text):find("\\tick:") and "yes" or "no",
                         r.coin.text, r.zebra.shown and " z" or "", r.mark.shown and " OPEN" or ""))
                 end
             end
@@ -17711,7 +17712,7 @@ if questLogPass then (function()
                 local y_ = at and -(at[4] or 0) or 0
                 if c.shown and c.kind == "Button" and c.num then
                     local lit = c.edge.color and c.edge.color[1] > 0.9
-                    table.insert(out, string.format("(%s%s) %s [%s] %s%s%s", c.num.text or "", lit and "*" or "",
+                    table.insert(out, string.format("(%s%s) %s [%s] %s%s%s", ((c.num.text or ""):gsub("|T.-\\(%a+):.-|t", "<%1>")), lit and "*" or "",
                         tostring(c.name.text), c3(c.name.textColor), c.lvl.text ~= "" and ("lvl " .. c.lvl.text) or "-",
                         c.rail.shown and " |" or "", c.go and " >" or ""))
                     out[#out] = { y_, out[#out] }

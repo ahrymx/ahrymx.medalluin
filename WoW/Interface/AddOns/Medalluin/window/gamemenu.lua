@@ -1297,7 +1297,7 @@ local function PopLine(i)
     l.boxInk:SetColorTexture(POP_INK[1], POP_INK[2], POP_INK[3], 1)
     l.tick = ns.PlainText(l, 11)
     l.tick:SetPoint("CENTER", l.box, "CENTER", 1, 0)
-    l.tick:SetText("\226\156\148")
+    l.tick:SetText(ns.Tick(GOLD))
     l.tick:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
     l.eye = l:CreateTexture(nil, "ARTWORK")           -- hide: the struck eye
     l.eye:SetSize(16, 16)

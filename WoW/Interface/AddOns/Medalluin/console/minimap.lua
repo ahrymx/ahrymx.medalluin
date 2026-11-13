@@ -130,6 +130,7 @@ ns.On("PLAYER_LOGIN", function()
     -- hides takes no clicks, pings or the wheel either
     local function Fit(w, h, always)
         local side, mask = Shape(w, h, always)
+        ns.minimapShape = mask == round and "ROUND" or "SQUARE"
         Minimap:SetSize(side, side)
         clip:SetSize(w, h)
         Minimap:SetHitRectInsets((side - w) / 2, (side - w) / 2, (side - h) / 2, (side - h) / 2)
@@ -164,6 +165,15 @@ ns.On("PLAYER_LOGIN", function()
                 if set then set(Minimap, 0) end
             end
         end
+    end
+
+    -- The shape addons ask for (the minimap-shape convention LibDBIcon and
+    -- HereBeDragons read): a pin past the map's edge floats to it, so on a
+    -- square map they must know it is square. Unanswered they take it for
+    -- round, and Questie's far pins stood in a ring inside the square
+    -- (2026-11-13). A shape another addon has already claimed is left be.
+    if not GetMinimapShape then
+        function GetMinimapShape() return ns.minimapShape or "ROUND" end
     end
 
     local area                              -- the area's name over the hovered map, below
