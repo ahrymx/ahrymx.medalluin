@@ -526,7 +526,8 @@ local SLOP = 3
 
 -- The holder at the view's zoom and pan, the pan held to what the zoom
 -- hides: at the fit nothing pans, zoomed in an edge comes to the room's
--- edge and no further. The holder's own 6 down is in its units.
+-- edge and no further. The holder's own 6 down (and the scope's) is in its
+-- units.
 local function Scale() return last.scale * view.zoom end
 local function Clamp()
     local s = Scale()
@@ -609,7 +610,7 @@ local function Lay()
     local s = Scale()
     holder:SetScale(s)
     holder:ClearAllPoints()
-    holder:SetPoint("CENTER", stage, "CENTER", view.x / s, view.y / s - 6)
+    holder:SetPoint("CENTER", stage, "CENTER", view.x / s, view.y / s - 6 - last.down)
     Grid()
 end
 
@@ -636,10 +637,10 @@ local function Wheel(_, delta)
     local cx, cy = FromMiddle()
     local s = Scale()
     -- the drawing's point under the pointer, from the holder's middle
-    local dx, dy = (cx - view.x) / s, (cy - (view.y - 6 * s)) / s
+    local dx, dy = (cx - view.x) / s, (cy - (view.y - (6 + last.down) * s)) / s
     view.zoom = math.max(ZOOM_MIN, math.min(ZOOM_MAX, view.zoom * ZOOM_STEP ^ delta))
     local s2 = Scale()
-    view.x, view.y = cx - dx * s2, cy - dy * s2 + 6 * s2
+    view.x, view.y = cx - dx * s2, cy - dy * s2 + (6 + last.down) * s2
     Draw()
 end
 
@@ -847,6 +848,10 @@ function Draw()
         view.frame = frame.id
     end
     stage.title:SetText(frame.name .. "  >  " .. E.PIECES[piece].label)
+    -- what the frame is and whose, under it (the editor's words)
+    stage.scope:SetWidth(math.max(20, (stage:GetWidth() or 0) - 20))
+    stage.scope:SetText(E.ui.Scope and E.ui.Scope() or "")
+    local top = (stage.scope:GetText() or "") ~= "" and math.ceil(stage.scope:GetStringHeight() or 0) + 4 or 0
     local models = Models(frame)
     stage.note:SetShown(#models == 0)
     if #models == 0 then stage.note:SetText(Absent(frame)) end
@@ -876,13 +881,15 @@ function Draw()
         height = height + GAP + reach[k].t - reach[k].b
     end
     local width = right - left
-    -- the stage's room, less its title, its hint and a margin
-    local roomW, roomH = (stage:GetWidth() or 0) - 40, (stage:GetHeight() or 0) - 76
+    -- the stage's room, less its title and scope, its hint and a margin
+    local roomW, roomH = (stage:GetWidth() or 0) - 40, (stage:GetHeight() or 0) - 76 - top
     local scale = MAX_SCALE
     if width > 0 then scale = math.min(scale, roomW / width) end
     if height > 0 then scale = math.min(scale, roomH / height) end
     scale = math.max(scale, 0.1)
-    last = { scale = scale, w = width, h = height, roomW = roomW, roomH = roomH }
+    -- (down: the drawing's middle below the stage's by half the scope, in
+    -- the holder's units as its 6 is, so a zoom about a point keeps it)
+    last = { scale = scale, w = width, h = height, roomW = roomW, roomH = roomH, down = top / 2 / scale }
     Lay()
     holder:SetSize(math.max(width, 1), math.max(height, 1))
     local y = 0
@@ -986,6 +993,9 @@ function ns.EditorStage(parent)
     stage:SetClipsChildren(true)
     stage.title = UI.Serif(stage, 12, C.goldBright)
     stage.title:SetPoint("TOPLEFT", 10, -8)
+    stage.scope = UI.Plain(stage, 10, C.dim)
+    stage.scope:SetPoint("TOPLEFT", 10, -24)
+    stage.scope:SetJustifyH("LEFT")
     stage.preview = UI.Plain(stage, 10, C.goldDark)
     stage.preview:SetPoint("BOTTOMLEFT", 10, 24)
     stage.hint = UI.Plain(stage, 10, C.dim)

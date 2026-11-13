@@ -8924,14 +8924,21 @@ local function EditorPass()
         local t, r = {}, {}
         for _, b in ipairs(w.tabs) do t[#t + 1] = b.text.text end
         for _, row in ipairs(w.list.rows) do
-            if row.shown then r[#r + 1] = row.text.text .. (row.mark.shown and "*" or "") .. (row.lit.shown and "<" or "") end
+            if row.shown and row.heading then r[#r + 1] = "[" .. row.heading .. "]"
+            elseif row.shown then
+                r[#r + 1] = row.text.text .. (row.mark.shown and "*" or "") .. (row.lit.shown and "<" or "")
+            end
         end
         local c = {}
         for field, ctl in pairs(w.controls) do if ctl.shown then c[#c + 1] = field end end
         table.sort(c)
+        local pt = {}
+        for _, b in ipairs(w.body.tabStrip.tabs) do
+            if b.shown and w.body.tabStrip.shown then pt[#pt + 1] = b.id .. (b.id == w.tab and "<" or "") end
+        end
         print("editor window " .. tag, "shown=" .. tostring(w.shown), "tabs=" .. table.concat(t, ","),
-            "pieces=" .. table.concat(r, ","), "controls=" .. table.concat(c, ","))
-        print("  title=" .. tostring(w.body.title.text), "scope=" .. tostring(w.body.scope.text))
+            "pieces=" .. table.concat(r, ","), "piece tabs=" .. table.concat(pt, ","), "controls=" .. table.concat(c, ","))
+        print("  title=" .. tostring(w.body.title.text), "scope=" .. tostring(w.stage.scope.text))
     end
     window("unit")
     local function choose(id, which)
@@ -8942,6 +8949,139 @@ local function EditorPass()
     end
     local function set(field, v) w.controls[field].spec.set(v) end
     local function get(field) return w.controls[field].spec.get() end
+    -- the piece's tabs: click one by name; the shown tabs and their fields
+    local function pickTab(id)
+        for _, b in ipairs(w.body.tabStrip.tabs) do if b.shown and b.id == id then b.scripts.OnClick(b) end end
+    end
+    local function shownTabs()
+        local t = {}
+        if not w.body.tabStrip.shown then return t end
+        for _, b in ipairs(w.body.tabStrip.tabs) do if b.shown then t[#t + 1] = b.id end end
+        return t
+    end
+    local function fields()
+        local order = {}
+        for field, ctl in pairs(w.controls) do
+            if ctl.shown and field ~= "reset" then order[#order + 1] = { field, -(ctl:GetTop() or 0) } end
+        end
+        table.sort(order, function(a, b) return a[2] < b[2] end)
+        local f = {}
+        for i, o in ipairs(order) do f[i] = o[1] end
+        return table.concat(f, ",")
+    end
+    -- every tab of every piece of every frame, a row in its frame and out
+    -- of it, inside the body: nothing under the footer or past the right
+    -- (2026-11-13: the console party's debuffs ran Columns into the footer).
+    -- Outside is read off a stand-in E.Edits, so nothing is written.
+    ;(function()
+        local realEdits = E.Edits
+        local checked, bad, tallest, closest = 0, {}, 0, math.huge
+        local body = w.body
+        for _, f in ipairs(E.FRAMES) do
+            for _, id in ipairs(f.pieces) do
+                local outs = E.PIECES[id].type == "row" and { false, true } or { false }
+                for _, out in ipairs(outs) do
+                    E.Edits = function(fr, pc)
+                        local e = realEdits(fr, pc)
+                        if not out or pc ~= id then return e end
+                        local copy = {}
+                        for k, v in pairs(e or {}) do copy[k] = v end
+                        copy.out = true
+                        return copy
+                    end
+                    choose(f.id, id)
+                    for _, row in ipairs(w.list.rows) do
+                        checked = checked + 1
+                        if row.shown and row:GetBottom() < w.list:GetBottom() then
+                            bad[#bad + 1] = f.id .. ":list " .. tostring(row.piece or row.heading)
+                        end
+                    end
+                    local tabsOf = shownTabs()
+                    if #tabsOf == 0 then tabsOf = { false } end
+                    for _, t in ipairs(tabsOf) do
+                        if t then pickTab(t) end
+                        local parts = {}
+                        for field, ctl in pairs(w.controls) do if ctl.shown then parts[field] = ctl end end
+                        if body.tabStrip.shown then parts.tabs = body.tabStrip end
+                        -- the space between one line and the next
+                        local down = {}
+                        for field, ctl in pairs(parts) do if field ~= "reset" then down[#down + 1] = ctl end end
+                        table.sort(down, function(a, b) return a:GetTop() > b:GetTop() end)
+                        for k = 2, #down do closest = math.min(closest, down[k - 1]:GetBottom() - down[k]:GetTop()) end
+                        for field, ctl in pairs(parts) do
+                            checked = checked + 1
+                            if field ~= "tabs" and field ~= "reset" then tallest = math.max(tallest, ctl:GetHeight()) end
+                            if ctl:GetBottom() < body:GetBottom() - 0.01 or ctl:GetRight() > body:GetRight() + 0.01 then
+                                bad[#bad + 1] = f.id .. "/" .. id .. (out and "/out" or "") .. "/" .. tostring(t)
+                                    .. ":" .. field
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        E.Edits = realEdits
+        table.sort(bad)
+        print("editor tabs in the body", "checked=" .. checked, "tallest=" .. tallest, "closest=" .. closest, "past it=" .. (bad[1] and table.concat(bad, " ") or "none"))
+        -- each kind's tabs and what each holds, the chosen tab kept from
+        -- piece to piece where the next has it
+        local function tabs(tag, frameId, id)
+            choose(frameId, id)
+            local o = {}
+            local ts = shownTabs()
+            if #ts == 0 then o[1] = "(no strip) " .. fields() end
+            for _, t in ipairs(ts) do
+                pickTab(t)
+                o[#o + 1] = t .. "=" .. fields()
+            end
+            print("  tabs " .. tag, table.concat(o, " | "))
+        end
+        tabs("text name", "unit", "name")
+        tabs("text level", "unit", "level")
+        tabs("icon role", "party", "role")
+        tabs("row buffs", "party", "mine")
+        tabs("row widget", "partyWidget", "buffs")
+        tabs("bar", "party", "power")
+        tabs("cell", "raid", "cell")
+        choose("unit", "name")
+        pickTab("look")
+        local kept = { w.tab }
+        choose("unit", "buffs"); kept[#kept + 1] = "buffs:" .. w.tab
+        choose("unit", "power"); kept[#kept + 1] = "power:" .. w.tab .. (w.body.tabStrip.shown and "+strip" or "")
+        choose("unit", "name"); kept[#kept + 1] = "name:" .. w.tab
+        pickTab("auras")
+        choose("unit", "buffs"); pickTab("auras")
+        choose("unit", "level"); kept[#kept + 1] = "auras, then level:" .. w.tab
+        pickTab("place")
+        print("  tab kept", table.concat(kept, " "))
+        -- the frame tabs under their group's caption
+        local caps = {}
+        for _, c in ipairs(w.captions) do
+            local _, rel = c:GetPoint(1)
+            caps[#caps + 1] = c.text .. ">" .. c.first.name
+                .. string.format("@%.0f", (c:GetLeft() or 0) - (w.tabs[1]:GetLeft() or 0))
+        end
+        local first = {}
+        for _, b in ipairs(w.tabs) do first[#first + 1] = string.format("%.0f", b:GetLeft() - w.tabs[1]:GetLeft()) end
+        print("  frame captions", table.concat(caps, " "), "tab lefts=" .. table.concat(first, ","))
+        -- the footer: the chips between the two rules, their caption over them
+        local c1, cn = w.chips[1], w.chips[#w.chips]
+        local d1, d2 = w.dividers[1], w.dividers[2]
+        print("  footer", "caption=" .. tostring(w.chipsCaption.text) .. " shown=" .. tostring(w.chipsCaption:IsShown()),
+            "preview|" .. string.format("%.0f", d1:GetLeft() - w.preview:GetRight()) .. "|chips "
+            .. string.format("%.0f", c1:GetLeft() - d1:GetRight()) .. " .. "
+            .. string.format("%.0f", d2:GetLeft() - cn:GetRight()) .. "|"
+            .. string.format("%.0f", w.reset:GetLeft() - d2:GetRight()) .. " reset",
+            "caption over chips=" .. tostring(w.chipsCaption:GetBottom() > c1:GetTop()
+                and w.chipsCaption:GetLeft() >= c1:GetLeft()),
+            "below the rule=" .. tostring(w.chipsCaption:GetTop() < (w:GetBottom() + 58 - 8)))
+        print("  scope", "on the canvas=" .. tostring(w.stage.scope.text ~= nil and w.stage.scope.text ~= ""),
+            "in the body=" .. tostring(w.body.scope ~= nil))
+        -- a frame with no icons: no Icons heading
+        choose("boss", "cell")
+        window("boss grouped")
+        choose("unit", "name")
+    end)()
     -- drag the chosen piece's box on the copy of button b so the piece's
     -- point (h left|center|right, v top|middle|bottom) lands dx right, dy
     -- down of that point of what it is on (the cursor moved to put it there)
@@ -9128,7 +9268,7 @@ local function EditorPass()
     ns.OpenEditor("partyWidget")
     window("layout widget")
     choose("party", "name")
-    print("  party scope", w.body.scope.text)
+    print("  party scope", w.stage.scope.text)
     choose("partyWidget", "cell")
     piece("party1 in widget", ns.units.party1, "role")
     piece("party1 in widget", ns.units.party1, "leader")

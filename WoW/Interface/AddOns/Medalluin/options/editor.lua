@@ -1,8 +1,10 @@
 -- The unit-frame editor's window (art/settings/gen_editor.py, U3): the
--- frames as tabs, the chosen frame's pieces down the left, the canvas in
--- the middle (options/canvas.lua: the frame drawn large, the chosen piece
--- boxed; drag it to move the piece, the arrow keys nudge it), the chosen
--- piece's controls down the right, applied as they change. Its footer has
+-- frames as tabs (the console's, then the widgets), the chosen frame's
+-- pieces down the left in groups, the canvas in the middle
+-- (options/canvas.lua: the frame drawn large, the chosen piece boxed; drag
+-- it to move the piece, the arrow keys nudge it), the chosen piece's
+-- controls down the right under its tabs (Place, Look, Auras), one to a
+-- line, applied as they change. Its footer has
 -- the preview (simulate.lua's: a party, a raid, bosses and an arena to edit
 -- out of a group) and the canvas's preview chips (editor.lua's E.preview:
 -- each dispel type's glow, the aggro glow, the combat tint, crowd control,
@@ -17,11 +19,15 @@ local C = UI.colors
 local E = ns.editor
 
 local W, H = 1000, 620
-local PAD, LIST_W, BODY_W, TAB_H, FOOT = 14, 160, 250, 24, 46
-local ROW_H, GAP, CHIP_H = 22, 8, 24
+local PAD, LIST_W, BODY_W, TAB_H, FOOT = 14, 160, 270, 24, 58
+local ROW_H, HEAD_H, GAP, CHIP_H = 22, 16, 6, 24
+local TAB_Y = PAD + 24                  -- the frame tabs' top, under their group's caption
+local TOP = TAB_Y + TAB_H + 10          -- the list's, the canvas's and the body's top
+local PIECE_TAB_H = 22                  -- the piece's tabs (Place, Look, Auras)
 
 local window, tabs, list, stage, body, chips
 local frame, piece        -- what is chosen: the frame (E.FRAMES) and its piece
+local tab = "place"       -- the piece's tab, kept by name from piece to piece
 local controls = {}       -- the body's controls, by field
 local Refresh
 
@@ -172,55 +178,115 @@ local function Specs()
     }
 end
 
--- Which controls a piece has, row by row. Its anchor is where it is
--- dropped on the canvas.
-local function Rows()
+-- The piece's tabs, in order: where it goes, how it looks, which auras (a
+-- row's). Shown is over them all, never in one. A cell and a bar have one
+-- tab each, and no strip.
+local TAB_NAMES = { place = "Place", look = "Look", auras = "Auras" }
+local function Tabs()
     local kind = E.PIECES[piece].type
-    if kind == "cell" then return { { "w", "h" } } end
-    if kind == "bar" then return { { "ph" } } end
-    local rows = { { "shown" }, { "on" }, { "x", "y" } }
-    -- a row outside its frame is placed by that: no place, no way to grow
-    local out = Mirrored() and "out" or "side"
-    if kind == "row" and Edits().out then
-        return { { "shown" }, { out }, { "from" }, { "size", "max" }, { "cols" } }
-    end
+    if kind == "cell" then return { { id = "place", fields = { "w", "h" } } } end
+    if kind == "bar" then return { { id = "place", fields = { "ph" } } } end
+    local place = { "on", "x", "y" }
+    local look = { "size" }
     if kind == "text" then
-        table.insert(rows, { "size", "outline" })
-        if E.FORMATS[piece] then table.insert(rows, piece == "name" and { "format", "len" } or { "format" }) end
-    elseif kind == "row" then
-        table.insert(rows, 2, { out })
-        table.insert(rows, { "from" })
-        table.insert(rows, { "size", "max" })
-        table.insert(rows, { "grow", "cols" })
-    else
-        table.insert(rows, { "size" })
+        look[#look + 1] = "outline"
+        if E.FORMATS[piece] then look[#look + 1] = "format" end
+        if piece == "name" then look[#look + 1] = "len" end
     end
-    return rows
+    if kind ~= "row" then
+        return { { id = "place", fields = place }, { id = "look", fields = look } }
+    end
+    local out = Mirrored() and "out" or "side"
+    -- a row outside its frame is placed by that: no place, no way to grow
+    if Edits().out then
+        place = { out, "cols" }
+    else
+        place = { out, "on", "x", "y", "grow", "cols" }
+    end
+    return { { id = "place", fields = place }, { id = "look", fields = look },
+        { id = "auras", fields = { "from", "max" } } }
 end
 
--- The rows the chosen piece has, as one string; laid: Lay's last.
+-- The chosen tab of the piece's: the one kept, else its first.
+local function Tab()
+    local all = Tabs()
+    for _, t in ipairs(all) do if t.id == tab then return t, all end end
+    return all[1], all
+end
+
+-- What is laid, as one string; laid: Lay's last.
 local function Laid()
-    local names = {}
-    for _, row in ipairs(Rows()) do names[#names + 1] = table.concat(row, ",") end
-    return piece .. ":" .. table.concat(names, ";")
+    local t, all = Tab()
+    return piece .. ":" .. t.id .. "/" .. #all .. ":" .. table.concat(t.fields, ",")
 end
 local laid
+
+-- The piece's tabs across the body, in the settings window's look: the
+-- chosen one lit, its foot open onto what it holds.
+local function Strip(y)
+    local strip = body.tabStrip
+    local t, all = Tab()
+    for _, b in ipairs(strip.tabs) do b:Hide() end
+    strip:SetShown(#all > 1)
+    if #all < 2 then return y end
+    strip:ClearAllPoints()
+    strip:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y)
+    strip:SetPoint("TOPRIGHT", body, "TOPRIGHT", 0, y)
+    local x = 0
+    for i, one in ipairs(all) do
+        local b = strip.tabs[i]
+        b.id = one.id
+        b.text:SetText(TAB_NAMES[one.id])
+        b:SetWidth(math.ceil(b.text:GetStringWidth()) + 24)
+        b:ClearAllPoints()
+        b:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", x, 0)
+        local on = one == t
+        local bg = on and C.selected or C.ink
+        b.bg:SetColorTexture(bg[1], bg[2], bg[3], 1)
+        for _, line in ipairs(b.edge) do
+            local c = on and C.gold or C.goldDark
+            line:SetColorTexture(c[1], c[2], c[3], 1)
+        end
+        b.edge[2]:SetShown(not on)
+        local c = on and C.goldBright or C.dim
+        b.text:SetTextColor(c[1], c[2], c[3])
+        b:Show()
+        x = x + b:GetWidth() + 4
+    end
+    return y - PIECE_TAB_H - 10
+end
+
+-- Shown, the tabs, and the chosen tab's controls, one to a line. Should a
+-- tab ever hold more than the column (none does: the harness measures
+-- every one), its lines close up rather than run into the footer.
 local function Lay()
     laid = Laid()
-    for _, c in pairs(controls) do c:Hide() end
-    local y = -(math.ceil(body.scope:GetStringHeight()) + 40)
-    for _, row in ipairs(Rows()) do
-        -- one to a row
-        for _, field in ipairs(row) do
+    local t = Tab()
+    window.tab = t.id
+    local function Down(gap)
+        for _, c in pairs(controls) do c:Hide() end
+        local y = -30
+        if E.PIECES[piece].type ~= "cell" and E.PIECES[piece].type ~= "bar" then
+            local c = controls.shown
+            c:ClearAllPoints()
+            c:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y)
+            c:Show()
+            y = y - c:GetHeight() - gap
+        end
+        y = Strip(y)
+        for _, field in ipairs(t.fields) do
             local c = controls[field]
             c:ClearAllPoints()
             c:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y)
-            if c.SetWidth then c:SetWidth(BODY_W) end
             c:Show()
-            y = y - c:GetHeight() - GAP
+            y = y - c:GetHeight() - gap
         end
+        controls.reset:Show()
+        return -(y + gap)
     end
-    controls.reset:Show()
+    -- (the body's height from the window's sizes: read off the body, it is
+    -- 0 until the game first lays it out)
+    if Down(GAP) > H - (TOP + 4) - FOOT then Down(2) end
 end
 
 -- ------------------------------------------------------------ choosing
@@ -265,6 +331,36 @@ local function Scope()
     return NOTES[frame.id] .. " " .. whose .. (shown and "" or why)
 end
 
+-- ------------------------------------------------------------ the list
+-- The pieces in groups, each under its heading, in the frame's order.
+local GROUPS = {
+    { name = "Frame", types = { cell = true, bar = true } },
+    { name = "Texts", types = { text = true } },
+    { name = "Icons", types = { icon = true } },
+    { name = "Auras", types = { row = true } },
+}
+
+-- The list's i-th line, made the first time it is wanted: a piece (its
+-- name, lit when chosen, a mark when changed) or a group's heading.
+local function List(i)
+    local row = list.rows[i]
+    if row then return row end
+    row = CreateFrame("Button", nil, list)
+    row.lit = UI.Fill(row, "BACKGROUND", C.selected, 1)
+    row.lit:SetAllPoints()
+    row.text = UI.Serif(row, 13, C.text)
+    row.text:SetPoint("LEFT", 10, 0)
+    row.head = UI.Plain(row, 10, C.goldDark)
+    row.head:SetPoint("BOTTOMLEFT", 8, 1)
+    -- a mark on a piece the player changed
+    row.mark = UI.Fill(row, "ARTWORK", C.gold)
+    row.mark:SetSize(4, 4)
+    row.mark:SetPoint("RIGHT", -8, 0)
+    row:SetScript("OnClick", function(self) if self.piece then Choose(frame.id, self.piece) end end)
+    list.rows[i] = row
+    return row
+end
+
 -- ------------------------------------------------------------ refresh
 function Refresh()
     if not window or not window:IsShown() then return end
@@ -276,21 +372,58 @@ function Refresh()
         b.bg:SetColorTexture(bg[1], bg[2], bg[3], 1)
         b.text:SetTextColor(text[1], text[2], text[3])
     end
-    for i, row in ipairs(list.rows) do
-        local id = frame.pieces[i]
-        row:SetShown(id ~= nil)
-        if id then
-            row.piece = id
-            row.text:SetText(E.PIECES[id].label)
-            row.lit:SetShown(id == piece)
-            local edited = E.Edits(frame, id) ~= nil
-            local c = id == piece and C.goldBright or edited and C.text or C.dim
-            row.text:SetTextColor(c[1], c[2], c[3])
-            row.mark:SetShown(edited)
+    -- the pieces under their group's heading; a group the frame has none
+    -- of, no heading
+    local i, y = 0, -6
+    for _, group in ipairs(GROUPS) do
+        local ids = {}
+        for _, id in ipairs(frame.pieces) do
+            if group.types[E.PIECES[id].type] then ids[#ids + 1] = id end
+        end
+        if #ids > 0 then
+            i = i + 1
+            local head = List(i)
+            head.piece = nil
+            head.heading = group.name
+            head:EnableMouse(false)
+            head:SetHeight(HEAD_H)
+            head.lit:Hide()
+            head.mark:Hide()
+            head.text:Hide()
+            head.head:SetText(group.name:upper())
+            head.head:Show()
+            head:ClearAllPoints()
+            head:SetPoint("TOPLEFT", 4, y)
+            head:SetPoint("TOPRIGHT", -4, y)
+            head:Show()
+            y = y - HEAD_H - 4
+            for _, id in ipairs(ids) do
+                i = i + 1
+                local row = List(i)
+                row.piece = id
+                row.heading = nil
+                row:EnableMouse(true)
+                row:SetHeight(ROW_H)
+                row.head:Hide()
+                row.text:SetText(E.PIECES[id].label)
+                row.text:Show()
+                row.lit:SetShown(id == piece)
+                local edited = E.Edits(frame, id) ~= nil
+                local c = id == piece and C.goldBright or edited and C.text or C.dim
+                row.text:SetTextColor(c[1], c[2], c[3])
+                row.mark:SetShown(edited)
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", 4, y)
+                row:SetPoint("TOPRIGHT", -4, y)
+                row:Show()
+                y = y - ROW_H - 2
+            end
         end
     end
+    for k = i + 1, #list.rows do list.rows[k]:Hide() end
     body.title:SetText(E.PIECES[piece].label)
-    body.scope:SetText(Scope())
+    -- (the canvas sets it as it draws, too: the room it leaves)
+    stage.scope:SetText(Scope())
     for field, c in pairs(controls) do
         if c:IsShown() and c.Refresh then
             -- a hidden piece's other fields stay set, but wait
@@ -347,6 +480,8 @@ local function Chips(from, to)
     chips = {}
     local n = #E.PREVIEWS
     local w = math.floor((to - from - (n - 1) * 4) / n)
+    -- (what the rounding leaves, either side alike)
+    from = from + math.floor((to - from - n * w - (n - 1) * 4) / 2)
     for i, p in ipairs(E.PREVIEWS) do
         local b = CreateFrame("Button", nil, window)
         b:SetSize(w, CHIP_H)
@@ -448,10 +583,22 @@ local function Window()
     x.text:SetText("x")
     x:SetScript("OnClick", function() window:Hide() end)
 
-    -- the frames, as tabs
+    -- the frames, as tabs: the console's (per profile), then the widgets
+    -- (shared), each group under its caption
     tabs = {}
-    local left = PAD
+    window.captions = {}
+    local left, group = PAD, nil
     for i, f in ipairs(E.FRAMES) do
+        local console = ns.PER_PROFILE[f.key] and true or false
+        if console ~= group then
+            if group ~= nil then left = left + 10 end
+            group = console
+            local cap = UI.Plain(window, 9, C.goldDark)
+            cap:SetPoint("BOTTOMLEFT", window, "TOPLEFT", left + 2, -(TAB_Y - 2))
+            cap:SetText(console and "CONSOLE" or "WIDGETS")
+            window.captions[#window.captions + 1] = cap
+            cap.first = f
+        end
         local b = CreateFrame("Button", nil, window)
         b:SetHeight(TAB_H)
         b.bg = UI.Fill(b, "BACKGROUND", C.ink, 1)
@@ -461,7 +608,7 @@ local function Window()
         b.text:SetPoint("CENTER", 0, 0)
         b.text:SetText(f.name)
         b:SetWidth(math.ceil(b.text:GetStringWidth()) + 24)
-        b:SetPoint("TOPLEFT", window, "TOPLEFT", left, -(PAD + 14))
+        b:SetPoint("TOPLEFT", window, "TOPLEFT", left, -TAB_Y)
         left = left + b:GetWidth() + 4
         b.frame = f
         b:SetScript("OnClick", function(self) Choose(self.frame.id, piece) end)
@@ -469,51 +616,54 @@ local function Window()
     end
     local rule = UI.Fill(window, "ARTWORK", C.gold)
     rule:SetHeight(1)
-    rule:SetPoint("TOPLEFT", PAD, -(PAD + 14 + TAB_H))
-    rule:SetPoint("TOPRIGHT", -PAD, -(PAD + 14 + TAB_H))
+    rule:SetPoint("TOPLEFT", PAD, -(TAB_Y + TAB_H))
+    rule:SetPoint("TOPRIGHT", -PAD, -(TAB_Y + TAB_H))
 
-    -- the frame's pieces
+    -- the frame's pieces, in groups (Refresh lays them)
     list = CreateFrame("Frame", nil, window)
-    list:SetPoint("TOPLEFT", PAD, -(PAD + 14 + TAB_H + 10))
+    list:SetPoint("TOPLEFT", PAD, -TOP)
     list:SetPoint("BOTTOMLEFT", PAD, FOOT)
     list:SetWidth(LIST_W)
     UI.Skin(list, C.ink)
     list.rows = {}
-    local most = 0
-    for _, f in ipairs(E.FRAMES) do most = math.max(most, #f.pieces) end
-    for i = 1, most do
-        local row = CreateFrame("Button", nil, list)
-        row:SetHeight(ROW_H)
-        row:SetPoint("TOPLEFT", 4, -6 - (i - 1) * (ROW_H + 2))
-        row:SetPoint("TOPRIGHT", -4, -6 - (i - 1) * (ROW_H + 2))
-        row.lit = UI.Fill(row, "BACKGROUND", C.selected, 1)
-        row.lit:SetAllPoints()
-        row.text = UI.Serif(row, 13, C.text)
-        row.text:SetPoint("LEFT", 10, 0)
-        -- a mark on a piece the player changed
-        row.mark = UI.Fill(row, "ARTWORK", C.gold)
-        row.mark:SetSize(4, 4)
-        row.mark:SetPoint("RIGHT", -8, 0)
-        row:SetScript("OnClick", function(self) Choose(frame.id, self.piece) end)
-        list.rows[i] = row
-    end
 
-    -- the chosen piece's controls, down the right
+    -- the chosen piece's controls, down the right: its name and Reset
+    -- piece, Shown, its tabs, the chosen tab's controls
     body = CreateFrame("Frame", nil, window)
-    body:SetPoint("TOPRIGHT", window, "TOPRIGHT", -PAD - 4, -(PAD + 14 + TAB_H + 14))
+    body:SetPoint("TOPRIGHT", window, "TOPRIGHT", -PAD - 4, -(TOP + 4))
     body:SetPoint("BOTTOMRIGHT", -PAD - 4, FOOT)
     body:SetWidth(BODY_W)
     body.title = UI.Serif(body, 16, C.goldBright)
     body.title:SetPoint("TOPLEFT", 0, -2)
-    body.scope = UI.Plain(body, 11, C.dim)
-    body.scope:SetPoint("TOPLEFT", 0, -24)
-    body.scope:SetWidth(BODY_W)
-    body.scope:SetJustifyH("LEFT")
+    local strip = CreateFrame("Frame", nil, body)
+    strip:SetHeight(PIECE_TAB_H)
+    strip.tabs = {}
+    for i = 1, 3 do
+        local b = CreateFrame("Button", nil, strip)
+        b:SetHeight(PIECE_TAB_H)
+        b.bg = UI.Fill(b, "BACKGROUND", C.ink, 1)
+        b.bg:SetAllPoints()
+        b.edge = UI.Outline(b, "BORDER", C.goldDark, 0)
+        b.text = UI.Serif(b, 12, C.dim)
+        b.text:SetPoint("CENTER", 0, 0)
+        b:SetScript("OnClick", function(self)
+            tab = self.id
+            Lay()
+            Refresh()
+        end)
+        b:Hide()
+        strip.tabs[i] = b
+    end
+    strip.rule = UI.Fill(strip, "ARTWORK", C.gold)
+    strip.rule:SetHeight(1)
+    strip.rule:SetPoint("BOTTOMLEFT", 0, 0)
+    strip.rule:SetPoint("BOTTOMRIGHT", 0, 0)
+    body.tabStrip = strip
 
     -- the canvas, between
     stage = ns.EditorStage(window)
     stage:SetPoint("TOPLEFT", list, "TOPRIGHT", 10, 0)
-    stage:SetSize(W - 2 * PAD - LIST_W - 10 - 14 - BODY_W - 4, H - (PAD + 14 + TAB_H + 10) - FOOT)
+    stage:SetSize(W - 2 * PAD - LIST_W - 10 - 14 - BODY_W - 4, H - TOP - FOOT)
     local specs = Specs()
     for field, spec in pairs(specs) do
         if type(spec.tip) == "function" then
@@ -521,13 +671,14 @@ local function Window()
             spec.tip = nil
             spec.tipFn = fn
         end
+        -- one line each, the label at the left (the settings window's rows)
         local c
         if spec.kind == "check" then
-            c = UI.Check(body, spec, 200)
+            c = UI.Check(body, spec, BODY_W, true)
         elseif spec.kind == "choice" then
-            c = UI.Choice(body, spec, 200)
+            c = UI.Choice(body, spec, BODY_W, true)
         else
-            c = UI.Slider(body, spec, 200)
+            c = UI.Slider(body, spec, BODY_W, true)
         end
         controls[field] = c
     end
@@ -537,7 +688,8 @@ local function Window()
     -- into the footer (2026-11-13: the buffs')
     controls.reset:SetPoint("TOPRIGHT", body, "TOPRIGHT", 0, 0)
 
-    -- the footer
+    -- the footer: Preview | the canvas's chips, under their caption |
+    -- Reset frame, Close
     local foot = UI.Fill(window, "ARTWORK", C.goldDark)
     foot:SetHeight(1)
     foot:SetPoint("BOTTOMLEFT", PAD, FOOT - 8)
@@ -553,7 +705,18 @@ local function Window()
         "Every piece of this frame back to how it draws it.")
     reset:SetPoint("RIGHT", close, "LEFT", -8, 0)
     window.reset = reset
-    Chips(PAD + 100 + 12, W - PAD - 96 - 8 - 100 - 12)
+    local from, to = PAD + 100 + 18, W - PAD - 96 - 8 - 100 - 18
+    window.dividers = {}
+    for i, x in ipairs({ from - 9, to + 9 }) do
+        local d = UI.Fill(window, "ARTWORK", C.goldDark)
+        d:SetSize(1, 20)
+        d:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", x, 12)
+        window.dividers[i] = d
+    end
+    Chips(from, to)
+    window.chipsCaption = UI.Plain(window, 9, C.goldDark)
+    window.chipsCaption:SetPoint("BOTTOMLEFT", chips[1], "TOPLEFT", 2, 4)
+    window.chipsCaption:SetText("SHOW ON THE CANVAS")
 
     -- its parts, by name (the harness reads them)
     window.tabs, window.list, window.body, window.controls = tabs, list, body, controls
@@ -599,5 +762,7 @@ E.ui = {
     SetPlace = SetPlace,
     Mirrored = function() return Mirrored() end,
     Window = function() return window end,
+    -- what the frame is and whose, over the canvas
+    Scope = function() return frame and Scope() or "" end,
     Refresh = function() Refresh() end,
 }
