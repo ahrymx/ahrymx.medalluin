@@ -8077,6 +8077,29 @@ if args[2] == "widgets" or args[3] == "widgets" then
         print("raid1 sheeped", "cc=" .. tostring(b.ccWidget.shown and b.ccWidget.icon.texture))
         held.raid1 = nil
         fire("UNIT_AURA", "raid1")
+        -- the console's frames hear their own units' auras: an event goes
+        -- to the frames registered for its unit only, as the game sends it
+        -- (one frame registered unit by unit heard the last only, party4:
+        -- the player's and target's rows went stale, 2026-11-13)
+        local function unitFire(e, unit)
+            for _, f in ipairs(events[e] or {}) do
+                if not (f.unitOf and f.unitOf[e]) or f.unitOf[e] == unit then f.scripts.OnEvent(f, e, unit) end
+            end
+        end
+        exists.target = true
+        held.target = { ["HELPFUL|PLAYER"] = { { id = 906, icon = "blessing", spellId = 19740 } } }
+        local sacrifice = { { id = 907, icon = "sacrifice", spellId = 27273, isHarmful = true } }
+        held.player = { HARMFUL = sacrifice, ["HARMFUL|PLAYER"] = sacrifice }
+        unitFire("UNIT_AURA", "target")
+        unitFire("UNIT_AURA", "player")
+        local T, P = ns.units.target, ns.units.player
+        local function first(row) return row and row[1] and row[1].shown and tostring(row[1].icon.texture) or "none" end
+        print("console auras heard", "target buffs=" .. first(T.buffWidgets), "player debuffs=" .. first(P.mineWidgets))
+        held.target, held.player = {}, {}
+        unitFire("UNIT_AURA", "target")
+        unitFire("UNIT_AURA", "player")
+        print("console auras gone", "target buffs=" .. first(T.buffWidgets), "player debuffs=" .. first(P.mineWidgets))
+        held.target, held.player, exists.target = nil, nil, nil
     end
     raidRoster = {}
     harnessHolds["group:raid"] = nil

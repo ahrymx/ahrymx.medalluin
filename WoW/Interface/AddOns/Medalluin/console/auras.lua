@@ -1008,18 +1008,23 @@ function ns.ShapeDispelGlows()
     end
 end
 
-local events = CreateFrame("Frame")
-for _, unit in ipairs({ "player", "target", "party1", "party2", "party3", "party4" }) do
-    ns.RegisterUnitEvent(events, "UNIT_AURA", unit)
-end
-events:SetScript("OnEvent", function(_, _, unit)
+-- A listener per unit: RegisterUnitEvent keeps one unit list per frame
+-- and event, each call replacing the last, so one frame registered unit
+-- by unit heard party4 only (2026-11-13: the player's and target's rows
+-- showed what the last full scan found, until an option scanned again).
+local function OnAura(_, _, unit)
     if ns.units and ns.units[unit] then
         UpdateUnitAuras(ns.units[unit])
     end
     if unit == "player" and ns.partyWidgetPlayer and ns.partyWidgetPlayer.inWidget then
         UpdateUnitAuras(ns.partyWidgetPlayer)
     end
-end)
+end
+for _, unit in ipairs({ "player", "target", "party1", "party2", "party3", "party4" }) do
+    local events = CreateFrame("Frame")
+    ns.RegisterUnitEvent(events, "UNIT_AURA", unit)
+    events:SetScript("OnEvent", OnAura)
+end
 
 -- A unit's aggro, wherever its frames are.
 local threat = CreateFrame("Frame")
