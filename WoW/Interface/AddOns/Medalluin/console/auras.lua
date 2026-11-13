@@ -614,11 +614,46 @@ end
 -- PLAYER_TARGET_CHANGED reaches this before the call returns. A refused read
 -- ends its list as if the list had, and is marked: the frame scans again once
 -- the call is over (UpdateUnitAuras).
+-- In combat the client may also hand back a secret in place of the aura,
+-- whose fields cannot be read: that ends the list the same way.
 local refused = false
 local function Read(unit, i, filter)
     local ok, aura = pcall(Auras.GetAuraDataByIndex, unit, i, filter)
-    if ok then return aura end
+    if ok and not ns.IsSecret(aura) then return aura end
     refused = true
+    return nil
+end
+
+-- A row's auras by filter, at most max, less those skip(aura) turns away:
+-- a list of { aura, index }, and the filter read. Read by index, as the
+-- tooltips want; where that is refused in combat, the client's whole list
+-- (GetUnitAuras, which holds there; no index: the tooltip goes by the
+-- aura's instance); where that is too, the player's own of them (the
+-- client answers "|PLAYER" where it refuses all; strips/auras.lua). nil
+-- when nothing could be read: the row keeps what it shows until it can.
+local function List(unit, filter, max, skip)
+    local out, broken = {}, false
+    local i = 1
+    while #out < max and i <= 40 do
+        local ok, aura = pcall(Auras.GetAuraDataByIndex, unit, i, filter)
+        if not ok or ns.IsSecret(aura) then broken = true; break end
+        if not aura then break end
+        if not (skip and skip(aura)) then out[#out + 1] = { aura, i } end
+        i = i + 1
+    end
+    if not broken then return out, filter end
+    if Auras.GetUnitAuras then
+        local ok, all = pcall(Auras.GetUnitAuras, unit, filter)
+        if ok and type(all) == "table" and not ns.IsSecret(all) then
+            out = {}
+            for _, aura in ipairs(all) do
+                if #out >= max then break end
+                if not ns.IsSecret(aura) and not (skip and skip(aura)) then out[#out + 1] = { aura } end
+            end
+            return out, filter
+        end
+    end
+    if not filter:find("|PLAYER", 1, true) then return List(unit, filter .. "|PLAYER", max, skip) end
     return nil
 end
 
@@ -723,30 +758,28 @@ local function ScanUnitAuras(b)
 
     -- 3. Buffs: yours, or all (the row's From)
     if b.buffWidgets then
-        for _, btn in ipairs(b.buffWidgets) do btn:Hide() end
+        local list, filter
         if Shows(b, "buffs") and Auras and Auras.GetAuraDataByIndex then
-            local idx = 1
-            local btnIdx = 1
-            local max = ns.RowMax(b, "buffs")
-            local filter = ns.RowFrom(b, "buffs") == "all" and "HELPFUL" or "HELPFUL|PLAYER"
-            while btnIdx <= max do
-                local aura = Read(unit, idx, filter)
-                if not aura then break end
-                -- Do not show timeless buffs on the player frame
-                if not (unit == "player" and IsTimeless(unit, aura)) then
-                    local btn = b.buffWidgets[btnIdx]
-                    Holds(btn, unit, aura, filter, idx)
-                    btn.icon:SetTexture(aura.icon)
-                    local n = aura.applications
-                    btn.count:SetText((n and not ns.IsSecret(n) and n > 1) and tostring(n) or "")
-                    if aura.duration and aura.expirationTime and not ns.IsSecret(aura.duration)
-                        and aura.duration > 0 then
-                        btn.cooldown:SetCooldown(aura.expirationTime - aura.duration, aura.duration)
-                    end
-                    btn:Show()
-                    btnIdx = btnIdx + 1
+            -- (not the timeless ones on the player frame)
+            list, filter = List(unit, ns.RowFrom(b, "buffs") == "all" and "HELPFUL" or "HELPFUL|PLAYER",
+                ns.RowMax(b, "buffs"), unit == "player" and function(aura) return IsTimeless(unit, aura) end)
+            if not list then refused = true end
+        else
+            list = {}
+        end
+        if list then
+            for _, btn in ipairs(b.buffWidgets) do btn:Hide() end
+            for k, got in ipairs(list) do
+                local aura, btn = got[1], b.buffWidgets[k]
+                Holds(btn, unit, aura, filter, got[2])
+                btn.icon:SetTexture(aura.icon)
+                local n = aura.applications
+                btn.count:SetText((n and not ns.IsSecret(n) and n > 1) and tostring(n) or "")
+                if aura.duration and aura.expirationTime and not ns.IsSecret(aura.duration)
+                    and not ns.IsSecret(aura.expirationTime) and aura.duration > 0 then
+                    btn.cooldown:SetCooldown(aura.expirationTime - aura.duration, aura.duration)
                 end
-                idx = idx + 1
+                btn:Show()
             end
         end
     end
@@ -788,27 +821,29 @@ local function ScanUnitAuras(b)
 
     -- 5. Debuffs: yours (on an enemy), or all (the row's From)
     if b.mineWidgets then
-        local n = 0
+        local list, filter
         if Shows(b, "mine") and Auras and Auras.GetAuraDataByIndex then
-            local max = ns.RowMax(b, "mine")
-            local filter = ns.RowFrom(b, "mine") == "all" and "HARMFUL" or "HARMFUL|PLAYER"
-            while n < max do
-                local aura = Read(unit, n + 1, filter)
-                if not aura then break end
-                n = n + 1
-                local btn = b.mineWidgets[n]
-                Holds(btn, unit, aura, filter, n)
+            list, filter = List(unit, ns.RowFrom(b, "mine") == "all" and "HARMFUL" or "HARMFUL|PLAYER",
+                ns.RowMax(b, "mine"))
+            if not list then refused = true end
+        else
+            list = {}
+        end
+        if list then
+            for n, got in ipairs(list) do
+                local aura, btn = got[1], b.mineWidgets[n]
+                Holds(btn, unit, aura, filter, got[2])
                 btn.icon:SetTexture(aura.icon)
                 local stacks = aura.applications
                 btn.count:SetText((stacks and not ns.IsSecret(stacks) and stacks > 1) and tostring(stacks) or "")
                 if aura.duration and aura.expirationTime and not ns.IsSecret(aura.duration)
-                    and aura.duration > 0 then
+                    and not ns.IsSecret(aura.expirationTime) and aura.duration > 0 then
                     btn.cooldown:SetCooldown(aura.expirationTime - aura.duration, aura.duration)
                 end
             end
+            for k, btn in ipairs(b.mineWidgets) do btn:SetShown(k <= #list) end
+            if b.mineLaid then b.mineLaid(#list) end
         end
-        for k, btn in ipairs(b.mineWidgets) do btn:SetShown(k <= n) end
-        if b.mineLaid then b.mineLaid(n) end
     end
 end
 

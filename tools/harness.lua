@@ -7668,11 +7668,27 @@ if args[2] == "widgets" or args[3] == "widgets" then
     local held = {}
     if C_UnitAuras then
         local saved = C_UnitAuras.GetAuraDataByIndex
-        C_UnitAuras.GetAuraDataByIndex = function(unit, i, filter)
-            if not held[unit] then return saved(unit, i, filter) end
-            local a = held[unit][filter] and held[unit][filter][i]
+        local function data(a)
             return a and { auraInstanceID = a.id, icon = a.icon, spellId = a.spellId, isHarmful = a.isHarmful,
                 applications = 0, duration = 0, expirationTime = 0 }
+        end
+        -- in combat the client may refuse a filter's read (held[unit].refuse)
+        -- or hand back a secret for the aura (held[unit].secret); its whole
+        -- list may be refused too (held[unit].noList)
+        C_UnitAuras.GetAuraDataByIndex = function(unit, i, filter)
+            if not held[unit] then return saved(unit, i, filter) end
+            if held[unit].refuse and held[unit].refuse[filter] then error("refused") end
+            local a = held[unit][filter] and held[unit][filter][i]
+            if a and held[unit].secret and held[unit].secret[filter] then return secret() end
+            return data(a)
+        end
+        local savedList = C_UnitAuras.GetUnitAuras
+        C_UnitAuras.GetUnitAuras = function(unit, filter, ...)
+            if not held[unit] then return savedList and savedList(unit, filter, ...) end
+            if held[unit].noList then error("refused") end
+            local out = {}
+            for i, a in ipairs(held[unit][filter] or {}) do out[i] = data(a) end
+            return out
         end
     end
     local exists = {}
@@ -8100,6 +8116,35 @@ if args[2] == "widgets" or args[3] == "widgets" then
         unitFire("UNIT_AURA", "target")
         unitFire("UNIT_AURA", "player")
         print("console auras gone", "target buffs=" .. first(T.buffWidgets), "player debuffs=" .. first(P.mineWidgets))
+        -- in combat (2026-11-13: the player's and target's rows emptied
+        -- there): the target's buffs refused by index come from the whole
+        -- list; the player's debuffs, a secret by index and the list
+        -- refused, are the player's own of them; the tooltip goes by the
+        -- instance where there is no index
+        local blessing = { { id = 908, icon = "might", spellId = 19740 } }
+        held.target = { ["HELPFUL|PLAYER"] = blessing, refuse = { ["HELPFUL|PLAYER"] = true } }
+        held.player = { HARMFUL = sacrifice, ["HARMFUL|PLAYER"] = sacrifice, secret = { HARMFUL = true },
+            noList = true }
+        unitFire("UNIT_AURA", "target")
+        unitFire("UNIT_AURA", "player")
+        local function holds(row)
+            local btn = row[1]
+            return tostring(btn.auraInstanceID) .. "/" .. tostring(btn.auraIndex) .. "/" .. tostring(btn.filter)
+        end
+        print("console auras in combat", "target buffs=" .. first(T.buffWidgets) .. " " .. holds(T.buffWidgets),
+            "player debuffs=" .. first(P.mineWidgets) .. " " .. holds(P.mineWidgets))
+        -- nothing readable at all: the rows keep what they show
+        held.target.noList = true
+        held.player.refuse = { HARMFUL = true, ["HARMFUL|PLAYER"] = true }
+        unitFire("UNIT_AURA", "target")
+        unitFire("UNIT_AURA", "player")
+        print("console auras refused", "target buffs=" .. first(T.buffWidgets), "player debuffs=" .. first(P.mineWidgets))
+        -- readable again, and gone: cleared
+        held.target, held.player = {}, {}
+        unitFire("UNIT_AURA", "target")
+        unitFire("UNIT_AURA", "player")
+        print("console auras cleared after", "target buffs=" .. first(T.buffWidgets),
+            "player debuffs=" .. first(P.mineWidgets))
         held.target, held.player, exists.target = nil, nil, nil
     end
     raidRoster = {}
