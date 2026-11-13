@@ -30,6 +30,8 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 |:---:|:---:|
 | ![The quest tracker's full view above the chat box, with a quest's tooltip](showcase/quest-tracker.png) | ![The quest log on the right strip, quests by zone with their XP, item and coin rewards](showcase/quest-log.png) |
 
+![A quest's page: its level, zone, giver, step in its chain and status, the chain spelt out, then its objectives, description and rewards](showcase/quest-page.png)
+
 ![The chat box with its tabs, above the left strip's portrait and micro menu](showcase/chat.png)
 
 ### Character, Spells & Bags
