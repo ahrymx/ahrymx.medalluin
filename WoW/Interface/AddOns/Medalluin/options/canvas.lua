@@ -25,6 +25,14 @@ local CC_TIME = 8           -- the previewed crowd control's sweep, looping
 
 local stage, holder
 local fit                 -- the reach each copy was fitted to, held still while a box is dragged
+-- The view: zoom over the fitted scale (ZOOM_MIN to ZOOM_MAX), and the pan, the
+-- holder's centre moved from its fitted place in stage units (the
+-- screen's size, whatever the zoom). A new frame tab fits again; another
+-- piece of the same frame keeps it. last: what the last Draw fitted.
+local ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, DOUBLE = 0.25, 4, 1.25, 0.3
+local view = { zoom = 1, x = 0, y = 0 }
+local last
+local function Refit() view.zoom, view.x, view.y = 1, 0, 0 end
 local settling            -- a second drawing waits for the next frame
 local proxies = {}        -- the copies, in use and spare
 local boxes = {}          -- a box per piece per copy, in use and spare
@@ -516,6 +524,153 @@ end
 -- it in, and the refit under it threw it thousands of pixels away).
 local SLOP = 3
 
+-- The holder at the view's zoom and pan, the pan held to what the zoom
+-- hides: at the fit nothing pans, zoomed in an edge comes to the room's
+-- edge and no further. The holder's own 6 down is in its units.
+local function Scale() return last.scale * view.zoom end
+local function Clamp()
+    local s = Scale()
+    local mx = math.max(0, (last.w * s - last.roomW) / 2)
+    local my = math.max(0, (last.h * s - last.roomH) / 2)
+    view.x = math.max(-mx, math.min(mx, view.x))
+    view.y = math.max(-my, math.min(my, view.y))
+end
+-- The grid behind the copies: a line every MINOR of the frame's pixels, a
+-- brighter one every MAJOR, from the first copy's top left (its pixel 0),
+-- so it moves and grows with the view. Lines closer than SPARSE stage
+-- units are left out (the minor ones first), and none crosses the edge.
+local MINOR, MAJOR, SPARSE, INSIDE = 10, 50, 5, 3
+local GRID_MINOR, GRID_MAJOR = { 1, 1, 1, 0.035 }, { 0.541, 0.439, 0.204, 0.22 }
+local grid = { v = {}, h = {} }
+local function GridLine(list, i)
+    local t = list[i]
+    if not t then
+        t = stage:CreateTexture(nil, "BACKGROUND", nil, 3)
+        list[i] = t
+    end
+    return t
+end
+-- The lines down (vertical) or across from origin o, a stage unit apart
+-- by step, within the stage's span.
+local function Lines(list, vertical, o, step, span, other)
+    local n = 0
+    local mod = MAJOR / MINOR
+    local sparse = step < SPARSE
+    if step * mod >= SPARSE then
+        local k = math.ceil((INSIDE - o) / step)
+        while true do
+            local at = o + k * step
+            if at > span - INSIDE then break end
+            local major = k % mod == 0
+            if major or not sparse then
+                n = n + 1
+                local t = GridLine(list, n)
+                local c = major and GRID_MAJOR or GRID_MINOR
+                t:SetColorTexture(c[1], c[2], c[3], c[4])
+                t:ClearAllPoints()
+                if vertical then
+                    t:SetPoint("TOPLEFT", stage, "TOPLEFT", at, -INSIDE)
+                    t:SetSize(1, other - 2 * INSIDE)
+                else
+                    t:SetPoint("TOPLEFT", stage, "TOPLEFT", INSIDE, -at)
+                    t:SetSize(other - 2 * INSIDE, 1)
+                end
+                t:Show()
+            end
+            k = k + 1
+        end
+    end
+    for i = n + 1, #list do list[i]:Hide() end
+    return n
+end
+local function Grid()
+    local w, h = stage:GetWidth() or 0, stage:GetHeight() or 0
+    local p = proxies[1]
+    local k = stage:GetEffectiveScale()
+    local ox, oy
+    if p and p:IsShown() and p:GetLeft() and stage:GetLeft() then
+        local q = p:GetEffectiveScale() / k
+        ox, oy = p:GetLeft() * q - stage:GetLeft(), stage:GetTop() - p:GetTop() * q
+    end
+    if not ox then
+        for _, t in ipairs(grid.v) do t:Hide() end
+        for _, t in ipairs(grid.h) do t:Hide() end
+        grid.across, grid.down = 0, 0
+        return
+    end
+    local step = MINOR * Scale()
+    grid.across = Lines(grid.v, true, ox, step, w, h)
+    grid.down = Lines(grid.h, false, oy, step, h, w)
+end
+
+local function Lay()
+    if not last then return end
+    Clamp()
+    local s = Scale()
+    holder:SetScale(s)
+    holder:ClearAllPoints()
+    holder:SetPoint("CENTER", stage, "CENTER", view.x / s, view.y / s - 6)
+    Grid()
+end
+
+-- Whether a box is being dragged (a press that has moved).
+local function Dragging()
+    for _, o in ipairs(boxes) do if o.from and o.from.moved then return true end end
+    return false
+end
+
+-- The pointer, in stage units from the stage's middle.
+local function FromMiddle()
+    local x, y = GetCursorPosition()
+    local k = stage:GetEffectiveScale()
+    local l, r, t, b = stage:GetLeft(), stage:GetRight(), stage:GetTop(), stage:GetBottom()
+    if not (l and r and t and b) then return 0, 0 end
+    return x / k - (l + r) / 2, y / k - (t + b) / 2
+end
+
+-- The wheel: a step in or out, about the point under the pointer, which
+-- stays under it. Not while a box is dragged (its drag measures at the
+-- scale it was pressed at).
+local function Wheel(_, delta)
+    if not last or Dragging() then return end
+    local cx, cy = FromMiddle()
+    local s = Scale()
+    -- the drawing's point under the pointer, from the holder's middle
+    local dx, dy = (cx - view.x) / s, (cy - (view.y - 6 * s)) / s
+    view.zoom = math.max(ZOOM_MIN, math.min(ZOOM_MAX, view.zoom * ZOOM_STEP ^ delta))
+    local s2 = Scale()
+    view.x, view.y = cx - dx * s2, cy - dy * s2 + 6 * s2
+    Draw()
+end
+
+-- A press on the canvas (not a box): a second within DOUBLE of the first,
+-- where it was, fits again; else a pan, once it has moved SLOP.
+local function Press(self, button)
+    if button and button ~= "LeftButton" then return end
+    local x, y = GetCursorPosition()
+    local was = self.pressed
+    if was and GetTime() - was.t < DOUBLE and math.abs(x - was.x) < SLOP and math.abs(y - was.y) < SLOP then
+        self.pressed, self.pan = nil, nil
+        Refit()
+        Draw()
+        return
+    end
+    self.pressed = { t = GetTime(), x = x, y = y }
+    self.pan = { x = x, y = y, vx = view.x, vy = view.y }
+end
+local function Panning(self)
+    local pan = self.pan
+    if not pan or not last then return end
+    local x, y = GetCursorPosition()
+    if not pan.moved then
+        if math.abs(x - pan.x) < SLOP and math.abs(y - pan.y) < SLOP then return end
+        pan.moved = true
+    end
+    local k = self:GetEffectiveScale()
+    view.x, view.y = pan.vx + (x - pan.x) / k, pan.vy + (y - pan.y) / k
+    Lay()
+end
+
 local function Drag(self)
     local from = self.from
     local x, y = GetCursorPosition()
@@ -687,6 +842,10 @@ end
 function Draw()
     if not stage or not stage:IsVisible() then return end
     local frame, piece = E.ui.Chosen()
+    if view.frame ~= frame.id then
+        Refit()
+        view.frame = frame.id
+    end
     stage.title:SetText(frame.name .. "  >  " .. E.PIECES[piece].label)
     local models = Models(frame)
     stage.note:SetShown(#models == 0)
@@ -723,7 +882,8 @@ function Draw()
     if width > 0 then scale = math.min(scale, roomW / width) end
     if height > 0 then scale = math.min(scale, roomH / height) end
     scale = math.max(scale, 0.1)
-    holder:SetScale(scale)
+    last = { scale = scale, w = width, h = height, roomW = roomW, roomH = roomH }
+    Lay()
     holder:SetSize(math.max(width, 1), math.max(height, 1))
     local y = 0
     for k = 1, #models do
@@ -733,6 +893,8 @@ function Draw()
         p:SetPoint("TOPLEFT", holder, "TOPLEFT", -left, -y)
         y = y - reach[k].b
     end
+    -- (the grid starts at the first copy, now in its place)
+    if last then Grid() end
     -- a box round the chosen piece on each copy, and on nothing else
     local n = 0
     local kind = E.PIECES[piece].type
@@ -794,6 +956,7 @@ end
 
 -- The previewed crowd control's sweep, again as it runs out, its seconds on it.
 local function Tick(self, elapsed)
+    Panning(self)
     self.wait = (self.wait or 0) - elapsed
     if self.wait > 0 then return end
     self.wait = 0.1
@@ -827,19 +990,30 @@ function ns.EditorStage(parent)
     stage.preview:SetPoint("BOTTOMLEFT", 10, 24)
     stage.hint = UI.Plain(stage, 10, C.dim)
     stage.hint:SetPoint("BOTTOMLEFT", 10, 8)
-    stage.hint:SetText("Drag the box  ·  arrows nudge  ·  the frames on screen follow")
+    stage.hint:SetText("Drag the box  ·  arrows nudge  ·  wheel zooms  ·  drag the canvas to pan  ·  double-click fits")
     stage.note = UI.Plain(stage, 12, C.dim)
     stage.note:SetPoint("CENTER", 0, 0)
     stage.note:SetPoint("LEFT", 20, 0)
     stage.note:SetPoint("RIGHT", -20, 0)
     holder = CreateFrame("Frame", nil, stage)
     holder:SetPoint("CENTER", stage, "CENTER", 0, -6)
+    -- the wheel zooms at the pointer, a drag off the box pans, a double
+    -- click fits (and the canvas no longer moves the window)
+    stage:EnableMouse(true)
+    stage:EnableMouseWheel(true)
+    stage:SetScript("OnMouseWheel", Wheel)
+    stage:SetScript("OnMouseDown", Press)
+    stage:SetScript("OnMouseUp", function(self) self.pan = nil end)
     stage:SetScript("OnShow", function() Draw() end)
     stage:SetScript("OnSizeChanged", function() Draw() end)
     stage:SetScript("OnUpdate", Tick)
-    stage:SetScript("OnHide", function() for _, o in ipairs(boxes) do o.from = nil end end)
+    stage:SetScript("OnHide", function(self)
+        for _, o in ipairs(boxes) do o.from = nil end
+        self.pan = nil
+    end)
     -- its parts, by name (the harness reads them)
     stage.holder, stage.proxies, stage.boxes, stage.dots, stage.guides = holder, proxies, boxes, dots, guides
+    stage.view, stage.grid = view, grid
     return stage
 end
 

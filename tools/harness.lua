@@ -9527,6 +9527,131 @@ local function EditorPass()
     local rp = w.controls.reset.points.TOPRIGHT
     print("  reset piece at", rp and (tostring(rp[1] == w.controls.reset.parent and "body") .. "." .. tostring(rp[2])
         .. "," .. tostring(rp[3]) .. "," .. tostring(rp[4])) or "elsewhere")
+    -- the view: the wheel zooms about the pointer, a drag off the box pans,
+    -- a double click fits; a new tab fits, another piece keeps the view
+    do
+        choose("unit", "buffs")
+        local realCursor = GetCursorPosition
+        local cx, cy = 0, 0
+        function GetCursorPosition() return cx, cy end
+        local k = cv:GetEffectiveScale()
+        local midX = (cv:GetLeft() + cv:GetRight()) / 2 * k
+        local midY = (cv:GetTop() + cv:GetBottom()) / 2 * k
+        local fitS = cv.holder.scale
+        local fitLeft, fitTop
+        local p1 = cv.proxies[1]
+        -- the copy's own point under the pointer, in its units
+        local function under()
+            local q = p1:GetEffectiveScale()
+            return cx / q - p1:GetLeft(), cy / q - p1:GetTop(), q
+        end
+        local function zoom() return string.format("zoom=%.2f pan=%.1f,%.1f", cv.view.zoom, cv.view.x, cv.view.y) end
+        local function wheel(tag, x, y, delta)
+            cx, cy = x, y
+            local ux, uy = under()
+            cv.scripts.OnMouseWheel(cv, delta)
+            local vx, vy, q = under()
+            print("  view wheel " .. tag, zoom(), string.format("drift=%.2f,%.2f", (vx - ux) * q, (vy - uy) * q))
+        end
+        local function hl() return cv.holder:GetLeft() * cv.holder:GetEffectiveScale() end
+        local function ht() return cv.holder:GetTop() * cv.holder:GetEffectiveScale() end
+        -- two presses, gap seconds apart (a double click when close)
+        local function click(gap)
+            cx, cy = midX, midY
+            cv.scripts.OnMouseDown(cv, "LeftButton")
+            cv.scripts.OnMouseUp(cv, "LeftButton")
+            now = now + gap
+            cv.scripts.OnMouseDown(cv, "LeftButton")
+            cv.scripts.OnMouseUp(cv, "LeftButton")
+            now = now + 1
+        end
+        -- the grid: its lines down and across, and whether a major one runs
+        -- down the first copy's left edge (its pixel 0)
+        local function grid(tag)
+            local g = cv.grid
+            local p = cv.proxies[1]
+            local q = p:GetEffectiveScale() / k
+            local ox = p:GetLeft() * q - cv:GetLeft()
+            local on = false
+            for i = 1, g.across do
+                local t = g.v[i]
+                local pt = t.points.TOPLEFT
+                if t.color and t.color[4] > 0.1 and math.abs(pt[3] - ox) < 0.01 then on = true end
+            end
+            print("  view grid " .. tag, "lines=" .. g.across .. " down, " .. g.down .. " across",
+                "major on the copy's edge=" .. tostring(on))
+        end
+        local function pan(tag, dx, dy)
+            cx, cy = midX + 50, midY + 20
+            local l0, t0 = hl(), ht()
+            cv.scripts.OnMouseDown(cv, "LeftButton")
+            cx, cy = cx + dx, cy + dy
+            cv.scripts.OnUpdate(cv, 0)
+            cv.scripts.OnMouseUp(cv, "LeftButton")
+            now = now + 1
+            print("  view pan " .. tag, zoom(), string.format("moved=%.2f,%.2f", hl() - l0, ht() - t0))
+        end
+        fitLeft, fitTop = hl(), ht()
+        pan("at the fit", 40, 0)
+        wheel("in, middle", midX, midY, 1)
+        grid("zoomed in")
+        -- (sideways: zoomed this little, the drawing still fits the room's
+        -- height, and the clamp holds it level, as it should)
+        wheel("in, off the middle", midX + 100, midY, 1)
+        pan("zoomed", 40, -10)
+        pan("zoomed, 2px (a press, not a pan)", 2, 0)
+        -- far: the drawing's left edge stops at the room's (20 in)
+        pan("far right", 5000, 0)
+        print("  view clamp", string.format("left edge - room's=%.2f", hl() - (cv:GetLeft() + 20) * k))
+        grid("panned far")
+        wheel("out, to the floor", midX, midY, -20)
+        grid("at the floor")
+        click(0.1)
+        grid("at the fit")
+        print("  view fitted", string.format("scale=fit %s", tostring(math.abs(cv.holder.scale - fitS) < 1e-9)),
+            string.format("holder moved=%.2f,%.2f", hl() - fitLeft, ht() - fitTop))
+        -- a double click: two presses close in time fit again; far apart, not
+        wheel("in again", midX, midY, 2)
+        click(0.5)
+        print("  view slow clicks", zoom())
+        click(0.1)
+        print("  view double click", zoom())
+        -- another piece keeps the view; another tab fits
+        wheel("in for pieces", midX, midY, 2)
+        choose("unit", "mine")
+        print("  view another piece", zoom())
+        choose("raid", "value")
+        choose("unit", "buffs")
+        print("  view another tab and back", zoom())
+        -- a box dragged while zoomed lands where it lands at the fit
+        local function placed() local e = E.Edits(E.byId.unit, "buffs") or {}
+            return tostring(e.h) .. "/" .. tostring(e.v) .. " " .. tostring(e.x) .. "," .. tostring(e.y) end
+        GetCursorPosition = realCursor
+        drop(P, "left", "bottom", 30, -12)
+        local atFit = placed()
+        E.ResetPiece(E.byId.unit, "buffs")
+        function GetCursorPosition() return cx, cy end
+        wheel("in to drag", midX, midY, 3)
+        GetCursorPosition = realCursor
+        drop(P, "left", "bottom", 30, -12)
+        print("  view box drag", "fit " .. atFit, "zoomed " .. placed(), zoom())
+        -- the wheel while a box is dragged: nothing
+        function GetCursorPosition() return cx, cy end
+        local o
+        for _, bx in ipairs(cv.boxes) do if bx.shown and cv.proxies[bx.copy].button == P then o = bx end end
+        local before = zoom()
+        cx, cy = midX, midY
+        o.scripts.OnMouseDown(o)
+        cx = cx + 20
+        o.scripts.OnUpdate(o)
+        cv.scripts.OnMouseWheel(cv, 1)
+        local during = zoom()
+        o.scripts.OnMouseUp(o)
+        print("  view wheel in a box drag", before, during)
+        GetCursorPosition = realCursor
+        choose("raid", "value")
+        choose("unit", "level")
+    end
     -- all as it was before this
     P.editShots = keptShots
     ns.SetOption("editUnit", keptEdits)
