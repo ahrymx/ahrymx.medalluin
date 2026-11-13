@@ -100,9 +100,19 @@ local function Specs()
             set = function(v) SetPlace({ y = v }) end, text = Pixels,
             tip = "Pixels from the anchor, up." },
         size = { kind = "slider", label = "Size", min = 6, max = 48,
-            get = function() return Edits().size or math.floor((E.SizeOf(frame, piece) or 12) + 0.5) end,
+            get = function()
+                -- (the debuffs matched to the buffs: theirs)
+                local own = piece == "mine" and E.Matched(frame) and E.BuffSize(frame) or Edits().size
+                return own or math.floor((E.SizeOf(frame, piece) or 12) + 0.5)
+            end,
             set = function(v) SetField("size", v) end,
             tip = "A text's font size, an icon's width and height." },
+        -- the debuffs', while both rows are outside
+        match = { kind = "check", label = "Match buffs size",
+            get = function() return Edits().match == true end,
+            set = function(v) SetField("match", v or E.NIL) end,
+            tip = "The debuffs as large as the buffs, and following them as the buffs' Size changes. Only "
+                .. "while both rows are outside the frame; each keeps its own side." },
         outline = { kind = "choice", label = "Outline", choices = E.OUTLINES,
             get = Outline, set = function(v) SetField("outline", v) end,
             tip = "A dark edge round the letters." },
@@ -132,8 +142,8 @@ local function Specs()
             get = function() return Edits().out == true end,
             set = function(v) SetField("out", v or E.NIL) end,
             tip = "Beyond the frame's outer end, running toward the screen's edge. With buffs and debuffs both "
-                .. "outside, the buffs run along the frame's top, the debuffs its bottom. A drag puts the row "
-                .. "back in the frame." },
+                .. "outside, the debuffs' Next to buffs says where they go. A drag puts the row back in the "
+                .. "frame." },
         -- a widget's: which side, or toward the nearer edge of the screen
         side = { kind = "choice", label = "Place", choices = {
                 { "in", "Inside the frame" }, { "edge", "Toward screen edge" },
@@ -144,8 +154,14 @@ local function Specs()
             end,
             set = function(v) SetField("out", v == "edge" or (v ~= "in" and v) or E.NIL) end,
             tip = "Inside the frame, or beyond one of its ends, running away from it: toward the nearer edge of "
-                .. "the screen, or left or right. Buffs and debuffs out on the same side: the buffs along the "
-                .. "frame's top, the debuffs its bottom. A drag puts the row back in the frame." },
+                .. "the screen, or left or right. Buffs and debuffs out on the same side: the debuffs' Next to "
+                .. "buffs says where they go. A drag puts the row back in the frame." },
+        -- the debuffs', while both rows are out on one side
+        by = { kind = "choice", label = "Next to buffs", choices = {},
+            get = function() return Edits().by or "below" end,
+            set = function(v) SetField("by", v ~= "below" and v or E.NIL) end,
+            tip = "Where the debuffs go while the buffs are outside on the same side: under them, over them, "
+                .. "or beside them." },
         from = { kind = "choice", label = "From", choices = E.FROM,
             get = function()
                 local b = frame.buttons()[1]
@@ -197,9 +213,14 @@ local function Tabs()
         return { { id = "place", fields = place }, { id = "look", fields = look } }
     end
     local out = Mirrored() and "out" or "side"
+    -- the debuffs out with the buffs: a size of the buffs' to take
+    local buffs = E.Edits(frame, "buffs")
+    if piece == "mine" and Edits().out and buffs and buffs.out then look = { "match", "size" } end
     -- a row outside its frame is placed by that: no place, no way to grow
     if Edits().out then
         place = { out, "cols" }
+        -- the debuffs out on the buffs' side: where, beside them
+        if piece == "mine" and E.Stacked(frame, frame.buttons()[1]) then place = { out, "by", "cols" } end
     else
         place = { out, "on", "x", "y", "grow", "cols" }
     end
@@ -301,6 +322,9 @@ local function Choose(id, which)
     controls.grow.spec.choices = Mirrored()
         and { { "inner", "Inward" }, { "outer", "Outward" }, { "up", "Up" }, { "down", "Down" } }
         or { { "inner", "Right" }, { "outer", "Left" }, { "up", "Up" }, { "down", "Down" } }
+    controls.by.spec.choices = Mirrored()
+        and { { "below", "Below" }, { "above", "Above" }, { "outer", "Outward" }, { "inner", "Inward" } }
+        or { { "below", "Below" }, { "above", "Above" }, { "left", "Left" }, { "right", "Right" } }
     Lay()
     Refresh()
     if E.onChoose then E.onChoose() end
@@ -431,6 +455,8 @@ function Refresh()
             local enabled = field == "shown" or field == "reset" or kind == "cell" or kind == "bar"
                 or controls.shown.spec.get() ~= false
             if field == "reset" then enabled = E.Edits(frame, piece) ~= nil end
+            -- the debuffs' size, while it is the buffs'
+            if field == "size" and piece == "mine" and E.Matched(frame) then enabled = false end
             c:Refresh(enabled)
         end
     end

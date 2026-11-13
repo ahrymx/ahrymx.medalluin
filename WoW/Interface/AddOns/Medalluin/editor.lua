@@ -344,6 +344,24 @@ function E.SizeOf(frame, piece)
     return shot.w
 end
 
+-- Whether the debuffs take the buffs' size: their Match buffs size, which
+-- counts only while both rows are outside the frame (on either side).
+function E.Matched(frame)
+    local mine, buffs = E.Edits(frame, "mine"), E.Edits(frame, "buffs")
+    return mine and mine.match and mine.out and buffs and buffs.out and true or false
+end
+
+-- The buffs' icon size on button b: their Size, else their own.
+local function BuffSize(frame, b)
+    local e = E.Edits(frame, "buffs") or {}
+    local shot = Snap(b, "buffs")[1]
+    return e.size or shot and shot.w
+end
+function E.BuffSize(frame)
+    local b = frame.buttons()[1]
+    return b and BuffSize(frame, b) or (E.Edits(frame, "buffs") or {}).size
+end
+
 -- ------------------------------------------------------------ apply
 local OUTLINE = { none = "", thin = "OUTLINE", thick = "THICKOUTLINE" }
 E.OUTLINES = { { "none", "None" }, { "thin", "Thin" }, { "thick", "Thick" } }
@@ -431,22 +449,79 @@ local function OutEdge(b, frame, e)
     return EdgeSide(b, frame)
 end
 
+-- A piece's edits as button b lays them: the debuffs matched to the buffs
+-- take the buffs' size.
+local function Edited(frame, b, piece)
+    local e = E.Edits(frame, piece) or {}
+    if piece == "mine" and E.Matched(frame) then
+        e = Copy(e)
+        e.size = BuffSize(frame, b)
+    end
+    return e
+end
+
+-- The room a row outside takes on button b: as wide as its line, as tall
+-- as its lines, at the most icons it shows (its Max), each with its gap.
+local function Block(b, piece, e)
+    local shot = Snap(b, piece)
+    if not shot[1] then return 0, 0 end
+    local _, gap = OwnRun(shot)
+    local n = math.max(1, ns.RowMax(b, piece))
+    local cols = math.max(1, math.min(e.cols or #shot, n))
+    local step = (e.size or shot[1].w or 0) + gap
+    return cols * step, math.ceil(n / cols) * step
+end
+
+-- Where the debuffs go while both rows are out on one side of button b
+-- (their Next to buffs): "below", "above", "outer" (past the buffs) or
+-- "inner" (between the frame and the buffs, which move out); nil while
+-- the two are not out together on one side. A widget's Left and Right
+-- are outer or inner by the side they hang on.
+function E.Stacked(frame, b)
+    local mine, buffs = E.Edits(frame, "mine"), E.Edits(frame, "buffs")
+    if not (mine and mine.out and buffs and buffs.out) then return nil end
+    local edge
+    if b then
+        edge = OutEdge(b, frame, mine)
+        if OutEdge(b, frame, buffs) ~= edge then return nil end
+    else
+        -- (no button to measure: the stored sides, the same or not)
+        if mine.out ~= buffs.out then return nil end
+        edge = mine.out == "right" and 1 or -1
+    end
+    local by = mine.by or "below"
+    if by == "left" then return edge == -1 and "outer" or "inner" end
+    if by == "right" then return edge == 1 and "outer" or "inner" end
+    return by
+end
+
 -- A row outside its frame (its Outside): the first icon just past the
--- frame's end on its side, the rest running on away from it, a new line
--- every cols icons. Level with the frame's top; debuffs with its bottom
--- while the buffs are out on the same side, so the two do not meet.
+-- frame's end on its side, level with the frame's top, the rest running on
+-- away from it, a new line every cols icons. The buffs and debuffs out on
+-- one side keep clear of each other: the debuffs under the buffs, over
+-- them, past them, or between them and the frame.
 local function OutRow(b, frame, piece, regions, shot, e)
     local _, gap = OwnRun(shot)
     local edge = OutEdge(b, frame, e)
-    local buffs = piece == "mine" and E.Edits(frame, "buffs") or {}
-    local v = buffs.out and OutEdge(b, frame, buffs) == edge and "BOTTOM" or "TOP"
+    local x, y = gap, 0
+    local by = E.Stacked(frame, b)
+    if by and piece == "mine" then
+        local bw, bh = Block(b, "buffs", Edited(frame, b, "buffs"))
+        local _, mh = Block(b, "mine", e)
+        if by == "below" then y = -bh
+        elseif by == "above" then y = mh
+        elseif by == "outer" then x = gap + bw end
+    elseif by == "inner" then
+        x = gap + Block(b, "mine", Edited(frame, b, "mine"))
+    end
+    local v = "TOP"
     local near, far = edge == -1 and "RIGHT" or "LEFT", edge == -1 and "LEFT" or "RIGHT"
     local first = regions[1]
     first:ClearAllPoints()
-    first:SetPoint(v .. near, b, v .. far, edge * gap, 0)
+    first:SetPoint(v .. near, b, v .. far, edge * x, y)
     local cols = e.cols or #regions
     local step = (e.size or shot[1].w or 0) + gap
-    local wy = v == "TOP" and -1 or 1
+    local wy = -1
     for i = 2, #regions do
         local col, line = (i - 1) % cols, math.floor((i - 1) / cols)
         local r = regions[i]
@@ -499,7 +574,7 @@ local function ApplyButton(frame, b)
         local regions = spec.type ~= "cell" and Regions(b, piece)
         if regions and regions[1] then
             local shot = Snap(b, piece)
-            local e = E.Edits(frame, piece) or {}
+            local e = Edited(frame, b, piece)
             local done = b.editDone[piece] or {}
             -- the place
             if spec.type == "row" and e.out then

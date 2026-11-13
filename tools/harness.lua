@@ -9128,6 +9128,85 @@ local function EditorPass()
         window("boss grouped")
         choose("unit", "name")
     end)()
+    -- Match buffs size: offered on the debuffs while both rows are out; the
+    -- debuffs then take the buffs' size, and follow it; a row brought in
+    -- leaves the tick stored and idle; a widget's sides stay its own
+    ;(function()
+        local keptUnit, keptWidget = ns.db.editUnit, ns.db.editPartyWidget
+        local function w1(b, id)
+            local list = E.PIECES[id].get(b)
+            return list and list[1] and string.format("%.0f", list[1]:GetWidth()) or "?"
+        end
+        local function state(tag, b, frameId)
+            choose(frameId, "mine")
+            pickTab("look")
+            local size = w.controls.size
+            print("  match " .. tag, "look=" .. fields(), "buffs=" .. w1(b, "buffs"), "debuffs=" .. w1(b, "mine"),
+                "slider=" .. tostring(get("size")) .. (size.alpha and size.alpha < 1 and " (greyed)" or ""),
+                "stored=" .. tostring((E.Edits(E.byId[frameId], "mine") or {}).match))
+        end
+        choose("unit", "buffs")
+        set("out", true)
+        set("size", 22)
+        state("buffs out, debuffs in", P, "unit")
+        set("out", true)
+        state("both out", P, "unit")
+        set("match", true)
+        state("matched", P, "unit")
+        choose("unit", "buffs")
+        set("size", 30)
+        state("buffs 30", P, "unit")
+        choose("unit", "buffs")
+        set("out", false)
+        state("buffs back in", P, "unit")
+        choose("unit", "buffs")
+        set("out", true)
+        state("buffs out again", P, "unit")
+        set("match", false)
+        state("unticked", P, "unit")
+        ns.SetOption("editUnit", keptUnit)
+        ns.SetOption("editPartyWidget", keptWidget)
+        choose("unit", "name")
+        pickTab("place")
+        print("  match restored", "debuffs=" .. w1(P, "mine"), "buffs=" .. w1(P, "buffs"))
+    end)()
+    -- Next to buffs: offered on the debuffs while both rows are out on one
+    -- side; the debuffs' first icon under, over, past or inside the buffs'
+    -- block (the buffs moving out for inner), never on it
+    ;(function()
+        local keptUnit = ns.db.editUnit
+        local function at(id)
+            local r = E.PIECES[id].get(P)[1]
+            local pt, rel, rp, x, y = r:GetPoint(1)
+            return string.format("%s>%s,%.0f,%.0f", pt, rp, x, y)
+        end
+        local function show(tag)
+            choose("unit", "mine")
+            pickTab("place")
+            print("  next to buffs " .. tag, "place=" .. fields(), "by=" .. tostring(get("by")),
+                "buffs " .. at("buffs"), "debuffs " .. at("mine"))
+        end
+        choose("unit", "mine")
+        set("out", true)
+        show("buffs in")
+        choose("unit", "buffs")
+        set("out", true)
+        set("size", 20)
+        set("cols", 3)
+        show("both out")
+        for _, by in ipairs({ "above", "outer", "inner", "below" }) do
+            set("by", by)
+            show(by)
+        end
+        print("  next to buffs choices", (function()
+            local o = {}
+            for _, c in ipairs(w.controls.by.spec.choices) do o[#o + 1] = c[1] .. "=" .. c[2] end
+            return table.concat(o, ",")
+        end)(), "stored=" .. tostring((E.Edits(E.byId.unit, "mine") or {}).by))
+        ns.SetOption("editUnit", keptUnit)
+        choose("unit", "name")
+        pickTab("place")
+    end)()
     -- drag the chosen piece's box on the copy of button b so the piece's
     -- point (h left|center|right, v top|middle|bottom) lands dx right, dy
     -- down of that point of what it is on (the cursor moved to put it there)
@@ -9332,7 +9411,7 @@ local function EditorPass()
         local cell = pw.buttons()[1]
         local function controls()
             local shown = {}
-            for _, k in ipairs({ "out", "side" }) do if w.controls[k].shown then shown[#shown + 1] = k end end
+            for _, k in ipairs({ "out", "side", "by" }) do if w.controls[k].shown then shown[#shown + 1] = k end end
             return "controls=" .. table.concat(shown, ",")
         end
         local function rows(tag, b, ids)
@@ -9369,8 +9448,34 @@ local function EditorPass()
         choose("partyWidget", "mine")
         set("side", "left")
         rows("both left", cell)
+        -- Next to buffs, both on the left: Left is past the buffs, Right
+        -- between them and the frame
+        print("  widget next to buffs", controls(), "choices=" .. (function()
+            local o = {}
+            for _, c in ipairs(w.controls.by.spec.choices) do o[#o + 1] = c[1] end
+            return table.concat(o, ",")
+        end)())
+        for _, by in ipairs({ "above", "left", "right", "below" }) do
+            set("by", by)
+            rows("both left, " .. by, cell)
+        end
         set("side", "right")
+        print("  widget next to buffs, apart", controls())
         rows("buffs left, debuffs right", cell)
+        -- Match buffs size across the two sides: the debuffs as large as the
+        -- buffs, each still on its own side
+        choose("partyWidget", "buffs")
+        set("size", 18)
+        choose("partyWidget", "mine")
+        set("match", true)
+        local function first(id) return string.format("%.0f", E.PIECES[id].get(cell)[1]:GetWidth()) end
+        print("  widget match, left and right", "buffs=" .. first("buffs") .. " " .. tostring(get("side") and
+            E.Edits(pw, "buffs").out), "debuffs=" .. first("mine") .. " " .. tostring(get("side")))
+        rows("matched, left and right", cell)
+        set("match", false)
+        choose("partyWidget", "buffs")
+        set("size", E.NIL)
+        choose("partyWidget", "mine")
         set("side", "in")
         rows("debuffs back in", cell)
         print("  widget outside in stored", tostring(E.Edits(pw, "mine") and E.Edits(pw, "mine").out))
