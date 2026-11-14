@@ -80,7 +80,7 @@ read_globals = {
     "GetSpecializationRole", "GetTalentGroupRole",
     "issecurevariable", "GetMouseFoci", "GetMouseFocus", "GetNumBindings", "GetBinding", "C_CVar", "C_AddOns",
     -- the Edit Mode clients' API: secret values, curves, duration objects
-    "issecretvalue", "C_ActionBar", "C_CurveUtil", "CurveConstants", "Enum", "UnitHealthPercent", "UnitPowerPercent",
+    "issecretvalue", "AnchorUtil", "issecrettable", "canaccesstable", "geterrorhandler", "GetBuildInfo", "C_ActionBar", "C_CurveUtil", "CurveConstants", "Enum", "UnitHealthPercent", "UnitPowerPercent",
     "UnitCastingDuration", "UnitChannelDuration", "ActionButton_UpdateCooldownNumberHidden",
     -- the chat (strips/chat.lua) and the player's buffs (strips/buffs.lua)
     "ChatFrame1", "CHAT_FRAMES", "CHAT_FRAME_TEXTURES", "NUM_CHAT_WINDOWS", "GENERAL_CHAT_DOCK",

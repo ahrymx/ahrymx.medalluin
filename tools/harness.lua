@@ -1011,6 +1011,24 @@ function MultiCastRecallSpellButton_Update(self) self:SetPoint("LEFT", MultiCast
 -- Events Forever does not have (BugSack, 2026-11-01): registering one raises
 missingEvents = modern and { ROLE_POLL_UPDATE = true, QUEUE_STATUS_UPDATE = true } or {}
 local DIVIDER = "HorizontalDividerTemplate"
+harnessContainers = {}      -- every aura container made (CustomAuraContainerTemplate)
+harnessAuraSecure = false   -- the client's own code reading auras: nothing refused
+AnchorUtil = { FlowLayoutAxis = { Horizontal = 0, Vertical = 1 },
+    FlowDirection = { Left = -1, Right = 1, Up = 1, Down = -1 } }
+-- the auras a row shows: its container's, where it is shown, else its icons'
+function harnessRowShows(row)
+    local c, out = row and row.live, {}
+    if c and c.shown then
+        for _, key in ipairs(c.keys) do
+            for _, t in ipairs(c.groups[key].shown or {}) do out[#out + 1] = t end
+        end
+        return out, true
+    end
+    for _, btn in ipairs(row or {}) do
+        if btn.shown then out[#out + 1] = tostring(btn.icon and btn.icon.texture) end
+    end
+    return out, false
+end
 harnessBarPage = 1      -- bar 1's page, where a button with no page of its own falls back to
 function CreateFrame(kind, name, parent, template)
     if template == DIVIDER and not modern then error("unknown template " .. template) end
@@ -1049,6 +1067,96 @@ function CreateFrame(kind, name, parent, template)
             f[part] = new("FontString", f, (name or "") .. part)
         end
         f.cooldown = new("Cooldown", f, (name or "") .. "Cooldown")
+    elseif template == "CustomAuraContainerTemplate" then
+        -- Blizzard's aura container (Blizzard_AuraContainer): the client's
+        -- own code reads the unit's auras, refused to addons in combat or
+        -- not, and fills the groups' frames; the older clients have none
+        if not modern then error("unknown template " .. template) end
+        harnessContainers[#harnessContainers + 1] = f
+        f.groups, f.keys, f.flow = {}, {}, {}
+        local FILTERS = { HELPFUL = true, HARMFUL = true, PLAYER = true, RAID = true, CANCELABLE = true,
+            CROWD_CONTROL = true, RAID_PLAYER_DISPELLABLE = true, DISPELLABLE = true, IMPORTANT = true,
+            BIG_DEFENSIVE = true, EXTERNAL_DEFENSIVE = true, RAID_IN_COMBAT = true }
+        local function valid(filter)
+            for part in filter:gmatch("[^| ]+") do
+                assert(FILTERS[part:gsub("^!", "")], "Unknown aura filter component: " .. part)
+            end
+        end
+        local function group(key) return assert(f.groups[key], "no aura group " .. tostring(key)) end
+        function f:Fill()
+            for _, key in ipairs(self.keys) do
+                local g = self.groups[key]
+                local got = {}
+                if g.enabled and self.unit then
+                    harnessAuraSecure = true
+                    local ok, all = pcall(C_UnitAuras.GetUnitAuras or error, self.unit, g.filter)
+                    if not (ok and type(all) == "table") then
+                        all = {}
+                        for i = 1, 40 do
+                            local okI, a = pcall(C_UnitAuras.GetAuraDataByIndex, self.unit, i, g.filter)
+                            if not okI or not a or isSecret(a) then break end
+                            all[#all + 1] = a
+                        end
+                    end
+                    harnessAuraSecure = false
+                    for _, a in ipairs(all) do
+                        local timeless = (a.expirationTime or 0) == 0 and (a.duration or 0) == 0
+                        if #got < g.max and not (g.cand and g.cand.maxDuration and timeless) then
+                            got[#got + 1] = a
+                        end
+                    end
+                end
+                while #g.frames < #got do
+                    local btn = new("AuraButton", self)
+                    function btn:SetIcon(t) self.iconEl = t end
+                    function btn:SetDurationCooldown(cd) self.cdEl = cd end
+                    function btn:SetApplicationCount(fs) self.countEl = fs end
+                    function btn:GetIcon() return self.iconEl end
+                    if g.init then g.init(btn) end
+                    g.frames[#g.frames + 1] = btn
+                end
+                g.shown = {}
+                for i, btn in ipairs(g.frames) do
+                    local a = got[i]
+                    btn.shown = a ~= nil
+                    if a then
+                        if btn.iconEl then btn.iconEl.texture = a.icon end
+                        g.shown[#g.shown + 1] = tostring(a.icon)
+                    end
+                end
+            end
+        end
+        f.UpdateAllAuras = f.Fill
+        function f:SetUnit(u)
+            self.unit = u
+            self:RegisterUnitEvent("UNIT_AURA", u)
+            self:Fill()
+        end
+        function f:AddAuraGroup(key, filter, opts)
+            valid(filter)
+            assert(not self.groups[key], "aura group already exists")
+            opts = opts or {}
+            self.groups[key] = { filter = filter, max = opts.maxFrameCount or math.huge, enabled = true,
+                init = opts.initializeFrame, cand = opts.candidateFilters, layout = opts.layout, frames = {} }
+            self.keys[#self.keys + 1] = key
+            self:Fill()
+        end
+        function f:SetAuraGroupEnabled(key, on) group(key).enabled = on; self:Fill() end
+        function f:SetAuraGroupFilterString(key, filter) valid(filter); group(key).filter = filter; self:Fill() end
+        function f:SetAuraGroupMaxFrameCount(key, n)
+            assert(type(n) == "number" and n >= 0 and (n == math.huge or n == math.floor(n)), "bad max")
+            group(key).max = n
+            self:Fill()
+        end
+        function f:SetAuraGroupCandidateFilters(key, cand) group(key).cand = cand; self:Fill() end
+        function f:SetAuraGroupLayout(key, layout) group(key).layout = layout end
+        function f:GetAuraGroupFrameCount(key) return #group(key).frames end
+        function f:GetAuraGroupFrame(key, i) return group(key).frames[i] end
+        function f:SetFlowLayoutAxis(v) self.flow.axis = v end
+        function f:SetFlowLayoutAnchorPoint(v) self.flow.point = v end
+        function f:SetFlowLayoutGrowthDirection(h, v) self.flow.h, self.flow.v = h, v end
+        function f:SetFlowLayoutMaximumLineSize(v) self.flow.line = v end
+        f.scripts.OnEvent = function(self) self:Fill() end
     elseif template == "SecureHandlerStateTemplate" then
         -- a state-<name> attribute runs the _onstate-<name> snippet
         function f:SetAttribute(k, v)
@@ -1138,6 +1246,9 @@ function UnregisterStateDriver(f, state)
 end
 local inCombat = false
 function InCombatLockdown() return inCombat end
+-- an error handed to the handler is raised again: the harness never hides one
+function geterrorhandler() return error end
+function GetBuildInfo() return "1.0.0", "0", "Nov 13 2026", 16001 end
 -- a frame's mouse, and whether it was set during the lockdown (blocked on a
 -- protected frame in WoW)
 function Region:EnableMouse(on)
@@ -6764,7 +6875,10 @@ if sidePass then
             -- run out after them all (where the client puts them is not
             -- known; the tab must not rest on it)
             GetUnitAuras = function(_, filter, _, rule, direction)
-                table.insert(asked, filter .. ":" .. tostring(rule) .. "/" .. tostring(direction))
+                -- (the addon's reads: not the aura containers' own, the client's)
+                if not harnessAuraSecure then
+                    table.insert(asked, filter .. ":" .. tostring(rule) .. "/" .. tostring(direction))
+                end
                 local list = {}
                 for _, a in ipairs(world[filter]) do table.insert(list, a) end
                 table.sort(list, function(x, y)
@@ -7903,18 +8017,34 @@ if args[2] == "widgets" or args[3] == "widgets" then
         -- list may be refused too (held[unit].noList)
         C_UnitAuras.GetAuraDataByIndex = function(unit, i, filter)
             if not held[unit] then return saved(unit, i, filter) end
-            if held[unit].refuse and held[unit].refuse[filter] then error("refused") end
+            local open = harnessAuraSecure
+            if not open and held[unit].refuse and held[unit].refuse[filter] then error("refused") end
             local a = held[unit][filter] and held[unit][filter][i]
-            if a and held[unit].secret and held[unit].secret[filter] then return secret() end
+            if a and not open and held[unit].secret and held[unit].secret[filter] then return secret() end
             return data(a)
         end
         local savedList = C_UnitAuras.GetUnitAuras
         C_UnitAuras.GetUnitAuras = function(unit, filter, ...)
             if not held[unit] then return savedList and savedList(unit, filter, ...) end
-            if held[unit].noList then error("refused") end
+            if held[unit].noList and not harnessAuraSecure then error("refused") end
             local out = {}
             for i, a in ipairs(held[unit][filter] or {}) do out[i] = data(a) end
             return out
+        end
+        local savedIds, savedById = C_UnitAuras.GetUnitAuraInstanceIDs, C_UnitAuras.GetAuraDataByAuraInstanceID
+        C_UnitAuras.GetUnitAuraInstanceIDs = function(unit, filter)
+            if not held[unit] then return savedIds and savedIds(unit, filter) end
+            local out = {}
+            for i, a in ipairs(held[unit][filter] or {}) do out[i] = a.id end
+            return out
+        end
+        C_UnitAuras.GetAuraDataByAuraInstanceID = function(unit, id)
+            if not held[unit] then return savedById and savedById(unit, id) end
+            for _, list in pairs(held[unit]) do
+                for _, a in ipairs(type(list) == "table" and list or {}) do
+                    if a.id == id then return data(a) end
+                end
+            end
         end
     end
     local exists = {}
@@ -8336,7 +8466,7 @@ if args[2] == "widgets" or args[3] == "widgets" then
         unitFire("UNIT_AURA", "target")
         unitFire("UNIT_AURA", "player")
         local T, P = ns.units.target, ns.units.player
-        local function first(row) return row and row[1] and row[1].shown and tostring(row[1].icon.texture) or "none" end
+        local function first(row) return harnessRowShows(row)[1] or "none" end
         print("console auras heard", "target buffs=" .. first(T.buffWidgets), "player debuffs=" .. first(P.mineWidgets))
         held.target, held.player = {}, {}
         unitFire("UNIT_AURA", "target")
@@ -8353,18 +8483,44 @@ if args[2] == "widgets" or args[3] == "widgets" then
             noList = true }
         unitFire("UNIT_AURA", "target")
         unitFire("UNIT_AURA", "player")
+        -- (a container's row holds nothing of this addon's: the client's)
         local function holds(row)
+            if row.live then return "live " .. tostring(row.live.groups.row.filter) end
             local btn = row[1]
             return tostring(btn.auraInstanceID) .. "/" .. tostring(btn.auraIndex) .. "/" .. tostring(btn.filter)
         end
         print("console auras in combat", "target buffs=" .. first(T.buffWidgets) .. " " .. holds(T.buffWidgets),
             "player debuffs=" .. first(P.mineWidgets) .. " " .. holds(P.mineWidgets))
+        -- a row hidden whole hides its container too: a ready check, and
+        -- the preview's stub where the unit has gone (its icons, not the
+        -- client's)
+        T.isChecking = true
+        ns.UpdateAllAuras()
+        local inCheck = first(T.buffWidgets)
+        T.isChecking = nil
+        ns.UpdateAllAuras()
+        local after = first(T.buffWidgets)
+        local wasStub = T.stub
+        T.stub, exists.target, hasTarget = T.stub or { name = "Stub" }, nil, false
+        ns.UpdateAllAuras()
+        local _, liveInStub = harnessRowShows(T.buffWidgets)
+        T.stub, exists.target, hasTarget = wasStub, true, true
+        ns.UpdateAllAuras()
+        print("console auras hidden whole", "check=" .. inCheck, "after=" .. after,
+            "stub live=" .. tostring(liveInStub), "back=" .. first(T.buffWidgets))
+        inCombat = true
+        ns.AuraProbe()
+        inCombat = false
         -- nothing readable at all: the rows keep what they show
         held.target.noList = true
         held.player.refuse = { HARMFUL = true, ["HARMFUL|PLAYER"] = true }
         unitFire("UNIT_AURA", "target")
         unitFire("UNIT_AURA", "player")
         print("console auras refused", "target buffs=" .. first(T.buffWidgets), "player debuffs=" .. first(P.mineWidgets))
+        -- /mdlui probe, as it reads then: each line as the chat shows it
+        inCombat = true
+        ns.AuraProbe()
+        inCombat = false
         -- readable again, and gone: cleared
         held.target, held.player = {}, {}
         unitFire("UNIT_AURA", "target")
@@ -8442,13 +8598,11 @@ if args[2] == "widgets" or args[3] == "widgets" then
         if b.bossDebuff and b.bossDebuff.shown then
             table.insert(o, "boss=" .. tostring(b.bossDebuff.icon.texture))
         end
-        local buffs = 0
-        for _, btn in ipairs(b.buffWidgets or {}) do if btn.shown then buffs = buffs + 1 end end
+        -- (a row's container's where it has one: harnessRowShows)
+        local buffs = #harnessRowShows(b.buffWidgets)
         if buffs > 0 then table.insert(o, "buffs=" .. buffs) end
         local m = {}
-        for _, btn in ipairs(b.mineWidgets or {}) do
-            if btn.shown then table.insert(m, tostring(btn.icon.texture):match("[^\\]+$")) end
-        end
+        for _, t in ipairs((harnessRowShows(b.mineWidgets))) do table.insert(m, t:match("[^\\]+$")) end
         if #m > 0 then table.insert(o, "mine=" .. table.concat(m, ",")) end
         return #o > 0 and table.concat(o, " ") or "-"
     end
@@ -8466,6 +8620,9 @@ if args[2] == "widgets" or args[3] == "widgets" then
             local b = ns.overheadUnits["boss" .. i]
             local v = b.value.points.RIGHT
             local by = v and v[1] and (v[1] == b.value:GetParent() and "text" or "icons") or "?"
+            -- live: through the frame hung from the row's container
+            local hung = v and v[1] and v[1].points and v[1].points.TOPRIGHT
+            if hung and hung[1] == b.mineWidgets.live then v, by = hung, "container" end
             table.insert(o, i .. ":" .. auras(b) .. " value@" .. by .. (v and "," .. tostring(v[3]) or ""))
         end
         print("auras " .. tag, "overhead", table.concat(o, " | "))
@@ -10300,13 +10457,24 @@ local function EditorPass()
     -- the rest of its icons hang from the first
     local function row(tag, b, id)
         local got = E.PIECES[id].get(b)
-        local o, shown = {}, 0
+        local o = {}
         for k, r in ipairs(got) do
             if k > 1 and k <= 5 then o[#o + 1] = k .. ":" .. (pts(b, r):gsub("^CENTER>.-%.CENTER,", "")) end
-            if r.shown then shown = shown + 1 end
         end
-        print("  " .. tag, id, "max=" .. ns.RowMax(b, id), "shown=" .. shown, "first=" .. pts(b, got[1]),
+        local shows, live = harnessRowShows(got)
+        print("  " .. tag, id, "max=" .. ns.RowMax(b, id), "shown=" .. #shows, "first=" .. pts(b, got[1]),
             table.concat(o, " "))
+        -- the row's container, laid as its icons are: its corner on the
+        -- first's, its way (h, v), its line, its icons' size and gap
+        if live then
+            local c, fl = got.live, got.live.flow
+            local lay = c.groups.row.layout or {}
+            local at = c.points[fl.point]
+            print("  " .. tag, id, "container", fl.point .. ">" .. (at and at[1] == got[1] and "first." or "?.")
+                .. tostring(at and at[2]), "axis=" .. tostring(fl.axis), "way=" .. tostring(fl.h) .. "," .. tostring(fl.v),
+                "line=" .. tostring(fl.line), "size=" .. tostring(lay.elementWidth) .. "+" .. tostring(lay.elementSpacing),
+                "max=" .. tostring(c.groups.row.max))
+        end
     end
     local function labels()
         local o = {}
@@ -11169,7 +11337,7 @@ if modern then
     stunned("cc free")
     Region.SetCooldownFromDurationObject, Region.SetCooldown = nil, setCooldown
     local pBuffs = 0
-    for _, btn in ipairs(ns.units.player.buffWidgets or {}) do if btn.shown then pBuffs = pBuffs + 1 end end
+    pBuffs = pBuffs + #harnessRowShows(ns.units.player.buffWidgets)
     print("player.buffs", pBuffs)
 end
 if savedSimParty then
@@ -11189,16 +11357,16 @@ if savedSimParty then
     end
     local p3 = ns.units.party3
     local bCount = 0
-    for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then bCount = bCount + 1 end end
+    bCount = bCount + #harnessRowShows(p3.buffWidgets)
     print("party3.buffs", bCount)
     -- the editor's Most icons caps the row; the boss cells' row the same way
     ns.SetOption("editParty", { buffs = { max = 1 } })
     bCount = 0
-    for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then bCount = bCount + 1 end end
+    bCount = bCount + #harnessRowShows(p3.buffWidgets)
     print("party3.buffs most 1", bCount, "pool=" .. #p3.buffWidgets)
     ns.SetOption("editParty", false)
     bCount = 0
-    for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then bCount = bCount + 1 end end
+    bCount = bCount + #harnessRowShows(p3.buffWidgets)
     print("party3.buffs back", bCount)
     local p4 = ns.units.party4
     print("party4.boss", tostring(p4.bossDebuff and p4.bossDebuff.shown),
@@ -11312,7 +11480,7 @@ if savedSimParty then
     -- 4. Ready check: hides buffs/debuffs, shows middle status
     for _, f in ipairs(events.READY_CHECK or {}) do f.scripts.OnEvent(f, "READY_CHECK") end
     local p3BuffsInCheck = 0
-    for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then p3BuffsInCheck = p3BuffsInCheck + 1 end end
+    p3BuffsInCheck = p3BuffsInCheck + #harnessRowShows(p3.buffWidgets)
     print("readyCheck.active", "party1.status=" .. tostring(p1.statusWidget and p1.statusWidget.shown),
         "p3Buffs=" .. p3BuffsInCheck, "p2CC=" .. tostring(p2.ccWidget.shown))
     for _, f in ipairs(events.READY_CHECK_CONFIRM or {}) do f.scripts.OnEvent(f, "READY_CHECK_CONFIRM", "party1", true) end
@@ -11321,7 +11489,7 @@ if savedSimParty then
     for _, f in ipairs(events.PLAYER_REGEN_DISABLED or {}) do f.scripts.OnEvent(f, "PLAYER_REGEN_DISABLED") end
     for _, f in ipairs(events.PLAYER_REGEN_ENABLED or {}) do f.scripts.OnEvent(f, "PLAYER_REGEN_ENABLED") end
     local p3BuffsRestored = 0
-    for _, btn in ipairs(p3.buffWidgets or {}) do if btn.shown then p3BuffsRestored = p3BuffsRestored + 1 end end
+    p3BuffsRestored = p3BuffsRestored + #harnessRowShows(p3.buffWidgets)
     print("readyCheck.cleared", "party1.status=" .. tostring(p1.statusWidget.shown),
         "p3Buffs=" .. p3BuffsRestored, "p2CC=" .. tostring(p2.ccWidget.shown))
 
@@ -11764,7 +11932,7 @@ if savedSimParty then
             if b.ccWidget and b.ccWidget.shown then table.insert(o, "cc") end
             if b.bossDebuff and b.bossDebuff.shown then table.insert(o, "boss") end
             local n = 0
-            for _, btn in ipairs(b.buffWidgets or {}) do if btn.shown then n = n + 1 end end
+            n = n + #harnessRowShows(b.buffWidgets)
             if n > 0 then table.insert(o, "buffs=" .. n) end
             table.insert(out, "p" .. i .. ":" .. (#o > 0 and table.concat(o, ",") or "-"))
         end
@@ -13931,7 +14099,7 @@ if (args[2] == "auraguard" or args[3] == "auraguard") and C_UnitAuras then
     local b = ns.units.player
     local function state(tag, ok, err)
         local n = 0
-        for _, btn in ipairs(b.buffWidgets or {}) do if btn.shown then n = n + 1 end end
+        n = n + #harnessRowShows(b.buffWidgets)
         print("auraguard " .. tag, "raised=" .. tostring(not ok) .. (ok and "" or " " .. tostring(err)),
             "buffs shown=" .. n, "rescans waiting=" .. #timers)
     end

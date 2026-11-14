@@ -630,6 +630,11 @@ local function OpenSettings(arg)
         ns.TaintReport()
         return
     end
+    -- /mdlui probe: what the client hands this addon of the auras
+    if arg == "probe" and ns.AuraProbe then
+        ns.AuraProbe()
+        return
+    end
     if arg == "lfgdump" and ns.lfgData then
         ns.lfgData.Dump()
         return

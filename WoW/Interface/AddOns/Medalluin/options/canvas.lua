@@ -312,11 +312,14 @@ local function Mirror(frame, b, p, k)
             if E.PIECES[id].type == "text" then
                 dst:Show()
             else
-                -- an icon as the real one is, else while chosen or previewed
+                -- an icon as the real one is, else while chosen or previewed;
+                -- a live row's icons are the client's (ns.LiveIcons)
                 local stub = E.preview[id] and ns.STUB_ICONS[id]
                 if type(stub) == "table" then stub = stub[pr[4]] end
-                Paint(dst, id, src, stub, id == "cc" and stub ~= nil)
-                dst:SetShown(stub ~= nil or id == chosen or src:IsShown())
+                local live = pr[4] and ns.LiveIcons and ns.LiveIcons(E.PIECES[id].get(b))
+                local real = live and live[pr[4]]
+                Paint(dst, id, src, stub or real, id == "cc" and stub ~= nil)
+                dst:SetShown(stub ~= nil or id == chosen or src:IsShown() or real ~= nil)
             end
         end
     end

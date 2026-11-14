@@ -666,6 +666,204 @@ local function Spiral(cd, unit, id)
     if ok then pcall(cd.SetCooldownFromDurationObject, cd, dur) end
 end
 
+-- ------------------------------------------------------------ live rows
+-- A row of a real unit is Blizzard's aura container (Blizzard_AuraContainer,
+-- whose template is made for addons to create): the client fills it, in
+-- combat too, where this addon may read no aura at all (2026-11-13, measured
+-- by /mdlui probe: every read refused, "Auras cannot be accessed when secret
+-- while tainted"). The row's own icons stay, hidden, as the place the row is
+-- laid at (its own code's, the editor's): the container copies their first
+-- icon's corner, their way, their gap and where they wrap. The preview's
+-- auras are still those icons. A client with no such container (no
+-- template) keeps reading the auras itself.
+local LIVE = "CustomAuraContainerTemplate"
+
+-- An icon of a live row, as RowIcon draws one: an inked square, the aura's
+-- icon, its spiral, its stacks. Its size is the row's (live.size).
+local function LiveIcon(row)
+    return function(btn)
+        btn:SetSize(row.liveSize or ICON, row.liveSize or ICON)
+        local border = btn:CreateTexture(nil, "BACKGROUND")
+        border:SetAllPoints()
+        border:SetColorTexture(unpack(ns.colors.ink))
+        local icon = btn:CreateTexture(nil, "ARTWORK")
+        icon:SetPoint("TOPLEFT", 1, -1)
+        icon:SetPoint("BOTTOMRIGHT", -1, 1)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        btn:SetIcon(icon)
+        local cd = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
+        cd:SetAllPoints(icon)
+        cd:SetSwipeColor(0, 0, 0, 0.6)
+        cd:SetDrawEdge(false)
+        cd:SetDrawSwipe(true)
+        if cd.SetHideCountdownNumbers then cd:SetHideCountdownNumbers(true) end
+        btn:SetDurationCooldown(cd)
+        local count = ns.Text(btn, 9)
+        count:SetPoint("BOTTOMRIGHT", -1, 1)
+        count:SetTextColor(1, 1, 1)
+        btn:SetApplicationCount(count)
+    end
+end
+
+-- The row's container, made the first time a real unit shows it: false
+-- where the client cannot make one (the row reads the auras itself).
+local function MakeLive(row)
+    local first = row[1]
+    if not first then return false end
+    local ok, c = pcall(CreateFrame, "AuraContainer", nil, first:GetParent(), LIVE)
+    if not ok or not c then return false end
+    c:SetFrameLevel(first:GetFrameLevel())
+    local made = pcall(c.AddAuraGroup, c, "row", "HELPFUL", { maxFrameCount = 0, initializeFrame = LiveIcon(row) })
+    if not made then
+        c:Hide()
+        return false
+    end
+    c:Hide()
+    row.liveState = {}
+    return c
+end
+
+-- Where icon i sits from the first, as its own anchors say: hung from the
+-- first, or from the same point of the same frame (nil: neither).
+local function From(icon, first)
+    local p, to, rp, x, y = icon:GetPoint(1)
+    if to == first then return x or 0, y or 0 end
+    local p1, to1, rp1, x1, y1 = first:GetPoint(1)
+    if to ~= nil and to == to1 and p == p1 and rp == rp1 then return (x or 0) - (x1 or 0), (y or 0) - (y1 or 0) end
+end
+
+local function Sign(v) return v < 0 and -1 or 1 end
+
+-- The row's flow, read off its icons: the axis, the way along it (dx, dy),
+-- the way a new line goes (wrap), the icons on a line, the step.
+local function Flow(row)
+    local first = row[1]
+    local size = first:GetWidth() or ICON
+    local dx, dy, step = 1, 0, size + GAP
+    local x2, y2
+    if row[2] then x2, y2 = From(row[2], first) end
+    if x2 and (x2 ~= 0 or y2 ~= 0) then
+        if math.abs(x2) >= math.abs(y2) then dx, dy, step = Sign(x2), 0, math.abs(x2)
+        else dx, dy, step = 0, Sign(y2), math.abs(y2) end
+    end
+    local cols, wrap = #row, nil
+    for i = 3, #row do
+        local x, y = From(row[i], first)
+        if not x then break end
+        local across = dx ~= 0 and y or x
+        if math.abs(across) > 0.5 then
+            cols, wrap = i - 1, Sign(across)
+            break
+        end
+    end
+    return { size = size, gap = math.max(0, step - size), dx = dx, dy = dy, cols = cols, wrap = wrap }
+end
+
+-- The container laid as the icons are: its corner on the first icon's,
+-- growing their way, a line as long as theirs.
+local function Lay(c, row)
+    local f = Flow(row)
+    local horizontal = f.dx ~= 0
+    local h, v
+    if horizontal then
+        h, v = f.dx, f.wrap or -1
+    else
+        h, v = f.wrap or 1, f.dy
+    end
+    local corner = (v > 0 and "BOTTOM" or "TOP") .. (h > 0 and "LEFT" or "RIGHT")
+    local key = table.concat({ corner, f.size, f.gap, horizontal and "h" or "v", h, v, f.cols }, " ")
+    local st = row.liveState
+    if st.lay == key then return end
+    st.lay = key
+    row.liveSize = f.size
+    c:ClearAllPoints()
+    c:SetPoint(corner, row[1], corner, 0, 0)
+    local Axis, Way = AnchorUtil and AnchorUtil.FlowLayoutAxis, AnchorUtil and AnchorUtil.FlowDirection
+    if Axis and Way then
+        c:SetFlowLayoutAxis(horizontal and Axis.Horizontal or Axis.Vertical)
+        c:SetFlowLayoutGrowthDirection(h > 0 and Way.Right or Way.Left, v > 0 and Way.Up or Way.Down)
+    end
+    c:SetFlowLayoutAnchorPoint(corner)
+    c:SetFlowLayoutMaximumLineSize(f.cols * f.size + (f.cols - 1) * f.gap + 0.5)
+    c:SetAuraGroupLayout("row", { elementSpacing = f.gap, lineSpacing = f.gap,
+        elementWidth = f.size, elementHeight = f.size })
+    -- the icons made at another size take this one (out of combat: in it
+    -- the client keeps the row's frames from this addon)
+    if not InCombatLockdown() and c.GetAuraGroupFrameCount then
+        local ok, n = pcall(c.GetAuraGroupFrameCount, c, "row")
+        for i = 1, (ok and not ns.IsSecret(n) and n) or 0 do
+            local okF, btn = pcall(c.GetAuraGroupFrame, c, "row", i)
+            if okF and btn then pcall(btn.SetSize, btn, f.size, f.size) end
+        end
+    end
+end
+
+-- A real unit's row: its container, shown (on) with the auras of filter,
+-- at most max, the timeless left out (timeless). false where the row has
+-- no container, so reads them itself.
+local function Live(b, row, on, filter, max, timeless)
+    if row.live == nil then row.live = MakeLive(row) end
+    local c = row.live
+    if not c then return false end
+    for _, btn in ipairs(row) do btn:Hide() end
+    if not on then
+        c:Hide()
+        return true
+    end
+    local st = row.liveState
+    if st.unit ~= b.unit then
+        c:SetUnit(b.unit)
+        st.unit = b.unit
+    end
+    Lay(c, row)
+    if st.filter ~= filter then
+        c:SetAuraGroupFilterString("row", filter)
+        st.filter = filter
+    end
+    if st.max ~= max then
+        c:SetAuraGroupMaxFrameCount("row", max)
+        st.max = max
+    end
+    if st.timeless ~= timeless then
+        -- (any longest duration leaves out the auras with none)
+        c:SetAuraGroupCandidateFilters("row", timeless and { maxDuration = math.huge } or nil)
+        st.timeless = timeless
+    end
+    -- read again: the container hears the unit's aura events, not what
+    -- else scans the frame (a unit come or changed, its frame shown again)
+    c:UpdateAllAuras()
+    c:Show()
+    return true
+end
+
+-- Both rows' containers hidden: the preview's icons, or nothing, instead.
+local function HideLive(b)
+    for _, row in ipairs({ b.buffWidgets or false, b.mineWidgets or false }) do
+        if row and row.live then row.live:Hide() end
+    end
+end
+-- What a live row shows, for the editor's copy of its frame: each shown
+-- icon's texture (the client's frames, in the order it made them), nil
+-- where the row is not live, is hidden, or it is combat (the client keeps
+-- the frames from this addon then).
+function ns.LiveIcons(row)
+    local c = row and row.live
+    if not c or not c:IsShown() or InCombatLockdown() then return nil end
+    local out = {}
+    local ok, n = pcall(c.GetAuraGroupFrameCount, c, "row")
+    for i = 1, (ok and not ns.IsSecret(n) and n) or 0 do
+        local okF, btn = pcall(c.GetAuraGroupFrame, c, "row", i)
+        local okS, shown = pcall(function() return btn and btn:IsShown() end)
+        if okF and okS and shown == true then
+            local okI, icon = pcall(btn.GetIcon, btn)
+            local t = okI and icon and icon:GetTexture()
+            if t == nil or ns.IsSecret(t) then t = "Interface\\Icons\\INV_Misc_QuestionMark" end
+            out[#out + 1] = t
+        end
+    end
+    return out
+end
+
 -- Live aura scanning for active units
 local function ScanUnitAuras(b)
     local unit = b.unit
@@ -756,8 +954,12 @@ local function ScanUnitAuras(b)
         end
     end
 
-    -- 3. Buffs: yours, or all (the row's From)
-    if b.buffWidgets then
+    -- 3. Buffs: yours, or all (the row's From); not the timeless ones on
+    -- the player frame
+    local liveBuffs = b.buffWidgets and Live(b, b.buffWidgets, Shows(b, "buffs"),
+        ns.RowFrom(b, "buffs") == "all" and "HELPFUL" or "HELPFUL|PLAYER", ns.RowMax(b, "buffs"),
+        unit == "player")
+    if b.buffWidgets and not liveBuffs then
         local list, filter
         if Shows(b, "buffs") and Auras and Auras.GetAuraDataByIndex then
             -- (not the timeless ones on the player frame)
@@ -820,7 +1022,10 @@ local function ScanUnitAuras(b)
     end
 
     -- 5. Debuffs: yours (on an enemy), or all (the row's From)
-    if b.mineWidgets then
+    if b.mineWidgets and Live(b, b.mineWidgets, Shows(b, "mine"),
+        ns.RowFrom(b, "mine") == "all" and "HARMFUL" or "HARMFUL|PLAYER", ns.RowMax(b, "mine"), false) then
+        if b.mineLaid then b.mineLaid("live") end
+    elseif b.mineWidgets then
         local list, filter
         if Shows(b, "mine") and Auras and Auras.GetAuraDataByIndex then
             list, filter = List(unit, ns.RowFrom(b, "mine") == "all" and "HARMFUL" or "HARMFUL|PLAYER",
@@ -870,8 +1075,14 @@ local function HideAuras(b)
     if b.bossDebuff then b.bossDebuff:Hide() end
     for _, btn in ipairs(b.buffWidgets or {}) do btn:Hide() end
     for _, btn in ipairs(b.mineWidgets or {}) do btn:Hide() end
+    HideLive(b)
     if b.mineLaid then b.mineLaid(0) end
 end
+
+-- What /mdlui probe reports per unit: aura events heard (in combat of
+-- them), scans run, the last error a scan raised and when.
+local probe = {}
+for _, u in ipairs({ "player", "target" }) do probe[u] = { events = 0, fighting = 0, scans = 0 } end
 
 local UpdateUnitAuras
 -- retry: the scan again after a refused read, which is not tried a third time
@@ -891,10 +1102,18 @@ function UpdateUnitAuras(b, retry)
     end
 
     if b.stub and not UnitExists(unit) then
+        HideLive(b)
         ApplyStubAuras(b)
     else
         refused = false
-        ScanUnitAuras(b)
+        -- an error is kept for /mdlui probe, then reported as any other
+        local ok, err = pcall(ScanUnitAuras, b)
+        local seen = probe[unit]
+        if seen then
+            seen.scans = seen.scans + 1
+            if not ok then seen.err, seen.errAt = tostring(err), InCombatLockdown() and "combat" or "out" end
+        end
+        if not ok then geterrorhandler()(err) end
         if refused and not retry and C_Timer and C_Timer.After then
             C_Timer.After(0, function() UpdateUnitAuras(b, true) end)
         end
@@ -1015,9 +1234,22 @@ function ns.AttachAuras(b, kind, size)
     elseif kind == "overhead" then
         b.mineWidgets = CreateMineWidgets(b.health, size, "RIGHT", 0)
         local value = b.value
+        -- live, the value steps left of the row's container, through a
+        -- frame that runs no layout script: the client lets no other
+        -- frame of this addon hang from the container
+        local okHold, hold = pcall(CreateFrame, "Frame", nil, b.health, "DisableUntrustedLayoutScriptsTemplate")
+        if not okHold then hold = nil end
         b.mineLaid = function(n)
             value:ClearAllPoints()
-            if n > 0 then
+            local live = n == "live" and b.mineWidgets.live
+            if live and hold then
+                hold:ClearAllPoints()
+                hold:SetSize(1, size)
+                hold:SetPoint("TOPRIGHT", live, "TOPLEFT", -3, 0)
+                value:SetPoint("RIGHT", hold, "RIGHT", 0, 0)
+            elseif live then
+                value:SetPoint("RIGHT", value:GetParent(), "RIGHT", -4, 0)
+            elseif n > 0 then
                 value:SetPoint("RIGHT", b.mineWidgets[n], "LEFT", -3, 0)
             else
                 value:SetPoint("RIGHT", value:GetParent(), "RIGHT", -4, 0)
@@ -1048,6 +1280,11 @@ end
 -- by unit heard party4 only (2026-11-13: the player's and target's rows
 -- showed what the last full scan found, until an option scanned again).
 local function OnAura(_, _, unit)
+    local seen = probe[unit]
+    if seen then
+        seen.events = seen.events + 1
+        if InCombatLockdown() then seen.fighting = seen.fighting + 1 end
+    end
     if ns.units and ns.units[unit] then
         UpdateUnitAuras(ns.units[unit])
     end
@@ -1115,3 +1352,70 @@ for _, key in ipairs({ "raidGlow", "raidCC", "raidBoss", "bgGlow", "bgCC", "boss
     ns.OnSetting(key, UpdateAllAuras)
 end
 ns.OnSetting("simParty", UpdateAllAuras)
+
+-- /mdlui probe: what the client hands this addon for the player's and the
+-- target's auras, as it is now (in combat is the case it is for), printed
+-- for a screenshot. Each read: whether it raised (ERR), handed back a
+-- secret (SECRET), a table whose fields are secret (stable), or a table it
+-- forbids reading (forbidden); then how many came back, and the first
+-- one's icon, instance id and duration as plain or secret.
+local function Kind(v)
+    if ns.IsSecret(v) then return "SECRET" end
+    if v == nil then return "nil" end
+    if type(v) == "table" then
+        if canaccesstable and not canaccesstable(v) then return "forbidden" end
+        if issecrettable and issecrettable(v) then return "stable" end
+    end
+    return type(v)
+end
+local function Fields(aura)
+    if type(aura) ~= "table" or ns.IsSecret(aura) or (canaccesstable and not canaccesstable(aura)) then return "" end
+    return " icon=" .. Kind(aura.icon) .. " id=" .. Kind(aura.auraInstanceID) .. " dur=" .. Kind(aura.duration)
+end
+function ns.AuraProbe()
+    local say = function(t) print("|cffe0b84aMedalluin auras|r " .. t) end
+    say((InCombatLockdown() and "IN COMBAT" or "out of combat") .. ", client " .. tostring((select(4, GetBuildInfo()))))
+    for _, unit in ipairs({ "player", "target" }) do
+        local seen, b = probe[unit], ns.units and ns.units[unit]
+        -- a row: its container's (the client's, its count unread), or
+        -- how many of its own icons show
+        local function Row(row)
+            local live = row and row.live
+            if live then return live:IsShown() and "live" or "live, hidden" end
+            local n = 0
+            for _, btn in ipairs(row or {}) do if btn:IsShown() then n = n + 1 end end
+            return tostring(n)
+        end
+        say(unit .. (UnitExists(unit) and "" or " (none)") .. ": events " .. seen.events .. " (combat " .. seen.fighting
+            .. "), scans " .. seen.scans .. ", row buffs " .. Row(b and b.buffWidgets) .. " debuffs "
+            .. Row(b and b.mineWidgets)
+            .. (seen.err and (", last error (" .. seen.errAt .. "): " .. seen.err) or ", no error"))
+        if UnitExists(unit) then
+            for _, filter in ipairs({ "HELPFUL", "HARMFUL" }) do
+                local ok, a = pcall(Auras.GetAuraDataByIndex, unit, 1, filter)
+                local line = filter .. " index: " .. (ok and (Kind(a) .. Fields(a)) or ("ERR " .. tostring(a)))
+                if Auras.GetUnitAuras then
+                    local ok2, all = pcall(Auras.GetUnitAuras, unit, filter)
+                    local n = ok2 and type(all) == "table" and not ns.IsSecret(all)
+                        and (not canaccesstable or canaccesstable(all)) and #all or nil
+                    line = line .. " | list: " .. (ok2 and (Kind(all) .. (n and (" n=" .. n .. Fields(all[1])) or ""))
+                        or ("ERR " .. tostring(all)))
+                end
+                if Auras.GetUnitAuraInstanceIDs then
+                    local ok3, ids = pcall(Auras.GetUnitAuraInstanceIDs, unit, filter)
+                    local n = ok3 and type(ids) == "table" and not ns.IsSecret(ids)
+                        and (not canaccesstable or canaccesstable(ids)) and #ids or nil
+                    line = line .. " | ids: "
+                        .. (ok3 and (Kind(ids) .. (n and (" n=" .. n) or "")) or ("ERR " .. tostring(ids)))
+                    local id = n and n > 0 and ids[1]
+                    if id and ns.Present(id) then
+                        local ok4, a4 = pcall(Auras.GetAuraDataByAuraInstanceID, unit, id)
+                        line = line .. " first=" .. Kind(id) .. " byId: "
+                            .. (ok4 and (Kind(a4) .. Fields(a4)) or ("ERR " .. tostring(a4)))
+                    end
+                end
+                say(line)
+            end
+        end
+    end
+end
