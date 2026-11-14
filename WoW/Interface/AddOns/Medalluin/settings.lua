@@ -404,6 +404,7 @@ ns.OptionBase = Base
 function ns.OptionDefault(key) return DEFAULTS[key] end
 
 local SwitchProfile
+local reloadAsked               -- a switch in combat: its reload asked for when combat ends
 
 -- ns.SetOption(key, value): an option changed, by the settings window or by
 -- Medalluin's own controls (the side panel's column buttons). Choosing the
@@ -442,6 +443,22 @@ function SwitchProfile(profile)
     if ns.SwitchSkills then ns.SwitchSkills(Profile(), profile) end
     if ns.SwitchKeys then ns.SwitchKeys(Profile(), profile) end
     Relayer(function() MedalluinDB.consoleProfile = profile end)
+    -- a console is built at load (ns.ApplyLightProfile): the switch ends by
+    -- asking for a reload, once its skills and keys are on the bars. It asks,
+    -- never reloads: ReloadUI from the option's own click is blocked as a
+    -- protected call (ADDON_ACTION_BLOCKED, seen in game), while the dialog's
+    -- Reload button is a click of its own. In combat the skills and keys
+    -- wait for it to end, and the asking waits with them.
+    if not InCombatLockdown() then
+        StaticPopup_Show("MEDALLUIN_PROFILE_RELOAD")
+        return
+    end
+    if reloadAsked then return end      -- asked once, after the last of them
+    reloadAsked = true
+    ns.OutOfCombat(function()
+        reloadAsked = nil
+        StaticPopup_Show("MEDALLUIN_PROFILE_RELOAD")
+    end)
 end
 
 -- Reset profile: the current profile's options back to its own.
@@ -521,6 +538,16 @@ function ns.HexColor(hex)
 end
 
 -- Only a key is added: assigning StaticPopupDialogs itself would taint it.
+StaticPopupDialogs.MEDALLUIN_PROFILE_RELOAD = {
+    text = "Reload to finish switching console profile?\n\n"
+        .. "Its skills and keys are on the bars; its console is built as the interface loads.",
+    button1 = "Reload",
+    button2 = "Later",
+    OnAccept = function() ReloadUI() end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}
 StaticPopupDialogs.MEDALLUIN_RESET_PROFILE = {
     text = "Put this console profile's options back to its own?\n\n"
         .. "Options that take effect after a reload need one.",

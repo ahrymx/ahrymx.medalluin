@@ -554,7 +554,10 @@ function ns.OptionPages()
                         Group("Profile",
                             Choice("consoleProfile", "Console profile", ns.PROFILE_NAMES,
                                 "The console the pages under Console start from. Switching brings back the options, "
-                                .. "skills and keys you chose on that profile.", true),
+                                .. "skills and keys you chose on that profile. The skills go back on the bars by "
+                                .. "the cursor, the game's only way to place one: you hear each picked up and "
+                                .. "put down, and their icons flash on the cursor. Then it asks to reload the "
+                                .. "interface, which builds the console (switched in combat, once combat ends)."),
                             Button("Reset profile", function() StaticPopup_Show("MEDALLUIN_RESET_PROFILE") end,
                                 "This profile's options under Console, and its console party and overhead bosses under "
                                 .. "Unit Frames, back to its own. The widgets, Chat, Side panel and Bags are left as "

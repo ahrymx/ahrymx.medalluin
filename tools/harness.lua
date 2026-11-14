@@ -2186,6 +2186,7 @@ function HideUIPanel(f) f.shown = false end
 StaticPopupDialogs = {}
 SlashCmdList = {}
 function ReloadUI() end
+function StaticPopup_Show() end
 MedalluinDB = profilesPass and args[3] == "saved" and { consoleProfile = "light",
         profiles = { default = { drawer = 2, topBoss = true }, light = { rows = 2, topBoss = false, partyRange = 30,
             partyWidgetPoint = { "TOPLEFT", "TOPLEFT", 50, -60 } } },
@@ -7907,8 +7908,13 @@ if args[2] == "skills" then
         end
         return table.concat(o, " ")
     end
+    -- the switch asks for its reload (in combat, once combat ends)
+    local reloads, asked = 0, {}
+    function ReloadUI() reloads = reloads + 1 end
+    function StaticPopup_Show(which) table.insert(asked, which) end
     local function state(tag)
-        print("skills " .. tag, "profile=" .. ns.db.consoleProfile, "cursor=" .. tostring(cursor))
+        print("skills " .. tag, "profile=" .. ns.db.consoleProfile, "cursor=" .. tostring(cursor),
+            "reloads=" .. reloads, "asked=" .. #asked .. (asked[1] and " " .. asked[#asked] or ""))
         print("  bars", bars())
         print("  saved default", saved("default"), "light", saved("light"))
         local keys = {}
@@ -7962,6 +7968,15 @@ if args[2] == "skills" then
     inCombat = false
     fire("PLAYER_REGEN_ENABLED")
     state("combat over")
+    StaticPopupDialogs.MEDALLUIN_PROFILE_RELOAD.OnAccept()
+    print("  reload asked, accepted", "reloads=" .. reloads)
+    -- a later switch in combat asks again
+    inCombat = true
+    S.consoleProfile:Set("light")
+    inCombat = false
+    fire("PLAYER_REGEN_ENABLED")
+    S.consoleProfile:Set("default")
+    print("  combat again", "asked=" .. #asked, "reloads=" .. reloads)
     inBags[6948], macros[1] = nil, "Renamed"
     S.consoleProfile:Set("light")
     S.consoleProfile:Set("default")
