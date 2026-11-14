@@ -107,7 +107,7 @@ Medalluin transforms World of Warcraft's interface into a unified, ornamental co
 - **Dynamic LFG Queue Eye**: The queue status eye automatically replaces the character medallion on the left strip whenever you are in queue for a dungeon, raid, or battleground.
 - **Dynamic Vehicle Exit Seat**: When operating a vehicle or on an early-landing taxi, a custom crimson-and-gold ejection seat replaces the backpack medallion on the right strip.
 - **Minimap Addon Drawer**: Neatly collects minimap icons (DBM, Details, RaiderIO, Bagnon, etc.) into a collapsible drawer next to the action bar to keep your minimap clean.
-- **Side Panel Integration**: Integrated side strip supporting embedded damage meters (Details/Recount), timeless logs, and aura trackers (with automatic combat hand-off to WoW's native Cooldown Manager Tracked Buff Bars).
+- **Side Panel Integration**: Integrated side strip supporting embedded damage meters (Details/Recount), timeless logs, and aura lists that keep updating in combat.
 - **Zone Tab**: The side panel's Zone tab moves the minimap into the panel beside the current zone's quests, each with its progress; click a quest for its objectives, shift-click to track it.
 
 ---
@@ -147,12 +147,6 @@ Medalluin pairs well with these addons by other authors. They are not part of Me
 | `/mdlui kb` | Enters quick keybinding mode (hover button and press key) |
 | `/mdlui edit` | Launches the interactive unit frame layout editor |
 | `/mdlui taint` | Runs internal diagnostics to inspect secure variable integrity |
-
----
-
-## ⚠️ Known Limitations
-
-- **Side Panel Auras in Combat**: Due to Blizzard's combat aura API restrictions (`RequiresUnitAuraAccess` and secret values in `C_UnitAuras` / `UNIT_AURA`), addon code is blocked from querying newly applied auras while in combat. To work around this natively, the **Auras** tab automatically switches in combat to display WoW's native Cooldown Manager **Tracked Buff Bars** (`BuffBarCooldownViewer`), and restores the standard Buffs/Debuffs list when combat ends.
 
 ---
 

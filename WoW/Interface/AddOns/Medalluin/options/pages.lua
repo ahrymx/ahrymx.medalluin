@@ -866,20 +866,9 @@ function ns.OptionPages()
                         "Your buffs and debuffs, each with the time it has left, the longest first.")),
                     {
                         Group("Lists",
-                            Choice("aurasColumns", "Aura lists", {
-                                { 2, "Two", "Buffs and debuffs side by side." },
-                                { 1, "One", "Buffs and debuffs in one list. In combat the game keeps the times to "
-                                    .. "itself, so there the list shows the debuffs first, then the buffs." },
-                            }, "The column button with the bars on it switches this too."),
                             Check("aurasTimeless", "Auras that never run out",
                                 "List forms, aspects, mounts and the like too, at the top. They are over the portrait "
                                 .. "already. The infinity button switches this too.")),
-                        Group("In combat",
-                            Check("aurasTrackedBars", "Enable tracked aura bars",
-                                "In combat the game keeps new buffs to itself, so the tab shows the Cooldown "
-                                .. "Manager's tracked bars instead, until combat ends. Ticking this turns the "
-                                .. "Cooldown Manager on in the game's options too. Which bars, and how wide, are set "
-                                .. "in Edit Mode. Only where the game has the Cooldown Manager.")),
                     }),
                 Part("side/meter", "Meter tab", false,
                     Needs("side", Check("sideMeter", "Meter tab",

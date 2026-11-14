@@ -1083,6 +1083,7 @@ function CreateFrame(kind, name, parent, template)
             end
         end
         local function group(key) return assert(f.groups[key], "no aura group " .. tostring(key)) end
+        local function timeless(a) return (a.expirationTime or 0) == 0 and (a.duration or 0) == 0 end
         function f:Fill()
             for _, key in ipairs(self.keys) do
                 local g = self.groups[key]
@@ -1099,9 +1100,20 @@ function CreateFrame(kind, name, parent, template)
                         end
                     end
                     harnessAuraSecure = false
+                    -- the group's sort (ExpirationOnly: the timed by when they
+                    -- end, the timeless after them; Reverse swaps the two)
+                    if g.sort == AuraContainerSortMethod.ExpirationOnly then
+                        local function before(x, y)
+                            local ex = timeless(x) and math.huge or x.expirationTime
+                            local ey = timeless(y) and math.huge or y.expirationTime
+                            if ex ~= ey then return ex < ey end
+                            return x.auraInstanceID < y.auraInstanceID
+                        end
+                        local reverse = g.direction == AuraContainerSortDirection.Reverse
+                        table.sort(all, function(x, y) if reverse then return before(y, x) end return before(x, y) end)
+                    end
                     for _, a in ipairs(all) do
-                        local timeless = (a.expirationTime or 0) == 0 and (a.duration or 0) == 0
-                        if #got < g.max and not (g.cand and g.cand.maxDuration and timeless) then
+                        if #got < g.max and not (g.cand and g.cand.maxDuration and timeless(a)) then
                             got[#got + 1] = a
                         end
                     end
@@ -1112,6 +1124,15 @@ function CreateFrame(kind, name, parent, template)
                     function btn:SetDurationCooldown(cd) self.cdEl = cd end
                     function btn:SetApplicationCount(fs) self.countEl = fs end
                     function btn:GetIcon() return self.iconEl end
+                    function btn:SetSpellName(fs) self.nameEl = fs end
+                    function btn:SetDurationBar(bar, o) self.barEl, self.barOpts = bar, o end
+                    function btn:SetDurationText(fs, o) self.timeEl, self.timeOpts = fs, o end
+                    function btn:AddDispelTypeTexture(tex, o) self.dispelEl, self.dispelOpts = tex, o end
+                    function btn:SetCancelAuraButtons(s) self.cancel = s end
+                    function btn:SetTooltipAnchorPoint(p) self.tipAt = p end
+                    -- (its every state secret to addons, whether it is
+                    -- shown too: measured 2026-11-14, out of combat)
+                    function btn:IsShown() return secret() end
                     if g.init then g.init(btn) end
                     g.frames[#g.frames + 1] = btn
                 end
@@ -1119,11 +1140,34 @@ function CreateFrame(kind, name, parent, template)
                 for i, btn in ipairs(g.frames) do
                     local a = got[i]
                     btn.shown = a ~= nil
+                    btn.aura = a
                     if a then
                         if btn.iconEl then btn.iconEl.texture = a.icon end
+                        if btn.nameEl then btn.nameEl.text = a.name end
+                        if btn.countEl then
+                            btn.countEl.text = (a.applications or 0) >= 2 and tostring(a.applications) or ""
+                        end
+                        local left = not timeless(a) and math.max(0, a.expirationTime - GetTime()) or nil
+                        if btn.barEl then btn.barEl.timer = { left and a.auraInstanceID or "zero" } end
+                        if btn.timeEl then
+                            btn.timeEl.text = left and string.format("%d s", math.ceil(left)) or ""
+                            local tc = btn.timeOpts and btn.timeOpts.textColor
+                            local col = tc and left and tc.curve:Evaluate(left)
+                            if col then btn.timeEl.textColor = col end
+                        end
+                        if btn.dispelEl then
+                            local map = btn.dispelOpts and btn.dispelOpts.customDispelColorMap
+                            btn.dispelEl.vertex = map and map[a.dispelName or "None"] or nil
+                        end
                         g.shown[#g.shown + 1] = tostring(a.icon)
                     end
                 end
+            end
+        end
+        -- the client's click on a row: a cancel where its buttons allow
+        function f:Click(btn, button)
+            if btn.cancel == button .. "Up" and btn.aura then
+                C_UnitAuras.CancelAuraByInstanceID(self.unit, btn.aura.auraInstanceID)
             end
         end
         f.UpdateAllAuras = f.Fill
@@ -1137,7 +1181,8 @@ function CreateFrame(kind, name, parent, template)
             assert(not self.groups[key], "aura group already exists")
             opts = opts or {}
             self.groups[key] = { filter = filter, max = opts.maxFrameCount or math.huge, enabled = true,
-                init = opts.initializeFrame, cand = opts.candidateFilters, layout = opts.layout, frames = {} }
+                init = opts.initializeFrame, cand = opts.candidateFilters, layout = opts.layout, frames = {},
+                sort = opts.sortMethod, direction = opts.sortDirection }
             self.keys[#self.keys + 1] = key
             self:Fill()
         end
@@ -1150,7 +1195,11 @@ function CreateFrame(kind, name, parent, template)
         end
         function f:SetAuraGroupCandidateFilters(key, cand) group(key).cand = cand; self:Fill() end
         function f:SetAuraGroupLayout(key, layout) group(key).layout = layout end
-        function f:GetAuraGroupFrameCount(key) return #group(key).frames end
+        -- (the frames the group owns, shown or not; secret in combat)
+        function f:GetAuraGroupFrameCount(key)
+            if InCombatLockdown() then return secret() end
+            return #group(key).frames
+        end
         function f:GetAuraGroupFrame(key, i) return group(key).frames[i] end
         function f:SetFlowLayoutAxis(v) self.flow.axis = v end
         function f:SetFlowLayoutAnchorPoint(v) self.flow.point = v end
@@ -1920,8 +1969,26 @@ if modern then
     function UnitPower() return secret() end
     function UnitPowerMax(_, kind) if kind == 4 then return 5 end return secret() end
     GetComboPoints = secret
-    C_CurveUtil = { CreateCurve = function() return { SetType = function() end, AddPoint = function() end } end }
-    Enum = { LuaCurveType = { Linear = 0 }, StatusBarTimerDirection = { ElapsedTime = 0, RemainingTime = 1 },
+    C_CurveUtil = { CreateCurve = function() return { SetType = function() end, AddPoint = function() end } end,
+        -- a colour curve: the step type evaluated (the last point at or under x)
+        CreateColorCurve = function()
+            local c = { points = {} }
+            function c.SetType(self, v) self.type = v end
+            function c.AddPoint(self, x, y) table.insert(self.points, { x, y }) end
+            function c.Evaluate(self, x)
+                local got
+                for _, p in ipairs(self.points) do if x >= p[1] then got = p[2] end end
+                return got
+            end
+            return c
+        end }
+    -- Blizzard_AuraContainer's sort (AuraContainerShared.lua)
+    AuraContainerSortMethod = { Default = 0, Expiration = 4, ExpirationOnly = 5, Name = 6 }
+    AuraContainerSortDirection = { Normal = 0, Reverse = 1 }
+    Enum = { LuaCurveType = { Linear = 0, Step = 1 },
+        DurationTextBindingProperty = { RemainingDuration = 0, RemainingPercent = 1 },
+        CustomAuraButtonDispelTypeTextureStyle = { Border = 0, BorderWithIcon = 1, Icon = 2, PreserveAsset = 3 },
+        StatusBarTimerDirection = { ElapsedTime = 0, RemainingTime = 1 },
         StatusBarInterpolation = { Immediate = 0, ExponentialEaseOut = 1 },
         UnitAuraSortRule = { Unsorted = 0, Default = 1, BigDefensive = 2, Expiration = 3, ExpirationOnly = 4,
             Name = 5, NameOnly = 6 },
@@ -2028,8 +2095,9 @@ local function Buff(id)
     end
 end
 local function AuraData(b)
+    -- (the client's data always carries a duration: 0 for the timeless)
     return b and { auraInstanceID = b.id, icon = b.icon, applications = b.count or 0, name = b.name,
-        expirationTime = b.expires or b.timed and 160 or 0 }
+        expirationTime = b.expires or b.timed and 160 or 0, duration = (b.expires or b.timed) and 60 or 0 }
 end
 -- loss of control: none until a pass hands one over (lossOfControl)
 local lossOfControl
@@ -6827,11 +6895,9 @@ if sidePass then
     if not A or not A.body then
         print("auras none")
     else
-        -- the lists sit in a frame of their own, the tracked bars' beside it
-        local AL = A.body.all_[1]
         -- the player's auras: buffs and debuffs, as the client keeps them.
-        -- In combat every time, name, stack and dispel type is secret; the
-        -- instance ids are not (the player's own).
+        -- The lists are the client's containers: they read these as the
+        -- client does, in combat or not (harnessAuraSecure)
         local world = {
             HELPFUL = {
                 { id = 31, name = "Swift Mount", icon = "mount" },
@@ -6840,6 +6906,11 @@ if sidePass then
                 { id = 40, name = "Flask of the Currents", icon = "flask", left = 4360, full = 7200 },
                 { id = 41, name = "Bloodlust", icon = "lust", left = 28, full = 40, count = 1 },
                 { id = 42, name = "Rejuvenation", icon = "rejuv", left = 11, full = 15 },
+                { id = 44, name = "Mark of the Wild", icon = "mark", left = 1700, full = 1800 },
+                { id = 45, name = "Power Word: Fortitude", icon = "fort", left = 1650, full = 1800 },
+                { id = 46, name = "Blessing of Kings", icon = "kings", left = 500, full = 600 },
+                { id = 47, name = "Well Fed", icon = "food", left = 3000, full = 3600 },
+                { id = 48, name = "Thorns", icon = "thorns", left = 400, full = 600 },
             },
             HARMFUL = {
                 { id = 50, name = "Sated", icon = "sated", left = 492, full = 600 },
@@ -6848,96 +6919,59 @@ if sidePass then
             },
         }
         local born = now
-        local function find(id)
-            for _, kind in pairs(world) do
-                for _, a in ipairs(kind) do if a.id == id then return a end end
-            end
-        end
-        local function hide(v) if inCombat then return secret() end return v end
         local function data(a)
-            return { auraInstanceID = a.id, name = hide(a.name), icon = a.icon, applications = hide(a.count or 0),
-                dispelName = hide(a.dispel), duration = hide(a.full or 0),
-                expirationTime = hide(a.left and born + a.left or 0) }
+            return { auraInstanceID = a.id, name = a.name, icon = a.icon, applications = a.count or 0,
+                dispelName = a.dispel, duration = a.full or 0, expirationTime = a.left and born + a.left or 0 }
         end
-        local asked, formatted = {}, 0
-        -- the addon holds the client's table from load: change it in place
+        -- the addon holds the client's table from load: change it in place.
+        -- This addon's own reads of the player's auras in combat, counted
+        -- and refused, as in the client
         local base, saved = C_UnitAuras, {}
         for k, v in pairs(C_UnitAuras) do saved[k] = v end
-        for k, v in pairs({
-            GetAuraDataByIndex = function(unit, i, filter)
-                if unit ~= "player" or not world[filter or "HELPFUL"] then
-                    return saved.GetAuraDataByIndex(unit, i, filter)
-                end
-                local a = world[filter or "HELPFUL"][i]
-                return a and data(a)
-            end,
-            -- the client's sort: the longest first, and the ones that never
-            -- run out after them all (where the client puts them is not
-            -- known; the tab must not rest on it)
-            GetUnitAuras = function(_, filter, _, rule, direction)
-                -- (the addon's reads: not the aura containers' own, the client's)
-                if not harnessAuraSecure then
-                    table.insert(asked, filter .. ":" .. tostring(rule) .. "/" .. tostring(direction))
-                end
-                local list = {}
-                for _, a in ipairs(world[filter]) do table.insert(list, a) end
-                table.sort(list, function(x, y)
-                    if (x.left ~= nil) ~= (y.left ~= nil) then return x.left ~= nil end
-                    if x.left then return x.left > y.left end
-                    return x.id > y.id
-                end)
-                local out = {}
-                for i, a in ipairs(list) do out[i] = data(a) end
-                return out
-            end,
-            DoesAuraHaveExpirationTime = function(unit, id)
-                if not find(id) then return saved.DoesAuraHaveExpirationTime(unit, id) end
-                return hide(find(id).left ~= nil)
-            end,
-            GetAuraDuration = function(_, id)
-                local a = find(id)
-                return { aura = id, GetRemainingDuration = function()
-                    return hide(a.left and math.max(0, born + a.left - now) or 0)
-                end }
-            end,
-            GetAuraApplicationDisplayCount = function(_, id, least)
-                local a = find(id)
-                return hide((a.count or 0) >= least and tostring(a.count) or "")
-            end,
-        }) do base[k] = v end
-        C_DurationUtil = { CreateDuration = function() return { aura = "zero" } end }
-        C_StringUtil = { CreateSecondsFormatter = function()
-            return { Format = function(_, v)
-                formatted = formatted + 1
-                if isSecret(v) then return "~time" end
-                return v .. " sec"
-            end }
-        end }
+        local tabReads = 0
+        base.GetUnitAuras = function(unit, filter, ...)
+            if unit ~= "player" or not world[filter] then
+                return saved.GetUnitAuras and saved.GetUnitAuras(unit, filter, ...) or {}
+            end
+            if not harnessAuraSecure and inCombat then
+                tabReads = tabReads + 1
+                error("refused")
+            end
+            local out = {}
+            for i, a in ipairs(world[filter]) do out[i] = data(a) end
+            return out
+        end
+        local function live(key)
+            for _, c in ipairs(harnessContainers) do if c.groups[key] then return c, c.groups[key] end end
+        end
         local function aurasState(tag)
             print(tag)
-            for _, list in ipairs({ AL.all_[1], AL.all_[2] }) do
-                if list.shown then
-                    local l, _, r = rect(list)
-                    local fs = {}
-                    for _, c in ipairs(list.all_) do
-                        if c.kind == "FontString" then table.insert(fs, c) end
-                    end
-                    print("", string.format("list %.0f-%.0f", l, r), fs[1].text, fs[2].text,
-                        fs[3].shown and ("empty: " .. fs[3].text) or "")
-                    for _, row in ipairs(list.all_) do
-                        if row.kind == "StatusBar" and row.shown then
-                            local _, t = rect(row)
-                            local tc = row.left.textColor
-                            print("", string.format("row@%.0f", t), tostring(row.label.text),
-                                "x" .. tostring(row.count.text), tostring(row.icon.texture),
-                                string.format("edge=%.2f,%.2f,%.2f", unpack(row.edge.color)),
-                                string.format("bar=%.2f,%.2f,%.2f", unpack(row.barColor)),
-                                row.timer and ("timer=" .. tostring(row.timer[1] and row.timer[1].aura) .. "/"
-                                    .. tostring(row.timer[2])) or string.format("%s/%s", tostring(row.value),
-                                    tostring(row.max)),
-                                tostring(row.left.text), tc and string.format("(%.2f,%.2f,%.2f)", tc[1], tc[2], tc[3])
-                                    or "")
+            for i, list in ipairs({ A.body.all_[1], A.body.all_[2] }) do
+                local l, _, r = rect(list)
+                local fs, scroll = {}, nil
+                for _, c in ipairs(list.all_) do
+                    if c.kind == "FontString" then table.insert(fs, c) end
+                    if c.kind == "ScrollFrame" then scroll = c end
+                end
+                print("", string.format("list %.0f-%.0f", l, r), fs[1].text, tostring(fs[2].text),
+                    fs[3].shown and ("empty: " .. fs[3].text) or "", "scroll=" .. tostring(scroll.scroll))
+                local _, g = live(i == 1 and "buffs" or "debuffs")
+                for n, btn in ipairs(g.frames) do
+                    if btn.shown then
+                        local bar = btn.barEl
+                        local edge
+                        for _, c in ipairs(bar.all_) do
+                            if c.kind == "Texture" and c.w == 16 and c.h == 16 then edge = c end
                         end
+                        local e = edge.vertex or edge.color
+                        local tc = btn.timeEl.textColor
+                        print("", string.format("%d %dx%d", n, btn.w, btn.h), tostring(btn.nameEl.text),
+                            "x" .. tostring(btn.countEl.text), tostring(btn.iconEl.texture),
+                            string.format("edge=%.2f,%.2f,%.2f", e[1], e[2], e[3]),
+                            string.format("bar=%.2f,%.2f,%.2f", unpack(bar.barColor)),
+                            "timer=" .. tostring(bar.timer and bar.timer[1]), tostring(btn.timeEl.text),
+                            tc and string.format("(%.2f,%.2f,%.2f)", tc[1], tc[2], tc[3]) or "",
+                            "cancel=" .. tostring(btn.cancel), "tip=" .. tostring(btn.tipAt))
                     end
                 end
             end
@@ -6953,164 +6987,85 @@ if sidePass then
         tabs()
         print("sideTab", ns.db.sideTab)
         column(A)
+        -- (the containers filled as they were made: these auras are news)
+        changed()
+        tick()
         aurasState("auras")
-        print("sorted by", table.concat(asked, " "))
-        -- the times run down on their own, five times a second (a part
-        -- second left counts as a second)
-        now = now + 2.5
-        tick(0.1)
-        aurasState("auras a tenth later")
-        tick(0.15)
-        aurasState("auras three seconds on")
-        -- the timeless ones listed, then one list of both
-        click(A, 2)
-        column(A)
-        aurasState("auras timeless")
+        local c, g = live("buffs")
+        print("buffs container", "unit=" .. tostring(c.unit), "filter=" .. g.filter, "max=" .. g.max,
+            "sort=" .. tostring(g.sort) .. "/" .. tostring(g.direction), "timeless left out=" .. tostring(
+                g.cand ~= nil and g.cand.maxDuration == math.huge), "axis=" .. tostring(c.flow.axis),
+            "way=" .. tostring(c.flow.h) .. "," .. tostring(c.flow.v), "point=" .. tostring(c.flow.point),
+            "line=" .. tostring(c.flow.line), "element=" .. tostring(g.layout.elementWidth) .. "x"
+                .. tostring(g.layout.elementHeight) .. "+" .. tostring(g.layout.elementSpacing))
+        local dc, dg = live("debuffs")
+        print("debuffs container", "unit=" .. tostring(dc.unit), "filter=" .. dg.filter, "max=" .. dg.max,
+            "sort=" .. tostring(dg.sort) .. "/" .. tostring(dg.direction))
+        -- the timeless ones listed, at the top
         click(A, 1)
         column(A)
-        aurasState("auras one list")
+        tick()
+        aurasState("auras timeless")
         sideTips("side tips")
-        -- the wheel: eleven auras, fewer rows; a row passes it on
-        AL.all_[1].all_[5].scripts.OnMouseWheel(AL.all_[1].all_[5], -2)
+        -- the wheel: more auras than rows; a list passes it on
+        local scroll1
+        for _, ch in ipairs(A.body.all_[1].all_) do if ch.kind == "ScrollFrame" then scroll1 = ch end end
+        scroll1.scripts.OnMouseWheel(scroll1, -2)
         aurasState("auras scrolled two")
         thumb("auras")
         side.area.scripts.OnMouseWheel(side.area, -50)
         print("auras scrolled to the end", A.Thumb())
         -- the list shrinks under the scroll: back to what it can show
-        click(A, 2)
+        click(A, 1)
         print("auras scrolled, timeless off", A.Thumb())
-        click(A, 2)
+        click(A, 1)
         side.area.scripts.OnMouseWheel(side.area, 99)
-        -- in combat: every time secret; the client's order
-        local before = secretsUsed
+        -- in combat: the lists still follow the auras (the client fills
+        -- them); a buff gained, a debuff gone. The headings keep the count
+        -- read last, as the client keeps it to itself now
         inCombat = true
         fire("PLAYER_REGEN_DISABLED")
+        table.insert(world.HELPFUL, { id = 43, name = "Mystery", icon = "mystery", left = 20, full = 30 })
+        table.remove(world.HARMFUL, 1)
         changed()
         tick()
-        aurasState("auras one list in combat")
-        click(A, 1)
-        aurasState("auras two lists in combat")
-        print("secrets to the auras", secretsUsed - before, "formatted", formatted)
-        -- a buff gained in combat, whether it runs out not known: kept
-        -- where the client puts it, and listed even with the timeless off
-        table.insert(world.HELPFUL, { id = 43, name = "Mystery", icon = "mystery" })
-        click(A, 2)
-        changed()
-        tick()
-        aurasState("auras a new buff in combat, timeless off")
-        -- the debuffs wear off: their rows are no longer asked for times
-        local debuffs = world.HARMFUL
-        world.HARMFUL = {}
-        changed()
-        tick()
-        local asks = formatted
-        tick(0.25)
-        print("times asked on a tick in combat", formatted - asks)
-        world.HARMFUL = debuffs
-        changed()
-        tick()
-        -- a right click in combat cancels nothing
-        local row = AL.all_[1].all_[5]
-        local rowsOf = {}
-        for _, c in ipairs(AL.all_[1].all_) do if c.kind == "StatusBar" then table.insert(rowsOf, c) end end
-        row = rowsOf[1]
-        row.scripts.OnMouseUp(row, "RightButton")
-        print("cancelled in combat", #cancelled)
+        aurasState("auras in combat, a buff gained and a debuff gone")
+        -- the wheel goes as far as a list holds, the count not known
+        side.area.scripts.OnMouseWheel(side.area, -99)
+        print("auras in combat scrolled to the end", A.Thumb())
+        side.area.scripts.OnMouseWheel(side.area, 99)
+        print("aura reads by this addon in combat", tabReads)
         inCombat = false
         fire("PLAYER_REGEN_ENABLED")
         tick()
         aurasState("auras after combat")
-        -- out of combat: a right click cancels a buff, not a debuff, and a
-        -- left click nothing
-        row.scripts.OnMouseUp(row, "LeftButton")
-        row.scripts.OnMouseUp(row, "RightButton")
-        local debuffRow
-        for _, c in ipairs(AL.all_[2].all_) do if c.kind == "StatusBar" and not debuffRow then debuffRow = c end end
-        debuffRow.scripts.OnMouseUp(debuffRow, "RightButton")
+        -- a right click cancels a buff, not a debuff, and a left click nothing
+        local bc, bg = live("buffs")
+        local dbc, dbg = live("debuffs")
+        bc:Click(bg.frames[1], "LeftButton")
+        bc:Click(bg.frames[1], "RightButton")
+        dbc:Click(dbg.frames[1], "RightButton")
         print("cancelled", table.concat(cancelled, ","))
-        -- the auras are read only when they change, at most four times a second
-        asked = {}
-        tick(1)
-        print("read on a quiet tick", #asked)
-        changed()
-        tick(0.01)
-        print("read when told", #asked)
-        changed()
-        tick(0.1)
-        print("read again within a quarter second", #asked)
-        tick(0.2)
-        print("read after it", #asked)
-        -- a client whose status bars have no timer: the range is the full
-        -- duration and the time left is set on each tick
-        noTimer = true
-        for _, list in ipairs({ AL.all_[1], AL.all_[2] }) do
-            for _, r in ipairs(list.all_) do r.timer = nil end
-        end
+        -- more buffs than a list holds: its heading and the wheel stop at
+        -- the list's 40
+        local many = {}
+        for i = 1, 45 do many[i] = { id = 100 + i, name = "Buff " .. i, icon = "b" .. i, left = 100 + i, full = 200 } end
+        world.HELPFUL = many
         changed()
         tick()
-        aurasState("auras without a client timer")
-        now = now + 1
-        tick(0.25)
-        aurasState("auras without a client timer, a second on")
-        -- past an aura's end, before the client takes it away: nothing left, not less
-        now = now + 5
-        tick(0.25)
-        aurasState("auras past the poison's end")
-        noTimer = false
+        local heads = {}
+        for _, ch in ipairs(A.body.all_[1].all_) do
+            if ch.kind == "FontString" then heads[#heads + 1] = tostring(ch.text) end
+        end
+        side.area.scripts.OnMouseWheel(side.area, -99)
+        print("auras 45 buffs", heads[1], heads[2], "scrolled to the end", A.Thumb())
+        side.area.scripts.OnMouseWheel(side.area, 99)
         -- nothing at all
         world.HELPFUL, world.HARMFUL = {}, {}
         changed()
         tick()
         aurasState("auras none")
-        page.settings.aurasColumns:Set(1)
-        aurasState("auras none, one list")
-        print("aurasColumns window shows", optionShows("aurasColumns"),
-            "aurasTimeless window shows", optionShows("aurasTimeless"))
-        -- the Cooldown Manager's tracked buff bars take over in combat when
-        -- Blizzard_CooldownViewer is present and aurasTrackedBars is on
-        local host = _G.MedalluinAurasTrackedBars
-        local cdm = CreateFrame("Frame", "BuffBarCooldownViewer", UIParent)
-        -- the Cooldown Manager's own option, off as on a new character
-        local cvars, writes = { cooldownViewerEnabled = "0" }, 0
-        local savedCVar = C_CVar
-        C_CVar = {
-            GetCVar = function(name) return cvars[name] end,
-            SetCVar = function(name, value)
-                cvars[name], writes = tostring(value), writes + 1
-                return true
-            end,
-        }
-        fire("ADDON_LOADED", "Blizzard_CooldownViewer")
-        -- and leave it be once it is on
-        fire("ADDON_LOADED", "Blizzard_CooldownViewer")
-        print("tracked bars turn the Cooldown Manager on", cvars.cooldownViewerEnabled, "writes", writes)
-        print("tracked bars adopted", cdm.parent == host,
-            "holder out of combat", AL.shown, "host out of combat", host.shown)
-        cdm:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-        print("tracked bars re-anchored after Edit Mode", cdm.points.TOPLEFT[1] == host)
-        harnessHolds.combat = true
-        stateTick()
-        print("tracked bars in combat", "holder", AL.shown, "host", host.shown,
-            "thumb", select(3, A.Thumb()))
-        harnessHolds.combat = nil
-        stateTick()
-        -- unticked: the Cooldown Manager is left as the player has it
-        cvars.cooldownViewerEnabled = "0"
-        page.settings.aurasTrackedBars:Set(false)
-        print("tracked bars off", cdm.parent == UIParent,
-            "holder", AL.shown, "host", host.shown, "Cooldown Manager left", cvars.cooldownViewerEnabled)
-        -- ticked again: on again, and a client with no such setting is left alone
-        cvars.cooldownViewerEnabled = "0"
-        page.settings.aurasTrackedBars:Set(true)
-        local again = cvars.cooldownViewerEnabled
-        cvars.cooldownViewerEnabled = nil
-        page.settings.aurasTrackedBars:Set(false)
-        page.settings.aurasTrackedBars:Set(true)
-        print("tracked bars ticked again", again, "no setting", tostring(cvars.cooldownViewerEnabled),
-            "writes", writes)
-        page.settings.aurasTrackedBars:Set(false)
-        C_CVar = savedCVar
-        _G.BuffBarCooldownViewer = nil
+        print("aurasTimeless window shows", optionShows("aurasTimeless"))
         for k in pairs(base) do base[k] = saved[k] end
     end
 
@@ -9937,6 +9892,11 @@ local function EditorPass()
             "health=" .. (fill and string.format("%.2f,%.2f,%.2f", fill[1], fill[2], fill[3]) or "-"))
     end
     canvas("unit")
+    -- a live row turned off: its copy shows none of the client's icons
+    ns.SetOption("auraBuffs", false)
+    canvas("unit, buffs off")
+    ns.SetOption("auraBuffs", true)
+    canvas("unit, buffs on")
     -- the texts' points kept secret (their words are): the copy places them
     -- as their code first did, or by the point's name, or in what holds them
     local function at(tag)

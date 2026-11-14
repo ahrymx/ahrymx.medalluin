@@ -806,11 +806,12 @@ local function Live(b, row, on, filter, max, timeless)
     local c = row.live
     if not c then return false end
     for _, btn in ipairs(row) do btn:Hide() end
+    local st = row.liveState
+    st.shown = on and true or false
     if not on then
         c:Hide()
         return true
     end
-    local st = row.liveState
     if st.unit ~= b.unit then
         c:SetUnit(b.unit)
         st.unit = b.unit
@@ -839,29 +840,44 @@ end
 -- Both rows' containers hidden: the preview's icons, or nothing, instead.
 local function HideLive(b)
     for _, row in ipairs({ b.buffWidgets or false, b.mineWidgets or false }) do
-        if row and row.live then row.live:Hide() end
-    end
-end
--- What a live row shows, for the editor's copy of its frame: each shown
--- icon's texture (the client's frames, in the order it made them), nil
--- where the row is not live, is hidden, or it is combat (the client keeps
--- the frames from this addon then).
-function ns.LiveIcons(row)
-    local c = row and row.live
-    if not c or not c:IsShown() or InCombatLockdown() then return nil end
-    local out = {}
-    local ok, n = pcall(c.GetAuraGroupFrameCount, c, "row")
-    for i = 1, (ok and not ns.IsSecret(n) and n) or 0 do
-        local okF, btn = pcall(c.GetAuraGroupFrame, c, "row", i)
-        local okS, shown = pcall(function() return btn and btn:IsShown() end)
-        if okF and okS and shown == true then
-            local okI, icon = pcall(btn.GetIcon, btn)
-            local t = okI and icon and icon:GetTexture()
-            if t == nil or ns.IsSecret(t) then t = "Interface\\Icons\\INV_Misc_QuestionMark" end
-            out[#out + 1] = t
+        if row and row.live then
+            row.live:Hide()
+            row.liveState.shown = false
         end
     end
-    return out
+end
+-- A unit's auras of filter, as a list: the client's (sorted by rule) where
+-- it hands one over, else by index. Out of combat only: in it the client
+-- raises (callers pcall).
+function ns.ListAuras(unit, filter, rule)
+    local CUA = C_UnitAuras
+    if CUA and CUA.GetUnitAuras then return CUA.GetUnitAuras(unit, filter, nil, rule) or {} end
+    local list = {}
+    for i = 1, 40 do
+        local a = CUA and CUA.GetAuraDataByIndex and CUA.GetAuraDataByIndex(unit, i, filter)
+        if not a then break end
+        list[i] = a
+    end
+    return list
+end
+
+-- What a live row shows, for the editor's copy of its frame: the icons of
+-- the auras its container lists, read here out of combat (the container's
+-- own frames answer nothing, not even whether they are shown: a secret),
+-- in the client's default order, all of them (the canvas stops the copy's
+-- row at its Max); nil where the row is not live, is hidden, or it is combat.
+function ns.LiveIcons(row)
+    local st = row and row.live and row.liveState
+    if not st or not st.shown or not st.unit or InCombatLockdown() then return nil end
+    local SORT = Enum and Enum.UnitAuraSortRule
+    local ok, out = pcall(function()
+        local list = {}
+        for _, a in ipairs(ns.ListAuras(st.unit, st.filter, SORT and SORT.Default)) do
+            if not (st.timeless and a.duration == 0) then list[#list + 1] = a.icon end
+        end
+        return list
+    end)
+    return ok and out or nil
 end
 
 -- Live aura scanning for active units
@@ -1381,7 +1397,7 @@ function ns.AuraProbe()
         -- how many of its own icons show
         local function Row(row)
             local live = row and row.live
-            if live then return live:IsShown() and "live" or "live, hidden" end
+            if live then return row.liveState.shown and "live" or "live, hidden" end
             local n = 0
             for _, btn in ipairs(row or {}) do if btn:IsShown() then n = n + 1 end end
             return tostring(n)

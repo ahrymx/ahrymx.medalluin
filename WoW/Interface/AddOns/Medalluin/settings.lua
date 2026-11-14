@@ -79,9 +79,7 @@ local DEFAULTS = {
     lootWho = 1,            -- see LOOT_WHO
     lootQuality = 2,        -- the least item quality shown (2 = uncommon)
     lootMoney = true,       -- money and currencies in the loot log
-    aurasColumns = 2,       -- 2: buffs and debuffs side by side; 1: one list of both
     aurasTimeless = false,  -- list the auras that never run out too (they are over the portrait already)
-    aurasTrackedBars = true, -- in combat, the Cooldown Manager's tracked bars in place of the lists
     bags = true,            -- Medalluin's bags window instead of Blizzard's bags
     bagsView = "grid",      -- "bags": each bag under its name; "grid": every slot, bag by bag; "groups": fixed groups
     bagsColumns = 10,       -- slots across the window (not on the page: the window's corner sets it, 8 to 24)
