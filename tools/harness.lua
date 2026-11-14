@@ -646,7 +646,10 @@ function Region:GetPoint(i)
         if a then return out(p, a) end
         return
     end
-    for p, a in pairs(self.points) do return p, a[1], a[2], a[3], a[4] end
+    -- (the first set, as in the game: not whichever pairs() meets first)
+    local p = self.order and self.order[1]
+    if p and self.points[p] then return self:GetPoint(1) end
+    for q, a in pairs(self.points) do return q, a[1], a[2], a[3], a[4] end
 end
 -- the edges, in the region's own scale, as the game gives them (so that
 -- times its effective scale is the cursor's units); the harness's own units
@@ -7805,7 +7808,10 @@ if profilesPass then
         print("  global", list(MedalluinDB.global))
         print("  top", "rows=" .. tostring(rawget(MedalluinDB, "rows")), "bareIcons=" .. tostring(rawget(MedalluinDB,
             "bareIcons")), "retired=" .. tostring(MedalluinDB.retired))
-        print("  window stale", optionsStale(), "heard", table.concat(heard, " "))
+        -- (heard in the order pairs() meets the keys: sorted, as no order is promised)
+        local sorted = { unpack(heard) }
+        table.sort(sorted)
+        print("  window stale", optionsStale(), "heard", table.concat(sorted, " "))
         heard = {}
     end
     state("migrated")
@@ -10179,7 +10185,8 @@ local function EditorPass()
             local q = p1:GetEffectiveScale()
             return cx / q - p1:GetLeft(), cy / q - p1:GetTop(), q
         end
-        local function zoom() return string.format("zoom=%.2f pan=%.1f,%.1f", cv.view.zoom, cv.view.x, cv.view.y) end
+        -- (+ 0 turns a -0 into 0: which zero the sum lands on is the interpreter's)
+        local function zoom() return string.format("zoom=%.2f pan=%.1f,%.1f", cv.view.zoom, cv.view.x + 0, cv.view.y + 0) end
         local function wheel(tag, x, y, delta)
             cx, cy = x, y
             local ux, uy = under()

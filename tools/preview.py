@@ -5,6 +5,7 @@ placement change can be checked without the game client.
     python3 tools/preview.py            -> art/console/render/console-preview.png
 """
 import os
+import shutil
 import subprocess
 
 import numpy as np
@@ -19,8 +20,13 @@ COLOURS = {"health": {"player": (196, 110, 147), "target": (163, 61, 45), "party
            "power": (0, 0, 204)}
 
 
+# LuaJIT where it is installed (several times faster; the harness prints the
+# same under both), else the game's own Lua 5.1
+LUA = shutil.which("luajit") or "lua5.1"
+
+
 def run(state):
-    out = subprocess.run(["lua5.1", "tools/harness.lua", state], cwd=ROOT,
+    out = subprocess.run([LUA, "tools/harness.lua", state], cwd=ROOT,
                          capture_output=True, text=True, check=True).stdout
     rects, names = {}, {}
     for line in out.splitlines():
