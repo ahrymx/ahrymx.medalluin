@@ -652,7 +652,16 @@ end
 local function TotemRow()
     local list, bar = {}, MultiCastActionBarFrame
     if not (bar and next(totems)) then return list end
-    if not bar:IsShown() then return list end
+    if not bar:IsShown() then
+        -- Blizzard updates (and hides) the summon and recall only while its
+        -- bar shows, so on a class with no totem bar they keep the shown
+        -- state they were made with: hidden by their bar there, not here
+        -- (2026-11-14: a warlock's two empty squares at the screen's corner)
+        for _, btn in ipairs({ MultiCastSummonSpellButton, MultiCastRecallSpellButton }) do
+            if btn and totems[btn] then btn:Hide() end
+        end
+        return list
+    end
     if MultiCastSummonSpellButton:IsShown() then table.insert(list, MultiCastSummonSpellButton) end
     local perPage = NUM_MULTI_CAST_BUTTONS_PER_PAGE or 4
     local first = ((bar.currentPage or 1) - 1) * perPage

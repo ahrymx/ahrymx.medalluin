@@ -11674,6 +11674,10 @@ if savedSimParty then
     shapeshiftForms = 0
     ns.UpdateOverhead()
     rowState("overhead.simHunter.row")
+    -- no totem bar (a hunter, a warlock): its summon and recall, adopted at
+    -- login, stay hidden; Blizzard updates them only while the bar shows
+    print("overhead.noTotems", "summon=" .. tostring(MultiCastSummonSpellButton.shown),
+        "recall=" .. tostring(MultiCastRecallSpellButton.shown))
     petBar = false
     ns.UpdateOverhead()
     rowState("overhead.simNoPet.row")
@@ -11738,6 +11742,8 @@ if savedSimParty then
         bar.shown, shapeshiftForms = false, 0
         ns.UpdateOverhead()
         rowState("overhead.shamanGone.row")
+        print("overhead.shamanGone", "summon=" .. tostring(MultiCastSummonSpellButton.shown),
+            "recall=" .. tostring(MultiCastRecallSpellButton.shown))
     end
     -- not simulating: nothing to show; then a pet arrives (UNIT_PET for the
     -- player) with its bar, and the row stands alone at the top
