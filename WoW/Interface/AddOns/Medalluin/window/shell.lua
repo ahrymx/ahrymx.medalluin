@@ -573,8 +573,17 @@ local placing                                  -- PlaceTip's own SetPoint (the h
 local function PlaceTip(frame, owner, side)
     placing = true
     GameTooltip:ClearAllPoints()
+    local k = frame:GetEffectiveScale() / GameTooltip:GetEffectiveScale()
+    if side == "down" then
+        -- under the frame, below the owner: its centre across, in the tooltip's scale
+        local l, r, fl, fr = owner:GetLeft(), owner:GetRight(), frame:GetLeft(), frame:GetRight()
+        local dx = l and r and fl and fr and ((l + r) - (fl + fr)) / 2 * k or 0
+        GameTooltip:SetPoint("TOP", frame, "BOTTOM", dx, -BESIDE)
+        placing = false
+        return
+    end
     local top, edge = owner:GetTop(), frame:GetTop()
-    local dy = top and edge and (top - edge) * frame:GetEffectiveScale() / GameTooltip:GetEffectiveScale() or 0
+    local dy = top and edge and (top - edge) * k or 0
     if side > 0 then
         GameTooltip:SetPoint("TOPRIGHT", frame, "TOPLEFT", -BESIDE, dy)
     else
@@ -590,7 +599,9 @@ end
 
 -- A frame tooltips stand outside: side its default (1: it stands on the
 -- right, -1: the left), taken from where it is when it can be (a window
--- dragged across); at: the frame they stand beside instead (a cast layer
+-- dragged across); "down": under it always, below the owner (the
+-- overhead); a function: asked each time for either, and kept to (an
+-- option's: the overhead's flyouts); at: the frame they stand beside instead (a cast layer
 -- marks its window). ns.window.Outside(owner, fallback) is GameTooltip for
 -- an owner inside one, beside the nearest such frame up its parents, on the
 -- side towards the screen's middle; outside any, SetOwner by fallback
@@ -601,6 +612,9 @@ local marks = setmetatable({}, { __mode = "k" })    -- frame: { side, at }
 function ns.window.Mark(frame, side, at) marks[frame] = { side = side, at = at } end
 
 local function Facing(frame)
+    local m = marks[frame]
+    if m and type(m.side) == "function" then return m.side() end
+    if m and m.side == "down" then return "down" end
     local l, r, w = frame:GetLeft(), frame:GetRight(), UIParent:GetWidth()
     if not (l and r and w and w > 0) then return marks[frame] and marks[frame].side or 1 end
     return (l + r) / 2 * frame:GetEffectiveScale() > w * UIParent:GetEffectiveScale() / 2 and 1 or -1

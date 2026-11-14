@@ -9,6 +9,9 @@
 -- cell: a gold edge, an icon column on its left that says who it is, then
 -- health over a thin power strip. The geometry and the art come from the
 -- generated console/overhead_art.lua; the sums below are the generator's.
+-- Tooltips stand under the overhead, below what is hovered, out of its way
+-- (a totem flyout's beside it, right or left as the option says);
+-- a detached cell's beside it, towards the screen's middle (window/shell.lua's marks).
 local _, ns = ...
 
 local C = ns.colors
@@ -267,6 +270,22 @@ local function CreateCell(unit, kind, chip)
         ns.RegisterUnitEvent(b, event, unit)
     end
     b:SetScript("OnEvent", function(self) UpdateUnitStatus(self) end)
+    -- the game's unit tooltip (a simulated one says so); the marks place it
+    b:SetScript("OnEnter", function(self)
+        if self.stub and not UnitExists(self.unit) then
+            ns.Tip(self, "ANCHOR_RIGHT", { title = self.stub.name or self.unit, color = C.white,
+                { "body", "Simulated", C.grey } })
+        elseif UnitFrame_OnEnter then
+            UnitFrame_OnEnter(self)
+        end
+    end)
+    b:SetScript("OnLeave", function(self)
+        if self.stub and not UnitExists(self.unit) then
+            GameTooltip_Hide()
+        elseif UnitFrame_OnLeave then
+            UnitFrame_OnLeave(self)
+        end
+    end)
 
     RegisterUnitWatch(b)
     b.watching = true
@@ -845,6 +864,7 @@ local function Holder(b)
     h:SetMovable(true)
     h:SetClampedToScreen(true)
     h:Hide()
+    ns.window.Mark(h, 1)        -- its tooltips beside it, towards the middle
     holders[b] = h
     return h
 end
@@ -1274,6 +1294,15 @@ ns.UpdateOverhead = UpdateOverhead
 
 -- ------------------------------------------------------------ events
 ns.On("PLAYER_LOGIN", AdoptCommandButtons)
+-- its tooltips under it (window/shell.lua loads after this file); a totem
+-- flyout's beside the button hovered, on the side its option says, since
+-- under the overhead they would cover the flyout opening below it
+ns.On("PLAYER_LOGIN", function()
+    ns.window.Mark(overhead, "down")
+    if MultiCastFlyoutFrame then
+        ns.window.Mark(MultiCastFlyoutFrame, function() return ns.db.overheadFlyoutTips == "left" and 1 or -1 end)
+    end
+end)
 ns.On("PLAYER_LOGIN", UpdateOverhead)
 ns.On("PLAYER_ENTERING_WORLD", UpdateOverhead)
 ns.On("GROUP_ROSTER_UPDATE", UpdateOverhead)

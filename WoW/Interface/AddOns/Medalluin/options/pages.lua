@@ -700,7 +700,12 @@ function ns.OptionPages()
                                 "Shapeshift forms, stealth, stances, and auras on the bottom tier.", true),
                             Check("topTotems", "Totem bar",
                                 "A shaman's totems on the bottom tier: each element's totem, and its choices "
-                                .. "opening below it.", true)),
+                                .. "opening below it.", true),
+                            Choice("overheadFlyoutTips", "Totem choices' tooltips", {
+                                { "right", "Right", "Beside the totem hovered, on its right." },
+                                { "left", "Left", "Beside the totem hovered, on its left." },
+                            }, "Where a tooltip stands for the totems opening below the bar. The rest of the "
+                                .. "overhead's stand under it, which would cover them.")),
                     }, Placed("overhead", "Position"), {
                         Group("Opacity",
                             Opacity("overheadAlpha", "Opacity", "How much of the overhead shows. It shows "

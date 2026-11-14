@@ -11705,6 +11705,71 @@ if savedSimParty then
     for _, f in ipairs(events.PLAYER_REGEN_ENABLED or {}) do f.scripts.OnEvent(f, "PLAYER_REGEN_ENABLED") end
     print("overhead.combat", "held=" .. tostring(held), "after=" .. tostring(b1.points ~= before and b1.shown))
 
+    -- tooltips: under the overhead, below the hovered cell (window/shell.lua's
+    -- "down" mark); the game's default anchor (UnitFrame_OnEnter's) put back
+    -- under it while the mouse is on its owner
+    local function tip(tag, owner, how)
+        GameTooltip.owner, GameTooltip.points = nil, {}
+        mouseOver = owner
+        if how == "enter" then owner.scripts.OnEnter(owner)
+        else GameTooltip_SetDefaultAnchor(GameTooltip, owner) end
+        local t, out = GameTooltip.points, {}
+        for point, q in pairs(t) do
+            local rel = q[1] == ovh and "overhead" or q[1] and (q[1].GetName and q[1]:GetName()) or tostring(q[1])
+            table.insert(out, string.format("%s>%s.%s(%.1f,%.1f)", point, tostring(rel), tostring(q[2]), q[3] or 0, q[4] or 0))
+        end
+        table.sort(out)
+        -- where the owner's centre is across from the overhead's, in the tooltip's scale
+        local want = "-"
+        if owner.parent == ovh or owner.parent and owner.parent.parent == ovh then
+            local o, r = resolve(ovh), resolve(owner)
+            want = string.format("%.1f", ((r[1] + r[3]) - (o[1] + o[3])) / 2 / scaleOf(GameTooltip))
+        end
+        print(tag, table.concat(out, " "), "cellAt=" .. want,
+            "owner=" .. tostring(GameTooltip.owner == owner), "stub=" .. tostring(owner.stub ~= nil),
+            "beside=" .. tostring(Medalluin_TooltipBeside(owner)))
+        mouseOver = false
+    end
+    local units = ns.overheadUnits
+    -- the screen's width, as the game has it: the marks' side is read from where a frame is
+    local wide = UIParent.w
+    do
+        local u = resolve(UIParent)
+        UIParent.w = u[3] - u[1]
+    end
+    tip("overhead.tip.focus", units.focus)
+    tip("overhead.tip.boss2", units.boss2)
+    tip("overhead.tip.tray", PetActionButton1)
+    tip("overhead.tip.enter", units.pet, "enter")
+    local said = Medalluin_TooltipSpec(GameTooltip)
+    print("overhead.tip.enter words", tostring(said and said.title), tostring(said and said[1] and said[1][2]))
+    -- a real unit: the game's UnitFrame_OnEnter (its default anchor, then the unit)
+    local was, stub = UnitFrame_OnEnter, units.focus.stub
+    function UnitFrame_OnEnter(self)
+        GameTooltip_SetDefaultAnchor(GameTooltip, self)
+        GameTooltip.unit = self.unit
+    end
+    units.focus.stub, GameTooltip.unit = nil, nil
+    tip("overhead.tip.unit", units.focus, "enter")
+    print("overhead.tip.unit words", tostring(GameTooltip.unit))
+    UnitFrame_OnEnter, units.focus.stub = was, stub
+    -- someone else's SetPoint while the mouse is on it: back under the overhead
+    GameTooltip.points = {}
+    mouseOver = units.focus
+    GameTooltip:SetOwner(units.focus, "ANCHOR_NONE")
+    GameTooltip:ClearAllPoints()
+    GameTooltip:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -13, 64)
+    print("overhead.tip.again", "under=" .. tostring(GameTooltip.points.TOP ~= nil and GameTooltip.points.TOP[1] == ovh),
+        "corner=" .. tostring(GameTooltip.points.BOTTOMRIGHT ~= nil))
+    mouseOver = false
+    -- a detached cell: beside its own holder, towards the middle, not under the overhead
+    page.settings.detachFocus:Set(true)
+    ns.UpdateOverhead()
+    tip("overhead.tip.detached", units.focus)
+    page.settings.detachFocus:Set(false)
+    ns.UpdateOverhead()
+    UIParent.w = wide
+
     -- simulating a class with no stances (the 2026-11-01 hunter): no invented
     -- stance slots, so the pet bar alone is centred in the tray
     shapeshiftForms = 0
@@ -11773,6 +11838,12 @@ if savedSimParty then
         print("overhead.shaman.flyout icons", table.concat(icons, " "))
         print("overhead.shaman.arrow", arrow.TOP and "below" or "above", "bottom=" .. tostring(arrow.BOTTOM ~= nil),
             "tc=" .. tc(MultiCastFlyoutFrameOpenButton.normalTexture))
+        -- a flyout's tooltips: beside the totem hovered (under the overhead
+        -- they covered the flyout), right, or left as its option says
+        tip("overhead.tip.flyout", fly.buttons[2])
+        page.settings.overheadFlyoutTips:Set("left")
+        tip("overhead.tip.flyout left", fly.buttons[2])
+        page.settings.overheadFlyoutTips:Set("right")
         MultiCastFlyoutFrame_ToggleFlyout(fly, "slot", el)
         MultiCastFlyoutFrameOpenButton:Hide()
         bar.shown, shapeshiftForms = false, 0

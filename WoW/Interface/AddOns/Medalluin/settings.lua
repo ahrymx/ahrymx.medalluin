@@ -177,6 +177,7 @@ local DEFAULTS = {
     detachToTX = false, detachToTY = false,
     topStances = true,      -- stance bar on the bottom tier
     topTotems = true,       -- totem bar on the bottom tier (Forever's)
+    overheadFlyoutTips = "right",   -- a totem flyout's tooltips: beside it, "right" or "left"
     auraGlow = true,        -- border glow for dispellable debuffs
     auraThreat = true,      -- border glow while the unit has aggro
     auraCC = true,          -- large center icon for crowd control
@@ -281,6 +282,7 @@ for _, key in ipairs({
     "auraDebuffs",
     "editUnit", "editParty",
     "overhead", "bossFrames", "topPet", "topFocus", "topToT", "topPetBar", "topStances", "topTotems",
+    "overheadFlyoutTips",
     "detachPet", "detachFocus", "detachToT", "detachPetX", "detachPetY", "detachFocusX", "detachFocusY",
     "detachToTX", "detachToTY",
     "xpCast", "repCast",
