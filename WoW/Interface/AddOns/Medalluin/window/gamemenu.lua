@@ -57,6 +57,12 @@
 -- Ours alone keeps its own; the world stays. A click outside it lands on it,
 -- not on the buttons unseen under it.
 --
+-- Options and AddOns open beside it (docked), a dashboard's page: the menu
+-- stays, its card lit, the game's window where the game puts it, lifted
+-- over ours and drawn over the hidden interface with its tooltip, prompts
+-- and dropdowns. Its close (Escape, its own) goes back to the menu as the
+-- game's does; Return to Game, or another card, closes it first.
+--
 -- Blizzard's GameMenuFrame stays the panel the game shows and hides
 -- (Escape, ShowUIPanel), made see-through and let click through; it builds
 -- its buttons again each time it shows (InitButtons, from a pool), and each
@@ -125,6 +131,14 @@ local SHORTCUTS = {
 }
 
 local holder, docked, ring, shade
+-- beside (docked): the game's window a card opens while the menu stays
+local BESIDE = { options = "SettingsPanel", addons = "AddonList" }
+local want                      -- the kind a click is opening beside, from its PreClick to its PostClick
+local open, openKind            -- the window beside the menu, and its card's kind
+local lifted                    -- that window's strata and level, to give back
+local lent = {}                 -- frames given their own alpha while it is open
+local clicks = {}               -- Blizzard's buttons whose clicks are hooked
+local Post                      -- after a click: what stands beside the menu settled
 local shortcuts = {}            -- our buttons for them, by command
 local bars = {}                 -- the chains' bars, pooled
 local deco = {}                 -- a button's dress, by button (no field of ours on Blizzard's)
@@ -344,7 +358,10 @@ local function Look(b, look, kind, glyph, size, primary)
     local gilt = card or square or ret
     local boxed = look == "button" or look == "primary" or keyed or gilt
     d.edgeC, d.edgeA = GOLD_D, 1
-    if card then d.edgeA = 0.7 elseif ret then d.edgeC = GOLD elseif square and kind == "exit" then
+    -- the card whose window stands beside the menu: lit, as Return to Game is
+    d.held = card and openKind ~= nil and kind == openKind
+    if d.held then d.edgeC = GOLD
+    elseif card then d.edgeA = 0.7 elseif ret then d.edgeC = GOLD elseif square and kind == "exit" then
         d.edgeC = { 0.54, 0.2, 0.14 }
     end
     d.edge:SetShown(boxed)
@@ -355,7 +372,7 @@ local function Look(b, look, kind, glyph, size, primary)
     d.key:SetShown(keyed)
     d.lip:SetShown(keyed)
     d.dot:Hide()
-    d.fill:SetShown(look == "primary" or ret)
+    d.fill:SetShown(look == "primary" or ret or d.held)
     d.glow:SetShown(boxed and not gilt)
     d.gild:SetShown(gilt)
     d.ruleL:SetShown(card)
@@ -842,6 +859,7 @@ local function Shortcuts(wanted)
                 b:RegisterForClicks("LeftButtonUp")
                 b:SetScript("OnClick", function()
                     local run = Runs(sc)
+                    Post()      -- a window beside the menu goes with it
                     HideUIPanel(GameMenuFrame)
                     if run then run() end
                 end)
@@ -1879,8 +1897,18 @@ end
 
 -- Taken in: after each InitButtons (as it shows, as the store's state
 -- changes), Blizzard's buttons are moved into ours and dressed.
+local Pre
 local function Arrange()
     if not holder then return end
+    -- each of Blizzard's buttons, hooked once: the pool gives them out again
+    -- with other words, so what a click opens is read as it is clicked
+    for _, b in ipairs(GameMenuFrame.buttons or {}) do
+        if not clicks[b] then
+            clicks[b] = true
+            b:HookScript("PreClick", Pre)
+            b:HookScript("PostClick", function() Post() end)
+        end
+    end
     local sections, leave, back = Read()
     local style = Style()
     local extra = Shortcuts(style == "docked")
@@ -1934,6 +1962,115 @@ local function Restore()
 end
 menu.Clear, menu.Restore = Clear, Restore
 
+-- Beside (docked): Options and AddOns open with the menu still there, as a
+-- dashboard's page. Blizzard's click hides its menu before it opens the
+-- window, so the PreClick says what is coming and the menu's OnHide keeps
+-- ours; the PostClick finds the window open and holds it.
+Pre = function(b)
+    want = nil
+    if Style() ~= "docked" then return end
+    local kind = Kind(b, GameMenuFrame.closeButton)
+    if BESIDE[kind] then want = kind end
+end
+
+-- a frame drawn over the interface put away: its own alpha, till it closes
+local function Lend(f)
+    if f and f.SetIgnoreParentAlpha and lent[f] == nil then
+        lent[f] = true
+        f:SetIgnoreParentAlpha(true)
+    end
+end
+local function Unlend(f)
+    if lent[f] then
+        lent[f] = nil
+        f:SetIgnoreParentAlpha(false)
+    end
+end
+
+-- the window let go (it closed): its strata and level back, the lent frames
+-- following UIParent again, the card unlit
+local function Let()
+    local w = open
+    open, openKind = nil, nil
+    if w and lifted then
+        w:SetFrameStrata(lifted[1])
+        w:SetFrameLevel(lifted[2])
+    end
+    lifted = nil
+    for f in pairs(lent) do Unlend(f) end
+    Relayout()
+end
+
+-- a frame later: closed with no way back to the menu (another's HideUIPanel,
+-- Close(true)), the menu goes too; the game's own way back has shown it again
+local function Settle()
+    if open or not holder:IsShown() then return end
+    if not GameMenuFrame:IsShown() then
+        holder:Hide()
+        Restore()
+    end
+end
+
+-- The window held beside the menu: lifted over our holder (whose catch
+-- keeps clicks off the bars unseen), drawn over a hidden UIParent with what
+-- it raises (the tooltip, the game's prompts; its dropdowns as they open)
+local hooked = {}
+local function Hold(kind, w)
+    open, openKind = w, kind
+    if not hooked[w] then
+        hooked[w] = true
+        w:HookScript("OnHide", function(self)
+            if open ~= self then return end
+            Let()
+            C_Timer.After(0, Settle)
+        end)
+    end
+    lifted = { w:GetFrameStrata(), w:GetFrameLevel() }
+    w:SetFrameStrata("DIALOG")
+    w:SetFrameLevel(holder:GetFrameLevel() + 100)
+    Lend(w)
+    Lend(GameTooltip)
+    for i = 1, 4 do Lend(_G["StaticPopup" .. i]) end
+    Relayout()
+end
+
+-- the window closed without going back to the menu (Settings skips its
+-- way back; the AddOns list's brings the menu again, put away after)
+local function Shut(w, kind)
+    if kind == "options" and w.Close then w:Close(true) else HideUIPanel(w) end
+end
+
+-- After a click on the menu (Blizzard's buttons, our shortcuts): the window
+-- it opened beside it held, one beside it before closed; nothing beside it
+-- now, and the menu goes as any click takes it
+Post = function()
+    local kind = want
+    want = nil
+    local old = open
+    if not (kind or old) then return end
+    local w = kind and _G[BESIDE[kind]]
+    if old and old ~= w then Shut(old, openKind) end
+    if w and w:IsShown() then
+        if open ~= w then Hold(kind, w) end
+        if GameMenuFrame:IsShown() then HideUIPanel(GameMenuFrame) end
+    elseif not (open and open:IsShown()) then
+        if GameMenuFrame:IsShown() then HideUIPanel(GameMenuFrame)
+        else
+            holder:Hide()
+            Restore()
+        end
+    end
+end
+
+-- the game's dropdowns are made as they open, on UIParent: lent while a
+-- window is beside the menu
+if EventRegistry and EventRegistry.RegisterCallback then
+    local owner = {}
+    EventRegistry:RegisterCallback("MenuProxy.OnShow", function(_, m) if open then Lend(m) end end, owner)
+    EventRegistry:RegisterCallback("MenuProxy.OnHide", function(_, m) Unlend(m) end, owner)
+end
+menu.Beside = function() return openKind, open end
+
 local adopted = false
 local function Adopt()
     local f = _G.GameMenuFrame
@@ -1956,6 +2093,8 @@ local function Adopt()
         end
     end)
     f:HookScript("OnHide", function()
+        -- a card opening its window beside it, or one there still: ours stays
+        if want or (open and open:IsShown()) then return end
         holder:Hide()
         Restore()
     end)

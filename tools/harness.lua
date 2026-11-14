@@ -4448,7 +4448,13 @@ if gamemenuPass then (function()
             b:SetText(text)
             b.layoutIndex, b.topPadding, pad = self.used, pad, nil
             if disabled then b:Disable() else b:Enable() end
-            b:SetScript("OnClick", function() table.insert(W.clicked, text); self:Hide() end)
+            -- GenerateMenuCallback: the menu hidden (a hidden one is left), then the card's
+            b:SetScript("OnClick", function()
+                table.insert(W.clicked, text)
+                HideUIPanel(self)
+                if text == GAMEMENU_OPTIONS then SettingsPanel:Open()
+                elseif text == ADDONS then ShowUIPanel(AddonList, nil, "GameMenuFrame") end
+            end)
             b:Show()
             table.insert(self.buttons, b)
             return b
@@ -4469,7 +4475,37 @@ if gamemenuPass then (function()
     end
     f:SetScript("OnShow", function(self) self:InitButtons() end)
     f:Hide()
-    function HideUIPanel(p) p:Hide() end
+    -- the panel manager: hiding a hidden panel does nothing; one shown from
+    -- the menu (its context key) shows the menu again as it hides
+    function ShowUIPanel(p, _, ctx)
+        p.ctx = ctx
+        if not p.shown then p:Show() end
+    end
+    function HideUIPanel(p)
+        if not p.shown then return end
+        p:Hide()
+        local ctx = p.ctx
+        p.ctx = nil
+        if ctx == "GameMenuFrame" then ShowUIPanel(f) end
+    end
+    -- the game's Settings (HIGH, as its XML) and the AddOns list (no strata of its own)
+    SettingsPanel:SetFrameStrata("HIGH")
+    SettingsPanel:SetFrameLevel(5)
+    function SettingsPanel:Open() ShowUIPanel(self) end
+    -- Close: Escape's and its own button's; its way back is ToggleGameMenu, skipped on Close(true)
+    function SettingsPanel:Close(skip)
+        table.insert(W.clicked, "settings close(" .. tostring(skip) .. ")")
+        HideUIPanel(self)
+        if not skip then ShowUIPanel(f) end
+    end
+    AddonList = CreateFrame("Frame", "AddonList", UIParent)
+    AddonList:SetFrameStrata("MEDIUM")
+    AddonList:SetFrameLevel(3)
+    AddonList:Hide()
+    StaticPopup1 = CreateFrame("Frame", "StaticPopup1", UIParent)
+    W.timers = {}
+    C_Timer = C_Timer or {}
+    C_Timer.After = function(_, fn) table.insert(W.timers, fn) end
     -- the game's Cooldown Manager answers /cdm; nothing answers /cc here
     SLASH_COOLDOWNVIEWERSETTINGS1 = "/CDM"
     SlashCmdList.COOLDOWNVIEWERSETTINGS = function(msg) table.insert(W.clicked, "ran /cdm(" .. msg .. ")") end
@@ -21097,6 +21133,98 @@ if gamemenuPass then (function()
     print("gamemenu shortcut clicked", table.concat(W.clicked, ","), "shown=" .. tostring(f.shown) .. "/"
         .. tostring(M.holder.shown), "ui=" .. tostring(UIParent.alpha))
     f:Hide()
+
+    -- Options and AddOns open beside the menu (docked); a click as the client
+    -- gives it: PreClick, OnClick, PostClick; a frame later, the timers
+    local function press(b)
+        for _, k in ipairs({ "PreClick", "OnClick", "PostClick" }) do
+            if b.scripts[k] then b.scripts[k](b, "LeftButton", false) end
+        end
+    end
+    local function card(kind)
+        for _, b in ipairs(f.buttons) do if M.Kind(b, f.closeButton) == kind then return b end end
+    end
+    local function frame()
+        local t = W.timers
+        W.timers = {}
+        for _, fn in ipairs(t) do fn() end
+    end
+    local function win(w)
+        return tostring(w.shown) .. "@" .. w:GetFrameStrata() .. "/" .. tostring(w.level)
+            .. (w.ignoreParentAlpha and "+own" or "")
+    end
+    local proxy = CreateFrame("Frame", nil, UIParent)
+    local function beside(tag)
+        local kind = M.Beside()
+        local lit = {}
+        for _, b in ipairs(f.buttons) do
+            local d = M.Deco(b)
+            if d and d.held then table.insert(lit, M.Kind(b, f.closeButton) .. (d.fill.shown and "*" or "")) end
+        end
+        print(tag, "menu=" .. tostring(f.shown) .. "/" .. tostring(M.holder.shown), "beside=" .. tostring(kind),
+            "lit=" .. table.concat(lit, ","), "ui=" .. tostring(UIParent.alpha),
+            "settings=" .. win(SettingsPanel), "addons=" .. win(AddonList),
+            "lent=" .. tostring(GameTooltip.ignoreParentAlpha) .. "," .. tostring(StaticPopup1.ignoreParentAlpha)
+                .. "," .. tostring(proxy.ignoreParentAlpha),
+            "catch=" .. tostring(M.holder:IsMouseEnabled()), "clicked=" .. table.concat(W.clicked, ","))
+        W.clicked = {}
+    end
+    W.clicked = {}
+    f:Show()
+    press(card("options"))
+    EventRegistry:TriggerEvent("MenuProxy.OnShow", proxy)
+    beside("gamemenu beside options")
+    frame()
+    beside("gamemenu beside options, a frame on")
+    -- Escape, or its own close: the game's way back to the menu
+    SettingsPanel:Close()
+    EventRegistry:TriggerEvent("MenuProxy.OnHide", proxy)
+    frame()
+    beside("gamemenu beside settings closed")
+    press(card("addons"))
+    beside("gamemenu beside addons")
+    -- another card while one is beside: the first closed, with no way back
+    press(card("options"))
+    frame()
+    beside("gamemenu beside addons to options")
+    -- Return to Game: both go at once, not a frame later
+    press(f.closeButton)
+    beside("gamemenu beside return")
+    frame()
+    ui("gamemenu beside ui returned")
+    -- the AddOns list's own close: back to the menu
+    f:Show()
+    press(card("addons"))
+    HideUIPanel(AddonList)
+    frame()
+    beside("gamemenu beside addons closed")
+    -- closed with no way back (another's Close(true)): the menu goes a frame later
+    press(card("options"))
+    SettingsPanel:Close(true)
+    beside("gamemenu beside settings shut")
+    frame()
+    beside("gamemenu beside settings shut, a frame on")
+    -- a card of the rest while one is beside, and a shortcut: both close
+    f:Show()
+    press(card("options"))
+    press(card("macros"))
+    frame()
+    beside("gamemenu beside then macros")
+    f:Show()
+    press(card("addons"))
+    for _, c in ipairs(M.holder.all_ or {}) do
+        if c.kind == "Button" and c.shown and M.Words(c) == "Cooldown Manager" then c.scripts.OnClick(c) end
+    end
+    frame()
+    beside("gamemenu beside then shortcut")
+    -- the Medallion ring: Options closes the menu, as it did
+    ns.db.gameMenu = "medallion"
+    f:Show()
+    press(card("options"))
+    frame()
+    beside("gamemenu beside medallion")
+    SettingsPanel:Close(true)
+    ns.db.gameMenu = "docked"
 end)() end
 
 if cdmPass then (function()
